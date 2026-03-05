@@ -374,6 +374,92 @@ public class AutogenExecutionFlowTests
         }
     }
 
+    [Test]
+    public async Task CreateThumbAsync_SwfSignaturePrecheckHit_エンジン実行せずプレースホルダーで成功する()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummySwfWithSignatureFile(tempRoot, "CWS");
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var service = new ThumbnailCreationService(ffmedia, ffmpeg1pass, opencv, autogen);
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj { MovieId = 5, Tabindex = 0, MovieFullPath = moviePath },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(Path.Exists(result.SaveThumbFileName), Is.True);
+                Assert.That(autogen.CreateCallCount, Is.EqualTo(0));
+                Assert.That(ffmedia.CreateCallCount, Is.EqualTo(0));
+                Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(0));
+                Assert.That(opencv.CreateCallCount, Is.EqualTo(0));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static string CreateTempRoot()
     {
         string root = Path.Combine(
@@ -416,6 +502,20 @@ public class AutogenExecutionFlowTests
             0x6E,
         ];
         Array.Copy(drmGuid, 0, header, 256, drmGuid.Length);
+        File.WriteAllBytes(path, header);
+        return path;
+    }
+
+    private static string CreateDummySwfWithSignatureFile(string tempRoot, string signature)
+    {
+        string path = Path.Combine(tempRoot, "swf-sample.swf");
+        byte[] header = signature.ToUpperInvariant() switch
+        {
+            "FWS" => [0x46, 0x57, 0x53, 0x09, 0x00, 0x00, 0x00, 0x00],
+            "CWS" => [0x43, 0x57, 0x53, 0x09, 0x00, 0x00, 0x00, 0x00],
+            "ZWS" => [0x5A, 0x57, 0x53, 0x09, 0x00, 0x00, 0x00, 0x00],
+            _ => [0x00, 0x00, 0x00, 0x00],
+        };
         File.WriteAllBytes(path, header);
         return path;
     }

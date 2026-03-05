@@ -308,6 +308,7 @@ namespace IndigoMovieManager
             }
 
             int resetCount = queueDbService.ResetFailedToPending(DateTime.UtcNow);
+            MarkThumbnailFailedListDirty(incrementRevision: true, reason: "reset-failed-to-pending");
             DebugRuntimeLog.Write("queue-ops", $"manual retry: reset_failed_to_pending={resetCount}");
             return resetCount;
         }

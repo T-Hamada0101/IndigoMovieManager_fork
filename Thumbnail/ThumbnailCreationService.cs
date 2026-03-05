@@ -54,6 +54,7 @@ namespace IndigoMovieManager.Thumbnail
         private const int MaxJpegSaveRetryCount = 3;
         private const int BaseJpegSaveRetryDelayMs = 60;
         private const int AsfDrmScanMaxBytes = 64 * 1024;
+        private const int SwfSignatureLength = 3;
         // GDI+ の保存処理だけは同時実行数を絞り、ハンドル圧迫での瞬断を減らす。
         private static readonly SemaphoreSlim JpegSaveGate = CreateJpegSaveGate();
         private static readonly byte[] AsfContentEncryptionObjectGuid =
@@ -75,6 +76,9 @@ namespace IndigoMovieManager.Thumbnail
             0xFC,
             0x6E,
         ];
+        private static readonly byte[] SwfSignatureFws = [0x46, 0x57, 0x53];
+        private static readonly byte[] SwfSignatureCws = [0x43, 0x57, 0x53];
+        private static readonly byte[] SwfSignatureZws = [0x5A, 0x57, 0x53];
         private static readonly string[] AutogenTransientRetryKeywords =
         [
             "a generic error occurred in gdi+",
@@ -383,6 +387,26 @@ namespace IndigoMovieManager.Thumbnail
                         );
                     }
 
+                    if (
+                        TryCopyFixedErrorThumbnailForTab(
+                            queueObj?.Tabindex ?? 0,
+                            saveThumbFileName,
+                            out string fixedDetail
+                        )
+                    )
+                    {
+                        ThumbnailRuntimeLog.Write(
+                            "thumbnail",
+                            $"drm precheck fixed thumbnail fallback: movie='{movieFullPath}', detail='{drmDetail}', fixed='{fixedDetail}'"
+                        );
+                        return ReturnWithProcessLog(
+                            CreateSuccessResult(saveThumbFileName, durationSec),
+                            "fixed-drm-precheck",
+                            "",
+                            fileSizeBytes
+                        );
+                    }
+
                     string error = $"drm precheck hit but placeholder failed: {drmDetail}";
                     ThumbnailRuntimeLog.Write(
                         "thumbnail",
@@ -391,6 +415,84 @@ namespace IndigoMovieManager.Thumbnail
                     return ReturnWithProcessLog(
                         CreateFailedResult(saveThumbFileName, durationSec, error),
                         "drm-precheck",
+                        "",
+                        fileSizeBytes
+                    );
+                }
+
+                if (!isManual && cacheMeta.IsUnsupportedPrecheck)
+                {
+                    // SWFなど非対応入力の事前判定ヒット時は、即プレースホルダーで完了扱いにする。
+                    string unsupportedDetail = string.IsNullOrWhiteSpace(
+                        cacheMeta.UnsupportedDetail
+                    )
+                        ? "unsupported_precheck_hit"
+                        : cacheMeta.UnsupportedDetail;
+                    ThumbnailJobContext unsupportedContext = new()
+                    {
+                        QueueObj = queueObj,
+                        TabInfo = tbi,
+                        ThumbInfo = BuildAutoThumbInfo(tbi, durationSec),
+                        MovieFullPath = movieFullPath,
+                        SaveThumbFileName = saveThumbFileName,
+                        IsResizeThumb = isResizeThumb,
+                        IsManual = isManual,
+                        DurationSec = durationSec,
+                        FileSizeBytes = fileSizeBytes,
+                        AverageBitrateMbps = null,
+                        HasEmojiPath = false,
+                        VideoCodec = "",
+                    };
+
+                    if (
+                        TryCreateFailurePlaceholderThumbnail(
+                            unsupportedContext,
+                            FailurePlaceholderKind.FlashVideo,
+                            out string placeholderDetail
+                        )
+                    )
+                    {
+                        ThumbnailRuntimeLog.Write(
+                            "thumbnail",
+                            $"unsupported precheck hit: movie='{movieFullPath}', detail='{unsupportedDetail}', placeholder='{placeholderDetail}'"
+                        );
+                        return ReturnWithProcessLog(
+                            CreateSuccessResult(saveThumbFileName, durationSec),
+                            "placeholder-unsupported-precheck",
+                            "",
+                            fileSizeBytes
+                        );
+                    }
+
+                    if (
+                        TryCopyFixedErrorThumbnailForTab(
+                            queueObj?.Tabindex ?? 0,
+                            saveThumbFileName,
+                            out string fixedDetail
+                        )
+                    )
+                    {
+                        ThumbnailRuntimeLog.Write(
+                            "thumbnail",
+                            $"unsupported precheck fixed thumbnail fallback: movie='{movieFullPath}', detail='{unsupportedDetail}', fixed='{fixedDetail}'"
+                        );
+                        return ReturnWithProcessLog(
+                            CreateSuccessResult(saveThumbFileName, durationSec),
+                            "fixed-unsupported-precheck",
+                            "",
+                            fileSizeBytes
+                        );
+                    }
+
+                    string error =
+                        $"unsupported precheck hit but placeholder failed: {unsupportedDetail}";
+                    ThumbnailRuntimeLog.Write(
+                        "thumbnail",
+                        $"unsupported precheck failed: movie='{movieFullPath}', reason='{error}'"
+                    );
+                    return ReturnWithProcessLog(
+                        CreateFailedResult(saveThumbFileName, durationSec, error),
+                        "unsupported-precheck",
                         "",
                         fileSizeBytes
                     );
@@ -1138,16 +1240,31 @@ namespace IndigoMovieManager.Thumbnail
             Bitmap bitmap = new(width, height, PixelFormat.Format24bppRgb);
             using Graphics g = Graphics.FromImage(bitmap);
 
-            Color background = kind == FailurePlaceholderKind.DrmSuspected
-                ? Color.FromArgb(90, 35, 35)
-                : Color.FromArgb(45, 45, 45);
-            Color stripe = kind == FailurePlaceholderKind.DrmSuspected
-                ? Color.FromArgb(170, 65, 65)
-                : Color.FromArgb(85, 110, 130);
-            string title = kind == FailurePlaceholderKind.DrmSuspected ? "DRM?" : "CODEC NG";
-            string subtitle = kind == FailurePlaceholderKind.DrmSuspected
-                ? "保護コンテンツの可能性"
-                : "非対応/破損の可能性";
+            Color background;
+            Color stripe;
+            string title;
+            string subtitle;
+            if (kind == FailurePlaceholderKind.DrmSuspected)
+            {
+                background = Color.FromArgb(90, 35, 35);
+                stripe = Color.FromArgb(170, 65, 65);
+                title = "DRM?";
+                subtitle = "保護コンテンツの可能性";
+            }
+            else if (kind == FailurePlaceholderKind.FlashVideo)
+            {
+                background = Color.FromArgb(65, 55, 25);
+                stripe = Color.FromArgb(200, 150, 45);
+                title = "Flashアニメ";
+                subtitle = "SWFシグネチャ検出";
+            }
+            else
+            {
+                background = Color.FromArgb(45, 45, 45);
+                stripe = Color.FromArgb(85, 110, 130);
+                title = "CODEC NG";
+                subtitle = "非対応/破損の可能性";
+            }
 
             g.Clear(background);
             using (Brush stripeBrush = new SolidBrush(stripe))
@@ -1199,6 +1316,18 @@ namespace IndigoMovieManager.Thumbnail
             string ext = Path.GetExtension(movieFullPath);
             return ext.Equals(".wmv", StringComparison.OrdinalIgnoreCase)
                 || ext.Equals(".asf", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // SWFだけ先頭3バイトのシグネチャ判定を有効化する。
+        private static bool IsSwfFile(string movieFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return false;
+            }
+
+            string ext = Path.GetExtension(movieFullPath);
+            return ext.Equals(".swf", StringComparison.OrdinalIgnoreCase);
         }
 
         // Content Encryption Object GUID がヘッダー内にあるかを調べる。
@@ -1259,6 +1388,88 @@ namespace IndigoMovieManager.Thumbnail
             }
         }
 
+        // 先頭3バイトのSWFシグネチャ(FWS/CWS/ZWS)を調べる。
+        private static bool TryDetectSwfKnownSignature(string movieFullPath, out string detail)
+        {
+            detail = "";
+            if (!Path.Exists(movieFullPath))
+            {
+                detail = "file_not_found";
+                return false;
+            }
+
+            try
+            {
+                using FileStream fs = new(
+                    movieFullPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite
+                );
+                if (fs.Length < SwfSignatureLength)
+                {
+                    detail = "header_too_short";
+                    return false;
+                }
+
+                byte[] header = new byte[SwfSignatureLength];
+                int totalRead = 0;
+                while (totalRead < SwfSignatureLength)
+                {
+                    int read = fs.Read(header, totalRead, SwfSignatureLength - totalRead);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
+                    totalRead += read;
+                }
+
+                if (totalRead < SwfSignatureLength)
+                {
+                    detail = "header_too_short";
+                    return false;
+                }
+
+                if (
+                    header[0] == SwfSignatureFws[0]
+                    && header[1] == SwfSignatureFws[1]
+                    && header[2] == SwfSignatureFws[2]
+                )
+                {
+                    detail = "swf_signature=FWS";
+                    return true;
+                }
+
+                if (
+                    header[0] == SwfSignatureCws[0]
+                    && header[1] == SwfSignatureCws[1]
+                    && header[2] == SwfSignatureCws[2]
+                )
+                {
+                    detail = "swf_signature=CWS";
+                    return true;
+                }
+
+                if (
+                    header[0] == SwfSignatureZws[0]
+                    && header[1] == SwfSignatureZws[1]
+                    && header[2] == SwfSignatureZws[2]
+                )
+                {
+                    detail = "swf_signature=ZWS";
+                    return true;
+                }
+
+                detail = "swf_signature_not_found";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                detail = $"scan_error:{ex.GetType().Name}";
+                return false;
+            }
+        }
+
         private static int IndexOfBytes(byte[] source, int sourceLength, byte[] pattern)
         {
             if (
@@ -1291,6 +1502,70 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return -1;
+        }
+
+        // 事前判定ヒット時にプレースホルダー作成が失敗しても、固定エラー画像を複製して必ずサムネイルを残す。
+        private static bool TryCopyFixedErrorThumbnailForTab(
+            int tabIndex,
+            string saveThumbFileName,
+            out string detail
+        )
+        {
+            detail = "";
+            if (string.IsNullOrWhiteSpace(saveThumbFileName))
+            {
+                detail = "save_path_empty";
+                return false;
+            }
+
+            string imagesDir = Path.Combine(Directory.GetCurrentDirectory(), "Images");
+            string primaryName = tabIndex switch
+            {
+                1 => "errorBig.jpg",
+                2 => "errorGrid.jpg",
+                3 => "errorList.jpg",
+                4 => "errorBig.jpg",
+                99 => "errorGrid.jpg",
+                _ => "errorSmall.jpg",
+            };
+            string[] candidateNames =
+            [
+                primaryName,
+                "errorSmall.jpg",
+                "errorBig.jpg",
+                "errorGrid.jpg",
+                "errorList.jpg",
+            ];
+
+            try
+            {
+                string saveDir = Path.GetDirectoryName(saveThumbFileName) ?? "";
+                if (!string.IsNullOrWhiteSpace(saveDir))
+                {
+                    Directory.CreateDirectory(saveDir);
+                }
+
+                for (int i = 0; i < candidateNames.Length; i++)
+                {
+                    string src = Path.Combine(imagesDir, candidateNames[i]);
+                    if (!Path.Exists(src))
+                    {
+                        continue;
+                    }
+
+                    File.Copy(src, saveThumbFileName, true);
+                    detail = $"fixed_image={candidateNames[i]}";
+                    return true;
+                }
+
+                detail = "fixed_image_not_found";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                detail = $"fixed_copy_error:{ex.GetType().Name}";
+                return false;
+            }
         }
 
         private static bool IsForcedEngineMode()
@@ -1851,12 +2126,29 @@ namespace IndigoMovieManager.Thumbnail
                     string hash = ResolveMovieHash(movieFullPath, hashHint);
                     bool isDrmSuspected = false;
                     string drmDetail = "";
+                    bool isUnsupportedPrecheck = false;
+                    string unsupportedDetail = "";
                     if (IsAsfFamilyFile(movieFullPath))
                     {
                         isDrmSuspected = TryDetectAsfDrmProtected(movieFullPath, out drmDetail);
                     }
+                    else if (IsSwfFile(movieFullPath))
+                    {
+                        // SWFは動画デコーダ対象外なので、既知シグネチャ検出時は非対応として即スキップ対象にする。
+                        isUnsupportedPrecheck = TryDetectSwfKnownSignature(
+                            movieFullPath,
+                            out unsupportedDetail
+                        );
+                    }
 
-                    return new CachedMovieMeta(hash, null, isDrmSuspected, drmDetail);
+                    return new CachedMovieMeta(
+                        hash,
+                        null,
+                        isDrmSuspected,
+                        drmDetail,
+                        isUnsupportedPrecheck,
+                        unsupportedDetail
+                    );
                 }
             );
         }
@@ -1902,11 +2194,15 @@ namespace IndigoMovieManager.Thumbnail
             string hash = currentMeta?.Hash ?? "";
             bool isDrmSuspected = currentMeta?.IsDrmSuspected ?? false;
             string drmDetail = currentMeta?.DrmDetail ?? "";
+            bool isUnsupportedPrecheck = currentMeta?.IsUnsupportedPrecheck ?? false;
+            string unsupportedDetail = currentMeta?.UnsupportedDetail ?? "";
             MovieMetaCache[cacheKey] = new CachedMovieMeta(
                 hash,
                 durationSec,
                 isDrmSuspected,
-                drmDetail
+                drmDetail,
+                isUnsupportedPrecheck,
+                unsupportedDetail
             );
             if (MovieMetaCache.Count > MovieMetaCacheMaxCount)
             {
@@ -2003,6 +2299,7 @@ namespace IndigoMovieManager.Thumbnail
             None = 0,
             DrmSuspected = 1,
             UnsupportedCodec = 2,
+            FlashVideo = 3,
         }
     }
 
@@ -2060,18 +2357,24 @@ namespace IndigoMovieManager.Thumbnail
             string hash,
             double? durationSec,
             bool isDrmSuspected,
-            string drmDetail
+            string drmDetail,
+            bool isUnsupportedPrecheck,
+            string unsupportedDetail
         )
         {
             Hash = hash ?? "";
             DurationSec = durationSec;
             IsDrmSuspected = isDrmSuspected;
             DrmDetail = drmDetail ?? "";
+            IsUnsupportedPrecheck = isUnsupportedPrecheck;
+            UnsupportedDetail = unsupportedDetail ?? "";
         }
 
         public string Hash { get; }
         public double? DurationSec { get; }
         public bool IsDrmSuspected { get; }
         public string DrmDetail { get; }
+        public bool IsUnsupportedPrecheck { get; }
+        public string UnsupportedDetail { get; }
     }
 }
