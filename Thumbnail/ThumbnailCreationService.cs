@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using IndigoMovieManager.Thumbnail.Engines;
+using IndigoMovieManager.Thumbnail.Engines.IndexRepair;
 using static IndigoMovieManager.Thumbnail.Tools;
 
 namespace IndigoMovieManager.Thumbnail
@@ -31,6 +32,7 @@ namespace IndigoMovieManager.Thumbnail
         private readonly ThumbnailEngineRouter engineRouter;
         private readonly IVideoMetadataProvider videoMetadataProvider;
         private readonly IThumbnailLogger logger;
+        private readonly IVideoIndexRepairService videoIndexRepairService;
 
         // 同一出力ファイルへの同時書き込みを防ぐ。
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> OutputFileLocks = new(
@@ -55,6 +57,7 @@ namespace IndigoMovieManager.Thumbnail
         private const int BaseJpegSaveRetryDelayMs = 60;
         private const int AsfDrmScanMaxBytes = 64 * 1024;
         private const int SwfSignatureLength = 3;
+        private static readonly string[] IndexRepairTargetExtensions = [".flv"];
         // GDI+ の保存処理だけは同時実行数を絞り、ハンドル圧迫での瞬断を減らす。
         private static readonly SemaphoreSlim JpegSaveGate = CreateJpegSaveGate();
         private static readonly byte[] AsfContentEncryptionObjectGuid =
@@ -113,6 +116,13 @@ namespace IndigoMovieManager.Thumbnail
             "moov atom not found",
             "video stream is missing",
         ];
+        private static readonly string[] IndexRepairForcedFallbackKeywords =
+        [
+            "no frames decoded",
+            "invalid data found when processing input",
+            "video stream not found",
+            "failed to open input",
+        ];
 
         public ThumbnailCreationService()
             : this(NoOpVideoMetadataProvider.Instance, NoOpThumbnailLogger.Instance) { }
@@ -127,7 +137,8 @@ namespace IndigoMovieManager.Thumbnail
                 new OpenCvThumbnailGenerationEngine(),
                 new FfmpegAutoGenThumbnailGenerationEngine(),
                 videoMetadataProvider,
-                logger
+                logger,
+                new VideoIndexRepairService()
             ) { }
 
         internal ThumbnailCreationService(
@@ -142,7 +153,8 @@ namespace IndigoMovieManager.Thumbnail
                 openCvEngine,
                 autogenEngine,
                 NoOpVideoMetadataProvider.Instance,
-                NoOpThumbnailLogger.Instance
+                NoOpThumbnailLogger.Instance,
+                new VideoIndexRepairService()
             ) { }
 
         internal ThumbnailCreationService(
@@ -151,7 +163,8 @@ namespace IndigoMovieManager.Thumbnail
             IThumbnailGenerationEngine openCvEngine,
             IThumbnailGenerationEngine autogenEngine,
             IVideoMetadataProvider videoMetadataProvider,
-            IThumbnailLogger logger
+            IThumbnailLogger logger,
+            IVideoIndexRepairService videoIndexRepairService = null
         )
         {
             this.ffMediaToolkitEngine =
@@ -167,6 +180,8 @@ namespace IndigoMovieManager.Thumbnail
                 videoMetadataProvider
                 ?? throw new ArgumentNullException(nameof(videoMetadataProvider));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            this.videoIndexRepairService =
+                videoIndexRepairService ?? new VideoIndexRepairService();
 
             ThumbnailRuntimeLog.SetLogger(this.logger);
 
@@ -213,6 +228,29 @@ namespace IndigoMovieManager.Thumbnail
         }
 
         /// <summary>
+        /// 動画インデックス破損の疑いを調べる（将来UIからの直接呼び出しにも使う）。
+        /// </summary>
+        public Task<VideoIndexProbeResult> ProbeVideoIndexAsync(
+            string moviePath,
+            CancellationToken cts = default
+        )
+        {
+            return videoIndexRepairService.ProbeAsync(moviePath, cts);
+        }
+
+        /// <summary>
+        /// 動画インデックス修復を実行する（将来UIからの直接呼び出しにも使う）。
+        /// </summary>
+        public Task<VideoIndexRepairResult> RepairVideoIndexAsync(
+            string moviePath,
+            string outputPath,
+            CancellationToken cts = default
+        )
+        {
+            return videoIndexRepairService.RepairAsync(moviePath, outputPath, cts);
+        }
+
+        /// <summary>
         /// サムネイル生成の本丸！通常・手動を問わず、すべての生成処理はここから始まる激アツなメイン・エントリーポイントだぜ！🚀
         /// </summary>
         public async Task<ThumbnailCreateResult> CreateThumbAsync(
@@ -226,6 +264,7 @@ namespace IndigoMovieManager.Thumbnail
         {
             TabInfo tbi = new(queueObj.Tabindex, dbName, thumbFolder);
             string movieFullPath = queueObj.MovieFullPath;
+            string repairedMovieTempPath = "";
 
             var cacheMeta = GetCachedMovieMeta(movieFullPath, queueObj?.Hash, out string cacheKey);
             string hash = cacheMeta.Hash;
@@ -498,11 +537,53 @@ namespace IndigoMovieManager.Thumbnail
                     );
                 }
 
+                bool isRecoveryLane = IsRecoveryLaneAttempt(queueObj, isManual);
+                bool isIndexRepairTargetMovie = IsIndexRepairTargetMovie(movieFullPath);
+                string workingMovieFullPath = movieFullPath;
+                if (isRecoveryLane && isIndexRepairTargetMovie)
+                {
+                    VideoIndexProbeResult probeResult = await ProbeVideoIndexAsync(
+                        movieFullPath,
+                        cts
+                    ).ConfigureAwait(false);
+                    ThumbnailRuntimeLog.Write(
+                        "index-probe",
+                        $"probe result: movie='{movieFullPath}', detected={probeResult.IsIndexCorruptionDetected}, reason='{probeResult.DetectionReason}', code='{probeResult.ErrorCode}'"
+                    );
+
+                    if (probeResult.IsIndexCorruptionDetected)
+                    {
+                        string tempOutputPath = BuildIndexRepairTempOutputPath(movieFullPath);
+                        VideoIndexRepairResult repairResult = await RepairVideoIndexAsync(
+                            movieFullPath,
+                            tempOutputPath,
+                            cts
+                        ).ConfigureAwait(false);
+
+                        if (repairResult.IsSuccess && Path.Exists(repairResult.OutputPath))
+                        {
+                            workingMovieFullPath = repairResult.OutputPath;
+                            repairedMovieTempPath = repairResult.OutputPath;
+                            ThumbnailRuntimeLog.Write(
+                                "index-repair-summary",
+                                $"repair applied: movie='{movieFullPath}', fixed='{repairResult.OutputPath}'"
+                            );
+                        }
+                        else
+                        {
+                            ThumbnailRuntimeLog.Write(
+                                "index-repair-summary",
+                                $"repair skipped: movie='{movieFullPath}', reason='{repairResult.ErrorMessage}'"
+                            );
+                        }
+                    }
+                }
+
                 if (!durationSec.HasValue || durationSec.Value <= 0)
                 {
                     if (
                         videoMetadataProvider.TryGetDurationSec(
-                            movieFullPath,
+                            workingMovieFullPath,
                             out double providedDurationSec
                         )
                         && providedDurationSec > 0
@@ -512,7 +593,7 @@ namespace IndigoMovieManager.Thumbnail
                     }
                     else
                     {
-                        durationSec = TryGetDurationSecFromShell(movieFullPath);
+                        durationSec = TryGetDurationSecFromShell(workingMovieFullPath);
                     }
                     CacheMovieDuration(cacheKey, cacheMeta, durationSec);
                 }
@@ -559,7 +640,10 @@ namespace IndigoMovieManager.Thumbnail
 
                 string videoCodec = "";
                 if (
-                    videoMetadataProvider.TryGetVideoCodec(movieFullPath, out string providedVideoCodec)
+                    videoMetadataProvider.TryGetVideoCodec(
+                        workingMovieFullPath,
+                        out string providedVideoCodec
+                    )
                     && !string.IsNullOrWhiteSpace(providedVideoCodec)
                 )
                 {
@@ -571,208 +655,330 @@ namespace IndigoMovieManager.Thumbnail
                     QueueObj = queueObj,
                     TabInfo = tbi,
                     ThumbInfo = thumbInfo,
-                    MovieFullPath = movieFullPath,
+                    MovieFullPath = workingMovieFullPath,
                     SaveThumbFileName = saveThumbFileName,
                     IsResizeThumb = isResizeThumb,
                     IsManual = isManual,
                     DurationSec = durationSec,
                     FileSizeBytes = fileSizeBytes,
                     AverageBitrateMbps = avgBitrateMbps,
-                    HasEmojiPath = ThumbnailEngineRouter.HasUnmappableAnsiChar(movieFullPath),
+                    HasEmojiPath = ThumbnailEngineRouter.HasUnmappableAnsiChar(
+                        workingMovieFullPath
+                    ),
                     VideoCodec = videoCodec,
                 };
 
-                IThumbnailGenerationEngine selectedEngine = engineRouter.ResolveForThumbnail(
-                    context
-                );
-                List<IThumbnailGenerationEngine> engineOrder = BuildThumbnailEngineOrder(
-                    selectedEngine,
-                    context
-                );
-                ThumbnailCreateResult result = null;
-                IThumbnailGenerationEngine executedEngine = selectedEngine;
-                string processEngineId = selectedEngine?.EngineId ?? "unknown";
-                List<string> engineErrorMessages = [];
-
-                for (int i = 0; i < engineOrder.Count; i++)
+                // エンジン実行の本体をローカル関数化し、修復後の再試行でも同じ手順を使う。
+                async Task<
+                    (
+                        ThumbnailCreateResult Result,
+                        string ProcessEngineId,
+                        List<string> EngineErrorMessages
+                    )
+                > ExecuteEngineOrderAsync(ThumbnailJobContext runtimeContext)
                 {
-                    IThumbnailGenerationEngine candidate = engineOrder[i];
-                    executedEngine = candidate;
-                    processEngineId = candidate.EngineId;
-                    ThumbnailRuntimeLog.Write(
-                        "thumbnail",
-                        i == 0
-                            ? $"engine selected: id={candidate.EngineId}, panel={context.PanelCount}, size={context.FileSizeBytes}, avg_mbps={context.AverageBitrateMbps:0.###}, emoji={context.HasEmojiPath}, manual={context.IsManual}"
-                            : $"engine fallback: from={selectedEngine.EngineId}, to={candidate.EngineId}, attempt={i + 1}/{engineOrder.Count}"
+                    IThumbnailGenerationEngine selectedEngine = engineRouter.ResolveForThumbnail(
+                        runtimeContext
                     );
-                    if (
-                        i > 0
-                        && string.Equals(
-                            selectedEngine?.EngineId,
-                            "autogen",
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                        && string.Equals(
-                            candidate.EngineId,
-                            "ffmpeg1pass",
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        ThumbnailEngineRuntimeStats.RecordFallbackToFfmpegOnePass();
-                    }
+                    List<IThumbnailGenerationEngine> engineOrder = BuildThumbnailEngineOrder(
+                        selectedEngine,
+                        runtimeContext
+                    );
+                    ThumbnailCreateResult runtimeResult = null;
+                    string runtimeProcessEngineId = selectedEngine?.EngineId ?? "unknown";
+                    List<string> runtimeEngineErrorMessages = [];
 
-                    // 先行エンジンで入力破損が確定している場合、重いffmpeg1pass起動を省略する。
-                    if (
-                        !isManual
-                        && string.Equals(
-                            candidate.EngineId,
-                            "ffmpeg1pass",
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                        && ShouldSkipFfmpegOnePassByKnownInvalidInput(engineErrorMessages)
-                    )
+                    for (int i = 0; i < engineOrder.Count; i++)
                     {
-                        const string skipReason = "known invalid input signature";
+                        IThumbnailGenerationEngine candidate = engineOrder[i];
+                        runtimeProcessEngineId = candidate.EngineId;
                         ThumbnailRuntimeLog.Write(
                             "thumbnail",
-                            $"engine skipped: id=ffmpeg1pass, reason='{skipReason}'"
+                            i == 0
+                                ? $"engine selected: id={candidate.EngineId}, panel={runtimeContext.PanelCount}, size={runtimeContext.FileSizeBytes}, avg_mbps={runtimeContext.AverageBitrateMbps:0.###}, emoji={runtimeContext.HasEmojiPath}, manual={runtimeContext.IsManual}"
+                                : $"engine fallback: from={selectedEngine.EngineId}, to={candidate.EngineId}, attempt={i + 1}/{engineOrder.Count}"
                         );
-                        result = CreateFailedResult(
-                            saveThumbFileName,
-                            durationSec,
-                            $"ffmpeg1pass skipped: {skipReason}"
-                        );
-                        engineErrorMessages.Add($"[ffmpeg1pass] skipped: {skipReason}");
-                        break;
-                    }
-
-                    bool isAutogenCandidate = string.Equals(
-                        candidate.EngineId,
-                        "autogen",
-                        StringComparison.OrdinalIgnoreCase
-                    );
-                    int autogenRetryCount = 0;
-                    int maxAutogenRetryCount = ResolveAutogenRetryCount();
-                    bool transientFailureRecorded = false;
-                    while (true)
-                    {
-                        try
+                        if (
+                            i > 0
+                            && string.Equals(
+                                selectedEngine?.EngineId,
+                                "autogen",
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                            && string.Equals(
+                                candidate.EngineId,
+                                "ffmpeg1pass",
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
                         {
-                            result = await candidate.CreateAsync(context, cts);
-                        }
-                        catch (OperationCanceledException) when (cts.IsCancellationRequested)
-                        {
-                            // 呼び出し元キャンセル時は既存どおり中断として扱う。
-                            throw;
-                        }
-                        catch (Exception ex)
-                        {
-                            // エンジン内部例外は失敗結果へ変換して次候補へフォールバックする。
-                            result = CreateFailedResult(saveThumbFileName, durationSec, ex.Message);
+                            ThumbnailEngineRuntimeStats.RecordFallbackToFfmpegOnePass();
                         }
 
-                        if (result == null)
+                        // 先行エンジンで入力破損が確定している場合、重いffmpeg1pass起動を省略する。
+                        if (
+                            !isManual
+                            && string.Equals(
+                                candidate.EngineId,
+                                "ffmpeg1pass",
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                            && ShouldSkipFfmpegOnePassByKnownInvalidInput(runtimeEngineErrorMessages)
+                        )
                         {
-                            result = CreateFailedResult(
-                                saveThumbFileName,
-                                durationSec,
-                                "thumbnail engine returned null result"
-                            );
-                        }
-
-                        bool isTransientAutogenFailure =
-                            isAutogenCandidate
-                            && !result.IsSuccess
-                            && IsAutogenTransientRetryError(result.ErrorMessage);
-                        if (isTransientAutogenFailure && !transientFailureRecorded)
-                        {
-                            transientFailureRecorded = true;
-                            ThumbnailEngineRuntimeStats.RecordAutogenTransientFailure();
-                        }
-
-                        bool canRetryAutogen =
-                            isTransientAutogenFailure
-                            && autogenRetryCount < maxAutogenRetryCount
-                            && IsAutogenRetryEnabled();
-                        if (canRetryAutogen)
-                        {
-                            autogenRetryCount++;
-                            int retryDelayMs = ResolveAutogenRetryDelayMs();
+                            const string skipReason = "known invalid input signature";
                             ThumbnailRuntimeLog.Write(
                                 "thumbnail",
-                                $"engine retry scheduled: id=autogen, attempt={autogenRetryCount}/{maxAutogenRetryCount}, delay_ms={retryDelayMs}, reason='{result.ErrorMessage}'"
+                                $"engine skipped: id=ffmpeg1pass, reason='{skipReason}'"
                             );
-                            if (retryDelayMs > 0)
-                            {
-                                await Task.Delay(retryDelayMs, cts).ConfigureAwait(false);
-                            }
-                            continue;
+                            runtimeResult = CreateFailedResult(
+                                saveThumbFileName,
+                                durationSec,
+                                $"ffmpeg1pass skipped: {skipReason}"
+                            );
+                            runtimeEngineErrorMessages.Add($"[ffmpeg1pass] skipped: {skipReason}");
+                            break;
                         }
 
-                        if (isAutogenCandidate && autogenRetryCount > 0 && result.IsSuccess)
+                        bool isAutogenCandidate = string.Equals(
+                            candidate.EngineId,
+                            "autogen",
+                            StringComparison.OrdinalIgnoreCase
+                        );
+                        int autogenRetryCount = 0;
+                        int maxAutogenRetryCount = ResolveAutogenRetryCount();
+                        bool transientFailureRecorded = false;
+                        while (true)
                         {
-                            ThumbnailEngineRuntimeStats.RecordAutogenRetrySuccess();
-                            ThumbnailRuntimeLog.Write("thumbnail", "engine retry success: id=autogen");
+                            try
+                            {
+                                runtimeResult = await candidate
+                                    .CreateAsync(runtimeContext, cts)
+                                    .ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                            {
+                                // 呼び出し元キャンセル時は既存どおり中断として扱う。
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                // エンジン内部例外は失敗結果へ変換して次候補へフォールバックする。
+                                runtimeResult = CreateFailedResult(
+                                    saveThumbFileName,
+                                    durationSec,
+                                    ex.Message
+                                );
+                            }
+
+                            if (runtimeResult == null)
+                            {
+                                runtimeResult = CreateFailedResult(
+                                    saveThumbFileName,
+                                    durationSec,
+                                    "thumbnail engine returned null result"
+                                );
+                            }
+
+                            bool isTransientAutogenFailure =
+                                isAutogenCandidate
+                                && !runtimeResult.IsSuccess
+                                && IsAutogenTransientRetryError(runtimeResult.ErrorMessage);
+                            if (isTransientAutogenFailure && !transientFailureRecorded)
+                            {
+                                transientFailureRecorded = true;
+                                ThumbnailEngineRuntimeStats.RecordAutogenTransientFailure();
+                            }
+
+                            bool canRetryAutogen =
+                                isTransientAutogenFailure
+                                && autogenRetryCount < maxAutogenRetryCount
+                                && IsAutogenRetryEnabled();
+                            if (canRetryAutogen)
+                            {
+                                autogenRetryCount++;
+                                int retryDelayMs = ResolveAutogenRetryDelayMs();
+                                ThumbnailRuntimeLog.Write(
+                                    "thumbnail",
+                                    $"engine retry scheduled: id=autogen, attempt={autogenRetryCount}/{maxAutogenRetryCount}, delay_ms={retryDelayMs}, reason='{runtimeResult.ErrorMessage}'"
+                                );
+                                if (retryDelayMs > 0)
+                                {
+                                    await Task.Delay(retryDelayMs, cts).ConfigureAwait(false);
+                                }
+                                continue;
+                            }
+
+                            if (isAutogenCandidate && autogenRetryCount > 0 && runtimeResult.IsSuccess)
+                            {
+                                ThumbnailEngineRuntimeStats.RecordAutogenRetrySuccess();
+                                ThumbnailRuntimeLog.Write(
+                                    "thumbnail",
+                                    "engine retry success: id=autogen"
+                                );
+                            }
+                            break;
                         }
-                        break;
+
+                        if (!runtimeResult.IsSuccess && !string.IsNullOrWhiteSpace(runtimeResult.ErrorMessage))
+                        {
+                            runtimeEngineErrorMessages.Add(
+                                $"[{candidate.EngineId}] {runtimeResult.ErrorMessage}"
+                            );
+                        }
+
+                        if (runtimeResult.IsSuccess)
+                        {
+                            break;
+                        }
+
+                        if (i < engineOrder.Count - 1)
+                        {
+                            ThumbnailRuntimeLog.Write(
+                                "thumbnail",
+                                $"engine failed: id={candidate.EngineId}, reason='{runtimeResult.ErrorMessage}', try_next=True"
+                            );
+                        }
                     }
 
-                    if (!result.IsSuccess && !string.IsNullOrWhiteSpace(result.ErrorMessage))
+                    if (runtimeResult == null)
                     {
-                        engineErrorMessages.Add($"[{candidate.EngineId}] {result.ErrorMessage}");
-                    }
-
-                    if (result.IsSuccess)
-                    {
-                        break;
-                    }
-
-                    if (i < engineOrder.Count - 1)
-                    {
-                        ThumbnailRuntimeLog.Write(
-                            "thumbnail",
-                            $"engine failed: id={candidate.EngineId}, reason='{result.ErrorMessage}', try_next=True"
+                        runtimeResult = CreateFailedResult(
+                            saveThumbFileName,
+                            durationSec,
+                            "thumbnail engine was not executed"
                         );
                     }
+
+                    return (runtimeResult, runtimeProcessEngineId, runtimeEngineErrorMessages);
                 }
 
-                if (result == null)
+                (
+                    ThumbnailCreateResult Result,
+                    string ProcessEngineId,
+                    List<string> EngineErrorMessages
+                ) execution = await ExecuteEngineOrderAsync(context).ConfigureAwait(false);
+                ThumbnailCreateResult result = execution.Result;
+                string processEngineId = execution.ProcessEngineId;
+                List<string> engineErrorMessages = execution.EngineErrorMessages;
+
+                bool repairedByProbe = !string.Equals(
+                    workingMovieFullPath,
+                    movieFullPath,
+                    StringComparison.OrdinalIgnoreCase
+                );
+                bool shouldForceRepairAfterFailure =
+                    !isManual
+                    && !result.IsSuccess
+                    && isRecoveryLane
+                    && isIndexRepairTargetMovie
+                    && !repairedByProbe
+                    && ShouldForceIndexRepairAfterEngineFailure(engineErrorMessages);
+                if (shouldForceRepairAfterFailure)
                 {
-                    result = CreateFailedResult(
-                        saveThumbFileName,
-                        durationSec,
-                        "thumbnail engine was not executed"
-                    );
+                    string tempOutputPath = BuildIndexRepairTempOutputPath(movieFullPath);
+                    VideoIndexRepairResult repairResult = await RepairVideoIndexAsync(
+                        movieFullPath,
+                        tempOutputPath,
+                        cts
+                    ).ConfigureAwait(false);
+                    if (repairResult.IsSuccess && Path.Exists(repairResult.OutputPath))
+                    {
+                        workingMovieFullPath = repairResult.OutputPath;
+                        repairedMovieTempPath = repairResult.OutputPath;
+                        ThumbnailRuntimeLog.Write(
+                            "index-repair-summary",
+                            $"repair forced: movie='{movieFullPath}', fixed='{repairResult.OutputPath}', reason='runtime-engine-failure'"
+                        );
+
+                        string repairedVideoCodec = "";
+                        if (
+                            videoMetadataProvider.TryGetVideoCodec(
+                                workingMovieFullPath,
+                                out string providedRepairedVideoCodec
+                            )
+                            && !string.IsNullOrWhiteSpace(providedRepairedVideoCodec)
+                        )
+                        {
+                            repairedVideoCodec = providedRepairedVideoCodec;
+                        }
+
+                        context = new ThumbnailJobContext
+                        {
+                            QueueObj = queueObj,
+                            TabInfo = tbi,
+                            ThumbInfo = thumbInfo,
+                            MovieFullPath = workingMovieFullPath,
+                            SaveThumbFileName = saveThumbFileName,
+                            IsResizeThumb = isResizeThumb,
+                            IsManual = isManual,
+                            DurationSec = durationSec,
+                            FileSizeBytes = fileSizeBytes,
+                            AverageBitrateMbps = avgBitrateMbps,
+                            HasEmojiPath = ThumbnailEngineRouter.HasUnmappableAnsiChar(
+                                workingMovieFullPath
+                            ),
+                            VideoCodec = repairedVideoCodec,
+                        };
+                        (
+                            ThumbnailCreateResult Result,
+                            string ProcessEngineId,
+                            List<string> EngineErrorMessages
+                        ) repairedExecution = await ExecuteEngineOrderAsync(context)
+                            .ConfigureAwait(false);
+                        result = repairedExecution.Result;
+                        processEngineId = repairedExecution.ProcessEngineId;
+                        engineErrorMessages = repairedExecution.EngineErrorMessages;
+                    }
+                    else
+                    {
+                        ThumbnailRuntimeLog.Write(
+                            "index-repair-summary",
+                            $"repair forced skipped: movie='{movieFullPath}', reason='{repairResult.ErrorMessage}'"
+                        );
+                    }
                 }
 
                 // 全エンジン失敗時は、既知エラーを分類して専用プレースホルダー画像へ置き換える。
                 // 置き換え成功時はキュー完了として扱い、同一ファイルの再試行ループを避ける。
                 if (!result.IsSuccess && !isManual)
                 {
-                    FailurePlaceholderKind placeholderKind = ClassifyFailureForPlaceholder(
-                        context.VideoCodec,
-                        engineErrorMessages
-                    );
-                    if (
-                        TryCreateFailurePlaceholderThumbnail(
-                            context,
-                            placeholderKind,
-                            out string placeholderDetail
-                        )
-                    )
+                    bool skipPlaceholderForInitialIndexRepairTarget =
+                        !isRecoveryLane && isIndexRepairTargetMovie;
+                    if (skipPlaceholderForInitialIndexRepairTarget)
                     {
-                        processEngineId = placeholderKind switch
-                        {
-                            FailurePlaceholderKind.DrmSuspected => "placeholder-drm",
-                            FailurePlaceholderKind.UnsupportedCodec => "placeholder-unsupported",
-                            _ => "placeholder-unknown",
-                        };
+                        // 初回の対象拡張子は失敗を握り潰さず、次回のリカバリーレーン処理へ繋げる。
                         ThumbnailRuntimeLog.Write(
                             "thumbnail",
-                            $"failure placeholder created: kind={placeholderKind}, movie='{movieFullPath}', path='{saveThumbFileName}', detail='{placeholderDetail}'"
+                            $"failure placeholder skipped: movie='{movieFullPath}', reason='initial-index-repair-target'"
                         );
-                        result = CreateSuccessResult(saveThumbFileName, durationSec);
+                    }
+                    else
+                    {
+                        FailurePlaceholderKind placeholderKind = ClassifyFailureForPlaceholder(
+                            context.VideoCodec,
+                            engineErrorMessages
+                        );
+                        if (
+                            TryCreateFailurePlaceholderThumbnail(
+                                context,
+                                placeholderKind,
+                                out string placeholderDetail
+                            )
+                        )
+                        {
+                            processEngineId = placeholderKind switch
+                            {
+                                FailurePlaceholderKind.DrmSuspected => "placeholder-drm",
+                                FailurePlaceholderKind.UnsupportedCodec => "placeholder-unsupported",
+                                _ => "placeholder-unknown",
+                            };
+                            ThumbnailRuntimeLog.Write(
+                                "thumbnail",
+                                $"failure placeholder created: kind={placeholderKind}, movie='{movieFullPath}', path='{saveThumbFileName}', detail='{placeholderDetail}'"
+                            );
+                            result = CreateSuccessResult(saveThumbFileName, durationSec);
+                        }
                     }
                 }
 
@@ -823,6 +1029,8 @@ namespace IndigoMovieManager.Thumbnail
             }
             finally
             {
+                // 自動修復で作った一時動画は必ず片付ける。
+                TryDeleteFileQuietly(repairedMovieTempPath);
                 outputLock.Release();
             }
         }
@@ -943,6 +1151,89 @@ namespace IndigoMovieManager.Thumbnail
             double scale = (double)safeMaxHeight / sourceSize.Height;
             int width = Math.Max(1, (int)Math.Round(sourceSize.Width * scale));
             return new Size(width, safeMaxHeight);
+        }
+
+        // 再試行ジョブ（AttemptCount>0）だけをリカバリーレーン扱いにする。
+        private static bool IsRecoveryLaneAttempt(QueueObj queueObj, bool isManual)
+        {
+            if (isManual || queueObj == null)
+            {
+                return false;
+            }
+
+            return queueObj.AttemptCount > 0;
+        }
+
+        // まずは破損事例が多い拡張子だけを対象にして、通常ケースへの影響を抑える。
+        private static bool IsIndexRepairTargetMovie(string movieFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return false;
+            }
+
+            string ext = Path.GetExtension(movieFullPath)?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(ext))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < IndexRepairTargetExtensions.Length; i++)
+            {
+                if (string.Equals(ext, IndexRepairTargetExtensions[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Probeで検出できない軽度破損を救うため、実行時の失敗文言から強制修復の要否を判定する。
+        private static bool ShouldForceIndexRepairAfterEngineFailure(
+            IReadOnlyList<string> engineErrorMessages
+        )
+        {
+            if (engineErrorMessages == null || engineErrorMessages.Count < 1)
+            {
+                return false;
+            }
+
+            StringBuilder merged = new();
+            for (int i = 0; i < engineErrorMessages.Count; i++)
+            {
+                if (string.IsNullOrWhiteSpace(engineErrorMessages[i]))
+                {
+                    continue;
+                }
+
+                merged.Append(engineErrorMessages[i]);
+                merged.Append(' ');
+            }
+
+            string text = merged.ToString().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            return ContainsAnyKeyword(text, IndexRepairForcedFallbackKeywords);
+        }
+
+        // 自動修復用はコンテナ互換性優先で mkv へ一時出力する。
+        private static string BuildIndexRepairTempOutputPath(string movieFullPath)
+        {
+            string safeName = Path.GetFileNameWithoutExtension(movieFullPath);
+            if (string.IsNullOrWhiteSpace(safeName))
+            {
+                safeName = "movie";
+            }
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "IndigoMovieManager_fork", "index-repair");
+            Directory.CreateDirectory(tempDir);
+            string tempFileName =
+                $"{safeName}.repair.{Environment.ProcessId}.{Thread.CurrentThread.ManagedThreadId}.{Guid.NewGuid():N}.mkv";
+            return Path.Combine(tempDir, tempFileName);
         }
 
         /// <summary>

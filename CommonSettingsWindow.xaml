@@ -236,7 +236,7 @@
                         Margin="16,0,0,0"
                         VerticalAlignment="Center"
                         Maximum="24"
-                        Minimum="1"
+                        Minimum="2"
                         Style="{StaticResource MaterialDesignDiscreteSlider}"
                         TickFrequency="1"
                         Value="{Binding ThumbnailParallelism, Source={x:Static prop:Settings.Default}}" />

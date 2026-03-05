@@ -9,7 +9,7 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     public sealed class ThumbnailParallelController
     {
-        private const int HardMinParallelism = 1;
+        private const int HardMinParallelism = 2;
         private const int HardMaxParallelism = 24;
         private const int SoftMinParallelism = 4;
         private const int ScaleDownStep = 2;
@@ -76,7 +76,7 @@ namespace IndigoMovieManager.Thumbnail
 
         /// <summary>
         /// バックログがある時だけ、最低並列数まで即時に戻す。
-        /// 「1並列に落ちたまま長時間復帰しない」状態を避けるための安全弁。
+        /// 「下限並列に張り付いたまま長時間復帰しない」状態を避けるための安全弁。
         /// </summary>
         public int EnsureMinimum(int configuredParallelism, int minimumParallelism)
         {

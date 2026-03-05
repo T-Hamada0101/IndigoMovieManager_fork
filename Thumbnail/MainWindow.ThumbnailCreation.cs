@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using IndigoMovieManager.Thumbnail;
+using IndigoMovieManager.Thumbnail.Engines.IndexRepair;
 using static IndigoMovieManager.DB.SQLite;
 
 namespace IndigoMovieManager
@@ -137,6 +138,55 @@ namespace IndigoMovieManager
 
             await Task.Delay(1000);
             BookmarkList.Items.Refresh();
+        }
+
+        // 将来の別UIから再利用するため、動画インデックス修復APIの呼び出し口を先に用意しておく。
+        private async Task<VideoIndexRepairResult> RepairVideoIndexFromUiAsync(
+            string movieFullPath,
+            string outputPath,
+            CancellationToken cts = default
+        )
+        {
+            if (string.IsNullOrWhiteSpace(movieFullPath) || string.IsNullOrWhiteSpace(outputPath))
+            {
+                return new VideoIndexRepairResult
+                {
+                    IsSuccess = false,
+                    InputPath = movieFullPath ?? "",
+                    OutputPath = outputPath ?? "",
+                    ErrorMessage = "movie path or output path is empty",
+                };
+            }
+
+            try
+            {
+                VideoIndexRepairResult result = await _thumbnailCreationService
+                    .RepairVideoIndexAsync(movieFullPath, outputPath, cts)
+                    .ConfigureAwait(false);
+                DebugRuntimeLog.Write(
+                    "index-repair-ui",
+                    $"repair ui call: movie='{movieFullPath}', output='{outputPath}', success={result.IsSuccess}, err='{result.ErrorMessage}'"
+                );
+                return result;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "index-repair-ui",
+                    $"repair ui call failed: movie='{movieFullPath}', output='{outputPath}', err='{ex.Message}'"
+                );
+                return new VideoIndexRepairResult
+                {
+                    IsSuccess = false,
+                    InputPath = movieFullPath,
+                    OutputPath = outputPath,
+                    ErrorMessage = ex.Message,
+                };
+            }
         }
 
         /// <summary>

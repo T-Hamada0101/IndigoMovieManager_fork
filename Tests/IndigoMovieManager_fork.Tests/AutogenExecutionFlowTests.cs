@@ -1,5 +1,6 @@
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.Engines;
+using IndigoMovieManager.Thumbnail.Engines.IndexRepair;
 
 namespace IndigoMovieManager_fork.Tests;
 
@@ -289,6 +290,483 @@ public class AutogenExecutionFlowTests
     }
 
     [Test]
+    public async Task CreateThumbAsync_AttemptCount0_インデックスProbeRepairは実行しない()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyFlvFile(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var indexRepairService = new RecordingVideoIndexRepairService(
+                _ => new VideoIndexProbeResult
+                {
+                    IsIndexCorruptionDetected = true,
+                    DetectionReason = "test",
+                },
+                (_, __) => new VideoIndexRepairResult
+                {
+                    IsSuccess = true,
+                    OutputPath = Path.Combine(tempRoot, "fixed.mkv"),
+                }
+            );
+            var service = new ThumbnailCreationService(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                NoOpVideoMetadataProvider.Instance,
+                NoOpThumbnailLogger.Instance,
+                indexRepairService
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj
+                    {
+                        MovieId = 6,
+                        Tabindex = 0,
+                        MovieFullPath = moviePath,
+                        AttemptCount = 0,
+                    },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(indexRepairService.ProbeCallCount, Is.EqualTo(0));
+                Assert.That(indexRepairService.RepairCallCount, Is.EqualTo(0));
+                Assert.That(autogen.CreateCallCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CreateThumbAsync_AttemptCount0_Flv失敗はプレースホルダー成功化せず失敗を返す()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyFlvFile(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            const string unsupportedError = "invalid data found when processing input";
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            unsupportedError
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            unsupportedError
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            unsupportedError
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            unsupportedError
+                        )
+                    )
+            );
+            var indexRepairService = new RecordingVideoIndexRepairService(
+                _ => new VideoIndexProbeResult
+                {
+                    IsIndexCorruptionDetected = true,
+                    DetectionReason = "test",
+                },
+                (_, __) => new VideoIndexRepairResult
+                {
+                    IsSuccess = true,
+                    OutputPath = Path.Combine(tempRoot, "fixed.mkv"),
+                }
+            );
+            var service = new ThumbnailCreationService(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                NoOpVideoMetadataProvider.Instance,
+                NoOpThumbnailLogger.Instance,
+                indexRepairService
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj
+                    {
+                        MovieId = 60,
+                        Tabindex = 0,
+                        MovieFullPath = moviePath,
+                        AttemptCount = 0,
+                    },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.False);
+                Assert.That(result.ErrorMessage, Is.Not.Empty);
+                Assert.That(indexRepairService.ProbeCallCount, Is.EqualTo(0));
+                Assert.That(indexRepairService.RepairCallCount, Is.EqualTo(0));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CreateThumbAsync_AttemptCount1_ProbeOkかつNoFramesDecoded時は強制修復して再実行する()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyFlvFile(tempRoot);
+            string repairedPath = Path.Combine(tempRoot, "forced-fixed.mkv");
+            File.WriteAllBytes(repairedPath, [0x22, 0x33, 0x44, 0x55]);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            const string decodeError = "No frames decoded";
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        string.Equals(
+                            ctx.MovieFullPath,
+                            repairedPath,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                            ? ThumbnailCreationService.CreateSuccessResult(
+                                ctx.SaveThumbFileName,
+                                ctx.DurationSec
+                            )
+                            : ThumbnailCreationService.CreateFailedResult(
+                                ctx.SaveThumbFileName,
+                                ctx.DurationSec,
+                                decodeError
+                            )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            decodeError
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            decodeError
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            decodeError
+                        )
+                    )
+            );
+            var indexRepairService = new RecordingVideoIndexRepairService(
+                _ => new VideoIndexProbeResult
+                {
+                    IsIndexCorruptionDetected = false,
+                    DetectionReason = "probe_ok",
+                    ContainerFormat = "flv",
+                },
+                (_, __) => new VideoIndexRepairResult
+                {
+                    IsSuccess = true,
+                    InputPath = moviePath,
+                    OutputPath = repairedPath,
+                    UsedTemporaryRemux = true,
+                }
+            );
+            var service = new ThumbnailCreationService(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                NoOpVideoMetadataProvider.Instance,
+                NoOpThumbnailLogger.Instance,
+                indexRepairService
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            string? oldAutogenRetry = Environment.GetEnvironmentVariable(AutogenRetryEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, "off");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj
+                    {
+                        MovieId = 61,
+                        Tabindex = 0,
+                        MovieFullPath = moviePath,
+                        AttemptCount = 1,
+                    },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(indexRepairService.ProbeCallCount, Is.EqualTo(1));
+                Assert.That(indexRepairService.RepairCallCount, Is.EqualTo(1));
+                Assert.That(autogen.CreateCallCount, Is.GreaterThanOrEqualTo(2));
+                Assert.That(Path.Exists(repairedPath), Is.False);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, oldAutogenRetry);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CreateThumbAsync_AttemptCount1_ProbeHit時は修復後パスでエンジン実行する()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyFlvFile(tempRoot);
+            string repairedPath = Path.Combine(tempRoot, "fixed.mkv");
+            File.WriteAllBytes(repairedPath, [0x10, 0x20, 0x30, 0x40]);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                {
+                    Assert.That(ctx.MovieFullPath, Is.EqualTo(repairedPath));
+                    return Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    );
+                }
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var indexRepairService = new RecordingVideoIndexRepairService(
+                _ => new VideoIndexProbeResult
+                {
+                    IsIndexCorruptionDetected = true,
+                    DetectionReason = "open_failed_but_ignidx_succeeded",
+                    ContainerFormat = "flv",
+                },
+                (_, __) => new VideoIndexRepairResult
+                {
+                    IsSuccess = true,
+                    InputPath = moviePath,
+                    OutputPath = repairedPath,
+                    UsedTemporaryRemux = true,
+                }
+            );
+            var service = new ThumbnailCreationService(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                NoOpVideoMetadataProvider.Instance,
+                NoOpThumbnailLogger.Instance,
+                indexRepairService
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj
+                    {
+                        MovieId = 7,
+                        Tabindex = 0,
+                        MovieFullPath = moviePath,
+                        AttemptCount = 1,
+                    },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(indexRepairService.ProbeCallCount, Is.EqualTo(1));
+                Assert.That(indexRepairService.RepairCallCount, Is.EqualTo(1));
+                Assert.That(Path.Exists(repairedPath), Is.False);
+                Assert.That(autogen.CreateCallCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
     public async Task CreateThumbAsync_WmvDrmPrecheckHit_エンジン実行せずプレースホルダーで成功する()
     {
         string tempRoot = CreateTempRoot();
@@ -478,6 +956,13 @@ public class AutogenExecutionFlowTests
         return path;
     }
 
+    private static string CreateDummyFlvFile(string tempRoot)
+    {
+        string path = Path.Combine(tempRoot, "dummy.flv");
+        File.WriteAllBytes(path, [0x46, 0x4C, 0x56, 0x01]);
+        return path;
+    }
+
     private static string CreateDummyWmvWithDrmHeaderFile(string tempRoot)
     {
         string path = Path.Combine(tempRoot, "drm-sample.wmv");
@@ -560,6 +1045,43 @@ public class AutogenExecutionFlowTests
         )
         {
             return Task.FromResult(false);
+        }
+    }
+
+    private sealed class RecordingVideoIndexRepairService : IVideoIndexRepairService
+    {
+        private readonly Func<string, VideoIndexProbeResult> probeFunc;
+        private readonly Func<string, string, VideoIndexRepairResult> repairFunc;
+
+        public RecordingVideoIndexRepairService(
+            Func<string, VideoIndexProbeResult> probeFunc,
+            Func<string, string, VideoIndexRepairResult> repairFunc
+        )
+        {
+            this.probeFunc = probeFunc;
+            this.repairFunc = repairFunc;
+        }
+
+        public int ProbeCallCount { get; private set; }
+        public int RepairCallCount { get; private set; }
+
+        public Task<VideoIndexProbeResult> ProbeAsync(
+            string moviePath,
+            CancellationToken cts = default
+        )
+        {
+            ProbeCallCount++;
+            return Task.FromResult(probeFunc(moviePath));
+        }
+
+        public Task<VideoIndexRepairResult> RepairAsync(
+            string moviePath,
+            string outputPath,
+            CancellationToken cts = default
+        )
+        {
+            RepairCallCount++;
+            return Task.FromResult(repairFunc(moviePath, outputPath));
         }
     }
 }

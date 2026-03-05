@@ -171,14 +171,14 @@ namespace IndigoMovieManager
         private bool _searchBoxItemSelectedByUser = false;
 
         /// <summary>
-        /// 設定画面の欲望（並列数）を読み取りつつ、安全な範囲（1〜24）に制御して返すぜ！PCを燃やさないためのリミッターだ！🚥
+        /// 設定画面の欲望（並列数）を読み取りつつ、安全な範囲（2〜24）に制御して返すぜ！PCを燃やさないためのリミッターだ！🚥
         /// </summary>
         private static int GetThumbnailQueueMaxParallelism()
         {
             int parallelism = Properties.Settings.Default.ThumbnailParallelism;
-            if (parallelism < 1)
+            if (parallelism < 2)
             {
-                return 1;
+                return 2;
             }
             if (parallelism > 24)
             {
@@ -187,12 +187,12 @@ namespace IndigoMovieManager
             return parallelism;
         }
 
-        // サムネイル並列数を設定範囲（1〜24）へ丸める。
+        // サムネイル並列数を設定範囲（2〜24）へ丸める。
         private static int ClampThumbnailParallelismSetting(int parallelism)
         {
-            if (parallelism < 1)
+            if (parallelism < 2)
             {
-                return 1;
+                return 2;
             }
             if (parallelism > 24)
             {
@@ -206,9 +206,9 @@ namespace IndigoMovieManager
         {
             int logicalCoreCount = Environment.ProcessorCount;
             int resolved = logicalCoreCount / ThumbnailLightweightPresetParallelDivisor;
-            if (resolved < 1)
+            if (resolved < 2)
             {
-                resolved = 1;
+                resolved = 2;
             }
             return ClampThumbnailParallelismSetting(resolved);
         }

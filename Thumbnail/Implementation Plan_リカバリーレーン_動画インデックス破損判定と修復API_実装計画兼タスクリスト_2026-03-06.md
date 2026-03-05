@@ -88,16 +88,16 @@
 
 | ID | 状態 | タスク | 対象ファイル | 完了条件 |
 |---|---|---|---|---|
-| IDX-E001 | 未着手 | Engine分離制約に沿って IndexRepair フォルダを新設 | `Thumbnail/Engines/IndexRepair/*` | 新規型が Engine プロジェクトで解決できる |
-| IDX-E002 | 未着手 | Probe/Repair結果DTOを実装 | `Thumbnail/Engines/IndexRepair/VideoIndexProbeResult.cs` `Thumbnail/Engines/IndexRepair/VideoIndexRepairResult.cs` | 戻り値DTOが確定する |
-| IDX-E003 | 未着手 | 修復サービス抽象と実装を追加 | `Thumbnail/Engines/IndexRepair/IVideoIndexRepairService.cs` `Thumbnail/Engines/IndexRepair/VideoIndexRepairService.cs` | 判定/修復ロジックがEngine層に閉じる |
-| IDX-E004 | 未着手 | `ThumbnailCreationService` に Probe/Repair 公開メソッド追加 | `Thumbnail/ThumbnailCreationService.cs` | 将来UIから呼べる公開APIが存在する |
-| IDX-E005 | 未着手 | `CreateThumbAsync` にリカバリーレーン分岐を追加（シグネチャ維持） | `Thumbnail/ThumbnailCreationService.cs` | `AttemptCount > 0` 時のみ修復ルートが走る |
-| IDX-E006 | 未着手 | 同一パス禁止・拡張子制限・出力検証を実装 | `Thumbnail/Engines/IndexRepair/VideoIndexRepairService.cs` | 元動画上書き事故を防止できる |
-| IDX-E007 | 未着手 | 一時修復ファイル運用とクリーンアップを実装 | `Thumbnail/ThumbnailCreationService.cs` | 例外時を含めて一時ファイルが残留しない |
-| IDX-E008 | 未着手 | ログ整備（probe/repair summary） | `Thumbnail/ThumbnailCreationService.cs` | 失敗理由追跡がログで可能 |
-| IDX-E009 | 未着手 | 単体テスト追加（通常非適用/リカバリー適用） | `Tests/IndigoMovieManager_fork.Tests/*` | 適用条件と安全制約を自動検証できる |
-| IDX-E010 | 未着手 | 手動検証手順書を追加 | `Thumbnail/ManualRegressionCheck_インデックス破損修復_2026-03-06.md` | 再現検証手順が確立する |
+| IDX-E001 | 完了 | Engine分離制約に沿って IndexRepair フォルダを新設 | `Thumbnail/Engines/IndexRepair/*` | 新規型が Engine プロジェクトで解決できる |
+| IDX-E002 | 完了 | Probe/Repair結果DTOを実装 | `Thumbnail/Engines/IndexRepair/VideoIndexProbeResult.cs` `Thumbnail/Engines/IndexRepair/VideoIndexRepairResult.cs` | 戻り値DTOが確定する |
+| IDX-E003 | 完了 | 修復サービス抽象と実装を追加 | `Thumbnail/Engines/IndexRepair/IVideoIndexRepairService.cs` `Thumbnail/Engines/IndexRepair/VideoIndexRepairService.cs` | 判定/修復ロジックがEngine層に閉じる |
+| IDX-E004 | 完了 | `ThumbnailCreationService` に Probe/Repair 公開メソッド追加 | `Thumbnail/ThumbnailCreationService.cs` | 将来UIから呼べる公開APIが存在する |
+| IDX-E005 | 完了 | `CreateThumbAsync` にリカバリーレーン分岐を追加（シグネチャ維持） | `Thumbnail/ThumbnailCreationService.cs` | `AttemptCount > 0` 時のみ修復ルートが走る |
+| IDX-E006 | 完了 | 同一パス禁止・拡張子制限・出力検証を実装 | `Thumbnail/Engines/IndexRepair/VideoIndexRepairService.cs` | 元動画上書き事故を防止できる |
+| IDX-E007 | 完了 | 一時修復ファイル運用とクリーンアップを実装 | `Thumbnail/ThumbnailCreationService.cs` | 例外時を含めて一時ファイルが残留しない |
+| IDX-E008 | 完了 | ログ整備（probe/repair summary） | `Thumbnail/ThumbnailCreationService.cs` | 失敗理由追跡がログで可能 |
+| IDX-E009 | 完了 | 単体テスト追加（通常非適用/リカバリー適用） | `Tests/IndigoMovieManager_fork.Tests/*` | 適用条件と安全制約を自動検証できる |
+| IDX-E010 | 完了 | 手動検証手順書を追加 | `Thumbnail/ManualRegressionCheck_インデックス破損修復_2026-03-06.md` | 再現検証手順が確立する |
 
 ## 8. テスト観点
 - `AttemptCount == 0` ではProbe/Repairが呼ばれないこと。

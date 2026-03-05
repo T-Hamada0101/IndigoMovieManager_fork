@@ -70,7 +70,7 @@ namespace IndigoMovieManager
             Properties.Settings.Default.FileIndexProvider = FileIndexProviderFactory.NormalizeProviderKey(
                 selectedProvider
             );
-            // サムネイル作成の並列数を保存する（1〜24）。
+            // サムネイル作成の並列数を保存する（2〜24）。
             Properties.Settings.Default.ThumbnailParallelism = (int)sliderThumbnailParallelism.Value;
             // レーン閾値を保存する（優先MB / 低速GB）。
             Properties.Settings.Default.ThumbnailPriorityLaneMaxMb = ClampThumbnailPriorityLaneMaxMb(
@@ -300,12 +300,12 @@ namespace IndigoMovieManager
             }
         }
 
-        // サムネイル並列数は 1〜24 の範囲に制限する。
+        // サムネイル並列数は 2〜24 の範囲に制限する。
         private static int ClampThumbnailParallelism(int value)
         {
-            if (value < 1)
+            if (value < 2)
             {
-                return 1;
+                return 2;
             }
             if (value > 24)
             {
@@ -398,9 +398,9 @@ namespace IndigoMovieManager
             int safeDivisor = divisor < 1 ? 1 : divisor;
             int logicalCoreCount = System.Environment.ProcessorCount;
             int resolved = logicalCoreCount / safeDivisor;
-            if (resolved < 1)
+            if (resolved < 2)
             {
-                resolved = 1;
+                resolved = 2;
             }
 
             return ClampThumbnailParallelism(resolved);
