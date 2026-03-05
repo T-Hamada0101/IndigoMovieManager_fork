@@ -10,8 +10,8 @@ namespace IndigoMovieManager.Thumbnail
         private const string SettingsAssemblyName = "IndigoMovieManager_fork";
         private const string PriorityLaneSettingName = "ThumbnailPriorityLaneMaxMb";
         private const string SlowLaneSettingName = "ThumbnailSlowLaneMinGb";
-        private const int DefaultPriorityLaneMaxMb = 300;
-        private const int DefaultSlowLaneMinGb = 3;
+        private const int DefaultPriorityLaneMaxMb = 128;
+        private const int DefaultSlowLaneMinGb = 50;
         private const int MinPriorityLaneMaxMb = 50;
         private const int MaxPriorityLaneMaxMb = 4096;
         private const int MinSlowLaneMinGb = 1;

@@ -184,7 +184,7 @@ namespace IndigoMovieManager.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("512")]
+        [global::System.Configuration.DefaultSettingValueAttribute("50")]
         public int ThumbnailSlowLaneMinGb {
             get {
                 return ((int)(this["ThumbnailSlowLaneMinGb"]));
@@ -263,6 +263,18 @@ namespace IndigoMovieManager.Properties {
             }
             set {
                 this["ThumbnailParallelFastRecoveryWindowSec"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ThumbnailLanePresetInitialized {
+            get {
+                return ((bool)(this["ThumbnailLanePresetInitialized"]));
+            }
+            set {
+                this["ThumbnailLanePresetInitialized"] = value;
             }
         }
         

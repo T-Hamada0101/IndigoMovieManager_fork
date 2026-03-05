@@ -1,5 +1,6 @@
 using System.Data.SQLite;
 using System.Globalization;
+using System.Linq;
 using IndigoMovieManager.Thumbnail.QueueDb;
 
 namespace IndigoMovieManager_fork.Tests;
@@ -221,6 +222,108 @@ WHERE name = 'MovieSizeBytes';";
                 CultureInfo.InvariantCulture
             );
             Assert.That(columnCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void GetFailedItems_Failedのみを更新時刻降順で返す()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-failed-list-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+
+        string movieDonePath = Path.Combine(Path.GetTempPath(), $"movie-done-{Guid.NewGuid():N}.mp4");
+        string movieFailedOldPath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-failed-old-{Guid.NewGuid():N}.mp4"
+        );
+        string movieFailedNewPath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-failed-new-{Guid.NewGuid():N}.mp4"
+        );
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = movieDonePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(movieDonePath),
+                        TabIndex = 0,
+                    },
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = movieFailedOldPath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(movieFailedOldPath),
+                        TabIndex = 0,
+                    },
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = movieFailedNewPath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(movieFailedNewPath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            const string owner = "FAILED-LIST-TEST-OWNER";
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 10,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+            Assert.That(leased.Count, Is.EqualTo(3));
+
+            QueueDbLeaseItem doneLease = leased.Single(x =>
+                string.Equals(x.MoviePath, movieDonePath, StringComparison.OrdinalIgnoreCase)
+            );
+            QueueDbLeaseItem failedOldLease = leased.Single(x =>
+                string.Equals(x.MoviePath, movieFailedOldPath, StringComparison.OrdinalIgnoreCase)
+            );
+            QueueDbLeaseItem failedNewLease = leased.Single(x =>
+                string.Equals(x.MoviePath, movieFailedNewPath, StringComparison.OrdinalIgnoreCase)
+            );
+
+            _ = queueDbService.UpdateStatus(
+                doneLease.QueueId,
+                owner,
+                ThumbnailQueueStatus.Done,
+                nowUtc.AddSeconds(1)
+            );
+            _ = queueDbService.UpdateStatus(
+                failedOldLease.QueueId,
+                owner,
+                ThumbnailQueueStatus.Failed,
+                nowUtc.AddSeconds(2),
+                "old error"
+            );
+            _ = queueDbService.UpdateStatus(
+                failedNewLease.QueueId,
+                owner,
+                ThumbnailQueueStatus.Failed,
+                nowUtc.AddSeconds(3),
+                "new error"
+            );
+
+            List<QueueDbFailedItem> failedItems = queueDbService.GetFailedItems();
+
+            Assert.That(failedItems.Count, Is.EqualTo(2));
+            Assert.That(failedItems[0].MoviePath, Is.EqualTo(movieFailedNewPath));
+            Assert.That(failedItems[1].MoviePath, Is.EqualTo(movieFailedOldPath));
+            Assert.That(failedItems.All(x => x.Status == ThumbnailQueueStatus.Failed), Is.True);
+            Assert.That(failedItems[0].LastError, Is.EqualTo("new error"));
+            Assert.That(failedItems[1].LastError, Is.EqualTo("old error"));
         }
         finally
         {

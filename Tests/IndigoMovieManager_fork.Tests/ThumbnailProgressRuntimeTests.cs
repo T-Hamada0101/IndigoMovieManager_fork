@@ -72,20 +72,31 @@ public class ThumbnailProgressRuntimeTests
             Tabindex = 0,
             MovieSizeBytes = 600L * 1024L * 1024L * 1024L,
         };
+        QueueObj recoveryJob = new()
+        {
+            MovieFullPath = @"C:\videos\retry.mp4",
+            Tabindex = 0,
+            AttemptCount = 1,
+        };
 
         runtime.MarkJobStarted(smallJob);
         runtime.MarkJobStarted(largeJob);
+        runtime.MarkJobStarted(recoveryJob);
 
         ThumbnailProgressRuntimeSnapshot snapshot = runtime.CreateSnapshot();
         ThumbnailProgressWorkerSnapshot smallWorker =
             snapshot.ActiveWorkers.Single(x => x.DisplayMovieName == "small.mp4");
         ThumbnailProgressWorkerSnapshot largeWorker =
             snapshot.ActiveWorkers.Single(x => x.DisplayMovieName == "large.mp4");
+        ThumbnailProgressWorkerSnapshot recoveryWorker =
+            snapshot.ActiveWorkers.Single(x => x.DisplayMovieName == "retry.mp4");
 
         Assert.That(smallWorker.WorkerId, Is.EqualTo(1));
         Assert.That(smallWorker.WorkerLabel, Is.EqualTo("優先Thread"));
         Assert.That(largeWorker.WorkerId, Is.EqualTo(2));
-        Assert.That(largeWorker.WorkerLabel, Is.EqualTo("低速Thread"));
+        Assert.That(largeWorker.WorkerLabel, Is.EqualTo("ゆっくり"));
+        Assert.That(recoveryWorker.WorkerId, Is.EqualTo(3));
+        Assert.That(recoveryWorker.WorkerLabel, Is.EqualTo("Recovery専"));
     }
 
     [Test]
@@ -187,7 +198,8 @@ public class ThumbnailProgressRuntimeTests
         Assert.That(viewState.QueueLogs.Count, Is.EqualTo(2));
         Assert.That(viewState.WorkerPanels.Count, Is.EqualTo(6));
         Assert.That(viewState.WorkerPanels[0].WorkerLabel, Is.EqualTo("優先Thread"));
-        Assert.That(viewState.WorkerPanels[1].WorkerLabel, Is.EqualTo("低速Thread"));
+        Assert.That(viewState.WorkerPanels[1].WorkerLabel, Is.EqualTo("ゆっくり"));
+        Assert.That(viewState.WorkerPanels[2].WorkerLabel, Is.EqualTo("Recovery専"));
         Assert.That(viewState.WorkerPanels[0].MovieName, Is.EqualTo("movieA.mp4"));
         Assert.That(viewState.WorkerPanels[5].StatusText, Is.EqualTo("待機"));
     }

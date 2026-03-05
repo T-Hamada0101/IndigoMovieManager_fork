@@ -50,6 +50,26 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public DateTime LeaseUntilUtc { get; set; }
     }
 
+    // 失敗一覧表示用に、QueueDBの生情報を保持する。
+    public sealed class QueueDbFailedItem
+    {
+        public long QueueId { get; set; }
+        public string MainDbPathHash { get; set; } = "";
+        public string MoviePath { get; set; } = "";
+        public string MoviePathKey { get; set; } = "";
+        public int TabIndex { get; set; }
+        public long MovieSizeBytes { get; set; }
+        public int? ThumbPanelPos { get; set; }
+        public int? ThumbTimePos { get; set; }
+        public ThumbnailQueueStatus Status { get; set; } = ThumbnailQueueStatus.Failed;
+        public int AttemptCount { get; set; }
+        public string LastError { get; set; } = "";
+        public string OwnerInstanceId { get; set; } = "";
+        public string LeaseUntilUtc { get; set; } = "";
+        public string CreatedAtUtc { get; set; } = "";
+        public string UpdatedAtUtc { get; set; } = "";
+    }
+
     // QueueDBに対するCRUDとリース制御をここへ集約する。
     public sealed class QueueDbService
     {
@@ -480,6 +500,71 @@ WHERE MainDbPathHash = @MainDbPathHash
             command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
             command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
             return command.ExecuteNonQuery();
+        }
+
+        // サムネ失敗タブ表示用に、最終状態がFailedの行を全件取得する。
+        public List<QueueDbFailedItem> GetFailedItems()
+        {
+            EnsureInitialized();
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT
+    QueueId,
+    MainDbPathHash,
+    MoviePath,
+    MoviePathKey,
+    TabIndex,
+    MovieSizeBytes,
+    ThumbPanelPos,
+    ThumbTimePos,
+    Status,
+    AttemptCount,
+    LastError,
+    OwnerInstanceId,
+    LeaseUntilUtc,
+    CreatedAtUtc,
+    UpdatedAtUtc
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash
+  AND Status = @Failed
+ORDER BY UpdatedAtUtc DESC, QueueId DESC;";
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue("@Failed", (int)ThumbnailQueueStatus.Failed);
+
+            List<QueueDbFailedItem> items = [];
+            using SQLiteDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                ThumbnailQueueStatus status = ThumbnailQueueStatus.Failed;
+                if (!reader.IsDBNull(8))
+                {
+                    status = (ThumbnailQueueStatus)reader.GetInt32(8);
+                }
+
+                QueueDbFailedItem item = new()
+                {
+                    QueueId = reader.GetInt64(0),
+                    MainDbPathHash = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    MoviePath = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    MoviePathKey = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    TabIndex = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                    MovieSizeBytes = reader.IsDBNull(5) ? 0 : reader.GetInt64(5),
+                    ThumbPanelPos = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                    ThumbTimePos = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                    Status = status,
+                    AttemptCount = reader.IsDBNull(9) ? 0 : reader.GetInt32(9),
+                    LastError = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                    OwnerInstanceId = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                    LeaseUntilUtc = reader.IsDBNull(12) ? "" : reader.GetString(12),
+                    CreatedAtUtc = reader.IsDBNull(13) ? "" : reader.GetString(13),
+                    UpdatedAtUtc = reader.IsDBNull(14) ? "" : reader.GetString(14),
+                };
+                items.Add(item);
+            }
+
+            return items;
         }
 
         // Done履歴の肥大化を防ぐため、指定ローカル日付より前の完了行を削除する。

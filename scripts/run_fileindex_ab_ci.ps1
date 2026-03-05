@@ -2,7 +2,7 @@ param(
     [string]$Configuration = "Debug",
     [string]$Platform = "x64",
     [string]$MyLabRoot = "",
-    [switch]$UseExternalEverythingLite
+    [switch]$UseExternalUsnMft
 )
 
 Set-StrictMode -Version Latest
@@ -31,6 +31,25 @@ function Resolve-RepoRoot {
     return (Resolve-Path (Join-Path $scriptDir "..")).Path
 }
 
+function Resolve-ExternalUsnMftCsprojPath {
+    param([string]$MyLabRootPath)
+
+    # プロジェクト名変更中でも動くよう、USN/MFTコア実装ファイルで候補を特定する。
+    $projectFiles = Get-ChildItem -Path $MyLabRootPath -Filter *.csproj -Recurse -File -ErrorAction SilentlyContinue
+    foreach ($projectFile in $projectFiles) {
+        $projectDir = Split-Path -Parent $projectFile.FullName
+        if (
+            (Test-Path (Join-Path $projectDir "FileIndexService.cs")) -and
+            (Test-Path (Join-Path $projectDir "AdminUsnMftIndexBackend.cs")) -and
+            (Test-Path (Join-Path $projectDir "IFileIndexService.cs"))
+        ) {
+            return $projectFile.FullName
+        }
+    }
+
+    throw "外部UsnMftプロジェクトが見つかりません: $MyLabRootPath"
+}
+
 $repoRoot = Resolve-RepoRoot
 
 $msbuildArgs = @(
@@ -42,25 +61,22 @@ $msbuildArgs = @(
     "/m"
 )
 
-if ($UseExternalEverythingLite) {
+if ($UseExternalUsnMft) {
     if ([string]::IsNullOrWhiteSpace($MyLabRoot)) {
         $MyLabRoot = Join-Path (Split-Path -Parent $repoRoot) "MyLab"
     }
 
-    $everythingLiteCsproj = Join-Path $MyLabRoot "EverythingLite\EverythingLite.csproj"
-    if (-not (Test-Path $everythingLiteCsproj)) {
-        throw "UseExternalEverythingLite=true ですが EverythingLite.csproj が見つかりません: $everythingLiteCsproj"
-    }
+    $usnMftCsproj = Resolve-ExternalUsnMftCsprojPath -MyLabRootPath $MyLabRoot
 
     # 外部版を使うときだけプロジェクト参照先を上書きする。
-    $msbuildArgs += "/p:UseExternalEverythingLite=true"
-    $msbuildArgs += "/p:ExternalEverythingLiteProjectPath=$everythingLiteCsproj"
+    $msbuildArgs += "/p:UseExternalUsnMft=true"
+    $msbuildArgs += "/p:ExternalUsnMftProjectPath=$usnMftCsproj"
 }
 
 $msbuildPath = Resolve-MsBuildPath
 Write-Host "[AB-CI] RepoRoot=$repoRoot"
-Write-Host "[AB-CI] UseExternalEverythingLite=$UseExternalEverythingLite"
-if ($UseExternalEverythingLite) {
+Write-Host "[AB-CI] UseExternalUsnMft=$UseExternalUsnMft"
+if ($UseExternalUsnMft) {
     Write-Host "[AB-CI] MyLabRoot=$MyLabRoot"
 }
 Write-Host "[AB-CI] MSBuild=$msbuildPath"
@@ -74,7 +90,7 @@ try {
     }
 
     # Provider差分の回帰対象だけを抽出して実行する。
-    $filter = "FullyQualifiedName~EverythingLiteProviderTests|FullyQualifiedName~FileIndexProviderAbDiffTests|FullyQualifiedName~FileIndexReasonTableTests"
+    $filter = "FullyQualifiedName~UsnMftProviderTests|FullyQualifiedName~FileIndexProviderAbDiffTests|FullyQualifiedName~FileIndexReasonTableTests"
     & dotnet test ".\Tests\IndigoMovieManager_fork.Tests\IndigoMovieManager_fork.Tests.csproj" -c $Configuration --no-build --filter $filter
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet test が失敗しました。exit code: $LASTEXITCODE"

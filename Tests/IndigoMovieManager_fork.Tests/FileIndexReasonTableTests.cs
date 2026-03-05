@@ -31,7 +31,7 @@ public sealed class FileIndexReasonTableTests
     public void ToCategory_OkPrefixPayload_ReturnsOkPrefix()
     {
         string category = FileIndexReasonTable.ToCategory(
-            "ok:provider=everythinglite count=10 since=2026-03-04T00:00:00.0000000Z"
+            "ok:provider=usnmft count=10 since=2026-03-04T00:00:00.0000000Z"
         );
 
         Assert.That(category, Is.EqualTo(EverythingReasonCodes.OkPrefix));

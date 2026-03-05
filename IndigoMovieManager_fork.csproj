@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -30,13 +30,13 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- 既定は内包版UsnMftを参照し、必要時のみ外部EverythingLiteへ切り替える -->
-    <UseExternalEverythingLite>false</UseExternalEverythingLite>
-    <ExternalEverythingLiteProjectPath>..\MyLab\EverythingLite\EverythingLite.csproj</ExternalEverythingLiteProjectPath>
+    <!-- 既定は内包版UsnMftを参照し、必要時のみ外部UsnMftへ切り替える -->
+    <UseExternalUsnMft>false</UseExternalUsnMft>
+    <ExternalUsnMftProjectPath></ExternalUsnMftProjectPath>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(UseExternalEverythingLite)'=='true'">
-    <DefineConstants>$(DefineConstants);USE_EXTERNAL_EVERYTHINGLITE</DefineConstants>
+  <PropertyGroup Condition="'$(UseExternalUsnMft)'=='true'">
+    <DefineConstants>$(DefineConstants);USE_EXTERNAL_USNMFT</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -78,20 +78,20 @@
     <ProjectReference Include="src\IndigoMovieManager.Thumbnail.Queue\IndigoMovieManager.Thumbnail.Queue.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(UseExternalEverythingLite)'=='true'">
-    <ProjectReference Include="$(ExternalEverythingLiteProjectPath)" Condition="Exists('$(ExternalEverythingLiteProjectPath)')" />
+  <ItemGroup Condition="'$(UseExternalUsnMft)'=='true'">
+    <ProjectReference Include="$(ExternalUsnMftProjectPath)" Condition="Exists('$(ExternalUsnMftProjectPath)')" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(UseExternalEverythingLite)'!='true'">
+  <ItemGroup Condition="'$(UseExternalUsnMft)'!='true'">
     <ProjectReference Include="src\IndigoMovieManager.FileIndex.UsnMft\IndigoMovieManager.FileIndex.UsnMft.csproj" />
   </ItemGroup>
 
   <Target
-    Name="ValidateExternalEverythingLiteReference"
+    Name="ValidateExternalUsnMftReference"
     BeforeTargets="ResolveReferences"
-    Condition="'$(UseExternalEverythingLite)'=='true' and !Exists('$(ExternalEverythingLiteProjectPath)')"
+    Condition="'$(UseExternalUsnMft)'=='true' and !Exists('$(ExternalUsnMftProjectPath)')"
   >
-    <Error Text="UseExternalEverythingLite=true ですが外部参照が見つかりません: $(ExternalEverythingLiteProjectPath)" />
+    <Error Text="UseExternalUsnMft=true ですが外部参照が見つかりません: $(ExternalUsnMftProjectPath)" />
   </Target>
 
   <ItemGroup>

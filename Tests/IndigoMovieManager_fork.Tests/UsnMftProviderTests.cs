@@ -4,20 +4,20 @@ using IndigoMovieManager.Watcher;
 namespace IndigoMovieManager_fork.Tests;
 
 [TestFixture]
-public sealed class EverythingLiteProviderTests
+public sealed class UsnMftProviderTests
 {
     [SetUp]
     public void SetUp()
     {
         // キャッシュ共有によるケース間干渉を防ぐ。
-        EverythingLiteProvider.ClearCacheForTesting();
+        UsnMftProvider.ClearCacheForTesting();
     }
 
     [TearDown]
     public void TearDown()
     {
         // テスト後にキャッシュを明示クリアする。
-        EverythingLiteProvider.ClearCacheForTesting();
+        UsnMftProvider.ClearCacheForTesting();
     }
 
     [Test]
@@ -34,7 +34,7 @@ public sealed class EverythingLiteProviderTests
             string subMovie = Path.Combine(subDir, "deep.mkv");
             File.WriteAllText(subMovie, "x");
 
-            EverythingLiteProvider provider = new();
+            UsnMftProvider provider = new();
             FileIndexMovieResult result = provider.CollectMoviePaths(
                 new FileIndexQueryOptions
                 {
@@ -73,7 +73,7 @@ public sealed class EverythingLiteProviderTests
             string subMovie = Path.Combine(subDir, "deep.mkv");
             File.WriteAllText(subMovie, "x");
 
-            EverythingLiteProvider provider = new();
+            UsnMftProvider provider = new();
             FileIndexMovieResult result = provider.CollectMoviePaths(
                 new FileIndexQueryOptions
                 {
@@ -105,7 +105,7 @@ public sealed class EverythingLiteProviderTests
             File.WriteAllText(Path.Combine(thumbFolder, "beta.jpg"), "x");
             File.WriteAllText(Path.Combine(thumbFolder, "ignore.png"), "x");
 
-            EverythingLiteProvider provider = new();
+            UsnMftProvider provider = new();
             FileIndexThumbnailBodyResult result = provider.CollectThumbnailBodies(thumbFolder);
 
             Assert.That(result.Success, Is.True);
@@ -128,7 +128,7 @@ public sealed class EverythingLiteProviderTests
         {
             File.WriteAllText(Path.Combine(root, "movie.mp4"), "x");
 
-            EverythingLiteProvider provider = new();
+            UsnMftProvider provider = new();
             FileIndexQueryOptions options = new()
             {
                 RootPath = root,
@@ -157,8 +157,8 @@ public sealed class EverythingLiteProviderTests
         List<string> roots = [];
         try
         {
-            EverythingLiteProvider provider = new();
-            int target = EverythingLiteProvider.GetCacheCapacityForTesting() + 8;
+            UsnMftProvider provider = new();
+            int target = UsnMftProvider.GetCacheCapacityForTesting() + 8;
             for (int i = 0; i < target; i++)
             {
                 string root = CreateTempDir();
@@ -178,8 +178,8 @@ public sealed class EverythingLiteProviderTests
             }
 
             Assert.That(
-                EverythingLiteProvider.GetCacheEntryCountForTesting(),
-                Is.LessThanOrEqualTo(EverythingLiteProvider.GetCacheCapacityForTesting())
+                UsnMftProvider.GetCacheEntryCountForTesting(),
+                Is.LessThanOrEqualTo(UsnMftProvider.GetCacheCapacityForTesting())
             );
         }
         finally
@@ -195,7 +195,7 @@ public sealed class EverythingLiteProviderTests
     {
         string path = Path.Combine(
             Path.GetTempPath(),
-            "EverythingLiteProviderTests",
+            "UsnMftProviderTests",
             Guid.NewGuid().ToString("N")
         );
         Directory.CreateDirectory(path);

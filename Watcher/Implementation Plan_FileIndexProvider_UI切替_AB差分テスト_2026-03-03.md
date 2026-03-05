@@ -1,8 +1,8 @@
 # Implementation Plan_FileIndexProvider_UI切替_AB差分テスト_2026-03-03
 
 ## 1. 目的
-- 共通設定UIに `FileIndexProvider` 設定を追加し、`everything` / `everythinglite` を手動切替可能にする。
-- `everything` と `everythinglite` のA/B差分テストを追加し、`件数` / `reason` / `strategy` の互換性を継続検証できる状態にする。
+- 共通設定UIに `FileIndexProvider` 設定を追加し、`everything` / `usnmft` を手動切替可能にする。
+- `everything` と `usnmft` のA/B差分テストを追加し、`件数` / `reason` / `strategy` の互換性を継続検証できる状態にする。
 
 ## 2. スコープ
 - 対象: `IndigoMovieManager_fork`
@@ -11,13 +11,13 @@
   - 設定保存ロジックへの `FileIndexProvider` 反映
   - Provider差分テスト（NUnit）追加
 - 非対象:
-  - `EverythingLiteProvider` の性能最適化
+  - `UsnMftProvider` の性能最適化
   - `FileIndexProvider` の動的切替（再起動なし即時反映）
 
 ## 3. 実装計画（タスクリスト）
 ### 3.1 UI切替（設定画面）
 - [x] `CommonSettingsWindow.xaml` に「検索プロバイダ」ComboBoxを追加する。
-- [x] 選択肢を `everything` / `everythinglite` の2値に固定する。
+- [x] 選択肢を `everything` / `usnmft` の2値に固定する。
 - [x] ヘルプ文言に「変更は次回監視開始時に有効（再起動推奨）」を明記する。
 
 ### 3.2 設定保存ロジック
@@ -39,7 +39,7 @@
 
 ### 3.5 ドキュメント更新
 - [x] `Watcher/Everything_reason_code契約_2026-03-03.md` に差分テスト観点との対応を追記する。
-- [x] `MyLab/docs/EverythingLite_汎用スイッチ可能化プラン_2026-03-03.md` に本計画への参照を追記する。
+- [x] `MyLab/docs/UsnMft_汎用スイッチ可能化プラン_2026-03-03.md` に本計画への参照を追記する。
 
 ## 4. 受け入れ基準
 - 設定画面で `FileIndexProvider` を選択・保存できる。
@@ -91,7 +91,7 @@
     - `MSB3026`（`testhost` によるDLLロックのためコピー再試行）
     - `NETSDK1206`（`SQLitePCLRaw.lib.e_sqlite3` のRID警告）
 - テスト:
-  - `dotnet test --filter "FullyQualifiedName~EverythingLiteProviderTests|FullyQualifiedName~FileIndexProviderAbDiffTests"` を実行
+  - `dotnet test --filter "FullyQualifiedName~UsnMftProviderTests|FullyQualifiedName~FileIndexProviderAbDiffTests"` を実行
   - 結果: 成功4 / スキップ1 / 失敗0
 
 ### 8.5 CI組み込み（2026-03-04）
@@ -99,8 +99,8 @@
   - 実行内容:
     - MSBuildで `IndigoMovieManager_fork.sln` を `Debug|x64` ビルド
     - `dotnet test` で以下フィルタを実行
-      - `EverythingLiteProviderTests`
+      - `UsnMftProviderTests`
       - `FileIndexProviderAbDiffTests`
       - `FileIndexReasonTableTests`
 - `.github/workflows/fileindex-ab-tests.yml` を追加し、PR/手動実行でA/B差分テストを実行するCIを定義した。
-  - `IndigoMovieManager_fork` と `MyLab` を同時checkoutして、既存 `ProjectReference (..\MyLab\EverythingLite)` 構成を維持。
+  - `IndigoMovieManager_fork` と `MyLab` を同時checkoutして、既存 `ProjectReference (..\MyLab\UsnMft)` 構成を維持。

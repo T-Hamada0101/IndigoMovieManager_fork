@@ -45,7 +45,7 @@
       <Value Profile="(Default)">128</Value>
     </Setting>
     <Setting Name="ThumbnailSlowLaneMinGb" Type="System.Int32" Scope="User">
-      <Value Profile="(Default)">512</Value>
+      <Value Profile="(Default)">50</Value>
     </Setting>
     <Setting Name="ThumbnailParallelism" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">8</Value>
@@ -64,6 +64,9 @@
     </Setting>
     <Setting Name="ThumbnailParallelFastRecoveryWindowSec" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">180</Value>
+    </Setting>
+    <Setting Name="ThumbnailLanePresetInitialized" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
     </Setting>
     <Setting Name="ThumbnailGpuDecodeEnabled" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>

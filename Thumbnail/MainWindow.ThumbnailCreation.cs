@@ -77,6 +77,10 @@ namespace IndigoMovieManager
                                 {
                                     _thumbnailProgressRuntime.MarkJobCompleted(queueObj);
                                     RequestThumbnailProgressSnapshotRefresh();
+                                    MarkThumbnailFailedListDirty(
+                                        incrementRevision: false,
+                                        reason: "queue-job-completed"
+                                    );
                                 },
                                 progressPresenter: _thumbnailQueueProgressPresenter,
                                 cts: cts

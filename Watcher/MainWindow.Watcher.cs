@@ -1230,6 +1230,7 @@ namespace IndigoMovieManager
 
             _ = Dispatcher.InvokeAsync(() =>
             {
+                bool countChanged = false;
                 PendingMoviePlaceholder item = MainVM.PendingMovieRecs
                     .FirstOrDefault(x =>
                         string.Equals(x.MoviePath, moviePath, StringComparison.OrdinalIgnoreCase)
@@ -1243,6 +1244,7 @@ namespace IndigoMovieManager
                         DetectedAtLocal = DateTime.Now,
                     };
                     MainVM.PendingMovieRecs.Add(item);
+                    countChanged = true;
                 }
 
                 item.FileBody = safeFileBody;
@@ -1254,6 +1256,20 @@ namespace IndigoMovieManager
                 while (MainVM.PendingMovieRecs.Count > PendingMovieUiKeepLimit)
                 {
                     MainVM.PendingMovieRecs.RemoveAt(0);
+                    countChanged = true;
+                }
+
+                // 登録待ち件数は進捗タブへ即反映する。100件到達時は即時更新を優先する。
+                if (countChanged)
+                {
+                    if (MainVM.PendingMovieRecs.Count >= PendingMovieUiKeepLimit)
+                    {
+                        ForceThumbnailProgressSnapshotRefreshNow();
+                    }
+                    else
+                    {
+                        RequestThumbnailProgressSnapshotRefresh();
+                    }
                 }
             });
         }
@@ -1275,6 +1291,8 @@ namespace IndigoMovieManager
                 if (item != null)
                 {
                     MainVM.PendingMovieRecs.Remove(item);
+                    // DB反映後に登録待ち件数が減るので進捗タブへ反映する。
+                    RequestThumbnailProgressSnapshotRefresh();
                 }
             });
         }
@@ -1298,6 +1316,12 @@ namespace IndigoMovieManager
                 foreach (PendingMoviePlaceholder target in targets)
                 {
                     MainVM.PendingMovieRecs.Remove(target);
+                }
+
+                if (targets.Count > 0)
+                {
+                    // 例外時クリア後も表示件数を取り残さないよう即更新する。
+                    RequestThumbnailProgressSnapshotRefresh();
                 }
             });
         }

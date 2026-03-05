@@ -317,7 +317,8 @@ namespace IndigoMovieManager.ModelViews
             return workerId switch
             {
                 1 => "優先Thread",
-                2 => "低速Thread",
+                2 => "ゆっくり",
+                3 => "Recovery専",
                 _ => string.IsNullOrWhiteSpace(fallbackLabel) ? $"Thread {workerId}" : fallbackLabel,
             };
         }

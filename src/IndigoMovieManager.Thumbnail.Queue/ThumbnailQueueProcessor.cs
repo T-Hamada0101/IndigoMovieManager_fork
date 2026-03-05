@@ -27,6 +27,8 @@ namespace IndigoMovieManager.Thumbnail
         private const int DefaultMaxAttemptCount = 5;
         private const int LeaseHeartbeatSeconds = 30;
         private const int SlowLaneThrottleMinParallelism = 3;
+        private const int RecoveryLaneReservedMinParallelism = 2;
+        private const int RecoveryLaneConcurrency = 1;
 
         /// <summary>
         /// 全闘争の幕開け！キューの監視と処理を絶え間なく回し続けるメインループだ！
@@ -230,6 +232,8 @@ namespace IndigoMovieManager.Thumbnail
                             Stopwatch batchSw = Stopwatch.StartNew();
                             int completedCount = 0;
                             int failedCount = 0;
+                            int recoveryCompletedCount = 0;
+                            int recoveryFailedCount = 0;
                             // バッチ開始時点のアクティブ件数から、セッション総数(完了+残件)を更新する。
                             int activeCountAtBatchStart = queueDbService.GetActiveQueueCount(
                                 ownerInstanceId
@@ -270,8 +274,44 @@ namespace IndigoMovieManager.Thumbnail
                                 currentParallelism,
                                 maxWorkerPoolParallelism
                             );
+                            bool enableRecoveryLane =
+                                currentParallelism >= RecoveryLaneReservedMinParallelism;
+                            DynamicParallelGate nonRecoveryLaneGate = new(
+                                ResolveNonRecoveryLaneLimit(
+                                    currentParallelism,
+                                    enableRecoveryLane
+                                ),
+                                maxWorkerPoolParallelism
+                            );
+                            DynamicParallelGate recoveryLaneGate = enableRecoveryLane
+                                ? new DynamicParallelGate(
+                                    RecoveryLaneConcurrency,
+                                    RecoveryLaneConcurrency
+                                )
+                                : null;
                             bool enableSlowLaneThrottle =
                                 currentParallelism >= SlowLaneThrottleMinParallelism;
+
+                            void ApplyNonRecoveryLaneLimit(int liveParallelism, string reason)
+                            {
+                                int before = nonRecoveryLaneGate.CurrentLimit;
+                                int next = ResolveNonRecoveryLaneLimit(
+                                    liveParallelism,
+                                    enableRecoveryLane
+                                );
+                                nonRecoveryLaneGate.SetLimit(next);
+                                int after = nonRecoveryLaneGate.CurrentLimit;
+                                if (after != before)
+                                {
+                                    safeLog(
+                                        $"lane throttle: non_recovery_limit {before} -> {after} "
+                                            + $"reason={reason} parallel={liveParallelism}"
+                                    );
+                                }
+                            }
+
+                            ApplyNonRecoveryLaneLimit(currentParallelism, "batch-start");
+
                             using CancellationTokenSource parallelMonitorCts =
                                 CancellationTokenSource.CreateLinkedTokenSource(cts);
                             Task parallelMonitorTask = RunParallelLimitMonitorAsync(
@@ -279,6 +319,8 @@ namespace IndigoMovieManager.Thumbnail
                                 ResolveLatestConfiguredParallelism,
                                 parallelController,
                                 safeLog,
+                                applied =>
+                                    ApplyNonRecoveryLaneLimit(applied, "parallel-change"),
                                 parallelMonitorCts.Token
                             );
                             SemaphoreSlim slowLaneSemaphore = enableSlowLaneThrottle
@@ -314,6 +356,7 @@ namespace IndigoMovieManager.Thumbnail
                                         {
                                             MovieFullPath = leasedItem.MoviePath,
                                             MovieSizeBytes = leasedItem.MovieSizeBytes,
+                                            AttemptCount = leasedItem.AttemptCount,
                                             Tabindex = leasedItem.TabIndex,
                                             ThumbPanelPos = leasedItem.ThumbPanelPos,
                                             ThumbTimePos = leasedItem.ThumbTimePos,
@@ -322,7 +365,10 @@ namespace IndigoMovieManager.Thumbnail
                                             ThumbnailLaneClassifier.ResolveLane(
                                                 leasedItem.MovieSizeBytes
                                             );
+                                        bool isRecoveryItem = IsRecoveryLeaseItem(leasedItem);
                                         bool leaseEntered = false;
+                                        bool nonRecoveryLaneEntered = false;
+                                        bool recoveryLaneEntered = false;
                                         bool slowLaneEntered = false;
                                         bool startedNotified = false;
 
@@ -330,14 +376,26 @@ namespace IndigoMovieManager.Thumbnail
                                         {
                                             await parallelGate.WaitAsync(token).ConfigureAwait(false);
                                             leaseEntered = true;
-                                            if (
-                                                lane == ThumbnailExecutionLane.Slow
-                                                && slowLaneSemaphore != null
-                                            )
+                                            if (isRecoveryItem && recoveryLaneGate != null)
                                             {
-                                                await slowLaneSemaphore.WaitAsync(token)
+                                                await recoveryLaneGate.WaitAsync(token)
                                                     .ConfigureAwait(false);
-                                                slowLaneEntered = true;
+                                                recoveryLaneEntered = true;
+                                            }
+                                            else
+                                            {
+                                                await nonRecoveryLaneGate.WaitAsync(token)
+                                                    .ConfigureAwait(false);
+                                                nonRecoveryLaneEntered = true;
+                                                if (
+                                                    lane == ThumbnailExecutionLane.Slow
+                                                    && slowLaneSemaphore != null
+                                                )
+                                                {
+                                                    await slowLaneSemaphore.WaitAsync(token)
+                                                        .ConfigureAwait(false);
+                                                    slowLaneEntered = true;
+                                                }
                                             }
                                             NotifyJobCallback(onJobStarted, queueObj);
                                             startedNotified = true;
@@ -389,6 +447,10 @@ namespace IndigoMovieManager.Thumbnail
                                                     safeLog
                                                 );
                                                 _ = Interlocked.Increment(ref failedCount);
+                                                if (isRecoveryItem)
+                                                {
+                                                    _ = Interlocked.Increment(ref recoveryFailedCount);
+                                                }
                                             }
                                             catch (Exception ex)
                                             {
@@ -402,9 +464,17 @@ namespace IndigoMovieManager.Thumbnail
                                                     safeLog
                                                 );
                                                 _ = Interlocked.Increment(ref failedCount);
+                                                if (isRecoveryItem)
+                                                {
+                                                    _ = Interlocked.Increment(ref recoveryFailedCount);
+                                                }
                                             }
 
                                             _ = Interlocked.Increment(ref completedCount);
+                                            if (isRecoveryItem)
+                                            {
+                                                _ = Interlocked.Increment(ref recoveryCompletedCount);
+                                            }
                                             int doneInSession = Interlocked.Increment(
                                                 ref sessionCompletedCount
                                             );
@@ -447,6 +517,14 @@ namespace IndigoMovieManager.Thumbnail
                                             if (slowLaneEntered)
                                             {
                                                 slowLaneSemaphore?.Release();
+                                            }
+                                            if (recoveryLaneEntered)
+                                            {
+                                                recoveryLaneGate?.Release();
+                                            }
+                                            if (nonRecoveryLaneEntered)
+                                            {
+                                                nonRecoveryLaneGate.Release();
                                             }
                                             if (leaseEntered)
                                             {
@@ -499,8 +577,10 @@ namespace IndigoMovieManager.Thumbnail
                             WritePerfLog(
                                 $"thumb queue summary: gpu={gpuMode}, parallel={GetLiveParallelism()}, "
                                     + $"parallel_next={nextParallelism}, parallel_configured={latestConfiguredParallelism}, "
+                                    + $"non_recovery_parallel={nonRecoveryLaneGate.CurrentLimit}, recovery_lane={(enableRecoveryLane ? 1 : 0)}, "
                                     + $"batch_count={completedCount}, batch_ms={batchMs}, "
-                                    + $"batch_failed={failedCount}, active={activeCountAfterBatch}, "
+                                    + $"batch_failed={failedCount}, recovery_done={recoveryCompletedCount}, recovery_failed={recoveryFailedCount}, "
+                                    + $"active={activeCountAfterBatch}, "
                                     + $"autogen_transient_fail={engineSnapshot.AutogenTransientFailureCount}, "
                                     + $"autogen_retry_success={engineSnapshot.AutogenRetrySuccessCount}, "
                                     + $"fallback_1pass={engineSnapshot.FallbackToFfmpegOnePassCount}, "
@@ -871,6 +951,27 @@ namespace IndigoMovieManager.Thumbnail
             return Math.Max(1, currentParallelism);
         }
 
+        // Recoveryレーンを有効化した場合、通常系（非Recovery）に割り当てる並列枠を1つ減らす。
+        private static int ResolveNonRecoveryLaneLimit(
+            int liveParallelism,
+            bool enableRecoveryLane
+        )
+        {
+            int safeParallelism = liveParallelism < 1 ? 1 : liveParallelism;
+            if (!enableRecoveryLane)
+            {
+                return safeParallelism;
+            }
+
+            return Math.Max(1, safeParallelism - 1);
+        }
+
+        // 再キュー（再試行）に入ったジョブだけをRecoveryレーンへ流す。
+        private static bool IsRecoveryLeaseItem(QueueDbLeaseItem leasedItem)
+        {
+            return leasedItem != null && leasedItem.AttemptCount > 0;
+        }
+
         // 処理中にバッファが尽きても、その場で次のリースを取りに行けるようにする。
         // これで巨大ファイル1件が残っている間も、空いたワーカーへ次ジョブを継続投入できる。
         private static async IAsyncEnumerable<QueueDbLeaseItem> EnumerateLeasedItemsAsync(
@@ -941,6 +1042,7 @@ namespace IndigoMovieManager.Thumbnail
             Func<int> resolveConfiguredParallelism,
             ThumbnailParallelController parallelController,
             Action<string> log,
+            Action<int> onAppliedParallelism,
             CancellationToken cts
         )
         {
@@ -962,6 +1064,18 @@ namespace IndigoMovieManager.Thumbnail
                         $"parallel apply: {lastApplied} -> {applied} configured={configured}"
                     );
                     lastApplied = applied;
+                }
+
+                if (onAppliedParallelism != null)
+                {
+                    try
+                    {
+                        onAppliedParallelism(applied);
+                    }
+                    catch (Exception ex)
+                    {
+                        log?.Invoke($"parallel apply callback failed: {ex.Message}");
+                    }
                 }
 
                 await Task.Delay(200, cts).ConfigureAwait(false);

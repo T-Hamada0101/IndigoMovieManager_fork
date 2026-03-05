@@ -28,6 +28,9 @@ namespace IndigoMovieManager.ModelViews
         // MainDB書き込み前の仮表示（登録待ち）を保持するコレクション。
         public ObservableCollection<PendingMoviePlaceholder> PendingMovieRecs { get; set; }
 
+        // QueueDB上で最終状態がFailedの行を表示するコレクション。
+        public ObservableCollection<ThumbnailFailedRecordViewModel> ThumbnailFailedRecs { get; set; }
+
         // 下部タブ「サムネイル進捗」の表示状態。
         public ThumbnailProgressViewState ThumbnailProgress { get; }
 
@@ -102,6 +105,7 @@ namespace IndigoMovieManager.ModelViews
             MovieRecs = [];
             FilteredMovieRecs = [];
             PendingMovieRecs = [];
+            ThumbnailFailedRecs = [];
             ThumbnailProgress = new ThumbnailProgressViewState();
             BookmarkRecs = [];
             HistoryRecs = [];
@@ -110,6 +114,7 @@ namespace IndigoMovieManager.ModelViews
             BindingOperations.EnableCollectionSynchronization(MovieRecs, new object());
             BindingOperations.EnableCollectionSynchronization(FilteredMovieRecs, new object());
             BindingOperations.EnableCollectionSynchronization(PendingMovieRecs, new object());
+            BindingOperations.EnableCollectionSynchronization(ThumbnailFailedRecs, new object());
 
             // ユーザーが選択可能なソート順の定義一覧
             SortLists =

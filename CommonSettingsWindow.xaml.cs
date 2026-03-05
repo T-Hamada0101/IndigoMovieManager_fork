@@ -345,13 +345,13 @@ namespace IndigoMovieManager
         // 軽量動画を先に片付けたい構成へ切り替える。
         private void ThumbnailLanePresetLightButton_Click(object sender, RoutedEventArgs e)
         {
-            ApplyThumbnailLanePreset(priorityLaneMaxMb: 128, slowLaneMinGb: 1, parallelDivisor: 2);
+            ApplyThumbnailLanePreset(priorityLaneMaxMb: 128, slowLaneMinGb: 50, parallelDivisor: 2);
         }
 
         // 標準的な混在ワークロード向けのバランス設定へ戻す。
         private void ThumbnailLanePresetBalancedButton_Click(object sender, RoutedEventArgs e)
         {
-            ApplyThumbnailLanePreset(priorityLaneMaxMb: 512, slowLaneMinGb: 3, parallelDivisor: 3);
+            ApplyThumbnailLanePreset(priorityLaneMaxMb: 512, slowLaneMinGb: 50, parallelDivisor: 3);
         }
 
         // 巨大動画を通常レーン側でも捌きやすくする設定へ切り替える。
@@ -359,7 +359,7 @@ namespace IndigoMovieManager
         {
             ApplyThumbnailLanePreset(
                 priorityLaneMaxMb: 1024,
-                slowLaneMinGb: 10,
+                slowLaneMinGb: 100,
                 parallelDivisor: 4
             );
         }

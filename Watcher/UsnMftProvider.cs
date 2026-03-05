@@ -6,10 +6,10 @@ using System.Runtime.Versioning;
 namespace IndigoMovieManager.Watcher
 {
     /// <summary>
-    /// EverythingLite のインデックス機能を IFileIndexProvider 契約へ接続する。
+    /// UsnMft のインデックス機能を IFileIndexProvider 契約へ接続する。
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class EverythingLiteProvider : IFileIndexProvider
+    internal sealed class UsnMftProvider : IFileIndexProvider
     {
         private const int SearchLimit = 1_000_000;
         private static readonly TimeSpan RebuildCooldown = TimeSpan.FromSeconds(3);
@@ -112,8 +112,8 @@ namespace IndigoMovieManager.Watcher
                 }
 
                 string reason = changedSinceUtc.HasValue
-                    ? $"{EverythingReasonCodes.OkPrefix}provider=everythinglite index={(rebuilt ? "rebuilt" : "cached")} indexed_at={indexedAtUtc:O} count={moviePaths.Count} since={changedSinceUtc.Value:O}"
-                    : $"{EverythingReasonCodes.OkPrefix}provider=everythinglite index={(rebuilt ? "rebuilt" : "cached")} indexed_at={indexedAtUtc:O} count={moviePaths.Count}";
+                    ? $"{EverythingReasonCodes.OkPrefix}provider=usnmft index={(rebuilt ? "rebuilt" : "cached")} indexed_at={indexedAtUtc:O} count={moviePaths.Count} since={changedSinceUtc.Value:O}"
+                    : $"{EverythingReasonCodes.OkPrefix}provider=usnmft index={(rebuilt ? "rebuilt" : "cached")} indexed_at={indexedAtUtc:O} count={moviePaths.Count}";
 
                 return new FileIndexMovieResult(true, moviePaths, maxObservedChangedUtc, reason);
             }

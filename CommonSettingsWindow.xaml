@@ -178,7 +178,7 @@
                         Margin="5"
                         Content="検索プロバイダ（再起動後に反映）"
                         FontSize="14"
-                        ToolTip="everything: 既存Everything IPC / everythinglite: EverythingLite実装。変更を有効化するにはアプリ再起動が必要です。" />
+                        ToolTip="everything: 既存Everything IPC / usnmft: UsnMft実装。変更を有効化するにはアプリ再起動が必要です。" />
                     <ComboBox
                         x:Name="FileIndexProviderSelector"
                         Width="220"
@@ -186,7 +186,7 @@
                         SelectedValuePath="Tag"
                         ToolTip="この設定は起動時に読み込まれます。切替後はアプリを再起動してください。">
                         <ComboBoxItem Tag="everything" Content="everything（既存）" />
-                        <ComboBoxItem Tag="everythinglite" Content="everythinglite（新実装）" />
+                        <ComboBoxItem Tag="usnmft" Content="UsnMft（新実装）" />
                     </ComboBox>
                 </StackPanel>
 
@@ -275,7 +275,7 @@
                         Margin="5"
                         Content="低速レーン開始サイズ(GB)"
                         FontSize="14"
-                        ToolTip="この値以上の動画を低速Threadへ優先割り当てします。" />
+                        ToolTip="この値以上の動画をゆっくりへ優先割り当てします。" />
                     <TextBlock
                         x:Name="ThumbnailSlowLaneMinGbText"
                         Width="60"
@@ -308,19 +308,19 @@
                         Margin="5,0,0,0"
                         Click="ThumbnailLanePresetLightButton_Click"
                         Content="軽量動画重視"
-                        ToolTip="優先:128MB / 低速:1GB / 並列:論理コアの1/2" />
+                        ToolTip="優先:128MB / 低速:50GB / 並列:論理コアの1/2" />
                     <Button
                         Width="100"
                         Margin="8,0,0,0"
                         Click="ThumbnailLanePresetBalancedButton_Click"
                         Content="バランス"
-                        ToolTip="優先:512MB / 低速:3GB / 並列:論理コアの1/3" />
+                        ToolTip="優先:512MB / 低速:50GB / 並列:論理コアの1/3" />
                     <Button
                         Width="120"
                         Margin="8,0,0,0"
                         Click="ThumbnailLanePresetLargeButton_Click"
                         Content="巨大動画重視"
-                        ToolTip="優先:1024MB / 低速:10GB / 並列:論理コアの1/4" />
+                        ToolTip="優先:1024MB / 低速:100GB / 並列:論理コアの1/4" />
                 </StackPanel>
 
             </StackPanel>

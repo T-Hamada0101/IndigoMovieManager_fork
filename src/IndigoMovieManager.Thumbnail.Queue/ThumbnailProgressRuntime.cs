@@ -12,7 +12,8 @@ namespace IndigoMovieManager.Thumbnail
         private const int MaxRetainedWorkerPanelCount = 48;
         private const long PriorityLaneWorkerId = 1;
         private const long SlowLaneWorkerId = 2;
-        private const long FirstGeneralWorkerId = 3;
+        private const long RecoveryLaneWorkerId = 3;
+        private const long FirstGeneralWorkerId = 4;
 
         private readonly object stateLock = new();
         private readonly Queue<string> enqueueLogs = new();
@@ -329,6 +330,7 @@ namespace IndigoMovieManager.Thumbnail
                         !x.Value.IsActive
                         && x.Value.WorkerId != PriorityLaneWorkerId
                         && x.Value.WorkerId != SlowLaneWorkerId
+                        && x.Value.WorkerId != RecoveryLaneWorkerId
                     )
                     .OrderByDescending(x => x.Value.CompletedAtUtc)
                     .ThenByDescending(x => x.Value.WorkerId)
@@ -356,6 +358,11 @@ namespace IndigoMovieManager.Thumbnail
             if (queueObj == null)
             {
                 return 0;
+            }
+
+            if (queueObj.AttemptCount > 0)
+            {
+                return RecoveryLaneWorkerId;
             }
 
             ThumbnailExecutionLane lane = ThumbnailLaneClassifier.ResolveLane(queueObj.MovieSizeBytes);
@@ -430,7 +437,8 @@ namespace IndigoMovieManager.Thumbnail
             return workerId switch
             {
                 1 => "優先Thread",
-                2 => "低速Thread",
+                2 => "ゆっくり",
+                3 => "Recovery専",
                 _ => $"Thread {workerId}",
             };
         }

@@ -62,8 +62,8 @@ namespace IndigoMovieManager
         private const string ThumbnailProgressContentId = "ToolThumbnailProgress";
         // 一時対応: サムネイル作成中ダイアログ表示を止める。
         private static readonly bool TemporaryPauseThumbnailProgressDialog = true;
-        // 一時対応: 進捗タブのDB登録待ち/DB総数表示を止める。
-        private static readonly bool TemporaryPauseThumbnailProgressDbCount = true;
+        // DB登録待ち/DB総数は常時表示し、登録バッチ中の増減も追えるようにする。
+        private static readonly bool TemporaryPauseThumbnailProgressDbCount = false;
         // 一時対応: 進捗タブのCPU/GPU/HDDメーター値更新を止める。
         private static readonly bool TemporaryPauseThumbnailProgressMeters = true;
 
@@ -130,6 +130,9 @@ namespace IndigoMovieManager
 
         //private DateTime _lastInputTime = DateTime.MinValue;  //インクリメントサーチで使用。一旦オミット。
         private readonly TimeSpan _timeInputInterval = TimeSpan.FromSeconds(0.5);
+        private const int ThumbnailLightweightPresetPriorityLaneMaxMb = 128;
+        private const int ThumbnailLightweightPresetSlowLaneMinGb = 50;
+        private const int ThumbnailLightweightPresetParallelDivisor = 2;
 
         //結局、タイマー方式で動画とマニュアルサムネイルのスライダーを同期させた
         private readonly DispatcherTimer timer;
@@ -196,6 +199,41 @@ namespace IndigoMovieManager
                 return 24;
             }
             return parallelism;
+        }
+
+        // 軽量動画重視プリセットの並列数（論理コアの1/2）を算出する。
+        private static int ResolveLightweightPresetParallelism()
+        {
+            int logicalCoreCount = Environment.ProcessorCount;
+            int resolved = logicalCoreCount / ThumbnailLightweightPresetParallelDivisor;
+            if (resolved < 1)
+            {
+                resolved = 1;
+            }
+            return ClampThumbnailParallelismSetting(resolved);
+        }
+
+        // 初回起動だけ軽量動画重視プリセットを既定値としてハード適用する。
+        private static void EnsureThumbnailLaneInitialPreset()
+        {
+            if (Properties.Settings.Default.ThumbnailLanePresetInitialized)
+            {
+                return;
+            }
+
+            int initialParallelism = ResolveLightweightPresetParallelism();
+            Properties.Settings.Default.ThumbnailPriorityLaneMaxMb =
+                ThumbnailLightweightPresetPriorityLaneMaxMb;
+            Properties.Settings.Default.ThumbnailSlowLaneMinGb =
+                ThumbnailLightweightPresetSlowLaneMinGb;
+            Properties.Settings.Default.ThumbnailParallelism = initialParallelism;
+            Properties.Settings.Default.ThumbnailLanePresetInitialized = true;
+            Properties.Settings.Default.Save();
+
+            DebugRuntimeLog.Write(
+                "thumbnail",
+                $"thumbnail preset initialized: priority={ThumbnailLightweightPresetPriorityLaneMaxMb}MB slow={ThumbnailLightweightPresetSlowLaneMinGb}GB parallel={initialParallelism}"
+            );
         }
 
         // 共通設定のサムネイル並列数を更新し、進捗UIへ即時反映要求を出す。
@@ -362,6 +400,7 @@ namespace IndigoMovieManager
 
             //前のバージョンのプロパティを引き継ぐぜ。
             Properties.Settings.Default.Upgrade();
+            EnsureThumbnailLaneInitialPreset();
             ApplyThumbnailGpuDecodeSetting();
 
             //イニシャライズの前に、systemテーブルを読み込んで、前回スキン(タブ)を取得する。
@@ -1429,6 +1468,7 @@ namespace IndigoMovieManager
 
             // サムネイルキューのデバウンス情報をリセット
             ClearThumbnailQueue();
+            MarkThumbnailFailedListDirty(incrementRevision: true, reason: "db-shutdown");
 
             // 旧DBの監視フォルダデータをクリア
             watchData?.Clear();
@@ -1449,6 +1489,7 @@ namespace IndigoMovieManager
         {
             MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbFullPath);
             MainVM.DbInfo.DBFullPath = dbFullPath;
+            MarkThumbnailFailedListDirty(incrementRevision: true, reason: "db-boot");
             GetSystemTable(dbFullPath);
             MainVM.MovieRecs.Clear();
 
@@ -1530,14 +1571,8 @@ namespace IndigoMovieManager
                     var movieFullPath = row["movie_path"].ToString();
                     var ext = Path.GetExtension(movieFullPath);
                     var thumbFile = Path.Combine(bookmarkFolder, movieFullPath);
-                    var thumbBody = movieFullPath.Split('[')[0];
-                    var frameS = movieFullPath.Split('(')[1];
-                    frameS = frameS.Split(')')[0];
-                    long frame = 0;
-                    if (frameS != "")
-                    {
-                        frame = Convert.ToInt64(frameS); //Scoreにフレームぶっ込む。
-                    }
+                    var thumbBody = ExtractBookmarkThumbBody(movieFullPath);
+                    long frame = TryParseBookmarkFrame(movieFullPath); //Scoreにフレームぶっ込む。
                     var item = new MovieRecords
                     {
                         Movie_Id = (long)row["movie_id"],
@@ -1559,6 +1594,51 @@ namespace IndigoMovieManager
                     MainVM.BookmarkRecs.Add(item);
                 }
             }
+        }
+
+        // ブックマーク保存名から表示用ボディを安全に取り出す。
+        private static string ExtractBookmarkThumbBody(string moviePath)
+        {
+            if (string.IsNullOrWhiteSpace(moviePath))
+            {
+                return string.Empty;
+            }
+
+            int bracketIndex = moviePath.IndexOf('[');
+            if (bracketIndex > 0)
+            {
+                return moviePath[..bracketIndex];
+            }
+
+            return Path.GetFileNameWithoutExtension(moviePath);
+        }
+
+        // ブックマーク保存名に埋めたフレーム値 "(12345)" を安全に取り出す。
+        // 旧形式などで値がなければ 0 を返して処理を継続する。
+        private static long TryParseBookmarkFrame(string moviePath)
+        {
+            if (string.IsNullOrWhiteSpace(moviePath))
+            {
+                return 0;
+            }
+
+            int openParenIndex = moviePath.IndexOf('(');
+            if (openParenIndex < 0 || openParenIndex + 1 >= moviePath.Length)
+            {
+                return 0;
+            }
+
+            int closeParenIndex = moviePath.IndexOf(')', openParenIndex + 1);
+            if (closeParenIndex <= openParenIndex + 1)
+            {
+                return 0;
+            }
+
+            string frameText = moviePath.Substring(
+                openParenIndex + 1,
+                closeParenIndex - openParenIndex - 1
+            );
+            return long.TryParse(frameText, out long frame) ? frame : 0;
         }
 
         /// <summary>
@@ -2292,9 +2372,102 @@ namespace IndigoMovieManager
                 @"errorBig.jpg",
             ];
             string[] thumbPath = new string[Tabs.Items.Count];
-            var Hash = row["hash"].ToString();
-            var movieFullPath = row["movie_path"].ToString();
-            var movieName = row["movie_name"].ToString();
+            // 指定タブのサムネが未生成/未割当でも落ちないように、必ずエラー画像へフォールバックする。
+            string GetThumbPathOrFallback(int thumbIndex, int errorIndex)
+            {
+                if (
+                    thumbIndex >= 0
+                    && thumbIndex < thumbPath.Length
+                    && !string.IsNullOrWhiteSpace(thumbPath[thumbIndex])
+                )
+                {
+                    return thumbPath[thumbIndex];
+                }
+
+                var safeErrorIndex = Math.Clamp(errorIndex, 0, thumbErrorPath.Length - 1);
+                return Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "Images",
+                    thumbErrorPath[safeErrorIndex]
+                );
+            }
+            // 旧DBや列揺れがあっても画面生成を継続できるように、安全に列値を取得する。
+            string GetStringColumn(string columnName)
+            {
+                if (row.Table?.Columns.Contains(columnName) != true)
+                {
+                    return "";
+                }
+
+                object value = row[columnName];
+                if (value == null || value == DBNull.Value)
+                {
+                    return "";
+                }
+
+                return value.ToString() ?? "";
+            }
+
+            long GetLongColumn(string columnName)
+            {
+                if (row.Table?.Columns.Contains(columnName) != true)
+                {
+                    return 0;
+                }
+
+                object value = row[columnName];
+                if (value == null || value == DBNull.Value)
+                {
+                    return 0;
+                }
+
+                if (value is long longValue)
+                {
+                    return longValue;
+                }
+                if (value is int intValue)
+                {
+                    return intValue;
+                }
+
+                return long.TryParse(value.ToString(), out long parsed) ? parsed : 0;
+            }
+
+            string GetDateTimeColumnText(string columnName)
+            {
+                if (row.Table?.Columns.Contains(columnName) != true)
+                {
+                    return "";
+                }
+
+                object value = row[columnName];
+                if (value == null || value == DBNull.Value)
+                {
+                    return "";
+                }
+
+                if (value is DateTime dateTimeValue)
+                {
+                    return dateTimeValue.ToString("yyyy-MM-dd HH:mm:ss");
+                }
+
+                string textValue = value.ToString() ?? "";
+                if (DateTime.TryParse(textValue, out DateTime parsed))
+                {
+                    return parsed.ToString("yyyy-MM-dd HH:mm:ss");
+                }
+
+                return textValue;
+            }
+
+            var Hash = GetStringColumn("hash");
+            var movieFullPath = GetStringColumn("movie_path");
+            var movieName = GetStringColumn("movie_name");
+            var movieId = GetLongColumn("movie_id");
+            var movieLengthSec = GetLongColumn("movie_length");
+            var movieSize = GetLongColumn("movie_size");
+            var score = GetLongColumn("score");
+            var viewCount = GetLongColumn("view_count");
 
             for (int i = 0; i < Tabs.Items.Count; i++)
             {
@@ -2312,10 +2485,11 @@ namespace IndigoMovieManager
                 }
                 else
                 {
+                    var safeErrorIndex = Math.Clamp(i, 0, thumbErrorPath.Length - 1);
                     thumbPath[i] = Path.Combine(
                         Directory.GetCurrentDirectory(),
                         "Images",
-                        thumbErrorPath[i]
+                        thumbErrorPath[safeErrorIndex]
                     );
                 }
             }
@@ -2353,7 +2527,7 @@ namespace IndigoMovieManager
                 );
             }
 
-            var tags = row["tag"].ToString();
+            var tags = GetStringColumn("tag");
             List<string> tagArray = [];
             if (!string.IsNullOrEmpty(tags))
             {
@@ -2374,48 +2548,52 @@ namespace IndigoMovieManager
             #region View用のデータにDBからぶち込む
             var item = new MovieRecords
             {
-                Movie_Id = (long)row["movie_id"],
-                Movie_Name = $"{row["movie_name"]}{ext}",
+                Movie_Id = movieId,
+                Movie_Name = $"{movieName}{ext}",
                 Movie_Body = movie_body, // $"{row["movie_name"]}",
-                Movie_Path = row["movie_path"].ToString(),
-                Movie_Length = new TimeSpan(0, 0, (int)(long)row["movie_length"]).ToString(
+                Movie_Path = movieFullPath,
+                Movie_Length = new TimeSpan(
+                    0,
+                    0,
+                    (int)Math.Clamp(movieLengthSec, 0, int.MaxValue)
+                ).ToString(
                     @"hh\:mm\:ss"
                 ),
-                Movie_Size = (long)row["movie_size"],
-                Last_Date = ((DateTime)row["last_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
-                File_Date = ((DateTime)row["file_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
-                Regist_Date = ((DateTime)row["regist_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
-                Score = (long)row["score"],
-                View_Count = (long)row["view_count"],
-                Hash = row["hash"].ToString(),
-                Container = row["container"].ToString(),
-                Video = row["video"].ToString(),
-                Audio = row["audio"].ToString(),
-                Extra = row["extra"].ToString(),
-                Title = row["title"].ToString(),
-                Album = row["album"].ToString(),
-                Artist = row["artist"].ToString(),
-                Grouping = row["grouping"].ToString(),
-                Writer = row["writer"].ToString(),
-                Genre = row["genre"].ToString(),
-                Track = row["track"].ToString(),
-                Camera = row["camera"].ToString(),
-                Create_Time = row["create_time"].ToString(),
-                Kana = row["kana"].ToString(),
-                Roma = row["roma"].ToString(),
+                Movie_Size = movieSize,
+                Last_Date = GetDateTimeColumnText("last_date"),
+                File_Date = GetDateTimeColumnText("file_date"),
+                Regist_Date = GetDateTimeColumnText("regist_date"),
+                Score = score,
+                View_Count = viewCount,
+                Hash = Hash,
+                Container = GetStringColumn("container"),
+                Video = GetStringColumn("video"),
+                Audio = GetStringColumn("audio"),
+                Extra = GetStringColumn("extra"),
+                Title = GetStringColumn("title"),
+                Album = GetStringColumn("album"),
+                Artist = GetStringColumn("artist"),
+                Grouping = GetStringColumn("grouping"),
+                Writer = GetStringColumn("writer"),
+                Genre = GetStringColumn("genre"),
+                Track = GetStringColumn("track"),
+                Camera = GetStringColumn("camera"),
+                Create_Time = GetStringColumn("create_time"),
+                Kana = GetStringColumn("kana"),
+                Roma = GetStringColumn("roma"),
                 Tags = tag, //row["tag"].ToString(),
                 Tag = tagArray,
-                Comment1 = row["comment1"].ToString(),
-                Comment2 = row["comment2"].ToString(),
-                Comment3 = row["comment3"].ToString(),
-                ThumbPathSmall = thumbPath[0],
-                ThumbPathBig = thumbPath[1],
-                ThumbPathGrid = thumbPath[2],
-                ThumbPathList = thumbPath[3],
-                ThumbPathBig10 = thumbPath[4],
+                Comment1 = GetStringColumn("comment1"),
+                Comment2 = GetStringColumn("comment2"),
+                Comment3 = GetStringColumn("comment3"),
+                ThumbPathSmall = GetThumbPathOrFallback(0, 0),
+                ThumbPathBig = GetThumbPathOrFallback(1, 1),
+                ThumbPathGrid = GetThumbPathOrFallback(2, 2),
+                ThumbPathList = GetThumbPathOrFallback(3, 3),
+                ThumbPathBig10 = GetThumbPathOrFallback(4, 4),
                 ThumbDetail = thumbPathDetail,
-                Drive = Path.GetPathRoot(row["movie_path"].ToString()),
-                Dir = Path.GetDirectoryName(row["movie_path"].ToString()),
+                Drive = Path.GetPathRoot(movieFullPath),
+                Dir = Path.GetDirectoryName(movieFullPath),
                 IsExists = Path.Exists(movieFullPath),
                 Ext = ext,
             };
@@ -2553,12 +2731,26 @@ namespace IndigoMovieManager
         {
             if (sender as TabControl != null && e.OriginalSource is TabControl)
             {
-                ClearThumbnailQueue();
-
                 var tabControl = sender as TabControl;
                 int index = tabControl.SelectedIndex;
                 if (index == -1)
+                {
+                    UpdateThumbnailFailedTabSelectionState(false);
                     return;
+                }
+
+                bool isThumbnailFailedTabSelected = ReferenceEquals(
+                    tabControl.SelectedItem,
+                    TabThumbnailFailed
+                );
+                UpdateThumbnailFailedTabSelectionState(isThumbnailFailedTabSelected);
+                if (isThumbnailFailedTabSelected)
+                {
+                    RequestThumbnailFailedListRefresh();
+                    return;
+                }
+
+                ClearThumbnailQueue();
 
                 MainVM.DbInfo.CurrentTabIndex = index;
 

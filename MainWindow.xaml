@@ -805,6 +805,43 @@
                                         </ListView>
                                     </TabItem>
 
+                                    <TabItem
+                                        x:Name="TabThumbnailFailed"
+                                        Background="DarkRed"
+                                        Header="サムネ失敗">
+                                        <DataGrid
+                                            x:Name="ThumbnailFailedDataGrid"
+                                            AutoGenerateColumns="False"
+                                            CanUserAddRows="False"
+                                            CanUserDeleteRows="False"
+                                            EnableColumnVirtualization="True"
+                                            EnableRowVirtualization="True"
+                                            HeadersVisibility="Column"
+                                            IsReadOnly="True"
+                                            ItemsSource="{Binding ThumbnailFailedRecs, UpdateSourceTrigger=PropertyChanged}"
+                                            SelectionMode="Extended"
+                                            VirtualizingPanel.IsVirtualizing="True"
+                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Width="90" Binding="{Binding QueueId}" Header="QueueId" />
+                                                <DataGridTextColumn Width="120" Binding="{Binding MainDbPathHash}" Header="MainDbPathHash" />
+                                                <DataGridTextColumn Width="320" Binding="{Binding MoviePath}" Header="MoviePath" />
+                                                <DataGridTextColumn Width="140" Binding="{Binding MoviePathKey}" Header="MoviePathKey" />
+                                                <DataGridTextColumn Width="70" Binding="{Binding TabIndex}" Header="TabIndex" />
+                                                <DataGridTextColumn Width="110" Binding="{Binding MovieSizeBytes}" Header="MovieSizeBytes" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding ThumbPanelPos}" Header="ThumbPanelPos" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding ThumbTimePos}" Header="ThumbTimePos" />
+                                                <DataGridTextColumn Width="80" Binding="{Binding Status}" Header="Status" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding AttemptCount}" Header="AttemptCount" />
+                                                <DataGridTextColumn Width="320" Binding="{Binding LastError}" Header="LastError" />
+                                                <DataGridTextColumn Width="140" Binding="{Binding OwnerInstanceId}" Header="OwnerInstanceId" />
+                                                <DataGridTextColumn Width="220" Binding="{Binding LeaseUntilUtc}" Header="LeaseUntilUtc" />
+                                                <DataGridTextColumn Width="220" Binding="{Binding CreatedAtUtc}" Header="CreatedAtUtc" />
+                                                <DataGridTextColumn Width="220" Binding="{Binding UpdatedAtUtc}" Header="UpdatedAtUtc" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </TabItem>
+
                                 </TabControl>
 
                             </avalonDock:LayoutDocument>

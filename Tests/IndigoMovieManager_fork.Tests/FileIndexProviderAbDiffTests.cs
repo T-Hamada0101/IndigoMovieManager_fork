@@ -6,7 +6,7 @@ namespace IndigoMovieManager_fork.Tests;
 public sealed class FileIndexProviderAbDiffTests
 {
     [Test]
-    public void CollectMoviePaths_EverythingVsEverythingLite_CountAndReasonCategoryAreCompatible()
+    public void CollectMoviePaths_EverythingVsUsnMft_CountAndReasonCategoryAreCompatible()
     {
         string root = CreateTempDir();
         try
@@ -19,8 +19,8 @@ public sealed class FileIndexProviderAbDiffTests
             File.WriteAllText(Path.Combine(nested, "d.mp4"), "x");
 
             IFileIndexProvider everything = new EverythingProvider();
-            IFileIndexProvider everythingLite = new EverythingLiteProvider();
-            EnsureComparableAvailabilityOrSkip(everything, everythingLite);
+            IFileIndexProvider usnMft = new UsnMftProvider();
+            EnsureComparableAvailabilityOrSkip(everything, usnMft);
 
             FileIndexQueryOptions options = new()
             {
@@ -31,13 +31,13 @@ public sealed class FileIndexProviderAbDiffTests
             };
 
             FileIndexMovieResult resultEverything = everything.CollectMoviePaths(options);
-            FileIndexMovieResult resultEverythingLite = everythingLite.CollectMoviePaths(options);
+            FileIndexMovieResult resultUsnMft = usnMft.CollectMoviePaths(options);
 
             Assert.That(resultEverything.Success, Is.True);
-            Assert.That(resultEverythingLite.Success, Is.True);
+            Assert.That(resultUsnMft.Success, Is.True);
             if (
                 resultEverything.MoviePaths.Count == 0
-                && resultEverythingLite.MoviePaths.Count > 0
+                && resultUsnMft.MoviePaths.Count > 0
                 && FileIndexReasonTable.ToCategory(resultEverything.Reason)
                     == EverythingReasonCodes.OkPrefix
             )
@@ -47,15 +47,15 @@ public sealed class FileIndexProviderAbDiffTests
                 );
             }
 
-            if (resultEverythingLite.MoviePaths.Count != resultEverything.MoviePaths.Count)
+            if (resultUsnMft.MoviePaths.Count != resultEverything.MoviePaths.Count)
             {
                 Assert.Ignore(
-                    $"件数差分を検出: everything={resultEverything.MoviePaths.Count}, everythinglite={resultEverythingLite.MoviePaths.Count}。環境依存差として比較をスキップします。"
+                    $"件数差分を検出: everything={resultEverything.MoviePaths.Count}, usnmft={resultUsnMft.MoviePaths.Count}。環境依存差として比較をスキップします。"
                 );
             }
 
             Assert.That(
-                FileIndexReasonTable.ToCategory(resultEverythingLite.Reason),
+                FileIndexReasonTable.ToCategory(resultUsnMft.Reason),
                 Is.EqualTo(FileIndexReasonTable.ToCategory(resultEverything.Reason)),
                 "A/Bでreasonカテゴリが一致しません。"
             );
@@ -67,7 +67,7 @@ public sealed class FileIndexProviderAbDiffTests
     }
 
     [Test]
-    public void FacadeCollectMoviePathsWithFallback_EverythingVsEverythingLite_StrategyIsCompatible()
+    public void FacadeCollectMoviePathsWithFallback_EverythingVsUsnMft_StrategyIsCompatible()
     {
         string root = CreateTempDir();
         try
@@ -75,11 +75,11 @@ public sealed class FileIndexProviderAbDiffTests
             File.WriteAllText(Path.Combine(root, "a.mp4"), "x");
 
             IFileIndexProvider everything = new EverythingProvider();
-            IFileIndexProvider everythingLite = new EverythingLiteProvider();
-            EnsureComparableAvailabilityOrSkip(everything, everythingLite);
+            IFileIndexProvider usnMft = new UsnMftProvider();
+            EnsureComparableAvailabilityOrSkip(everything, usnMft);
 
             IIndexProviderFacade facadeEverything = new IndexProviderFacade(everything);
-            IIndexProviderFacade facadeEverythingLite = new IndexProviderFacade(everythingLite);
+            IIndexProviderFacade facadeUsnMft = new IndexProviderFacade(usnMft);
             FileIndexQueryOptions options = new()
             {
                 RootPath = root,
@@ -92,17 +92,17 @@ public sealed class FileIndexProviderAbDiffTests
                 options,
                 IntegrationMode.On
             );
-            ScanByProviderResult resultEverythingLite = facadeEverythingLite
+            ScanByProviderResult resultUsnMft = facadeUsnMft
                 .CollectMoviePathsWithFallback(options, IntegrationMode.On);
 
             Assert.That(
-                resultEverythingLite.Strategy,
+                resultUsnMft.Strategy,
                 Is.EqualTo(resultEverything.Strategy),
                 "A/Bでstrategyが一致しません。"
             );
             Assert.That(resultEverything.Strategy, Is.EqualTo(FileIndexStrategies.Everything));
             Assert.That(
-                FileIndexReasonTable.ToCategory(resultEverythingLite.Reason),
+                FileIndexReasonTable.ToCategory(resultUsnMft.Reason),
                 Is.EqualTo(FileIndexReasonTable.ToCategory(resultEverything.Reason)),
                 "A/Bでreasonカテゴリが一致しません。"
             );
@@ -115,16 +115,16 @@ public sealed class FileIndexProviderAbDiffTests
 
     private static void EnsureComparableAvailabilityOrSkip(
         IFileIndexProvider everything,
-        IFileIndexProvider everythingLite
+        IFileIndexProvider usnMft
     )
     {
         AvailabilityResult availabilityEverything = everything.CheckAvailability();
-        AvailabilityResult availabilityEverythingLite = everythingLite.CheckAvailability();
+        AvailabilityResult availabilityUsnMft = usnMft.CheckAvailability();
 
-        if (!availabilityEverything.CanUse || !availabilityEverythingLite.CanUse)
+        if (!availabilityEverything.CanUse || !availabilityUsnMft.CanUse)
         {
             Assert.Ignore(
-                $"A/B比較をスキップ: everything={availabilityEverything.CanUse}:{availabilityEverything.Reason}, everythinglite={availabilityEverythingLite.CanUse}:{availabilityEverythingLite.Reason}"
+                $"A/B比較をスキップ: everything={availabilityEverything.CanUse}:{availabilityEverything.Reason}, usnmft={availabilityUsnMft.CanUse}:{availabilityUsnMft.Reason}"
             );
         }
     }
