@@ -132,7 +132,6 @@ namespace IndigoMovieManager
         private readonly TimeSpan _timeInputInterval = TimeSpan.FromSeconds(0.5);
         private const int ThumbnailLightweightPresetPriorityLaneMaxMb = 128;
         private const int ThumbnailLightweightPresetSlowLaneMinGb = 50;
-        private const int ThumbnailLightweightPresetParallelDivisor = 2;
 
         //結局、タイマー方式で動画とマニュアルサムネイルのスライダーを同期させた
         private readonly DispatcherTimer timer;
@@ -175,42 +174,70 @@ namespace IndigoMovieManager
         /// </summary>
         private static int GetThumbnailQueueMaxParallelism()
         {
-            int parallelism = Properties.Settings.Default.ThumbnailParallelism;
-            if (parallelism < 2)
-            {
-                return 2;
-            }
-            if (parallelism > 24)
-            {
-                return 24;
-            }
-            return parallelism;
+            return ThumbnailThreadPresetResolver.ResolveParallelism(
+                Properties.Settings.Default.ThumbnailThreadPreset,
+                Properties.Settings.Default.ThumbnailParallelism,
+                Environment.ProcessorCount
+            );
         }
 
         // サムネイル並列数を設定範囲（2〜24）へ丸める。
         private static int ClampThumbnailParallelismSetting(int parallelism)
         {
-            if (parallelism < 2)
-            {
-                return 2;
-            }
-            if (parallelism > 24)
-            {
-                return 24;
-            }
-            return parallelism;
+            return ThumbnailThreadPresetResolver.ClampParallelism(parallelism);
         }
 
         // 軽量動画重視プリセットの並列数（論理コアの1/2）を算出する。
         private static int ResolveLightweightPresetParallelism()
         {
-            int logicalCoreCount = Environment.ProcessorCount;
-            int resolved = logicalCoreCount / ThumbnailLightweightPresetParallelDivisor;
-            if (resolved < 2)
-            {
-                resolved = 2;
-            }
-            return ClampThumbnailParallelismSetting(resolved);
+            return ThumbnailThreadPresetResolver.ResolveParallelism(
+                ThumbnailThreadPresetResolver.PresetFast,
+                manualParallelism: ThumbnailThreadPresetResolver.ClampParallelism(8),
+                logicalCoreCount: Environment.ProcessorCount
+            );
+        }
+
+        // 現在のプリセットに応じて、キュー監視の待機間隔を解決する。
+        private static int GetThumbnailQueuePollIntervalMs()
+        {
+            return ThumbnailThreadPresetResolver.ResolveQueuePollIntervalMs(
+                Properties.Settings.Default.ThumbnailThreadPreset,
+                ThumbnailQueuePollIntervalMs
+            );
+        }
+
+        // slow 時だけバッチ完了後のクールダウンを有効化する。
+        private static int GetThumbnailQueueBatchCooldownMs()
+        {
+            return ThumbnailThreadPresetResolver.ResolveBatchCooldownMs(
+                Properties.Settings.Default.ThumbnailThreadPreset
+            );
+        }
+
+        // プリセット意図を反映した、動的制御の下限並列数を返す。
+        private static int GetThumbnailQueueDynamicMinimumParallelism()
+        {
+            int configuredParallelism = GetThumbnailQueueMaxParallelism();
+            return ThumbnailThreadPresetResolver.ResolveDynamicMinimumParallelism(
+                Properties.Settings.Default.ThumbnailThreadPreset,
+                configuredParallelism
+            );
+        }
+
+        // slow は低負荷優先なので、動的復帰では積極的に上げない。
+        private static bool GetThumbnailQueueAllowDynamicScaleUp()
+        {
+            return ThumbnailThreadPresetResolver.ResolveAllowDynamicScaleUp(
+                Properties.Settings.Default.ThumbnailThreadPreset
+            );
+        }
+
+        // プリセットごとに、復帰に必要なバックログ量を調整する。
+        private static int GetThumbnailQueueScaleUpDemandFactor()
+        {
+            return ThumbnailThreadPresetResolver.ResolveScaleUpDemandFactor(
+                Properties.Settings.Default.ThumbnailThreadPreset
+            );
         }
 
         // 初回起動だけ軽量動画重視プリセットを既定値としてハード適用する。
@@ -243,7 +270,23 @@ namespace IndigoMovieManager
             bool prioritizeUi = false
         )
         {
-            int current = ClampThumbnailParallelismSetting(Properties.Settings.Default.ThumbnailParallelism);
+            int currentEffective = GetThumbnailQueueMaxParallelism();
+            string currentPreset = ThumbnailThreadPresetResolver.NormalizePresetKey(
+                Properties.Settings.Default.ThumbnailThreadPreset
+            );
+            if (
+                !string.Equals(
+                    currentPreset,
+                    ThumbnailThreadPresetResolver.PresetCustum,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                Properties.Settings.Default.ThumbnailThreadPreset =
+                    ThumbnailThreadPresetResolver.PresetCustum;
+            }
+
+            int current = ClampThumbnailParallelismSetting(currentEffective);
             int next = ClampThumbnailParallelismSetting(nextParallelism);
             if (current == next)
             {
@@ -300,7 +343,7 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            int current = ClampThumbnailParallelismSetting(Properties.Settings.Default.ThumbnailParallelism);
+            int current = GetThumbnailQueueMaxParallelism();
             ApplyThumbnailParallelismSetting(current + delta, "shortcut");
             e.Handled = true;
             return true;
@@ -357,7 +400,7 @@ namespace IndigoMovieManager
         // 進捗タブの「-」ボタンで並列数を1段下げる。
         private void ThumbnailParallelMinusButton_Click(object sender, RoutedEventArgs e)
         {
-            int current = ClampThumbnailParallelismSetting(Properties.Settings.Default.ThumbnailParallelism);
+            int current = GetThumbnailQueueMaxParallelism();
             ApplyThumbnailParallelismSetting(
                 current - 1,
                 "panel-button-minus",
@@ -368,7 +411,7 @@ namespace IndigoMovieManager
         // 進捗タブの「+」ボタンで並列数を1段上げる。
         private void ThumbnailParallelPlusButton_Click(object sender, RoutedEventArgs e)
         {
-            int current = ClampThumbnailParallelismSetting(Properties.Settings.Default.ThumbnailParallelism);
+            int current = GetThumbnailQueueMaxParallelism();
             ApplyThumbnailParallelismSetting(
                 current + 1,
                 "panel-button-plus",

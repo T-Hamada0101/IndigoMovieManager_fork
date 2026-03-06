@@ -40,6 +40,12 @@ namespace IndigoMovieManager.Thumbnail
             return ThumbnailExecutionLane.Normal;
         }
 
+        internal static long ResolveSlowLaneMinBytes()
+        {
+            (_, long slowLaneMinBytes) = ResolveThresholdBytes();
+            return slowLaneMinBytes;
+        }
+
         internal static int ResolveRank(ThumbnailExecutionLane lane)
         {
             return lane switch

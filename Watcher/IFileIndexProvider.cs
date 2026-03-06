@@ -5,6 +5,10 @@ namespace IndigoMovieManager.Watcher
     /// </summary>
     internal interface IFileIndexProvider
     {
+        string ProviderKey { get; }
+
+        string ProviderDisplayName { get; }
+
         AvailabilityResult CheckAvailability();
 
         FileIndexMovieResult CollectMoviePaths(FileIndexQueryOptions options);
@@ -18,6 +22,10 @@ namespace IndigoMovieManager.Watcher
     /// </summary>
     internal interface IIndexProviderFacade
     {
+        string ProviderKey { get; }
+
+        string ProviderDisplayName { get; }
+
         bool IsIntegrationConfigured(IntegrationMode mode);
 
         AvailabilityResult CheckAvailability(IntegrationMode mode);

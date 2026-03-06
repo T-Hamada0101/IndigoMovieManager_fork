@@ -50,6 +50,9 @@
     <Setting Name="ThumbnailParallelism" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">8</Value>
     </Setting>
+    <Setting Name="ThumbnailThreadPreset" Type="System.String" Scope="User">
+      <Value Profile="(Default)">custum</Value>
+    </Setting>
     <Setting Name="ThumbnailParallelFastRecoveryScaleUpStep" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">2</Value>
     </Setting>

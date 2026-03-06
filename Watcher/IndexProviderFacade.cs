@@ -13,6 +13,10 @@ namespace IndigoMovieManager.Watcher
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         }
 
+        public string ProviderKey => _provider.ProviderKey;
+
+        public string ProviderDisplayName => _provider.ProviderDisplayName;
+
         public bool IsIntegrationConfigured(IntegrationMode mode)
         {
             return mode != IntegrationMode.Off;
@@ -47,6 +51,8 @@ namespace IndigoMovieManager.Watcher
             {
                 return new ScanByProviderResult(
                     FileIndexStrategies.Filesystem,
+                    _provider.ProviderKey,
+                    _provider.ProviderDisplayName,
                     availability.Reason,
                     [],
                     null
@@ -58,6 +64,8 @@ namespace IndigoMovieManager.Watcher
             {
                 return new ScanByProviderResult(
                     FileIndexStrategies.Everything,
+                    _provider.ProviderKey,
+                    _provider.ProviderDisplayName,
                     providerResult.Reason,
                     providerResult.MoviePaths,
                     providerResult.MaxObservedChangedUtc
@@ -66,6 +74,8 @@ namespace IndigoMovieManager.Watcher
 
             return new ScanByProviderResult(
                 FileIndexStrategies.Filesystem,
+                _provider.ProviderKey,
+                _provider.ProviderDisplayName,
                 FileIndexReasonTable.NormalizeByMode(mode, providerResult.Reason),
                 [],
                 null

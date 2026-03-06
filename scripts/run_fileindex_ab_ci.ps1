@@ -90,7 +90,7 @@ try {
     }
 
     # Provider差分の回帰対象だけを抽出して実行する。
-    $filter = "FullyQualifiedName~UsnMftProviderTests|FullyQualifiedName~FileIndexProviderAbDiffTests|FullyQualifiedName~FileIndexReasonTableTests"
+    $filter = "FullyQualifiedName~UsnMftProviderTests|FullyQualifiedName~StandardFileSystemProviderTests|FullyQualifiedName~FileIndexProviderAbDiffTests|FullyQualifiedName~FileIndexReasonTableTests|FullyQualifiedName~FileIndexProviderFactoryTests"
     & dotnet test ".\Tests\IndigoMovieManager_fork.Tests\IndigoMovieManager_fork.Tests.csproj" -c $Configuration --no-build --filter $filter
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet test が失敗しました。exit code: $LASTEXITCODE"

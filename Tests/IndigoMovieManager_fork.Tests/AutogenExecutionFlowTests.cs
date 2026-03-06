@@ -179,6 +179,108 @@ public class AutogenExecutionFlowTests
     }
 
     [Test]
+    public async Task CreateThumbAsync_FallbackLogはCategoryFallbackで記録される()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyMovieFile(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (_, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateFailedResult(
+                            "unused.jpg",
+                            10,
+                            "simulated autogen init failure"
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailCreationService.CreateSuccessResult(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            RecordingThumbnailLogger logger = new();
+            var service = new ThumbnailCreationService(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                NoOpVideoMetadataProvider.Instance,
+                logger,
+                new RecordingVideoIndexRepairService(
+                    _ => new VideoIndexProbeResult(),
+                    (_, __) => new VideoIndexRepairResult()
+                )
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj { MovieId = 200, Tabindex = 0, MovieFullPath = moviePath },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(
+                    logger.DebugMessages.Any(x => x.Contains("engine fallback: category=fallback")),
+                    Is.True
+                );
+                Assert.That(
+                    logger.DebugMessages.Any(x => x.Contains("engine failed: category=error")),
+                    Is.True
+                );
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
     public async Task CreateThumbAsync_AutogenTransientFailure_4回リトライ後に成功する()
     {
         string tempRoot = CreateTempRoot();
@@ -1083,5 +1185,21 @@ public class AutogenExecutionFlowTests
             RepairCallCount++;
             return Task.FromResult(repairFunc(moviePath, outputPath));
         }
+    }
+
+    private sealed class RecordingThumbnailLogger : IThumbnailLogger
+    {
+        public List<string> DebugMessages { get; } = [];
+
+        public void LogDebug(string category, string message)
+        {
+            DebugMessages.Add($"[{category}] {message}");
+        }
+
+        public void LogInfo(string category, string message) { }
+
+        public void LogWarning(string category, string message) { }
+
+        public void LogError(string category, string message) { }
     }
 }

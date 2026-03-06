@@ -22,6 +22,15 @@ namespace IndigoMovieManager.Thumbnail
         // 24並列バッチで単発1件の揺らぎでは下げすぎないよう、8%（概ね2/24件）を閾値にする。
         private const double DownTransientRateThreshold = 0.08d;
         private const double DownFallbackRateThreshold = 0.08d;
+        private const double HighLoadWeightError = 0.30d;
+        private const double HighLoadWeightQueuePressure = 0.30d;
+        private const double HighLoadWeightSlowBacklog = 0.15d;
+        private const double HighLoadWeightRecoveryBacklog = 0.15d;
+        private const double HighLoadWeightThroughputPenalty = 0.10d;
+        private const double HighLoadRecoveryThreshold = 0.45d;
+        private const double HighLoadMildThreshold = 0.55d;
+        private const double HighLoadThreshold = 0.75d;
+        private const double HighLoadDangerThreshold = 0.90d;
         private static readonly TimeSpan ScaleDownCooldown = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan ScaleUpCooldown = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan DefaultScaleUpCooldownFastAfterDown = TimeSpan.FromSeconds(
@@ -104,11 +113,19 @@ namespace IndigoMovieManager.Thumbnail
             int batchFailedCount,
             int queueActiveCount,
             ThumbnailEngineRuntimeSnapshot engineSnapshot,
-            Action<string> log
+            Action<string> log,
+            int dynamicMinimumParallelism = SoftMinParallelism,
+            bool allowScaleUp = true,
+            int scaleUpDemandFactor = 2,
+            ThumbnailHighLoadInput? highLoadInput = null
         )
         {
             int boundedConfigured = Clamp(configuredParallelism);
-            int dynamicMin = Math.Min(SoftMinParallelism, boundedConfigured);
+            int dynamicMin = Clamp(dynamicMinimumParallelism);
+            if (dynamicMin > boundedConfigured)
+            {
+                dynamicMin = boundedConfigured;
+            }
             if (dynamicMin < HardMinParallelism)
             {
                 dynamicMin = HardMinParallelism;
@@ -122,27 +139,65 @@ namespace IndigoMovieManager.Thumbnail
             int safeProcessed = Math.Max(1, batchProcessedCount);
             double transientRate = (double)engineSnapshot.AutogenTransientFailureCount / safeProcessed;
             double fallbackRate = (double)engineSnapshot.FallbackToFfmpegOnePassCount / safeProcessed;
-            bool shouldScaleDown =
+            bool shouldScaleDownByError =
                 batchFailedCount >= DownBatchFailedCountThreshold
                 || engineSnapshot.AutogenTransientFailureCount >= DownTransientFailureCountThreshold
                 || transientRate >= DownTransientRateThreshold
                 || fallbackRate >= DownFallbackRateThreshold;
+            ThumbnailHighLoadScoreResult highLoadScore = highLoadInput.HasValue
+                ? CalculateHighLoadScore(highLoadInput.Value)
+                : default;
+            bool shouldScaleDownByHighLoad = highLoadScore.IsMildHighLoad;
+            bool isHighLoadRecoveryWindow = !highLoadInput.HasValue || highLoadScore.IsRecoveryWindow;
 
             DateTime nowUtc = DateTime.UtcNow;
             if (
-                shouldScaleDown
+                (shouldScaleDownByError || shouldScaleDownByHighLoad)
                 && currentParallelism > dynamicMin
                 && (nowUtc - lastScaleDownUtc) >= ScaleDownCooldown
             )
             {
-                int next = Math.Max(dynamicMin, currentParallelism - ScaleDownStep);
+                int next = currentParallelism;
+                string scaleDownMode;
+                if (highLoadScore.IsDanger)
+                {
+                    next = dynamicMin;
+                    scaleDownMode = "high-load-danger";
+                }
+                else if (shouldScaleDownByError || highLoadScore.IsHighLoad)
+                {
+                    next = Math.Max(dynamicMin, currentParallelism - ScaleDownStep);
+                    scaleDownMode = shouldScaleDownByError && shouldScaleDownByHighLoad
+                        ? "error+high-load"
+                        : shouldScaleDownByError
+                            ? "error"
+                            : "high-load";
+                }
+                else
+                {
+                    next = Math.Max(dynamicMin, currentParallelism - 1);
+                    scaleDownMode = "high-load-mild";
+                }
+
                 if (next != currentParallelism)
                 {
+                    string logCategory = scaleDownMode switch
+                    {
+                        "error" => "error",
+                        "error+high-load" => "error+high-load",
+                        _ => "high-load",
+                    };
                     log?.Invoke(
                         $"parallel scale-down: {currentParallelism} -> {next} "
+                            + $"category={logCategory} "
+                            + $"mode={scaleDownMode} "
                             + $"reason=transient_fail={engineSnapshot.AutogenTransientFailureCount} "
                             + $"fallback_1pass={engineSnapshot.FallbackToFfmpegOnePassCount} "
-                            + $"batch_failed={batchFailedCount} transient_rate={transientRate:0.000} fallback_rate={fallbackRate:0.000}"
+                            + $"batch_failed={batchFailedCount} transient_rate={transientRate:0.000} fallback_rate={fallbackRate:0.000} "
+                            + $"high_load={highLoadScore.HighLoadScore:0.000} "
+                            + $"error_score={highLoadScore.ErrorScore:0.000} queue_score={highLoadScore.QueuePressureScore:0.000} "
+                            + $"slow_score={highLoadScore.SlowBacklogScore:0.000} recovery_score={highLoadScore.RecoveryBacklogScore:0.000} "
+                            + $"throughput_score={highLoadScore.ThroughputPenaltyScore:0.000}"
                     );
                     currentParallelism = next;
                     stableWindowCount = 0;
@@ -155,7 +210,8 @@ namespace IndigoMovieManager.Thumbnail
             bool isStableWindow =
                 batchFailedCount == 0
                 && engineSnapshot.AutogenTransientFailureCount == 0
-                && engineSnapshot.FallbackToFfmpegOnePassCount == 0;
+                && engineSnapshot.FallbackToFfmpegOnePassCount == 0
+                && isHighLoadRecoveryWindow;
             if (isStableWindow)
             {
                 stableWindowCount++;
@@ -182,10 +238,12 @@ namespace IndigoMovieManager.Thumbnail
                 ? scaleUpCooldownFastAfterDown
                 : ScaleUpCooldown;
 
-            bool hasDemand = queueActiveCount > currentParallelism * 2;
+            int safeScaleUpDemandFactor = scaleUpDemandFactor < 1 ? 1 : scaleUpDemandFactor;
+            bool hasDemand = queueActiveCount > currentParallelism * safeScaleUpDemandFactor;
             bool canScaleUp =
-                stableWindowCount >= stableRequired
+                allowScaleUp
                 && hasDemand
+                && stableWindowCount >= stableRequired
                 && currentParallelism < boundedConfigured
                 && (nowUtc - lastScaleUpUtc) >= scaleUpCooldown
                 && (nowUtc - lastScaleDownUtc) >= scaleUpBlockedAfterDown;
@@ -196,8 +254,10 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     log?.Invoke(
                         $"parallel scale-up: {currentParallelism} -> {next} "
+                            + "category=high-load "
                             + $"reason=stable_windows={stableWindowCount}/{stableRequired} active={queueActiveCount} configured={boundedConfigured} "
-                            + $"mode={(inFastRecoveryWindow ? "fast-recovery" : "normal")}"
+                            + $"mode={(inFastRecoveryWindow ? "fast-recovery" : "normal")} demand_factor={safeScaleUpDemandFactor} "
+                            + $"high_load={highLoadScore.HighLoadScore:0.000}"
                     );
                     currentParallelism = next;
                     stableWindowCount = 0;
@@ -219,6 +279,91 @@ namespace IndigoMovieManager.Thumbnail
                 return HardMaxParallelism;
             }
             return parallelism;
+        }
+
+        /// <summary>
+        /// 第1段階の内部メトリクスだけで高負荷スコアを組み立てる。
+        /// 後段で CPU / 温度 / IPC シグナルを足しても壊れないよう、ここでは責務を局所化する。
+        /// </summary>
+        public static ThumbnailHighLoadScoreResult CalculateHighLoadScore(
+            ThumbnailHighLoadInput input
+        )
+        {
+            int safeProcessed = Math.Max(1, input.BatchProcessedCount);
+            int safeCurrentParallelism = Math.Max(1, input.CurrentParallelism);
+            int safeConfiguredParallelism = Math.Max(1, input.ConfiguredParallelism);
+
+            double batchFailureRate = Clamp01((double)input.BatchFailedCount / safeProcessed);
+            double transientRate = Clamp01(
+                (double)input.EngineSnapshot.AutogenTransientFailureCount / safeProcessed
+            );
+            double fallbackRate = Clamp01(
+                (double)input.EngineSnapshot.FallbackToFfmpegOnePassCount / safeProcessed
+            );
+            double retrySuccessRate = Clamp01(
+                (double)input.EngineSnapshot.AutogenRetrySuccessCount / safeProcessed
+            );
+
+            // 失敗系は強め、ただし再試行成功が多い窓は少しだけ減点して過敏さを抑える。
+            double errorScore = Clamp01(
+                batchFailureRate * 0.45d
+                    + transientRate * 0.30d
+                    + fallbackRate * 0.25d
+                    - retrySuccessRate * 0.10d
+            );
+
+            double currentPressure = Clamp01(
+                (double)input.QueueActiveCount / Math.Max(1, safeCurrentParallelism * 2)
+            );
+            double configuredPressure = Clamp01(
+                (double)input.QueueActiveCount / Math.Max(1, safeConfiguredParallelism * 2)
+            );
+            double scaleDownGap = Clamp01(
+                (double)Math.Max(0, safeConfiguredParallelism - safeCurrentParallelism)
+                    / safeConfiguredParallelism
+            );
+
+            // 現在の並列数で捌けていないかを主軸にしつつ、設定値との乖離も補助情報として入れる。
+            double queuePressureScore = Clamp01(
+                currentPressure * 0.55d
+                    + configuredPressure * 0.25d
+                    + scaleDownGap * 0.20d
+            );
+
+            double slowBacklogScore = input.HasSlowDemand ? 1.0d : 0.0d;
+            double recoveryBacklogScore = input.HasRecoveryDemand ? 1.0d : 0.0d;
+
+            double throughputPenaltyScore;
+            if (input.BatchProcessedCount <= 0)
+            {
+                throughputPenaltyScore = input.QueueActiveCount > 0 ? 1.0d : 0.0d;
+            }
+            else
+            {
+                double msPerItem = (double)Math.Max(0L, input.BatchElapsedMs) / safeProcessed;
+                throughputPenaltyScore = Clamp01((msPerItem - 1500d) / 4500d);
+            }
+
+            double highLoadScore = Clamp01(
+                errorScore * HighLoadWeightError
+                    + queuePressureScore * HighLoadWeightQueuePressure
+                    + slowBacklogScore * HighLoadWeightSlowBacklog
+                    + recoveryBacklogScore * HighLoadWeightRecoveryBacklog
+                    + throughputPenaltyScore * HighLoadWeightThroughputPenalty
+            );
+
+            return new ThumbnailHighLoadScoreResult(
+                highLoadScore,
+                errorScore,
+                queuePressureScore,
+                slowBacklogScore,
+                recoveryBacklogScore,
+                throughputPenaltyScore,
+                highLoadScore <= HighLoadRecoveryThreshold,
+                highLoadScore >= HighLoadMildThreshold,
+                highLoadScore >= HighLoadThreshold,
+                highLoadScore >= HighLoadDangerThreshold
+            );
         }
 
         private static int ResolveFastRecoveryScaleUpStep()
@@ -387,6 +532,19 @@ namespace IndigoMovieManager.Thumbnail
 
             return null;
         }
+
+        private static double Clamp01(double value)
+        {
+            if (value < 0d)
+            {
+                return 0d;
+            }
+            if (value > 1d)
+            {
+                return 1d;
+            }
+            return value;
+        }
     }
 
     /// <summary>
@@ -439,5 +597,80 @@ namespace IndigoMovieManager.Thumbnail
         public long AutogenTransientFailureCount { get; }
         public long AutogenRetrySuccessCount { get; }
         public long FallbackToFfmpegOnePassCount { get; }
+    }
+
+    public readonly struct ThumbnailHighLoadInput
+    {
+        public ThumbnailHighLoadInput(
+            int batchProcessedCount,
+            int batchFailedCount,
+            long batchElapsedMs,
+            int queueActiveCount,
+            int currentParallelism,
+            int configuredParallelism,
+            bool hasSlowDemand,
+            bool hasRecoveryDemand,
+            ThumbnailEngineRuntimeSnapshot engineSnapshot
+        )
+        {
+            BatchProcessedCount = batchProcessedCount;
+            BatchFailedCount = batchFailedCount;
+            BatchElapsedMs = batchElapsedMs;
+            QueueActiveCount = queueActiveCount;
+            CurrentParallelism = currentParallelism;
+            ConfiguredParallelism = configuredParallelism;
+            HasSlowDemand = hasSlowDemand;
+            HasRecoveryDemand = hasRecoveryDemand;
+            EngineSnapshot = engineSnapshot;
+        }
+
+        public int BatchProcessedCount { get; }
+        public int BatchFailedCount { get; }
+        public long BatchElapsedMs { get; }
+        public int QueueActiveCount { get; }
+        public int CurrentParallelism { get; }
+        public int ConfiguredParallelism { get; }
+        public bool HasSlowDemand { get; }
+        public bool HasRecoveryDemand { get; }
+        public ThumbnailEngineRuntimeSnapshot EngineSnapshot { get; }
+    }
+
+    public readonly struct ThumbnailHighLoadScoreResult
+    {
+        public ThumbnailHighLoadScoreResult(
+            double highLoadScore,
+            double errorScore,
+            double queuePressureScore,
+            double slowBacklogScore,
+            double recoveryBacklogScore,
+            double throughputPenaltyScore,
+            bool isRecoveryWindow,
+            bool isMildHighLoad,
+            bool isHighLoad,
+            bool isDanger
+        )
+        {
+            HighLoadScore = highLoadScore;
+            ErrorScore = errorScore;
+            QueuePressureScore = queuePressureScore;
+            SlowBacklogScore = slowBacklogScore;
+            RecoveryBacklogScore = recoveryBacklogScore;
+            ThroughputPenaltyScore = throughputPenaltyScore;
+            IsRecoveryWindow = isRecoveryWindow;
+            IsMildHighLoad = isMildHighLoad;
+            IsHighLoad = isHighLoad;
+            IsDanger = isDanger;
+        }
+
+        public double HighLoadScore { get; }
+        public double ErrorScore { get; }
+        public double QueuePressureScore { get; }
+        public double SlowBacklogScore { get; }
+        public double RecoveryBacklogScore { get; }
+        public double ThroughputPenaltyScore { get; }
+        public bool IsRecoveryWindow { get; }
+        public bool IsMildHighLoad { get; }
+        public bool IsHighLoad { get; }
+        public bool IsDanger { get; }
     }
 }

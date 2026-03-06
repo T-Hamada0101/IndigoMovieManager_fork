@@ -46,6 +46,7 @@ public sealed class ThumbnailParallelControllerTests
     {
         ThumbnailParallelController controller = new(initialParallelism: 8);
         ThumbnailEngineRuntimeSnapshot emptySnapshot = new(0, 0, 0);
+        List<string> logs = [];
 
         int scaledDown = controller.EvaluateNext(
             configuredParallelism: 8,
@@ -53,9 +54,10 @@ public sealed class ThumbnailParallelControllerTests
             batchFailedCount: 3,
             queueActiveCount: 100,
             engineSnapshot: emptySnapshot,
-            log: null
+            log: logs.Add
         );
         Assert.That(scaledDown, Is.EqualTo(6));
+        Assert.That(logs.Any(x => x.Contains("category=error")), Is.True);
 
         // 減速直後の復帰条件だけ満たすため、最小ブロック時間を越えた時刻に寄せる。
         SetPrivateDateTimeField(controller, "lastScaleDownUtc", DateTime.UtcNow.AddSeconds(-20));
@@ -112,6 +114,469 @@ public sealed class ThumbnailParallelControllerTests
 
         Assert.That(first, Is.EqualTo(2));
         Assert.That(raised, Is.EqualTo(8));
+    }
+
+    [Test]
+    public void EvaluateNext_動的復帰禁止時は安定しても上げない()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 4);
+        ThumbnailEngineRuntimeSnapshot emptySnapshot = new(0, 0, 0);
+
+        SetPrivateDateTimeField(controller, "lastScaleDownUtc", DateTime.UtcNow.AddMinutes(-10));
+
+        int first = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: emptySnapshot,
+            log: null,
+            dynamicMinimumParallelism: 2,
+            allowScaleUp: false,
+            scaleUpDemandFactor: 2
+        );
+        int second = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: emptySnapshot,
+            log: null,
+            dynamicMinimumParallelism: 2,
+            allowScaleUp: false,
+            scaleUpDemandFactor: 2
+        );
+
+        Assert.That(first, Is.EqualTo(4));
+        Assert.That(second, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void EvaluateNext_需要係数が高い時は同じ滞留でも復帰しない()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 4);
+        ThumbnailEngineRuntimeSnapshot emptySnapshot = new(0, 0, 0);
+
+        SetPrivateDateTimeField(controller, "lastScaleDownUtc", DateTime.UtcNow.AddMinutes(-10));
+
+        int first = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 10,
+            engineSnapshot: emptySnapshot,
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 4
+        );
+        int second = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 10,
+            engineSnapshot: emptySnapshot,
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 4
+        );
+
+        Assert.That(first, Is.EqualTo(4));
+        Assert.That(second, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_平常窓では軽度閾値を超えない()
+    {
+        ThumbnailHighLoadScoreResult score = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 10,
+                batchFailedCount: 0,
+                batchElapsedMs: 5000,
+                queueActiveCount: 4,
+                currentParallelism: 4,
+                configuredParallelism: 4,
+                hasSlowDemand: false,
+                hasRecoveryDemand: false,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0)
+            )
+        );
+
+        Assert.That(score.HighLoadScore, Is.LessThan(0.55d));
+        Assert.That(score.IsMildHighLoad, Is.False);
+        Assert.That(score.IsDanger, Is.False);
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_滞留と失敗が重なると危険域に入る()
+    {
+        ThumbnailHighLoadScoreResult score = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 2,
+                batchFailedCount: 2,
+                batchElapsedMs: 18000,
+                queueActiveCount: 40,
+                currentParallelism: 6,
+                configuredParallelism: 10,
+                hasSlowDemand: true,
+                hasRecoveryDemand: true,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(2, 0, 2)
+            )
+        );
+
+        Assert.That(score.HighLoadScore, Is.GreaterThanOrEqualTo(0.90d));
+        Assert.That(score.IsDanger, Is.True);
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_処理0件でも滞留があればスループット悪化を最大評価する()
+    {
+        ThumbnailHighLoadScoreResult score = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 0,
+                batchFailedCount: 0,
+                batchElapsedMs: 0,
+                queueActiveCount: 12,
+                currentParallelism: 4,
+                configuredParallelism: 8,
+                hasSlowDemand: false,
+                hasRecoveryDemand: false,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0)
+            )
+        );
+
+        Assert.That(score.ThroughputPenaltyScore, Is.EqualTo(1.0d));
+        Assert.That(score.QueuePressureScore, Is.GreaterThan(0.0d));
+        Assert.That(score.HighLoadScore, Is.GreaterThan(0.0d));
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_再試行成功が多い窓はエラースコアを少し下げる()
+    {
+        ThumbnailHighLoadScoreResult withoutRetrySuccess =
+            ThumbnailParallelController.CalculateHighLoadScore(
+                new ThumbnailHighLoadInput(
+                    batchProcessedCount: 10,
+                    batchFailedCount: 2,
+                    batchElapsedMs: 8000,
+                    queueActiveCount: 10,
+                    currentParallelism: 4,
+                    configuredParallelism: 8,
+                    hasSlowDemand: false,
+                    hasRecoveryDemand: false,
+                    engineSnapshot: new ThumbnailEngineRuntimeSnapshot(2, 0, 1)
+                )
+            );
+        ThumbnailHighLoadScoreResult withRetrySuccess =
+            ThumbnailParallelController.CalculateHighLoadScore(
+                new ThumbnailHighLoadInput(
+                    batchProcessedCount: 10,
+                    batchFailedCount: 2,
+                    batchElapsedMs: 8000,
+                    queueActiveCount: 10,
+                    currentParallelism: 4,
+                    configuredParallelism: 8,
+                    hasSlowDemand: false,
+                    hasRecoveryDemand: false,
+                    engineSnapshot: new ThumbnailEngineRuntimeSnapshot(2, 4, 1)
+                )
+            );
+
+        Assert.That(withRetrySuccess.ErrorScore, Is.LessThan(withoutRetrySuccess.ErrorScore));
+        Assert.That(withRetrySuccess.HighLoadScore, Is.LessThan(withoutRetrySuccess.HighLoadScore));
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_中立帯では復帰窓にならない()
+    {
+        ThumbnailHighLoadScoreResult score = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 10,
+                batchFailedCount: 1,
+                batchElapsedMs: 33000,
+                queueActiveCount: 10,
+                currentParallelism: 4,
+                configuredParallelism: 8,
+                hasSlowDemand: true,
+                hasRecoveryDemand: false,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(1, 0, 0)
+            )
+        );
+
+        Assert.That(score.HighLoadScore, Is.GreaterThan(0.45d).And.LessThan(0.55d));
+        Assert.That(score.IsRecoveryWindow, Is.False);
+        Assert.That(score.IsMildHighLoad, Is.False);
+    }
+
+    [Test]
+    public void EvaluateNext_軽度高負荷では1段階だけ縮退する()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 6);
+        ThumbnailEngineRuntimeSnapshot emptySnapshot = new(0, 0, 0);
+        List<string> logs = [];
+        ThumbnailHighLoadInput highLoadInput = new(
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            batchElapsedMs: 22000,
+            queueActiveCount: 20,
+            currentParallelism: 6,
+            configuredParallelism: 8,
+            hasSlowDemand: true,
+            hasRecoveryDemand: true,
+            engineSnapshot: emptySnapshot
+        );
+
+        int next = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 20,
+            engineSnapshot: emptySnapshot,
+            log: logs.Add,
+            dynamicMinimumParallelism: 2,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: highLoadInput
+        );
+
+        Assert.That(next, Is.EqualTo(5));
+        Assert.That(logs.Any(x => x.Contains("category=high-load")), Is.True);
+    }
+
+    [Test]
+    public void EvaluateNext_危険域高負荷では動的下限まで落とす()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 8);
+        ThumbnailEngineRuntimeSnapshot heavySnapshot = new(2, 0, 2);
+        ThumbnailHighLoadInput highLoadInput = new(
+            batchProcessedCount: 2,
+            batchFailedCount: 2,
+            batchElapsedMs: 18000,
+            queueActiveCount: 40,
+            currentParallelism: 8,
+            configuredParallelism: 10,
+            hasSlowDemand: true,
+            hasRecoveryDemand: true,
+            engineSnapshot: heavySnapshot
+        );
+
+        int next = controller.EvaluateNext(
+            configuredParallelism: 10,
+            batchProcessedCount: 2,
+            batchFailedCount: 2,
+            queueActiveCount: 40,
+            engineSnapshot: heavySnapshot,
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: highLoadInput
+        );
+
+        Assert.That(next, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void EvaluateNext_中立帯高負荷では安定扱いせず復帰しない()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 4);
+        ThumbnailEngineRuntimeSnapshot snapshot = new(1, 0, 0);
+        ThumbnailHighLoadInput neutralHighLoadInput = new(
+            batchProcessedCount: 10,
+            batchFailedCount: 1,
+            batchElapsedMs: 33000,
+            queueActiveCount: 100,
+            currentParallelism: 4,
+            configuredParallelism: 8,
+            hasSlowDemand: true,
+            hasRecoveryDemand: false,
+            engineSnapshot: snapshot
+        );
+
+        SetPrivateDateTimeField(controller, "lastScaleDownUtc", DateTime.UtcNow.AddMinutes(-10));
+
+        int first = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: neutralHighLoadInput
+        );
+        int second = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: neutralHighLoadInput
+        );
+
+        Assert.That(first, Is.EqualTo(4));
+        Assert.That(second, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void EvaluateNext_回復帯が継続した時だけ段階復帰する()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 4);
+        ThumbnailHighLoadInput recoveryWindowInput = new(
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            batchElapsedMs: 5000,
+            queueActiveCount: 100,
+            currentParallelism: 4,
+            configuredParallelism: 8,
+            hasSlowDemand: false,
+            hasRecoveryDemand: false,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0)
+        );
+
+        SetPrivateDateTimeField(controller, "lastScaleDownUtc", DateTime.UtcNow.AddMinutes(-10));
+
+        int first = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: recoveryWindowInput
+        );
+        int second = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: recoveryWindowInput
+        );
+
+        Assert.That(first, Is.EqualTo(4));
+        Assert.That(second, Is.EqualTo(5));
+    }
+
+    [Test]
+    public void EvaluateNext_減速直後ブロック中は回復帯でも復帰しない()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 4);
+        ThumbnailHighLoadInput recoveryWindowInput = new(
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            batchElapsedMs: 5000,
+            queueActiveCount: 100,
+            currentParallelism: 4,
+            configuredParallelism: 8,
+            hasSlowDemand: false,
+            hasRecoveryDemand: false,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0)
+        );
+
+        SetPrivateDateTimeField(controller, "lastScaleDownUtc", DateTime.UtcNow.AddSeconds(-5));
+
+        int first = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: recoveryWindowInput
+        );
+        int second = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: recoveryWindowInput
+        );
+
+        Assert.That(first, Is.EqualTo(4));
+        Assert.That(second, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void EvaluateNext_復帰クールダウン中は安定窓が揃っても連続復帰しない()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 4);
+        ThumbnailHighLoadInput recoveryWindowInput = new(
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            batchElapsedMs: 5000,
+            queueActiveCount: 100,
+            currentParallelism: 4,
+            configuredParallelism: 8,
+            hasSlowDemand: false,
+            hasRecoveryDemand: false,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0)
+        );
+
+        SetPrivateDateTimeField(controller, "lastScaleDownUtc", DateTime.UtcNow.AddMinutes(-10));
+
+        int first = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: recoveryWindowInput
+        );
+        int second = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: recoveryWindowInput
+        );
+        int third = controller.EvaluateNext(
+            configuredParallelism: 8,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 100,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            log: null,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: recoveryWindowInput
+        );
+
+        Assert.That(first, Is.EqualTo(4));
+        Assert.That(second, Is.EqualTo(5));
+        Assert.That(third, Is.EqualTo(5));
     }
 
     private static void SetPrivateDateTimeField(

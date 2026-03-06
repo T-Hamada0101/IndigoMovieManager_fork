@@ -331,6 +331,523 @@ WHERE name = 'MovieSizeBytes';";
         }
     }
 
+    [Test]
+    public void HasRecoveryQueueDemand_再試行Pendingと自OwnerProcessingだけ検知する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-recovery-demand-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(Path.GetTempPath(), $"movie-recovery-{Guid.NewGuid():N}.mp4");
+        string owner = "RECOVERY-DEMAND-OWNER";
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            Assert.That(queueDbService.HasRecoveryQueueDemand(owner), Is.False);
+
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+            Assert.That(leased.Count, Is.EqualTo(1));
+
+            _ = queueDbService.UpdateStatus(
+                leased[0].QueueId,
+                owner,
+                ThumbnailQueueStatus.Pending,
+                nowUtc.AddSeconds(1),
+                "retry",
+                incrementAttemptCount: true
+            );
+
+            Assert.That(queueDbService.HasRecoveryQueueDemand(owner), Is.True);
+
+            List<QueueDbLeaseItem> recoveryLease = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc.AddSeconds(2),
+                minAttemptCount: 1
+            );
+            Assert.That(recoveryLease.Count, Is.EqualTo(1));
+            Assert.That(recoveryLease[0].AttemptCount, Is.EqualTo(1));
+            Assert.That(queueDbService.HasRecoveryQueueDemand(owner), Is.True);
+
+            _ = queueDbService.UpdateStatus(
+                recoveryLease[0].QueueId,
+                owner,
+                ThumbnailQueueStatus.Done,
+                nowUtc.AddSeconds(3)
+            );
+
+            Assert.That(queueDbService.HasRecoveryQueueDemand(owner), Is.False);
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void GetPendingAndLease_minAttemptCount指定時は再試行ジョブだけ取得する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-recovery-filter-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string normalMoviePath = Path.Combine(Path.GetTempPath(), $"movie-normal-{Guid.NewGuid():N}.mp4");
+        string recoveryMoviePath = Path.Combine(Path.GetTempPath(), $"movie-recovery-{Guid.NewGuid():N}.mp4");
+        string owner = "RECOVERY-FILTER-OWNER";
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = normalMoviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(normalMoviePath),
+                        TabIndex = 0,
+                    },
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = recoveryMoviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(recoveryMoviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> firstLease = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 2,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+            Assert.That(firstLease.Count, Is.EqualTo(2));
+
+            QueueDbLeaseItem recoveryLease = firstLease.Single(x =>
+                string.Equals(x.MoviePath, recoveryMoviePath, StringComparison.OrdinalIgnoreCase)
+            );
+            QueueDbLeaseItem normalLease = firstLease.Single(x =>
+                string.Equals(x.MoviePath, normalMoviePath, StringComparison.OrdinalIgnoreCase)
+            );
+
+            _ = queueDbService.UpdateStatus(
+                recoveryLease.QueueId,
+                owner,
+                ThumbnailQueueStatus.Pending,
+                nowUtc.AddSeconds(1),
+                "retry",
+                incrementAttemptCount: true
+            );
+            _ = queueDbService.UpdateStatus(
+                normalLease.QueueId,
+                owner,
+                ThumbnailQueueStatus.Done,
+                nowUtc.AddSeconds(1)
+            );
+
+            List<QueueDbLeaseItem> onlyRecovery = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 5,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc.AddSeconds(2),
+                minAttemptCount: 1
+            );
+
+            Assert.That(onlyRecovery.Count, Is.EqualTo(1));
+            Assert.That(onlyRecovery[0].MoviePath, Is.EqualTo(recoveryMoviePath));
+            Assert.That(onlyRecovery[0].AttemptCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void GetPendingAndLease_Attempt範囲が逆転している時は空を返す()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-attempt-range-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+
+        try
+        {
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                "ATTEMPT-RANGE-OWNER",
+                takeCount: 5,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: DateTime.UtcNow,
+                minAttemptCount: 2,
+                maxAttemptCount: 1
+            );
+
+            Assert.That(leased, Is.Empty);
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void GetPendingAndLease_MovieSize範囲が逆転している時は空を返す()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-size-range-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+
+        try
+        {
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                "SIZE-RANGE-OWNER",
+                takeCount: 5,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: DateTime.UtcNow,
+                minMovieSizeBytes: 20,
+                maxMovieSizeBytes: 10
+            );
+
+            Assert.That(leased, Is.Empty);
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void HasSlowQueueDemand_巨大動画Pendingと自OwnerProcessingだけ検知する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-slow-demand-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(Path.GetTempPath(), $"movie-slow-{Guid.NewGuid():N}.mkv");
+        string owner = "SLOW-DEMAND-OWNER";
+        long slowThresholdBytes = 10L * 1024 * 1024 * 1024;
+        long movieSizeBytes = slowThresholdBytes + (512L * 1024 * 1024);
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                        MovieSizeBytes = movieSizeBytes,
+                    },
+                ],
+                nowUtc
+            );
+
+            Assert.That(
+                queueDbService.HasSlowQueueDemand(owner, slowThresholdBytes, maxAttemptCount: 0),
+                Is.True
+            );
+
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc,
+                minMovieSizeBytes: slowThresholdBytes,
+                maxAttemptCount: 0
+            );
+            Assert.That(leased.Count, Is.EqualTo(1));
+            Assert.That(leased[0].MovieSizeBytes, Is.EqualTo(movieSizeBytes));
+
+            Assert.That(
+                queueDbService.HasSlowQueueDemand(owner, slowThresholdBytes, maxAttemptCount: 0),
+                Is.True
+            );
+
+            _ = queueDbService.UpdateStatus(
+                leased[0].QueueId,
+                owner,
+                ThumbnailQueueStatus.Done,
+                nowUtc.AddSeconds(1)
+            );
+
+            Assert.That(
+                queueDbService.HasSlowQueueDemand(owner, slowThresholdBytes, maxAttemptCount: 0),
+                Is.False
+            );
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void HasRecoveryQueueDemand_他OwnerProcessing中の再試行は検知しない()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-recovery-other-owner-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(Path.GetTempPath(), $"movie-recovery-other-{Guid.NewGuid():N}.mp4");
+        string ownerA = "RECOVERY-OWNER-A";
+        string ownerB = "RECOVERY-OWNER-B";
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> firstLease = queueDbService.GetPendingAndLease(
+                ownerA,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+            Assert.That(firstLease.Count, Is.EqualTo(1));
+
+            _ = queueDbService.UpdateStatus(
+                firstLease[0].QueueId,
+                ownerA,
+                ThumbnailQueueStatus.Pending,
+                nowUtc.AddSeconds(1),
+                "retry",
+                incrementAttemptCount: true
+            );
+
+            List<QueueDbLeaseItem> recoveryLease = queueDbService.GetPendingAndLease(
+                ownerB,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc.AddSeconds(2),
+                minAttemptCount: 1
+            );
+            Assert.That(recoveryLease.Count, Is.EqualTo(1));
+            Assert.That(recoveryLease[0].AttemptCount, Is.EqualTo(1));
+
+            Assert.That(queueDbService.HasRecoveryQueueDemand(ownerA), Is.False);
+            Assert.That(queueDbService.HasRecoveryQueueDemand(ownerB), Is.True);
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void HasSlowQueueDemand_maxAttemptCount0時は再試行巨大動画を除外する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-slow-retry-exclude-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(Path.GetTempPath(), $"movie-slow-retry-{Guid.NewGuid():N}.mkv");
+        string owner = "SLOW-RETRY-OWNER";
+        long slowThresholdBytes = 10L * 1024 * 1024 * 1024;
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                        MovieSizeBytes = slowThresholdBytes + 1,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> firstLease = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+            Assert.That(firstLease.Count, Is.EqualTo(1));
+
+            _ = queueDbService.UpdateStatus(
+                firstLease[0].QueueId,
+                owner,
+                ThumbnailQueueStatus.Pending,
+                nowUtc.AddSeconds(1),
+                "retry",
+                incrementAttemptCount: true
+            );
+
+            Assert.That(
+                queueDbService.HasSlowQueueDemand(owner, slowThresholdBytes),
+                Is.True
+            );
+            Assert.That(
+                queueDbService.HasSlowQueueDemand(owner, slowThresholdBytes, maxAttemptCount: 0),
+                Is.False
+            );
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void GetPendingAndLease_movieSize条件指定時は巨大動画だけ取得する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-size-filter-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string normalMoviePath = Path.Combine(Path.GetTempPath(), $"movie-size-normal-{Guid.NewGuid():N}.mp4");
+        string slowMoviePath = Path.Combine(Path.GetTempPath(), $"movie-size-slow-{Guid.NewGuid():N}.mkv");
+        string owner = "SIZE-FILTER-OWNER";
+        long slowThresholdBytes = 8L * 1024 * 1024 * 1024;
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = normalMoviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(normalMoviePath),
+                        TabIndex = 0,
+                        MovieSizeBytes = 512L * 1024 * 1024,
+                    },
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = slowMoviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(slowMoviePath),
+                        TabIndex = 0,
+                        MovieSizeBytes = slowThresholdBytes + 1,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> onlySlow = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 5,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc,
+                minMovieSizeBytes: slowThresholdBytes,
+                maxAttemptCount: 0
+            );
+
+            Assert.That(onlySlow.Count, Is.EqualTo(1));
+            Assert.That(onlySlow[0].MoviePath, Is.EqualTo(slowMoviePath));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void GetPendingAndLease_maxMovieSize指定時は通常サイズだけ取得する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-size-max-filter-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string normalMoviePath = Path.Combine(Path.GetTempPath(), $"movie-size-max-normal-{Guid.NewGuid():N}.mp4");
+        string slowMoviePath = Path.Combine(Path.GetTempPath(), $"movie-size-max-slow-{Guid.NewGuid():N}.mkv");
+        string owner = "SIZE-MAX-FILTER-OWNER";
+        long maxNormalMovieSizeBytes = 2L * 1024 * 1024 * 1024;
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = normalMoviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(normalMoviePath),
+                        TabIndex = 0,
+                        MovieSizeBytes = 512L * 1024 * 1024,
+                    },
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = slowMoviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(slowMoviePath),
+                        TabIndex = 0,
+                        MovieSizeBytes = 12L * 1024 * 1024 * 1024,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> onlyNormal = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 5,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc,
+                maxMovieSizeBytes: maxNormalMovieSizeBytes
+            );
+
+            Assert.That(onlyNormal.Count, Is.EqualTo(1));
+            Assert.That(onlyNormal[0].MoviePath, Is.EqualTo(normalMoviePath));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
     // テスト後のQueueDBを掃除して、ローカル環境を汚さない。
     private static void TryDeleteFile(string path)
     {

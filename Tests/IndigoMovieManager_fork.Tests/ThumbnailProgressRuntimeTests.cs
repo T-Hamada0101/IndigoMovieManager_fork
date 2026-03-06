@@ -165,6 +165,7 @@ public class ThumbnailProgressRuntimeTests
         {
             SessionCompletedCount = 5,
             SessionTotalCount = 20,
+            CurrentParallelism = 6,
             ConfiguredParallelism = 6,
             ActiveWorkers =
             [
@@ -192,6 +193,11 @@ public class ThumbnailProgressRuntimeTests
         Assert.That(viewState.CreatedQueueText, Is.EqualTo("5 / 20"));
         Assert.That(viewState.DbPendingText, Is.EqualTo("3 / 100"));
         Assert.That(viewState.ThreadText, Is.EqualTo("1 / 6 / 16"));
+        Assert.That(viewState.ControlStateText, Is.EqualTo("通常運転 (6 / 6)"));
+        Assert.That(
+            viewState.LaneGuideText,
+            Is.EqualTo("優先Thread=小動画 / ゆっくり=巨大動画 / Recovery専=再試行・修復")
+        );
         Assert.That(viewState.CpuMeterText, Is.EqualTo("27.5%"));
         Assert.That(viewState.GpuMeterText, Is.EqualTo("N/A"));
         Assert.That(viewState.HddMeterText, Is.EqualTo("N/A"));
@@ -322,6 +328,7 @@ public class ThumbnailProgressRuntimeTests
         ThumbnailProgressViewState viewState = new();
         ThumbnailProgressRuntimeSnapshot snapshot = new()
         {
+            CurrentParallelism = 2,
             ConfiguredParallelism = 4,
             ActiveWorkers =
             [
@@ -346,6 +353,32 @@ public class ThumbnailProgressRuntimeTests
         Assert.That(viewState.WorkerPanels[0].StatusText, Is.EqualTo("待機"));
         Assert.That(viewState.WorkerPanels[3].StatusText, Is.EqualTo("完了"));
         Assert.That(viewState.ThreadText, Is.EqualTo("0 / 4 / 8"));
+        Assert.That(viewState.ControlStateText, Is.EqualTo("待機中"));
+    }
+
+    [Test]
+    public void ViewStateApply_現在並列が設定上限未満なら抑制中を表示する()
+    {
+        ThumbnailProgressViewState viewState = new();
+        ThumbnailProgressRuntimeSnapshot snapshot = new()
+        {
+            CurrentParallelism = 4,
+            ConfiguredParallelism = 8,
+            ActiveWorkers =
+            [
+                new ThumbnailProgressWorkerSnapshot
+                {
+                    WorkerId = 4,
+                    WorkerLabel = "Thread 4",
+                    DisplayMovieName = "movieBusy.mp4",
+                    IsActive = true,
+                },
+            ],
+        };
+
+        viewState.Apply(snapshot, 0, 0, 12, 0, null, null);
+
+        Assert.That(viewState.ControlStateText, Is.EqualTo("並列抑制中 (4 / 8)"));
     }
 
     [Test]

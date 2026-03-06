@@ -951,9 +951,20 @@
                                         <TextBlock Width="160" Text="DB登録待ち / DB総数" />
                                         <TextBlock Text="{Binding ThumbnailProgress.DbPendingText}" />
                                     </DockPanel>
-                                    <DockPanel Margin="0,0,0,8">
-                                        <TextBlock Width="160" Text="現在 / 最大 / 論理コア" />
+                                    <DockPanel Margin="0,0,0,4">
+                                        <TextBlock Width="160" Text="稼働中 / 設定上限 / 論理コア" />
                                         <TextBlock Text="{Binding ThumbnailProgress.ThreadText}" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,4">
+                                        <TextBlock Width="160" Text="現在制御" />
+                                        <TextBlock Text="{Binding ThumbnailProgress.ControlStateText}" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Width="160" Text="レーン説明" />
+                                        <TextBlock
+                                            Width="130"
+                                            Text="{Binding ThumbnailProgress.LaneGuideText}"
+                                            TextWrapping="Wrap" />
                                     </DockPanel>
                                     <DockPanel Margin="0,0,0,8">
                                         <TextBlock Width="160" VerticalAlignment="Center" Text="並列数調整" />

@@ -695,7 +695,7 @@ namespace IndigoMovieManager.Thumbnail
                             "thumbnail",
                             i == 0
                                 ? $"engine selected: id={candidate.EngineId}, panel={runtimeContext.PanelCount}, size={runtimeContext.FileSizeBytes}, avg_mbps={runtimeContext.AverageBitrateMbps:0.###}, emoji={runtimeContext.HasEmojiPath}, manual={runtimeContext.IsManual}"
-                                : $"engine fallback: from={selectedEngine.EngineId}, to={candidate.EngineId}, attempt={i + 1}/{engineOrder.Count}"
+                                : $"engine fallback: category=fallback from={selectedEngine.EngineId}, to={candidate.EngineId}, attempt={i + 1}/{engineOrder.Count}"
                         );
                         if (
                             i > 0
@@ -799,7 +799,7 @@ namespace IndigoMovieManager.Thumbnail
                                 int retryDelayMs = ResolveAutogenRetryDelayMs();
                                 ThumbnailRuntimeLog.Write(
                                     "thumbnail",
-                                    $"engine retry scheduled: id=autogen, attempt={autogenRetryCount}/{maxAutogenRetryCount}, delay_ms={retryDelayMs}, reason='{runtimeResult.ErrorMessage}'"
+                                    $"engine retry scheduled: category=error id=autogen, attempt={autogenRetryCount}/{maxAutogenRetryCount}, delay_ms={retryDelayMs}, reason='{runtimeResult.ErrorMessage}'"
                                 );
                                 if (retryDelayMs > 0)
                                 {
@@ -813,7 +813,7 @@ namespace IndigoMovieManager.Thumbnail
                                 ThumbnailEngineRuntimeStats.RecordAutogenRetrySuccess();
                                 ThumbnailRuntimeLog.Write(
                                     "thumbnail",
-                                    "engine retry success: id=autogen"
+                                    "engine retry success: category=error id=autogen"
                                 );
                             }
                             break;
@@ -835,7 +835,7 @@ namespace IndigoMovieManager.Thumbnail
                         {
                             ThumbnailRuntimeLog.Write(
                                 "thumbnail",
-                                $"engine failed: id={candidate.EngineId}, reason='{runtimeResult.ErrorMessage}', try_next=True"
+                                $"engine failed: category=error id={candidate.EngineId}, reason='{runtimeResult.ErrorMessage}', try_next=True"
                             );
                         }
                     }
@@ -949,7 +949,7 @@ namespace IndigoMovieManager.Thumbnail
                         // 初回の対象拡張子は失敗を握り潰さず、次回のリカバリーレーン処理へ繋げる。
                         ThumbnailRuntimeLog.Write(
                             "thumbnail",
-                            $"failure placeholder skipped: movie='{movieFullPath}', reason='initial-index-repair-target'"
+                            $"failure placeholder skipped: category=fallback movie='{movieFullPath}', reason='initial-index-repair-target'"
                         );
                     }
                     else
@@ -974,7 +974,7 @@ namespace IndigoMovieManager.Thumbnail
                             };
                             ThumbnailRuntimeLog.Write(
                                 "thumbnail",
-                                $"failure placeholder created: kind={placeholderKind}, movie='{movieFullPath}', path='{saveThumbFileName}', detail='{placeholderDetail}'"
+                                $"failure placeholder created: category=fallback kind={placeholderKind}, movie='{movieFullPath}', path='{saveThumbFileName}', detail='{placeholderDetail}'"
                             );
                             result = CreateSuccessResult(saveThumbFileName, durationSec);
                         }

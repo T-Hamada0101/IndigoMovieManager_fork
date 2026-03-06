@@ -269,7 +269,11 @@ WHERE ThumbnailQueue.Status <> @Processing;";
             int takeCount,
             TimeSpan leaseDuration,
             DateTime utcNow,
-            int? preferredTabIndex = null)
+            int? preferredTabIndex = null,
+            int? minAttemptCount = null,
+            int? maxAttemptCount = null,
+            long? minMovieSizeBytes = null,
+            long? maxMovieSizeBytes = null)
         {
             EnsureInitialized();
             if (string.IsNullOrWhiteSpace(ownerInstanceId))
@@ -277,6 +281,38 @@ WHERE ThumbnailQueue.Status <> @Processing;";
                 throw new ArgumentException("ownerInstanceId is required.", nameof(ownerInstanceId));
             }
             if (takeCount < 1) { return []; }
+            if (minAttemptCount.HasValue && minAttemptCount.Value < 0)
+            {
+                minAttemptCount = 0;
+            }
+            if (maxAttemptCount.HasValue && maxAttemptCount.Value < 0)
+            {
+                maxAttemptCount = 0;
+            }
+            if (
+                minAttemptCount.HasValue
+                && maxAttemptCount.HasValue
+                && minAttemptCount.Value > maxAttemptCount.Value
+            )
+            {
+                return [];
+            }
+            if (minMovieSizeBytes.HasValue && minMovieSizeBytes.Value < 0)
+            {
+                minMovieSizeBytes = 0;
+            }
+            if (maxMovieSizeBytes.HasValue && maxMovieSizeBytes.Value < 0)
+            {
+                maxMovieSizeBytes = 0;
+            }
+            if (
+                minMovieSizeBytes.HasValue
+                && maxMovieSizeBytes.HasValue
+                && minMovieSizeBytes.Value > maxMovieSizeBytes.Value
+            )
+            {
+                return [];
+            }
 
             string nowText = ToUtcText(utcNow);
             string leaseUntilText = ToUtcText(utcNow.Add(leaseDuration));
@@ -306,6 +342,10 @@ WHERE MainDbPathHash = @MainDbPathHash
       Status = @Pending
       OR (Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc < @NowUtc)
   )
+  AND (@HasMinAttempt = 0 OR AttemptCount >= @MinAttemptCount)
+  AND (@HasMaxAttempt = 0 OR AttemptCount <= @MaxAttemptCount)
+  AND (@HasMinMovieSize = 0 OR MovieSizeBytes >= @MinMovieSizeBytes)
+  AND (@HasMaxMovieSize = 0 OR MovieSizeBytes <= @MaxMovieSizeBytes)
 ORDER BY
     CASE
         WHEN @HasPreferredTab = 1 AND TabIndex = @PreferredTab THEN 0
@@ -320,6 +360,32 @@ LIMIT @TakeCount;";
                     selectCommand.Parameters.AddWithValue("@TakeCount", takeCount);
                     selectCommand.Parameters.AddWithValue("@HasPreferredTab", preferredTabIndex.HasValue ? 1 : 0);
                     selectCommand.Parameters.AddWithValue("@PreferredTab", preferredTabIndex ?? -1);
+                    selectCommand.Parameters.AddWithValue(
+                        "@HasMinAttempt",
+                        minAttemptCount.HasValue ? 1 : 0
+                    );
+                    selectCommand.Parameters.AddWithValue("@MinAttemptCount", minAttemptCount ?? 0);
+                    selectCommand.Parameters.AddWithValue(
+                        "@HasMaxAttempt",
+                        maxAttemptCount.HasValue ? 1 : 0
+                    );
+                    selectCommand.Parameters.AddWithValue("@MaxAttemptCount", maxAttemptCount ?? 0);
+                    selectCommand.Parameters.AddWithValue(
+                        "@HasMinMovieSize",
+                        minMovieSizeBytes.HasValue ? 1 : 0
+                    );
+                    selectCommand.Parameters.AddWithValue(
+                        "@MinMovieSizeBytes",
+                        minMovieSizeBytes ?? 0L
+                    );
+                    selectCommand.Parameters.AddWithValue(
+                        "@HasMaxMovieSize",
+                        maxMovieSizeBytes.HasValue ? 1 : 0
+                    );
+                    selectCommand.Parameters.AddWithValue(
+                        "@MaxMovieSizeBytes",
+                        maxMovieSizeBytes ?? 0L
+                    );
 
                     using SQLiteDataReader reader = selectCommand.ExecuteReader();
                     while (reader.Read())
@@ -404,6 +470,102 @@ WHERE MainDbPathHash = @MainDbPathHash
             command.Parameters.AddWithValue("@OwnerInstanceId", ownerInstanceId);
             object value = command.ExecuteScalar();
             return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        }
+
+        // 再試行対象が待機中、またはこのインスタンスで実行中なら true を返す。
+        public bool HasRecoveryQueueDemand(string ownerInstanceId)
+        {
+            EnsureInitialized();
+            if (string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                throw new ArgumentException("ownerInstanceId is required.", nameof(ownerInstanceId));
+            }
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT COUNT(1)
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash
+  AND AttemptCount > 0
+  AND (
+      Status = @Pending
+      OR (Status = @Processing AND OwnerInstanceId = @OwnerInstanceId)
+  );";
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
+            command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+            command.Parameters.AddWithValue("@OwnerInstanceId", ownerInstanceId);
+            object value = command.ExecuteScalar();
+            return Convert.ToInt32(value, CultureInfo.InvariantCulture) > 0;
+        }
+
+        // 巨大動画が待機中、またはこのインスタンスで実行中なら true を返す。
+        public bool HasSlowQueueDemand(
+            string ownerInstanceId,
+            long slowLaneMinMovieSizeBytes,
+            int? minAttemptCount = null,
+            int? maxAttemptCount = null)
+        {
+            EnsureInitialized();
+            if (string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                throw new ArgumentException("ownerInstanceId is required.", nameof(ownerInstanceId));
+            }
+
+            long safeSlowLaneMinMovieSizeBytes = slowLaneMinMovieSizeBytes < 0
+                ? 0
+                : slowLaneMinMovieSizeBytes;
+            if (minAttemptCount.HasValue && minAttemptCount.Value < 0)
+            {
+                minAttemptCount = 0;
+            }
+            if (maxAttemptCount.HasValue && maxAttemptCount.Value < 0)
+            {
+                maxAttemptCount = 0;
+            }
+            if (
+                minAttemptCount.HasValue
+                && maxAttemptCount.HasValue
+                && minAttemptCount.Value > maxAttemptCount.Value
+            )
+            {
+                return false;
+            }
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT COUNT(1)
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash
+  AND MovieSizeBytes >= @SlowLaneMinMovieSizeBytes
+  AND (
+      Status = @Pending
+      OR (Status = @Processing AND OwnerInstanceId = @OwnerInstanceId)
+  )
+  AND (@HasMinAttempt = 0 OR AttemptCount >= @MinAttemptCount)
+  AND (@HasMaxAttempt = 0 OR AttemptCount <= @MaxAttemptCount);";
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue(
+                "@SlowLaneMinMovieSizeBytes",
+                safeSlowLaneMinMovieSizeBytes
+            );
+            command.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
+            command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+            command.Parameters.AddWithValue("@OwnerInstanceId", ownerInstanceId);
+            command.Parameters.AddWithValue(
+                "@HasMinAttempt",
+                minAttemptCount.HasValue ? 1 : 0
+            );
+            command.Parameters.AddWithValue("@MinAttemptCount", minAttemptCount ?? 0);
+            command.Parameters.AddWithValue(
+                "@HasMaxAttempt",
+                maxAttemptCount.HasValue ? 1 : 0
+            );
+            command.Parameters.AddWithValue("@MaxAttemptCount", maxAttemptCount ?? 0);
+            object value = command.ExecuteScalar();
+            return Convert.ToInt32(value, CultureInfo.InvariantCulture) > 0;
         }
 
         // 処理結果に応じて状態を更新し、リース所有者が一致する場合のみ反映する。

@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
+using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Watcher;
 
 namespace IndigoMovieManager
@@ -13,6 +14,7 @@ namespace IndigoMovieManager
     {
         private bool _isThumbnailParallelismSyncing;
         private bool _isThumbnailLaneThresholdSyncing;
+        private bool _isThumbnailThreadPresetSyncing;
 
         // 共通設定画面の初期化。
         // 閉じるイベントで設定保存するため、ここでイベントを接続する。
@@ -22,6 +24,8 @@ namespace IndigoMovieManager
             Closing += OnClosing;
             Closed += CommonSettingsWindow_Closed;
             PreviewKeyDown += CommonSettingsWindow_PreviewKeyDown;
+            ThumbnailThreadPresetSelector.SelectionChanged +=
+                ThumbnailThreadPresetSelector_SelectionChanged;
             sliderThumbnailParallelism.ValueChanged += SliderThumbnailParallelism_ValueChanged;
             sliderThumbnailPriorityLaneMaxMb.ValueChanged +=
                 SliderThumbnailPriorityLaneMaxMb_ValueChanged;
@@ -37,6 +41,10 @@ namespace IndigoMovieManager
                 Properties.Settings.Default.FileIndexProvider
             );
             FileIndexProviderSelector.SelectedValue = normalizedProvider;
+            ThumbnailThreadPresetSelector.SelectedValue = ThumbnailThreadPresetResolver.NormalizePresetKey(
+                Properties.Settings.Default.ThumbnailThreadPreset
+            );
+            SyncThumbnailThreadPresetEditingState();
             SyncThumbnailParallelismSliderFromSettings();
             SyncThumbnailLaneThresholdSlidersFromSettings();
         }
@@ -70,6 +78,11 @@ namespace IndigoMovieManager
             Properties.Settings.Default.FileIndexProvider = FileIndexProviderFactory.NormalizeProviderKey(
                 selectedProvider
             );
+            string selectedThumbnailThreadPreset =
+                ThumbnailThreadPresetSelector.SelectedValue as string;
+            Properties.Settings.Default.ThumbnailThreadPreset = ThumbnailThreadPresetResolver.NormalizePresetKey(
+                selectedThumbnailThreadPreset
+            );
             // サムネイル作成の並列数を保存する（2〜24）。
             Properties.Settings.Default.ThumbnailParallelism = (int)sliderThumbnailParallelism.Value;
             // レーン閾値を保存する（優先MB / 低速GB）。
@@ -86,6 +99,8 @@ namespace IndigoMovieManager
         private void CommonSettingsWindow_Closed(object sender, System.EventArgs e)
         {
             PreviewKeyDown -= CommonSettingsWindow_PreviewKeyDown;
+            ThumbnailThreadPresetSelector.SelectionChanged -=
+                ThumbnailThreadPresetSelector_SelectionChanged;
             sliderThumbnailParallelism.ValueChanged -= SliderThumbnailParallelism_ValueChanged;
             sliderThumbnailPriorityLaneMaxMb.ValueChanged -=
                 SliderThumbnailPriorityLaneMaxMb_ValueChanged;
@@ -106,6 +121,8 @@ namespace IndigoMovieManager
                 return;
             }
 
+            EnsureCustomPresetForManualParallelism();
+
             int next = ClampThumbnailParallelism((int)System.Math.Round(e.NewValue));
             if (Properties.Settings.Default.ThumbnailParallelism == next)
             {
@@ -119,6 +136,19 @@ namespace IndigoMovieManager
         private void SettingsDefault_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             string propertyName = e?.PropertyName ?? "";
+            if (
+                string.Equals(
+                    propertyName,
+                    nameof(Properties.Settings.Default.ThumbnailThreadPreset),
+                    System.StringComparison.Ordinal
+                )
+            )
+            {
+                SyncThumbnailThreadPresetSelectorFromSettings();
+                SyncThumbnailThreadPresetEditingState();
+                return;
+            }
+
             if (
                 string.Equals(
                     propertyName,
@@ -180,7 +210,8 @@ namespace IndigoMovieManager
                 return;
             }
 
-            int current = ClampThumbnailParallelism(Properties.Settings.Default.ThumbnailParallelism);
+            int current = ResolveEffectiveThumbnailParallelism();
+            EnsureCustomPresetForManualParallelism();
             int next = ClampThumbnailParallelism(current + delta);
             if (current != next)
             {
@@ -213,6 +244,102 @@ namespace IndigoMovieManager
             {
                 _isThumbnailParallelismSyncing = false;
             }
+        }
+
+        // プリセット選択は設定値へ即時反映し、手動編集可否もここで切り替える。
+        private void ThumbnailThreadPresetSelector_SelectionChanged(
+            object sender,
+            System.Windows.Controls.SelectionChangedEventArgs e
+        )
+        {
+            if (_isThumbnailThreadPresetSyncing)
+            {
+                return;
+            }
+
+            string selectedPreset = ThumbnailThreadPresetSelector.SelectedValue as string;
+            string normalizedPreset = ThumbnailThreadPresetResolver.NormalizePresetKey(selectedPreset);
+            if (Properties.Settings.Default.ThumbnailThreadPreset != normalizedPreset)
+            {
+                Properties.Settings.Default.ThumbnailThreadPreset = normalizedPreset;
+            }
+
+            SyncThumbnailThreadPresetEditingState();
+        }
+
+        // 設定値からコンボボックス選択を同期する。
+        private void SyncThumbnailThreadPresetSelectorFromSettings()
+        {
+            string next = ThumbnailThreadPresetResolver.NormalizePresetKey(
+                Properties.Settings.Default.ThumbnailThreadPreset
+            );
+            string current = ThumbnailThreadPresetSelector.SelectedValue as string;
+            if (string.Equals(current, next, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _isThumbnailThreadPresetSyncing = true;
+            try
+            {
+                ThumbnailThreadPresetSelector.SelectedValue = next;
+            }
+            finally
+            {
+                _isThumbnailThreadPresetSyncing = false;
+            }
+        }
+
+        // custum の時だけ手動並列数を前面に出す。
+        private void SyncThumbnailThreadPresetEditingState()
+        {
+            bool isCustom = string.Equals(
+                ThumbnailThreadPresetResolver.NormalizePresetKey(
+                    Properties.Settings.Default.ThumbnailThreadPreset
+                ),
+                ThumbnailThreadPresetResolver.PresetCustum,
+                System.StringComparison.Ordinal
+            );
+
+            sliderThumbnailParallelism.IsEnabled = isCustom;
+            ThumbnailParallelismText.Opacity = isCustom ? 1.0d : 0.7d;
+            sliderThumbnailParallelism.Opacity = isCustom ? 1.0d : 0.7d;
+            sliderThumbnailParallelism.ToolTip = isCustom
+                ? "custum 選択時は手動並列数を直接編集できます。"
+                : "手動並列数の編集は custum 選択時のみ有効です。";
+        }
+
+        // 手動並列数を変更する操作は、明示的に custum 扱いへ寄せる。
+        private void EnsureCustomPresetForManualParallelism()
+        {
+            string currentPreset = ThumbnailThreadPresetResolver.NormalizePresetKey(
+                Properties.Settings.Default.ThumbnailThreadPreset
+            );
+            if (
+                string.Equals(
+                    currentPreset,
+                    ThumbnailThreadPresetResolver.PresetCustum,
+                    System.StringComparison.Ordinal
+                )
+            )
+            {
+                return;
+            }
+
+            Properties.Settings.Default.ThumbnailThreadPreset =
+                ThumbnailThreadPresetResolver.PresetCustum;
+            SyncThumbnailThreadPresetSelectorFromSettings();
+            SyncThumbnailThreadPresetEditingState();
+        }
+
+        // 現在有効なプリセット込みの実効並列数を返す。
+        private static int ResolveEffectiveThumbnailParallelism()
+        {
+            return ThumbnailThreadPresetResolver.ResolveParallelism(
+                Properties.Settings.Default.ThumbnailThreadPreset,
+                Properties.Settings.Default.ThumbnailParallelism,
+                System.Environment.ProcessorCount
+            );
         }
 
         // 優先レーン上限(MB)の変更を即時設定へ反映する。
@@ -387,7 +514,11 @@ namespace IndigoMovieManager
 
             Properties.Settings.Default.ThumbnailPriorityLaneMaxMb = nextPriority;
             Properties.Settings.Default.ThumbnailSlowLaneMinGb = nextSlow;
+            Properties.Settings.Default.ThumbnailThreadPreset =
+                ThumbnailThreadPresetResolver.PresetCustum;
             Properties.Settings.Default.ThumbnailParallelism = nextParallel;
+            SyncThumbnailThreadPresetSelectorFromSettings();
+            SyncThumbnailThreadPresetEditingState();
             SyncThumbnailParallelismSliderFromSettings();
             SyncThumbnailLaneThresholdSlidersFromSettings();
         }

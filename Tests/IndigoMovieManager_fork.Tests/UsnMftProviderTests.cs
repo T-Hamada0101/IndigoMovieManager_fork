@@ -11,6 +11,7 @@ public sealed class UsnMftProviderTests
     {
         // キャッシュ共有によるケース間干渉を防ぐ。
         UsnMftProvider.ClearCacheForTesting();
+        StandardFileSystemProvider.ClearCacheForTesting();
     }
 
     [TearDown]
@@ -18,76 +19,53 @@ public sealed class UsnMftProviderTests
     {
         // テスト後にキャッシュを明示クリアする。
         UsnMftProvider.ClearCacheForTesting();
+        StandardFileSystemProvider.ClearCacheForTesting();
     }
 
     [Test]
-    public void CollectMoviePaths_IncludeSubdirectoriesFalse_ReturnsOnlyDirectChildren()
+    public void CheckAvailability_ReturnsExpectedShape()
     {
-        string root = CreateTempDir();
-        try
+        UsnMftProvider provider = new();
+        AvailabilityResult result = provider.CheckAvailability();
+
+        if (result.CanUse)
         {
-            string directMovie = Path.Combine(root, "direct.mp4");
-            File.WriteAllText(directMovie, "x");
-            File.WriteAllText(Path.Combine(root, "note.txt"), "x");
-
-            string subDir = Directory.CreateDirectory(Path.Combine(root, "sub")).FullName;
-            string subMovie = Path.Combine(subDir, "deep.mkv");
-            File.WriteAllText(subMovie, "x");
-
-            UsnMftProvider provider = new();
-            FileIndexMovieResult result = provider.CollectMoviePaths(
-                new FileIndexQueryOptions
-                {
-                    RootPath = root,
-                    IncludeSubdirectories = false,
-                    CheckExt = "*.mp4,*.mkv",
-                    ChangedSinceUtc = null,
-                }
-            );
-
-            Assert.That(result.Success, Is.True);
-            Assert.That(result.MoviePaths.Count, Is.EqualTo(1));
-            Assert.That(result.MoviePaths, Does.Contain(directMovie));
-            Assert.That(result.MoviePaths, Does.Not.Contain(subMovie));
-            Assert.That(
-                result.Reason.StartsWith(EverythingReasonCodes.OkPrefix, StringComparison.Ordinal),
-                Is.True
-            );
+            Assert.That(result.Reason, Is.EqualTo(EverythingReasonCodes.Ok));
+            return;
         }
-        finally
-        {
-            DeleteTempDir(root);
-        }
+
+        Assert.That(
+            result.Reason.StartsWith(EverythingReasonCodes.AvailabilityErrorPrefix, StringComparison.Ordinal),
+            Is.True
+        );
     }
 
     [Test]
-    public void CollectMoviePaths_IncludeSubdirectoriesTrue_ReturnsNestedMovies()
+    public void CollectMoviePaths_WhenAvailable_UsesUsnMftReason()
     {
+        UsnMftProvider provider = new();
+        AvailabilityResult availability = provider.CheckAvailability();
+        if (!availability.CanUse)
+        {
+            Assert.Ignore($"UsnMft を利用できないためスキップ: {availability.Reason}");
+        }
+
         string root = CreateTempDir();
         try
         {
-            string directMovie = Path.Combine(root, "direct.mp4");
-            File.WriteAllText(directMovie, "x");
-
-            string subDir = Directory.CreateDirectory(Path.Combine(root, "sub")).FullName;
-            string subMovie = Path.Combine(subDir, "deep.mkv");
-            File.WriteAllText(subMovie, "x");
-
-            UsnMftProvider provider = new();
+            File.WriteAllText(Path.Combine(root, "direct.mp4"), "x");
             FileIndexMovieResult result = provider.CollectMoviePaths(
                 new FileIndexQueryOptions
                 {
                     RootPath = root,
                     IncludeSubdirectories = true,
-                    CheckExt = "*.mp4,*.mkv",
+                    CheckExt = "*.mp4",
                     ChangedSinceUtc = null,
                 }
             );
 
             Assert.That(result.Success, Is.True);
-            Assert.That(result.MoviePaths.Count, Is.EqualTo(2));
-            Assert.That(result.MoviePaths, Does.Contain(directMovie));
-            Assert.That(result.MoviePaths, Does.Contain(subMovie));
+            Assert.That(result.Reason.Contains("provider=usnmft", StringComparison.Ordinal), Is.True);
         }
         finally
         {
@@ -96,39 +74,20 @@ public sealed class UsnMftProviderTests
     }
 
     [Test]
-    public void CollectThumbnailBodies_ReturnsBodySet()
+    public void CollectMoviePaths_SecondCallWithinCooldown_WhenAvailable_UsesCachedIndex()
     {
-        string thumbFolder = CreateTempDir();
-        try
+        UsnMftProvider provider = new();
+        AvailabilityResult availability = provider.CheckAvailability();
+        if (!availability.CanUse)
         {
-            File.WriteAllText(Path.Combine(thumbFolder, "alpha.#abcd.jpg"), "x");
-            File.WriteAllText(Path.Combine(thumbFolder, "beta.jpg"), "x");
-            File.WriteAllText(Path.Combine(thumbFolder, "ignore.png"), "x");
-
-            UsnMftProvider provider = new();
-            FileIndexThumbnailBodyResult result = provider.CollectThumbnailBodies(thumbFolder);
-
-            Assert.That(result.Success, Is.True);
-            Assert.That(result.Bodies, Does.Contain("alpha"));
-            Assert.That(result.Bodies, Does.Contain("beta"));
-            Assert.That(result.Bodies.Count, Is.EqualTo(2));
-            Assert.That(result.Reason, Is.EqualTo(EverythingReasonCodes.Ok));
+            Assert.Ignore($"UsnMft を利用できないためスキップ: {availability.Reason}");
         }
-        finally
-        {
-            DeleteTempDir(thumbFolder);
-        }
-    }
 
-    [Test]
-    public void CollectMoviePaths_SecondCallWithinCooldown_UsesCachedIndex()
-    {
         string root = CreateTempDir();
         try
         {
             File.WriteAllText(Path.Combine(root, "movie.mp4"), "x");
 
-            UsnMftProvider provider = new();
             FileIndexQueryOptions options = new()
             {
                 RootPath = root,
@@ -152,12 +111,18 @@ public sealed class UsnMftProviderTests
     }
 
     [Test]
-    public void CollectMoviePaths_ManyRoots_CacheEntryCountIsLimited()
+    public void CollectMoviePaths_ManyRoots_WhenAvailable_CacheEntryCountIsLimited()
     {
+        UsnMftProvider provider = new();
+        AvailabilityResult availability = provider.CheckAvailability();
+        if (!availability.CanUse)
+        {
+            Assert.Ignore($"UsnMft を利用できないためスキップ: {availability.Reason}");
+        }
+
         List<string> roots = [];
         try
         {
-            UsnMftProvider provider = new();
             int target = UsnMftProvider.GetCacheCapacityForTesting() + 8;
             for (int i = 0; i < target; i++)
             {

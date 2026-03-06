@@ -157,15 +157,15 @@
                     <Label
                         Width="300"
                         Margin="5"
-                        Content="Everything連携モード"
+                        Content="インデックス連携モード"
                         FontSize="14"
-                        ToolTip="OFF:無効 / AUTO:検知できる時だけ利用 / ON:常に利用を試行（失敗時は通常監視へフォールバック）" />
+                        ToolTip="OFF:無効 / AUTO:利用可能な時だけ選択中プロバイダを使う / ON:常に選択中プロバイダを試行（失敗時は通常監視へフォールバック）" />
                     <ComboBox
                         x:Name="EverythingIntegrationMode"
                         Width="180"
                         FontSize="14"
                         SelectedIndex="{Binding EverythingIntegrationMode, Source={x:Static prop:Settings.Default}}"
-                        ToolTip="OFF:無効 / AUTO:検知できる時だけ利用 / ON:常に利用を試行（失敗時は通常監視へフォールバック）">
+                        ToolTip="OFF:無効 / AUTO:利用可能な時だけ選択中プロバイダを使う / ON:常に選択中プロバイダを試行（失敗時は通常監視へフォールバック）">
                         <ComboBoxItem Content="OFF（使わない）" />
                         <ComboBoxItem Content="AUTO（推奨）" />
                         <ComboBoxItem Content="ON（常に試行）" />
@@ -178,15 +178,16 @@
                         Margin="5"
                         Content="検索プロバイダ（再起動後に反映）"
                         FontSize="14"
-                        ToolTip="everything: 既存Everything IPC / usnmft: UsnMft実装。変更を有効化するにはアプリ再起動が必要です。" />
+                        ToolTip="everything: Everything IPC / usnmft: Admin USN/MFT / standardfilesystem: 標準ファイルシステム走査。変更を有効化するにはアプリ再起動が必要です。" />
                     <ComboBox
                         x:Name="FileIndexProviderSelector"
-                        Width="220"
+                        Width="260"
                         FontSize="14"
                         SelectedValuePath="Tag"
                         ToolTip="この設定は起動時に読み込まれます。切替後はアプリを再起動してください。">
-                        <ComboBoxItem Tag="everything" Content="everything（既存）" />
-                        <ComboBoxItem Tag="usnmft" Content="UsnMft（新実装）" />
+                        <ComboBoxItem Tag="everything" Content="Everything" />
+                        <ComboBoxItem Tag="usnmft" Content="usnmft" />
+                        <ComboBoxItem Tag="standardfilesystem" Content="StandardFileSystem" />
                     </ComboBox>
                 </StackPanel>
 
@@ -214,6 +215,28 @@
                         Style="{StaticResource MaterialDesignDiscreteSlider}"
                         TickFrequency="1"
                         Value="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Label
+                        Width="300"
+                        Margin="5"
+                        Content="サムネイル負荷プリセット"
+                        FontSize="14"
+                        ToolTip="slow:低負荷 / normal:標準 / ballence:安定寄り / fast:高速 / max:最大 / custum:手動設定" />
+                    <ComboBox
+                        x:Name="ThumbnailThreadPresetSelector"
+                        Width="220"
+                        FontSize="14"
+                        SelectedValuePath="Tag"
+                        ToolTip="サムネイル作成時の負荷方針を選びます。並列数の解決ロジックは次段で反映します。">
+                        <ComboBoxItem Tag="slow" Content="slow（低負荷）" />
+                        <ComboBoxItem Tag="normal" Content="normal（標準）" />
+                        <ComboBoxItem Tag="ballence" Content="ballence（安定寄り）" />
+                        <ComboBoxItem Tag="fast" Content="fast（高速）" />
+                        <ComboBoxItem Tag="max" Content="max（最大）" />
+                        <ComboBoxItem Tag="custum" Content="custum（手動）" />
+                    </ComboBox>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">

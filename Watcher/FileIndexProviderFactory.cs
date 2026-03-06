@@ -7,6 +7,7 @@ namespace IndigoMovieManager.Watcher
     {
         public const string ProviderEverything = "everything";
         public const string ProviderUsnMft = "usnmft";
+        public const string ProviderStandardFileSystem = "standardfilesystem";
 
         public static IIndexProviderFacade CreateFacade()
         {
@@ -15,7 +16,7 @@ namespace IndigoMovieManager.Watcher
             return new IndexProviderFacade(provider);
         }
 
-        // 文字列揺れを吸収し、everything 以外は usnmft に丸める。
+        // 文字列揺れを吸収し、未知値は everything へ戻す。
         private static string ResolveProviderKey()
         {
             string raw = (Properties.Settings.Default.FileIndexProvider ?? "").Trim();
@@ -25,19 +26,38 @@ namespace IndigoMovieManager.Watcher
         // UI保存時と生成時で同じ正規化ルールを共有する。
         internal static string NormalizeProviderKey(string raw)
         {
-            if (string.Equals(raw?.Trim(), ProviderEverything, StringComparison.OrdinalIgnoreCase))
+            string normalized = (raw ?? "").Trim();
+            if (string.Equals(normalized, ProviderEverything, StringComparison.OrdinalIgnoreCase))
             {
                 return ProviderEverything;
             }
 
-            return ProviderUsnMft;
+            if (string.Equals(normalized, ProviderUsnMft, StringComparison.OrdinalIgnoreCase))
+            {
+                return ProviderUsnMft;
+            }
+
+            if (
+                string.Equals(
+                    normalized,
+                    ProviderStandardFileSystem,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                return ProviderStandardFileSystem;
+            }
+
+            return ProviderEverything;
         }
 
         private static IFileIndexProvider CreateProvider(string providerKey)
         {
             return providerKey switch
             {
+                ProviderEverything => new EverythingProvider(),
                 ProviderUsnMft => new UsnMftProvider(),
+                ProviderStandardFileSystem => new StandardFileSystemProvider(),
                 _ => new EverythingProvider(),
             };
         }

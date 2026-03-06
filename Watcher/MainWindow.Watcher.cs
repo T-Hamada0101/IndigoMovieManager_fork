@@ -548,10 +548,13 @@ namespace IndigoMovieManager
                     scanBackgroundStopwatch.Stop();
                     scanBackgroundElapsedMs = scanBackgroundStopwatch.ElapsedMilliseconds;
                     (string strategyDetailCode, string strategyDetailMessage) =
-                        DescribeEverythingDetail(scanStrategyResult.Detail);
+                        DescribeFileIndexDetail(
+                            scanStrategyResult.ProviderDisplayName,
+                            scanStrategyResult.Detail
+                        );
                     DebugRuntimeLog.Write(
                         "watch-check",
-                        $"scan strategy: folder='{checkFolder}' strategy={scanStrategyResult.Strategy} detail_code={strategyDetailCode} detail_message={strategyDetailMessage} scanned={scanResult.ScannedCount}"
+                        $"scan strategy: folder='{checkFolder}' strategy={scanStrategyResult.Strategy} provider={scanStrategyResult.ProviderKey} detail_code={strategyDetailCode} detail_message={strategyDetailMessage} scanned={scanResult.ScannedCount}"
                     );
 
                     if (
@@ -560,8 +563,8 @@ namespace IndigoMovieManager
                     )
                     {
                         notificationManager.Show(
-                            "Everything連携",
-                            "Everything連携で高速スキャンを実行中です。",
+                            "インデックス連携",
+                            $"{scanStrategyResult.ProviderDisplayName} で高速スキャンを実行中です。",
                             NotificationType.Notification,
                             "ProgressArea"
                         );
@@ -576,8 +579,8 @@ namespace IndigoMovieManager
                     )
                     {
                         notificationManager.Show(
-                            "Everything連携",
-                            $"Everything連携を利用できないため通常監視で継続します。({strategyDetailMessage})",
+                            "インデックス連携",
+                            $"{scanStrategyResult.ProviderDisplayName} を利用できないため通常監視で継続します。({strategyDetailMessage})",
                             NotificationType.Information,
                             "ProgressArea"
                         );
@@ -1598,9 +1601,15 @@ namespace IndigoMovieManager
             return $"{EverythingLastSyncAttrPrefix}{hex[..16]}";
         }
 
-        // Everything連携の詳細コードを、ログとUI通知で同じ解釈に統一する。
-        private static (string Code, string Message) DescribeEverythingDetail(string detail)
+        // プロバイダ詳細コードを、ログとUI通知で同じ解釈に統一する。
+        private static (string Code, string Message) DescribeFileIndexDetail(
+            string providerDisplayName,
+            string detail
+        )
         {
+            string safeProviderName = string.IsNullOrWhiteSpace(providerDisplayName)
+                ? "インデックス連携"
+                : providerDisplayName;
             string safeDetail = string.IsNullOrWhiteSpace(detail) ? "unknown" : detail;
             if (
                 safeDetail.StartsWith(
@@ -1640,7 +1649,7 @@ namespace IndigoMovieManager
                 )
             )
             {
-                return (safeDetail, "設定でEverything連携が無効です");
+                return (safeDetail, "設定でインデックス連携が無効です");
             }
 
             if (
@@ -1650,7 +1659,7 @@ namespace IndigoMovieManager
                 )
             )
             {
-                return (safeDetail, "Everythingが起動していないかIPC接続できません");
+                return (safeDetail, $"{safeProviderName} を利用できません");
             }
             if (
                 safeDetail.Equals(
@@ -1661,7 +1670,7 @@ namespace IndigoMovieManager
             {
                 return (
                     safeDetail,
-                    "AUTO設定中ですがEverythingが見つからないため通常監視で動作します"
+                    $"AUTO設定中ですが {safeProviderName} を使えないため通常監視で動作します"
                 );
             }
 
@@ -1672,7 +1681,10 @@ namespace IndigoMovieManager
                 )
             )
             {
-                return (safeDetail, "検索結果が上限件数に達したため通常監視へ切り替えます");
+                return (
+                    safeDetail,
+                    $"{safeProviderName} の検索結果が上限件数に達したため通常監視へ切り替えます"
+                );
             }
 
             if (
@@ -1690,7 +1702,17 @@ namespace IndigoMovieManager
                 )
             )
             {
-                return (safeDetail, $"Everything連携で例外が発生しました ({safeDetail})");
+                if (
+                    safeDetail.Equals(
+                        $"{EverythingReasonCodes.AvailabilityErrorPrefix}AdminRequired",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                {
+                    return (safeDetail, $"{safeProviderName} は管理者権限が必要です");
+                }
+
+                return (safeDetail, $"{safeProviderName} で例外が発生しました ({safeDetail})");
             }
 
             if (
@@ -1700,7 +1722,7 @@ namespace IndigoMovieManager
                 )
             )
             {
-                return (safeDetail, "Everything連携で候補収集に成功しました");
+                return (safeDetail, $"{safeProviderName} で候補収集に成功しました");
             }
 
             return (safeDetail, $"不明な理由のため通常監視へ切り替えます ({safeDetail})");
@@ -1729,6 +1751,8 @@ namespace IndigoMovieManager
                 return new FolderScanWithStrategyResult(
                     notEligibleFallback,
                     FileIndexStrategies.Filesystem,
+                    _indexProviderFacade.ProviderKey,
+                    _indexProviderFacade.ProviderDisplayName,
                     $"{EverythingReasonCodes.PathNotEligiblePrefix}{eligibilityReason}"
                 );
             }
@@ -1785,6 +1809,8 @@ namespace IndigoMovieManager
                 return new FolderScanWithStrategyResult(
                     new FolderScanResult(scannedCount, newMoviePaths),
                     FileIndexStrategies.Everything,
+                    providerResult.ProviderKey,
+                    providerResult.ProviderDisplayName,
                     reason
                 );
             }
@@ -1798,6 +1824,8 @@ namespace IndigoMovieManager
             return new FolderScanWithStrategyResult(
                 fallbackResult,
                 FileIndexStrategies.Filesystem,
+                providerResult.ProviderKey,
+                providerResult.ProviderDisplayName,
                 reason
             );
         }
@@ -1816,7 +1844,11 @@ namespace IndigoMovieManager
             List<string> newMoviePaths = [];
             int scannedCount = 0;
             DirectoryInfo di = new(checkFolder);
-            EnumerationOptions enumOption = new() { RecurseSubdirectories = sub };
+            EnumerationOptions enumOption = new()
+            {
+                RecurseSubdirectories = sub,
+                IgnoreInaccessible = true,
+            };
 
             string[] filters = checkExt.Split(',', StringSplitOptions.RemoveEmptyEntries);
             foreach (string rawFilter in filters)
@@ -1872,16 +1904,22 @@ namespace IndigoMovieManager
             public FolderScanWithStrategyResult(
                 FolderScanResult scanResult,
                 string strategy,
+                string providerKey,
+                string providerDisplayName,
                 string detail
             )
             {
                 ScanResult = scanResult;
                 Strategy = strategy;
+                ProviderKey = providerKey ?? "";
+                ProviderDisplayName = providerDisplayName ?? ProviderKey;
                 Detail = detail;
             }
 
             public FolderScanResult ScanResult { get; }
             public string Strategy { get; }
+            public string ProviderKey { get; }
+            public string ProviderDisplayName { get; }
             public string Detail { get; }
         }
 

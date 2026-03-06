@@ -11,6 +11,9 @@ namespace IndigoMovieManager.ModelViews
         private string createdQueueText = "0 / 0";
         private string dbPendingText = "0 / 0";
         private string threadText = "0 / 0 / 0";
+        private string controlStateText = "待機中";
+        private string laneGuideText =
+            "優先Thread=小動画 / ゆっくり=巨大動画 / Recovery専=再試行・修復";
         private double cpuMeterValue;
         private string cpuMeterText = "0%";
         private double gpuMeterValue;
@@ -34,6 +37,18 @@ namespace IndigoMovieManager.ModelViews
         {
             get => threadText;
             private set => SetField(ref threadText, value);
+        }
+
+        public string ControlStateText
+        {
+            get => controlStateText;
+            private set => SetField(ref controlStateText, value);
+        }
+
+        public string LaneGuideText
+        {
+            get => laneGuideText;
+            private set => SetField(ref laneGuideText, value);
         }
 
         public double CpuMeterValue
@@ -104,6 +119,8 @@ namespace IndigoMovieManager.ModelViews
                 $"{runtimeSnapshot?.SessionCompletedCount ?? 0} / {runtimeSnapshot?.SessionTotalCount ?? 0}";
             DbPendingText = $"{Math.Max(0, dbPendingCount)} / {Math.Max(0, dbTotalCount)}";
             ThreadText = $"{activeWorkerCount} / {configuredParallelism} / {Math.Max(0, logicalCoreCount)}";
+            ControlStateText = ResolveControlStateText(runtimeSnapshot, activeWorkerCount);
+            LaneGuideText = "優先Thread=小動画 / ゆっくり=巨大動画 / Recovery専=再試行・修復";
 
             SyncQueueLogs(runtimeSnapshot?.EnqueueLogs ?? []);
             SyncWorkerPanels(runtimeSnapshot?.ActiveWorkers ?? [], configuredParallelism);
@@ -335,6 +352,28 @@ namespace IndigoMovieManager.ModelViews
             }
 
             return activeCount;
+        }
+
+        private static string ResolveControlStateText(
+            ThumbnailProgressRuntimeSnapshot runtimeSnapshot,
+            int activeWorkerCount
+        )
+        {
+            int currentParallelism = Math.Max(0, runtimeSnapshot?.CurrentParallelism ?? 0);
+            int configuredParallelism = Math.Max(0, runtimeSnapshot?.ConfiguredParallelism ?? 0);
+            int totalCount = Math.Max(0, runtimeSnapshot?.SessionTotalCount ?? 0);
+
+            if (configuredParallelism < 1 || currentParallelism < 1 || activeWorkerCount < 1)
+            {
+                return configuredParallelism > 0 || totalCount > 0 ? "待機中" : "未開始";
+            }
+
+            if (currentParallelism < configuredParallelism)
+            {
+                return $"並列抑制中 ({currentParallelism} / {configuredParallelism})";
+            }
+
+            return $"通常運転 ({currentParallelism} / {configuredParallelism})";
         }
 
         private static double ClampPercent(double value)

@@ -86,18 +86,24 @@ namespace IndigoMovieManager.Watcher
     {
         public ScanByProviderResult(
             string strategy,
+            string providerKey,
+            string providerDisplayName,
             string reason,
             List<string> moviePaths,
             DateTime? maxObservedChangedUtc
         )
         {
             Strategy = strategy ?? FileIndexStrategies.Filesystem;
+            ProviderKey = providerKey ?? "";
+            ProviderDisplayName = providerDisplayName ?? ProviderKey;
             Reason = reason ?? "";
             MoviePaths = moviePaths ?? [];
             MaxObservedChangedUtc = maxObservedChangedUtc;
         }
 
         public string Strategy { get; }
+        public string ProviderKey { get; }
+        public string ProviderDisplayName { get; }
         public string Reason { get; }
         public List<string> MoviePaths { get; }
         public DateTime? MaxObservedChangedUtc { get; }

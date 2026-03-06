@@ -37,7 +37,7 @@ namespace IndigoMovieManager
             string endStatus = "completed";
             DebugRuntimeLog.TaskStart(
                 nameof(CheckThumbAsync),
-                $"parallel={GetThumbnailQueueMaxParallelism()} poll_ms={ThumbnailQueuePollIntervalMs}"
+                $"parallel={GetThumbnailQueueMaxParallelism()} poll_ms={GetThumbnailQueuePollIntervalMs()} cooldown_ms={GetThumbnailQueueBatchCooldownMs()}"
             );
             try
             {
@@ -53,7 +53,13 @@ namespace IndigoMovieManager
                                 (queueObj, token) => CreateThumbAsync(queueObj, false, token),
                                 maxParallelism: GetThumbnailQueueMaxParallelism(),
                                 maxParallelismResolver: GetThumbnailQueueMaxParallelism,
-                                pollIntervalMs: ThumbnailQueuePollIntervalMs,
+                                dynamicMinimumParallelismResolver:
+                                    GetThumbnailQueueDynamicMinimumParallelism,
+                                allowScaleUpResolver: GetThumbnailQueueAllowDynamicScaleUp,
+                                scaleUpDemandFactorResolver:
+                                    GetThumbnailQueueScaleUpDemandFactor,
+                                pollIntervalMs: GetThumbnailQueuePollIntervalMs(),
+                                batchCooldownMs: GetThumbnailQueueBatchCooldownMs(),
                                 leaseMinutes: 5,
                                 leaseBatchSize: 0,
                                 preferredTabIndexResolver: ResolvePreferredThumbnailTabIndex,

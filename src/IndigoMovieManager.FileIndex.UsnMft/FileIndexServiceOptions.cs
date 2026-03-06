@@ -42,6 +42,9 @@ namespace IndigoMovieManager.FileIndex.UsnMft
             {
                 ".git",
                 "node_modules",
+                "$RECYCLE.BIN",
+                "System Volume Information",
+                "RECYCLER",
             };
         }
     }

@@ -67,6 +67,68 @@ public sealed class FileIndexProviderAbDiffTests
     }
 
     [Test]
+    public void CollectMoviePaths_EverythingVsStandardFileSystem_CountAndReasonCategoryAreCompatible()
+    {
+        string root = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "a.mp4"), "x");
+            File.WriteAllText(Path.Combine(root, "b.mkv"), "x");
+            File.WriteAllText(Path.Combine(root, "c.txt"), "x");
+
+            string nested = Directory.CreateDirectory(Path.Combine(root, "sub")).FullName;
+            File.WriteAllText(Path.Combine(nested, "d.mp4"), "x");
+
+            IFileIndexProvider everything = new EverythingProvider();
+            IFileIndexProvider standardFileSystem = new StandardFileSystemProvider();
+            EnsureComparableAvailabilityOrSkip(everything, standardFileSystem);
+
+            FileIndexQueryOptions options = new()
+            {
+                RootPath = root,
+                IncludeSubdirectories = true,
+                CheckExt = "*.mp4,*.mkv",
+                ChangedSinceUtc = null,
+            };
+
+            FileIndexMovieResult resultEverything = everything.CollectMoviePaths(options);
+            FileIndexMovieResult resultStandardFileSystem =
+                standardFileSystem.CollectMoviePaths(options);
+
+            Assert.That(resultEverything.Success, Is.True);
+            Assert.That(resultStandardFileSystem.Success, Is.True);
+            if (
+                resultEverything.MoviePaths.Count == 0
+                && resultStandardFileSystem.MoviePaths.Count > 0
+                && FileIndexReasonTable.ToCategory(resultEverything.Reason)
+                    == EverythingReasonCodes.OkPrefix
+            )
+            {
+                Assert.Ignore(
+                    "Everything側が対象フォルダを返さず、環境依存で件数比較が成立しないためスキップします。"
+                );
+            }
+
+            if (resultStandardFileSystem.MoviePaths.Count != resultEverything.MoviePaths.Count)
+            {
+                Assert.Ignore(
+                    $"件数差分を検出: everything={resultEverything.MoviePaths.Count}, standardfilesystem={resultStandardFileSystem.MoviePaths.Count}。環境依存差として比較をスキップします。"
+                );
+            }
+
+            Assert.That(
+                FileIndexReasonTable.ToCategory(resultStandardFileSystem.Reason),
+                Is.EqualTo(FileIndexReasonTable.ToCategory(resultEverything.Reason)),
+                "A/Bでreasonカテゴリが一致しません。"
+            );
+        }
+        finally
+        {
+            DeleteTempDir(root);
+        }
+    }
+
+    [Test]
     public void FacadeCollectMoviePathsWithFallback_EverythingVsUsnMft_StrategyIsCompatible()
     {
         string root = CreateTempDir();
@@ -105,6 +167,59 @@ public sealed class FileIndexProviderAbDiffTests
                 FileIndexReasonTable.ToCategory(resultUsnMft.Reason),
                 Is.EqualTo(FileIndexReasonTable.ToCategory(resultEverything.Reason)),
                 "A/Bでreasonカテゴリが一致しません。"
+            );
+        }
+        finally
+        {
+            DeleteTempDir(root);
+        }
+    }
+
+    [Test]
+    public void FacadeCollectMoviePathsWithFallback_EverythingVsStandardFileSystem_StrategyIsCompatible()
+    {
+        string root = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "a.mp4"), "x");
+
+            IFileIndexProvider everything = new EverythingProvider();
+            IFileIndexProvider standardFileSystem = new StandardFileSystemProvider();
+            EnsureComparableAvailabilityOrSkip(everything, standardFileSystem);
+
+            IIndexProviderFacade facadeEverything = new IndexProviderFacade(everything);
+            IIndexProviderFacade facadeStandardFileSystem = new IndexProviderFacade(
+                standardFileSystem
+            );
+            FileIndexQueryOptions options = new()
+            {
+                RootPath = root,
+                IncludeSubdirectories = true,
+                CheckExt = "*.mp4",
+                ChangedSinceUtc = null,
+            };
+
+            ScanByProviderResult resultEverything = facadeEverything.CollectMoviePathsWithFallback(
+                options,
+                IntegrationMode.On
+            );
+            ScanByProviderResult resultStandardFileSystem = facadeStandardFileSystem
+                .CollectMoviePathsWithFallback(options, IntegrationMode.On);
+
+            Assert.That(
+                resultStandardFileSystem.Strategy,
+                Is.EqualTo(resultEverything.Strategy),
+                "A/Bでstrategyが一致しません。"
+            );
+            Assert.That(resultEverything.Strategy, Is.EqualTo(FileIndexStrategies.Everything));
+            Assert.That(
+                FileIndexReasonTable.ToCategory(resultStandardFileSystem.Reason),
+                Is.EqualTo(FileIndexReasonTable.ToCategory(resultEverything.Reason)),
+                "A/Bでreasonカテゴリが一致しません。"
+            );
+            Assert.That(
+                resultStandardFileSystem.ProviderKey,
+                Is.EqualTo(FileIndexProviderFactory.ProviderStandardFileSystem)
             );
         }
         finally

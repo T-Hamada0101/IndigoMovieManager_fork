@@ -28,6 +28,10 @@
 - `ok:provider=usnmft index=cached indexed_at={UtcIso8601} count={N}`
 - `ok:provider=usnmft index=rebuilt indexed_at={UtcIso8601} count={N} since={UtcIso8601}`
 - `ok:provider=usnmft index=cached indexed_at={UtcIso8601} count={N} since={UtcIso8601}`
+- `ok:provider=standardfilesystem index=rebuilt indexed_at={UtcIso8601} count={N}`
+- `ok:provider=standardfilesystem index=cached indexed_at={UtcIso8601} count={N}`
+- `ok:provider=standardfilesystem index=rebuilt indexed_at={UtcIso8601} count={N} since={UtcIso8601}`
+- `ok:provider=standardfilesystem index=cached indexed_at={UtcIso8601} count={N} since={UtcIso8601}`
 - `everything_result_truncated:{NumItems}/{TotalItems}`
 - `everything_query_error:{ExceptionType}`
 

@@ -12,6 +12,9 @@ namespace IndigoMovieManager.Watcher
         private const uint SearchLimit = 1_000_000;
         private const uint ReceiveTimeoutMs = 1500;
 
+        public string ProviderKey => FileIndexProviderFactory.ProviderEverything;
+        public string ProviderDisplayName => "Everything";
+
         public AvailabilityResult CheckAvailability()
         {
             try

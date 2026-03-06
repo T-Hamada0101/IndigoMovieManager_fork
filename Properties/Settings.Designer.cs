@@ -208,6 +208,18 @@ namespace IndigoMovieManager.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("custum")]
+        public string ThumbnailThreadPreset {
+            get {
+                return ((string)(this["ThumbnailThreadPreset"]));
+            }
+            set {
+                this["ThumbnailThreadPreset"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("2")]
         public int ThumbnailParallelFastRecoveryScaleUpStep {
             get {
