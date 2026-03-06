@@ -118,7 +118,19 @@ namespace IndigoMovieManager
 #endif
                             return;
                         }
-                        if (IsZeroByteMovieFile(e.FullPath, out long fileLength))
+                        bool canReadCreatedMovie = TryGetMovieFileLength(
+                            e.FullPath,
+                            out long createdFileLength
+                        );
+                        if (!canReadCreatedMovie)
+                        {
+                            DebugRuntimeLog.Write(
+                                "watch",
+                                $"skip inaccessible movie on created event: '{e.FullPath}'"
+                            );
+                            return;
+                        }
+                        if (createdFileLength <= 0)
                         {
                             TryCreateErrorMarkerForSkippedMovie(
                                 e.FullPath,
@@ -127,14 +139,26 @@ namespace IndigoMovieManager
                             );
                             DebugRuntimeLog.Write(
                                 "watch",
-                                $"skip zero-byte movie on created event: '{e.FullPath}' size={fileLength}"
+                                $"skip zero-byte movie on created event: '{e.FullPath}' size={createdFileLength}"
                             );
                             return;
                         }
 
                         // ----- [2] 基礎情報の取得とDB登録 -----
                         // OpenCV等を通じて尺やサイズを拾い、MovieCoreMapperなどを経由する前提の部分
-                        MovieInfo mvi = await Task.Run(() => new MovieInfo(e.FullPath));
+                        MovieInfo mvi;
+                        try
+                        {
+                            mvi = await Task.Run(() => new MovieInfo(e.FullPath));
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            DebugRuntimeLog.Write(
+                                "watch",
+                                $"skip unauthorized movie on created event: '{e.FullPath}'"
+                            );
+                            return;
+                        }
                         await InsertMovieToMainDbAsync(MainVM.DbInfo.DBFullPath, mvi);
 
                         // [MVVM向けの課題] ここで直接ViewDataの更新メソッドを叩いている
@@ -726,7 +750,27 @@ namespace IndigoMovieManager
                             }
                             IsHit = true;
                         }
-                        if (IsZeroByteMovieFile(movieFullPath, out long zeroFileLength))
+                        // 先に長さ参照を通して「存在しない/読めない」を弾き、MovieInfo生成中のアクセス拒否を防ぐ。
+                        bool canReadMovie = TryGetMovieFileLength(movieFullPath, out long fileLength);
+                        if (!canReadMovie)
+                        {
+                            DebugRuntimeLog.Write(
+                                "watch-check",
+                                $"skip inaccessible movie before queue: '{movieFullPath}'"
+                            );
+                            perFileStopwatch.Stop();
+                            WriteWatchCheckProbeIfNeeded(
+                                movieFullPath,
+                                "skip_inaccessible",
+                                perFileDbLookupMs,
+                                perFileThumbExistsMs,
+                                perFileMovieInfoMs,
+                                perFileFlushWaitMs,
+                                perFileStopwatch.ElapsedMilliseconds
+                            );
+                            continue;
+                        }
+                        if (fileLength <= 0)
                         {
                             TryCreateErrorMarkerForSkippedMovie(
                                 movieFullPath,
@@ -735,7 +779,7 @@ namespace IndigoMovieManager
                             );
                             DebugRuntimeLog.Write(
                                 "watch-check",
-                                $"skip zero-byte movie before queue: '{movieFullPath}' size={zeroFileLength}"
+                                $"skip zero-byte movie before queue: '{movieFullPath}' size={fileLength}"
                             );
                             perFileStopwatch.Stop();
                             WriteWatchCheckProbeIfNeeded(
@@ -769,11 +813,35 @@ namespace IndigoMovieManager
                         if (!existsInDb)
                         {
                             // 動画解析は重いためUIスレッドから外し、固まりを避ける。
-                            stepStopwatch.Restart();
-                            MovieInfo mvi = await Task.Run(() => new MovieInfo(movieFullPath));
-                            stepStopwatch.Stop();
-                            movieInfoTotalMs += stepStopwatch.ElapsedMilliseconds;
-                            perFileMovieInfoMs = stepStopwatch.ElapsedMilliseconds;
+                            // パス単位で握っておくと、権限不足1件でフォルダ全体が中断しない。
+                            MovieInfo mvi;
+                            try
+                            {
+                                stepStopwatch.Restart();
+                                mvi = await Task.Run(() => new MovieInfo(movieFullPath));
+                                stepStopwatch.Stop();
+                                movieInfoTotalMs += stepStopwatch.ElapsedMilliseconds;
+                                perFileMovieInfoMs = stepStopwatch.ElapsedMilliseconds;
+                            }
+                            catch (UnauthorizedAccessException)
+                            {
+                                stepStopwatch.Stop();
+                                DebugRuntimeLog.Write(
+                                    "watch-check",
+                                    $"skip unauthorized movie while building metadata: '{movieFullPath}'"
+                                );
+                                perFileStopwatch.Stop();
+                                WriteWatchCheckProbeIfNeeded(
+                                    movieFullPath,
+                                    "skip_unauthorized",
+                                    perFileDbLookupMs,
+                                    perFileThumbExistsMs,
+                                    perFileMovieInfoMs,
+                                    perFileFlushWaitMs,
+                                    perFileStopwatch.ElapsedMilliseconds
+                                );
+                                continue;
+                            }
 
                             // DB登録はループ内で直列実行せず、一定件数ごとにまとめて流す。
                             pendingNewMovies.Add(
