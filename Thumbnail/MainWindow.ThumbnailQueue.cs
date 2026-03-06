@@ -13,8 +13,10 @@ namespace IndigoMovieManager
     {
         // 同一ジョブの短時間連打を抑止するデバウンス窓（ミリ秒）。
         private const int ThumbnailQueueDebounceWindowMs = 800;
+        private const int ThumbnailQueueDebouncePruneInterval = 256;
         // 直近投入時刻をキー単位で保持し、FileSystemWatcher連打の膨張を抑える。
         private static readonly ConcurrentDictionary<string, DateTime> recentEnqueueByKeyUtc = new();
+        private static int recentEnqueuePruneTick;
         // Consumerが使うQueueDBサービスを現在MainDBに追従させるためのキャッシュ。
         private readonly object queueDbServiceLock = new();
         private readonly object queueDbMaintenanceLock = new();
@@ -122,6 +124,7 @@ namespace IndigoMovieManager
             }
 
             DateTime nowUtc = DateTime.UtcNow;
+            TryPruneRecentEnqueueEntries(nowUtc);
             while (true)
             {
                 if (!recentEnqueueByKeyUtc.TryGetValue(key, out DateTime lastUtc))
@@ -142,6 +145,34 @@ namespace IndigoMovieManager
                 {
                     return true;
                 }
+            }
+        }
+
+        // デバウンス窓を過ぎたキーは不要なので、長時間運転時の辞書肥大化を抑える。
+        private static void TryPruneRecentEnqueueEntries(DateTime nowUtc)
+        {
+            if (
+                Interlocked.Increment(ref recentEnqueuePruneTick) % ThumbnailQueueDebouncePruneInterval
+                != 0
+            )
+            {
+                return;
+            }
+
+            if (recentEnqueueByKeyUtc.IsEmpty)
+            {
+                return;
+            }
+
+            DateTime cutoffUtc = nowUtc.AddMilliseconds(-ThumbnailQueueDebounceWindowMs * 4L);
+            foreach (var pair in recentEnqueueByKeyUtc)
+            {
+                if (pair.Value >= cutoffUtc)
+                {
+                    continue;
+                }
+
+                _ = recentEnqueueByKeyUtc.TryRemove(pair.Key, out _);
             }
         }
 

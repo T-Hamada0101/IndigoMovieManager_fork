@@ -35,7 +35,7 @@ namespace IndigoMovieManager.Thumbnail
         private readonly IVideoIndexRepairService videoIndexRepairService;
 
         // 同一出力ファイルへの同時書き込みを防ぐ。
-        private static readonly ConcurrentDictionary<string, SemaphoreSlim> OutputFileLocks = new(
+        private static readonly ConcurrentDictionary<string, OutputFileLockEntry> OutputFileLocks = new(
             StringComparer.OrdinalIgnoreCase
         );
 
@@ -280,11 +280,10 @@ namespace IndigoMovieManager.Thumbnail
                 movieFullPath,
                 hash
             );
-            var outputLock = OutputFileLocks.GetOrAdd(
+            OutputFileLockEntry outputLock = await AcquireOutputFileLockAsync(
                 saveThumbFileName,
-                _ => new SemaphoreSlim(1, 1)
+                cts
             );
-            await outputLock.WaitAsync(cts);
 
             try
             {
@@ -1031,8 +1030,84 @@ namespace IndigoMovieManager.Thumbnail
             {
                 // 自動修復で作った一時動画は必ず片付ける。
                 TryDeleteFileQuietly(repairedMovieTempPath);
-                outputLock.Release();
+                ReleaseOutputFileLock(saveThumbFileName, outputLock);
             }
+        }
+
+        // 出力先単位の排他を取りつつ、完了後に辞書へ溜め込まないよう参照カウントで寿命管理する。
+        private static async Task<OutputFileLockEntry> AcquireOutputFileLockAsync(
+            string saveThumbFileName,
+            CancellationToken cts
+        )
+        {
+            if (string.IsNullOrWhiteSpace(saveThumbFileName))
+            {
+                throw new ArgumentException(
+                    "saveThumbFileName is required.",
+                    nameof(saveThumbFileName)
+                );
+            }
+
+            while (true)
+            {
+                OutputFileLockEntry entry = OutputFileLocks.GetOrAdd(
+                    saveThumbFileName,
+                    _ => new OutputFileLockEntry()
+                );
+                if (!entry.TryAcquireUserRef())
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await entry.Semaphore.WaitAsync(cts);
+                    return entry;
+                }
+                catch
+                {
+                    ReleaseOutputFileLock(saveThumbFileName, entry, releaseSemaphore: false);
+                    throw;
+                }
+            }
+        }
+
+        // 最終利用者が抜けた時だけ辞書から外して破棄し、長時間運転時の肥大化を防ぐ。
+        private static void ReleaseOutputFileLock(
+            string saveThumbFileName,
+            OutputFileLockEntry entry,
+            bool releaseSemaphore = true
+        )
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            try
+            {
+                if (releaseSemaphore)
+                {
+                    entry.Semaphore.Release();
+                }
+            }
+            finally
+            {
+                int remainingRefCount = entry.ReleaseUserRef();
+                if (remainingRefCount == 1 && entry.TryBeginClose())
+                {
+                    _ = OutputFileLocks.TryRemove(
+                        new KeyValuePair<string, OutputFileLockEntry>(saveThumbFileName, entry)
+                    );
+                    entry.Semaphore.Dispose();
+                }
+            }
+        }
+
+        // テストから静的ロック辞書の残留有無を検査できるようにする。
+        internal static int GetOutputFileLockEntryCountForTest()
+        {
+            return OutputFileLocks.Count;
         }
 
         internal static ThumbnailCreateResult CreateSuccessResult(
@@ -2667,5 +2742,41 @@ namespace IndigoMovieManager.Thumbnail
         public string DrmDetail { get; }
         public bool IsUnsupportedPrecheck { get; }
         public string UnsupportedDetail { get; }
+    }
+
+    internal sealed class OutputFileLockEntry
+    {
+        private int refCount = 1;
+
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        // 辞書から閉鎖中のエントリを掴んだ場合は false を返し、再取得へ回す。
+        public bool TryAcquireUserRef()
+        {
+            while (true)
+            {
+                int current = Volatile.Read(ref refCount);
+                if (current <= 0)
+                {
+                    return false;
+                }
+
+                if (Interlocked.CompareExchange(ref refCount, current + 1, current) == current)
+                {
+                    return true;
+                }
+            }
+        }
+
+        public int ReleaseUserRef()
+        {
+            return Interlocked.Decrement(ref refCount);
+        }
+
+        // 利用者ゼロを確認した瞬間だけ閉鎖状態へ遷移させる。
+        public bool TryBeginClose()
+        {
+            return Interlocked.CompareExchange(ref refCount, -1, 1) == 1;
+        }
     }
 }
