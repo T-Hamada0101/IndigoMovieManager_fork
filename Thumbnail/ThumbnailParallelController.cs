@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Reflection;
 using System.Threading;
 
@@ -22,15 +23,17 @@ namespace IndigoMovieManager.Thumbnail
         // 24並列バッチで単発1件の揺らぎでは下げすぎないよう、8%（概ね2/24件）を閾値にする。
         private const double DownTransientRateThreshold = 0.08d;
         private const double DownFallbackRateThreshold = 0.08d;
-        private const double HighLoadWeightError = 0.30d;
-        private const double HighLoadWeightQueuePressure = 0.30d;
-        private const double HighLoadWeightSlowBacklog = 0.15d;
-        private const double HighLoadWeightRecoveryBacklog = 0.15d;
-        private const double HighLoadWeightThroughputPenalty = 0.10d;
-        private const double HighLoadRecoveryThreshold = 0.45d;
-        private const double HighLoadMildThreshold = 0.55d;
-        private const double HighLoadThreshold = 0.75d;
-        private const double HighLoadDangerThreshold = 0.90d;
+        private const double DefaultHighLoadWeightError = 0.30d;
+        private const double DefaultHighLoadWeightQueuePressure = 0.25d;
+        private const double DefaultHighLoadWeightSlowBacklog = 0.10d;
+        private const double DefaultHighLoadWeightRecoveryBacklog = 0.10d;
+        private const double DefaultHighLoadWeightThroughputPenalty = 0.10d;
+        private const double DefaultHighLoadWeightThermalWarning = 0.20d;
+        private const double DefaultHighLoadWeightUsnMftBusy = 0.10d;
+        private const double DefaultHighLoadRecoveryThreshold = 0.48d;
+        private const double DefaultHighLoadMildThreshold = 0.60d;
+        private const double DefaultHighLoadThreshold = 0.82d;
+        private const double DefaultHighLoadDangerThreshold = 0.95d;
         private static readonly TimeSpan ScaleDownCooldown = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan ScaleUpCooldown = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan DefaultScaleUpCooldownFastAfterDown = TimeSpan.FromSeconds(
@@ -149,17 +152,27 @@ namespace IndigoMovieManager.Thumbnail
                 : default;
             bool shouldScaleDownByHighLoad = highLoadScore.IsMildHighLoad;
             bool isHighLoadRecoveryWindow = !highLoadInput.HasValue || highLoadScore.IsRecoveryWindow;
+            ThumbnailThermalSignalLevel thermalState = highLoadInput.HasValue
+                ? highLoadInput.Value.ThermalState
+                : ThumbnailThermalSignalLevel.Unavailable;
+            bool shouldScaleDownByThermalCritical =
+                thermalState == ThumbnailThermalSignalLevel.Critical;
 
             DateTime nowUtc = DateTime.UtcNow;
             if (
-                (shouldScaleDownByError || shouldScaleDownByHighLoad)
+                (shouldScaleDownByError || shouldScaleDownByHighLoad || shouldScaleDownByThermalCritical)
                 && currentParallelism > dynamicMin
                 && (nowUtc - lastScaleDownUtc) >= ScaleDownCooldown
             )
             {
                 int next = currentParallelism;
                 string scaleDownMode;
-                if (highLoadScore.IsDanger)
+                if (thermalState == ThumbnailThermalSignalLevel.Critical)
+                {
+                    next = dynamicMin;
+                    scaleDownMode = "thermal-critical";
+                }
+                else if (highLoadScore.IsDanger)
                 {
                     next = dynamicMin;
                     scaleDownMode = "high-load-danger";
@@ -197,7 +210,9 @@ namespace IndigoMovieManager.Thumbnail
                             + $"high_load={highLoadScore.HighLoadScore:0.000} "
                             + $"error_score={highLoadScore.ErrorScore:0.000} queue_score={highLoadScore.QueuePressureScore:0.000} "
                             + $"slow_score={highLoadScore.SlowBacklogScore:0.000} recovery_score={highLoadScore.RecoveryBacklogScore:0.000} "
-                            + $"throughput_score={highLoadScore.ThroughputPenaltyScore:0.000}"
+                            + $"throughput_score={highLoadScore.ThroughputPenaltyScore:0.000} "
+                            + $"thermal_score={highLoadScore.ThermalScore:0.000} thermal_state={thermalState} "
+                            + $"usnmft_score={highLoadScore.UsnMftScore:0.000} usnmft_state={highLoadInput?.UsnMftState ?? ThumbnailUsnMftSignalLevel.Unavailable}"
                     );
                     currentParallelism = next;
                     stableWindowCount = 0;
@@ -257,7 +272,9 @@ namespace IndigoMovieManager.Thumbnail
                             + "category=high-load "
                             + $"reason=stable_windows={stableWindowCount}/{stableRequired} active={queueActiveCount} configured={boundedConfigured} "
                             + $"mode={(inFastRecoveryWindow ? "fast-recovery" : "normal")} demand_factor={safeScaleUpDemandFactor} "
-                            + $"high_load={highLoadScore.HighLoadScore:0.000}"
+                            + $"high_load={highLoadScore.HighLoadScore:0.000} "
+                            + $"thermal_score={highLoadScore.ThermalScore:0.000} thermal_state={thermalState} "
+                            + $"usnmft_score={highLoadScore.UsnMftScore:0.000} usnmft_state={highLoadInput?.UsnMftState ?? ThumbnailUsnMftSignalLevel.Unavailable}"
                     );
                     currentParallelism = next;
                     stableWindowCount = 0;
@@ -289,6 +306,72 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailHighLoadInput input
         )
         {
+            double highLoadWeightError = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadWeightError",
+                DefaultHighLoadWeightError,
+                0.0d,
+                1.0d
+            );
+            double highLoadWeightQueuePressure = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadWeightQueuePressure",
+                DefaultHighLoadWeightQueuePressure,
+                0.0d,
+                1.0d
+            );
+            double highLoadWeightSlowBacklog = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadWeightSlowBacklog",
+                DefaultHighLoadWeightSlowBacklog,
+                0.0d,
+                1.0d
+            );
+            double highLoadWeightRecoveryBacklog = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadWeightRecoveryBacklog",
+                DefaultHighLoadWeightRecoveryBacklog,
+                0.0d,
+                1.0d
+            );
+            double highLoadWeightThroughputPenalty = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadWeightThroughputPenalty",
+                DefaultHighLoadWeightThroughputPenalty,
+                0.0d,
+                1.0d
+            );
+            double highLoadWeightThermalWarning = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadWeightThermalWarning",
+                DefaultHighLoadWeightThermalWarning,
+                0.0d,
+                1.0d
+            );
+            double highLoadWeightUsnMftBusy = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadWeightUsnMftBusy",
+                DefaultHighLoadWeightUsnMftBusy,
+                0.0d,
+                1.0d
+            );
+            double highLoadRecoveryThreshold = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadRecoveryThreshold",
+                DefaultHighLoadRecoveryThreshold,
+                0.0d,
+                1.0d
+            );
+            double highLoadMildThreshold = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadMildThreshold",
+                DefaultHighLoadMildThreshold,
+                0.0d,
+                1.0d
+            );
+            double highLoadThreshold = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadThreshold",
+                DefaultHighLoadThreshold,
+                0.0d,
+                1.0d
+            );
+            double highLoadDangerThreshold = ResolveConfiguredDouble(
+                "ThumbnailParallelHighLoadDangerThreshold",
+                DefaultHighLoadDangerThreshold,
+                0.0d,
+                1.0d
+            );
             int safeProcessed = Math.Max(1, input.BatchProcessedCount);
             int safeCurrentParallelism = Math.Max(1, input.CurrentParallelism);
             int safeConfiguredParallelism = Math.Max(1, input.ConfiguredParallelism);
@@ -344,12 +427,35 @@ namespace IndigoMovieManager.Thumbnail
                 throughputPenaltyScore = Clamp01((msPerItem - 1500d) / 4500d);
             }
 
+            double thermalScore = input.ThermalState switch
+            {
+                ThumbnailThermalSignalLevel.Warning => 0.75d,
+                ThumbnailThermalSignalLevel.Critical => 1.0d,
+                _ => 0.0d,
+            };
+            double usnMftScore = 0.0d;
+            if (input.UsnMftState == ThumbnailUsnMftSignalLevel.Busy)
+            {
+                double backlogScore = Clamp01(
+                    (double)Math.Max(0, input.UsnMftJournalBacklogCount)
+                        / Math.Max(8, safeConfiguredParallelism * 2)
+                );
+                double latencyScore = Clamp01(
+                    (Math.Max(0L, input.UsnMftLastScanLatencyMs) - 3000d) / 9000d
+                );
+
+                // UsnMft は可用性異常ではなく、Busy で backlog / latency が伸びた時だけ I/O圧迫の補助シグナルに使う。
+                usnMftScore = Clamp01(0.50d + backlogScore * 0.30d + latencyScore * 0.20d);
+            }
+
             double highLoadScore = Clamp01(
-                errorScore * HighLoadWeightError
-                    + queuePressureScore * HighLoadWeightQueuePressure
-                    + slowBacklogScore * HighLoadWeightSlowBacklog
-                    + recoveryBacklogScore * HighLoadWeightRecoveryBacklog
-                    + throughputPenaltyScore * HighLoadWeightThroughputPenalty
+                errorScore * highLoadWeightError
+                    + queuePressureScore * highLoadWeightQueuePressure
+                    + slowBacklogScore * highLoadWeightSlowBacklog
+                    + recoveryBacklogScore * highLoadWeightRecoveryBacklog
+                    + throughputPenaltyScore * highLoadWeightThroughputPenalty
+                    + thermalScore * highLoadWeightThermalWarning
+                    + usnMftScore * highLoadWeightUsnMftBusy
             );
 
             return new ThumbnailHighLoadScoreResult(
@@ -359,10 +465,14 @@ namespace IndigoMovieManager.Thumbnail
                 slowBacklogScore,
                 recoveryBacklogScore,
                 throughputPenaltyScore,
-                highLoadScore <= HighLoadRecoveryThreshold,
-                highLoadScore >= HighLoadMildThreshold,
-                highLoadScore >= HighLoadThreshold,
-                highLoadScore >= HighLoadDangerThreshold
+                thermalScore,
+                usnMftScore,
+                highLoadScore <= highLoadRecoveryThreshold,
+                highLoadScore >= highLoadMildThreshold,
+                highLoadScore >= highLoadThreshold
+                    || input.ThermalState == ThumbnailThermalSignalLevel.Critical,
+                highLoadScore >= highLoadDangerThreshold
+                    || input.ThermalState == ThumbnailThermalSignalLevel.Critical
             );
         }
 
@@ -434,6 +544,31 @@ namespace IndigoMovieManager.Thumbnail
             return ResolveIntSetting(configuredValue, defaultValue, minValue, maxValue);
         }
 
+        private static double ResolveConfiguredDouble(
+            string settingName,
+            double defaultValue,
+            double minValue,
+            double maxValue
+        )
+        {
+            if (!TryReadUserSettingDouble(settingName, out double configuredValue))
+            {
+                return defaultValue;
+            }
+
+            if (
+                double.IsNaN(configuredValue)
+                || double.IsInfinity(configuredValue)
+                || configuredValue < minValue
+                || configuredValue > maxValue
+            )
+            {
+                return defaultValue;
+            }
+
+            return configuredValue;
+        }
+
         private static int ResolveIntSetting(
             int configuredValue,
             int defaultValue,
@@ -479,6 +614,76 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     value = parsed;
                     return true;
+                }
+            }
+            catch
+            {
+                // 設定取得失敗時は既定値フォールバックで継続する。
+            }
+
+            return false;
+        }
+
+        private static bool TryReadUserSettingDouble(string settingName, out double value)
+        {
+            value = 0d;
+            object settings = GetSettingsDefaultInstance();
+            if (settings == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                PropertyInfo settingProperty = settings
+                    .GetType()
+                    .GetProperty(settingName, BindingFlags.Instance | BindingFlags.Public);
+                if (settingProperty == null)
+                {
+                    return false;
+                }
+
+                object raw = settingProperty.GetValue(settings);
+                if (raw is double doubleValue)
+                {
+                    value = doubleValue;
+                    return true;
+                }
+
+                if (raw is float floatValue)
+                {
+                    value = floatValue;
+                    return true;
+                }
+
+                if (raw != null)
+                {
+                    string text = raw.ToString();
+                    if (
+                        double.TryParse(
+                            text,
+                            NumberStyles.Float | NumberStyles.AllowThousands,
+                            CultureInfo.InvariantCulture,
+                            out double parsedInvariant
+                        )
+                    )
+                    {
+                        value = parsedInvariant;
+                        return true;
+                    }
+
+                    if (
+                        double.TryParse(
+                            text,
+                            NumberStyles.Float | NumberStyles.AllowThousands,
+                            CultureInfo.CurrentCulture,
+                            out double parsedCurrent
+                        )
+                    )
+                    {
+                        value = parsedCurrent;
+                        return true;
+                    }
                 }
             }
             catch
@@ -610,7 +815,11 @@ namespace IndigoMovieManager.Thumbnail
             int configuredParallelism,
             bool hasSlowDemand,
             bool hasRecoveryDemand,
-            ThumbnailEngineRuntimeSnapshot engineSnapshot
+            ThumbnailEngineRuntimeSnapshot engineSnapshot,
+            ThumbnailThermalSignalLevel thermalState = ThumbnailThermalSignalLevel.Unavailable,
+            ThumbnailUsnMftSignalLevel usnMftState = ThumbnailUsnMftSignalLevel.Unavailable,
+            long usnMftLastScanLatencyMs = 0,
+            int usnMftJournalBacklogCount = 0
         )
         {
             BatchProcessedCount = batchProcessedCount;
@@ -622,6 +831,10 @@ namespace IndigoMovieManager.Thumbnail
             HasSlowDemand = hasSlowDemand;
             HasRecoveryDemand = hasRecoveryDemand;
             EngineSnapshot = engineSnapshot;
+            ThermalState = thermalState;
+            UsnMftState = usnMftState;
+            UsnMftLastScanLatencyMs = usnMftLastScanLatencyMs;
+            UsnMftJournalBacklogCount = usnMftJournalBacklogCount;
         }
 
         public int BatchProcessedCount { get; }
@@ -633,6 +846,26 @@ namespace IndigoMovieManager.Thumbnail
         public bool HasSlowDemand { get; }
         public bool HasRecoveryDemand { get; }
         public ThumbnailEngineRuntimeSnapshot EngineSnapshot { get; }
+        public ThumbnailThermalSignalLevel ThermalState { get; }
+        public ThumbnailUsnMftSignalLevel UsnMftState { get; }
+        public long UsnMftLastScanLatencyMs { get; }
+        public int UsnMftJournalBacklogCount { get; }
+    }
+
+    public enum ThumbnailThermalSignalLevel
+    {
+        Normal = 0,
+        Warning = 1,
+        Critical = 2,
+        Unavailable = 3,
+    }
+
+    public enum ThumbnailUsnMftSignalLevel
+    {
+        Ready = 0,
+        Busy = 1,
+        Unavailable = 2,
+        AccessDenied = 3,
     }
 
     public readonly struct ThumbnailHighLoadScoreResult
@@ -644,6 +877,8 @@ namespace IndigoMovieManager.Thumbnail
             double slowBacklogScore,
             double recoveryBacklogScore,
             double throughputPenaltyScore,
+            double thermalScore,
+            double usnMftScore,
             bool isRecoveryWindow,
             bool isMildHighLoad,
             bool isHighLoad,
@@ -656,6 +891,8 @@ namespace IndigoMovieManager.Thumbnail
             SlowBacklogScore = slowBacklogScore;
             RecoveryBacklogScore = recoveryBacklogScore;
             ThroughputPenaltyScore = throughputPenaltyScore;
+            ThermalScore = thermalScore;
+            UsnMftScore = usnMftScore;
             IsRecoveryWindow = isRecoveryWindow;
             IsMildHighLoad = isMildHighLoad;
             IsHighLoad = isHighLoad;
@@ -668,6 +905,8 @@ namespace IndigoMovieManager.Thumbnail
         public double SlowBacklogScore { get; }
         public double RecoveryBacklogScore { get; }
         public double ThroughputPenaltyScore { get; }
+        public double ThermalScore { get; }
+        public double UsnMftScore { get; }
         public bool IsRecoveryWindow { get; }
         public bool IsMildHighLoad { get; }
         public bool IsHighLoad { get; }

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
+using IndigoMovieManager.Thumbnail.Ipc;
 using IndigoMovieManager.Thumbnail.QueueDb;
 using IndigoMovieManager.Thumbnail.QueuePipeline;
 
@@ -49,12 +50,15 @@ namespace IndigoMovieManager.Thumbnail
             int leaseMinutes = 5,
             int leaseBatchSize = 8,
             Func<int?> preferredTabIndexResolver = null,
+            Func<string> thermalDiskIdResolver = null,
+            Func<string> usnMftVolumeResolver = null,
             Action<string> log = null,
             Func<CancellationToken, Task> onQueueDrainedAsync = null,
             Action<int, int, int, int> progressSnapshot = null,
             Action<QueueObj> onJobStarted = null,
             Action<QueueObj> onJobCompleted = null,
             IThumbnailQueueProgressPresenter progressPresenter = null,
+            IAdminTelemetryClient adminTelemetryClient = null,
             CancellationToken cts = default
         )
         {
@@ -81,6 +85,11 @@ namespace IndigoMovieManager.Thumbnail
             Action<string> safeLog = log ?? (_ => { });
             IThumbnailQueueProgressPresenter safeProgressPresenter =
                 progressPresenter ?? NoOpThumbnailQueueProgressPresenter.Instance;
+            IAdminTelemetryClient safeAdminTelemetryClient =
+                adminTelemetryClient ?? NoOpAdminTelemetryClient.Instance;
+            AdminTelemetryRequestContext adminTelemetryRequestContext =
+                AdminTelemetryRuntimeResolver.CreateThumbnailRequestContext(ownerInstanceId);
+            string lastAdminTelemetryLogKey = "";
             int initialConfiguredParallelism = ResolveConfiguredParallelism(
                 maxParallelism,
                 maxParallelismResolver
@@ -648,8 +657,107 @@ namespace IndigoMovieManager.Thumbnail
                                 hasRecoveryDemand: hasRecoveryDemand,
                                 engineSnapshot: engineSnapshot
                             );
+                            string thermalDiskId = ResolveThermalDiskId(thermalDiskIdResolver);
+                            string usnMftVolumeName = ResolveUsnMftVolumeName(
+                                usnMftVolumeResolver
+                            );
+                            AdminTelemetryRuntimeSnapshot adminTelemetryRuntime =
+                                await AdminTelemetryRuntimeResolver.ResolveAsync(
+                                    safeAdminTelemetryClient,
+                                    adminTelemetryRequestContext,
+                                    highLoadInput,
+                                    thermalDiskId,
+                                    usnMftVolumeName,
+                                    cts
+                                ).ConfigureAwait(false);
+                            highLoadInput = new ThumbnailHighLoadInput(
+                                batchProcessedCount: completedCount,
+                                batchFailedCount: failedCount,
+                                batchElapsedMs: batchMs,
+                                queueActiveCount: activeCountAfterBatch,
+                                currentParallelism: GetLiveParallelism(),
+                                configuredParallelism: latestConfiguredParallelism,
+                                hasSlowDemand: hasSlowDemand,
+                                hasRecoveryDemand: hasRecoveryDemand,
+                                engineSnapshot: engineSnapshot,
+                                thermalState: ConvertThermalSignalLevel(
+                                    adminTelemetryRuntime.DiskThermalSnapshot.ThermalState
+                                ),
+                                usnMftState: ConvertUsnMftSignalLevel(
+                                    adminTelemetryRuntime.UsnMftStatus.StatusKind
+                                ),
+                                usnMftLastScanLatencyMs:
+                                    adminTelemetryRuntime.UsnMftStatus.LastScanLatencyMs,
+                                usnMftJournalBacklogCount:
+                                    adminTelemetryRuntime.UsnMftStatus.JournalBacklogCount
+                            );
                             ThumbnailHighLoadScoreResult highLoadScore =
                                 ThumbnailParallelController.CalculateHighLoadScore(highLoadInput);
+                            string adminTelemetryLogKey =
+                                $"{adminTelemetryRuntime.Mode}|{adminTelemetryRuntime.SystemLoadSource}|"
+                                + $"{adminTelemetryRuntime.DiskThermalSource}|"
+                                + $"{adminTelemetryRuntime.UsnMftSource}|"
+                                + $"{adminTelemetryRuntime.FallbackKind}|"
+                                + $"{adminTelemetryRuntime.FallbackReason}|"
+                                + $"{adminTelemetryRuntime.DiskThermalFallbackKind}|"
+                                + $"{adminTelemetryRuntime.DiskThermalFallbackReason}|"
+                                + $"{adminTelemetryRuntime.UsnMftFallbackKind}|"
+                                + $"{adminTelemetryRuntime.UsnMftFallbackReason}|"
+                                + $"{(adminTelemetryRuntime.Capabilities.SupportsSystemLoad ? 1 : 0)}|"
+                                + $"{(adminTelemetryRuntime.Capabilities.SupportsDiskThermal ? 1 : 0)}|"
+                                + $"{(adminTelemetryRuntime.Capabilities.SupportsUsnMftStatus ? 1 : 0)}|"
+                                + $"{adminTelemetryRuntime.UsnMftStatus.StatusKind}";
+                            if (
+                                !string.Equals(
+                                    lastAdminTelemetryLogKey,
+                                    adminTelemetryLogKey,
+                                    StringComparison.Ordinal
+                                )
+                            )
+                            {
+                                string adminMode = adminTelemetryRuntime.Mode switch
+                                {
+                                    AdminTelemetryRuntimeMode.Service => "service",
+                                    _ => "internal-only",
+                                };
+                                string systemLoadSource =
+                                    adminTelemetryRuntime.SystemLoadSource
+                                    == AdminTelemetrySignalSourceKind.Service
+                                        ? "service"
+                                        : "internal";
+                                string diskThermalSource =
+                                    adminTelemetryRuntime.DiskThermalSource
+                                    == AdminTelemetrySignalSourceKind.Service
+                                        ? "service"
+                                        : "internal";
+                                string usnMftSource =
+                                    adminTelemetryRuntime.UsnMftSource
+                                    == AdminTelemetrySignalSourceKind.Service
+                                        ? "service"
+                                        : "internal";
+                                string adminTelemetryCategory =
+                                    adminTelemetryRuntime.Mode == AdminTelemetryRuntimeMode.Service
+                                        ? "info"
+                                        : "fallback";
+                                safeLog(
+                                    $"admin telemetry state: category={adminTelemetryCategory} "
+                                        + $"mode={adminMode} system_load_source={systemLoadSource} "
+                                        + $"disk_thermal_source={diskThermalSource} "
+                                        + $"usnmft_source={usnMftSource} "
+                                        + $"fallback_kind={FormatAdminTelemetryFallbackKind(adminTelemetryRuntime.FallbackKind)} "
+                                        + $"fallback_reason={FormatAdminTelemetryReason(adminTelemetryRuntime.FallbackReason)} "
+                                        + $"disk_thermal_fallback_kind={FormatAdminTelemetryFallbackKind(adminTelemetryRuntime.DiskThermalFallbackKind)} "
+                                        + $"disk_thermal_fallback_reason={FormatAdminTelemetryReason(adminTelemetryRuntime.DiskThermalFallbackReason)} "
+                                        + $"usnmft_fallback_kind={FormatAdminTelemetryFallbackKind(adminTelemetryRuntime.UsnMftFallbackKind)} "
+                                        + $"usnmft_fallback_reason={FormatAdminTelemetryReason(adminTelemetryRuntime.UsnMftFallbackReason)} "
+                                        + $"supports_system_load={(adminTelemetryRuntime.Capabilities.SupportsSystemLoad ? 1 : 0)} "
+                                        + $"supports_disk_thermal={(adminTelemetryRuntime.Capabilities.SupportsDiskThermal ? 1 : 0)} "
+                                        + $"supports_usnmft={(adminTelemetryRuntime.Capabilities.SupportsUsnMftStatus ? 1 : 0)} "
+                                        + $"thermal_state={adminTelemetryRuntime.DiskThermalSnapshot.ThermalState} "
+                                        + $"usnmft_status={adminTelemetryRuntime.UsnMftStatus.StatusKind}"
+                                );
+                                lastAdminTelemetryLogKey = adminTelemetryLogKey;
+                            }
                             int nextParallelism = parallelController.EvaluateNext(
                                 latestConfiguredParallelism,
                                 completedCount,
@@ -668,7 +776,30 @@ namespace IndigoMovieManager.Thumbnail
                                 $"thumb queue summary: gpu={gpuMode}, parallel={GetLiveParallelism()}, "
                                     + $"parallel_next={nextParallelism}, parallel_configured={latestConfiguredParallelism}, "
                                     + $"regular_parallel={regularLaneGate.CurrentLimit}, recovery_lane={(enableRecoveryLane ? 1 : 0)}, recovery_demand={(hasRecoveryDemand ? 1 : 0)}, slow_lane={(enableSlowLane ? 1 : 0)}, slow_demand={(hasSlowDemand ? 1 : 0)}, "
-                                    + $"high_load={highLoadScore.HighLoadScore:0.000}, error_score={highLoadScore.ErrorScore:0.000}, queue_score={highLoadScore.QueuePressureScore:0.000}, slow_score={highLoadScore.SlowBacklogScore:0.000}, recovery_score={highLoadScore.RecoveryBacklogScore:0.000}, throughput_score={highLoadScore.ThroughputPenaltyScore:0.000}, "
+                                    + $"admin_mode={(adminTelemetryRuntime.Mode == AdminTelemetryRuntimeMode.Service ? "service" : "internal-only")}, "
+                                    + $"admin_system_load_source={(adminTelemetryRuntime.SystemLoadSource == AdminTelemetrySignalSourceKind.Service ? "service" : "internal")}, "
+                                    + $"admin_disk_thermal_source={(adminTelemetryRuntime.DiskThermalSource == AdminTelemetrySignalSourceKind.Service ? "service" : "internal")}, "
+                                    + $"admin_usnmft_source={(adminTelemetryRuntime.UsnMftSource == AdminTelemetrySignalSourceKind.Service ? "service" : "internal")}, "
+                                    + $"admin_fallback_kind={FormatAdminTelemetryFallbackKind(adminTelemetryRuntime.FallbackKind)}, "
+                                    + $"admin_fallback_reason={FormatAdminTelemetryReason(adminTelemetryRuntime.FallbackReason)}, "
+                                    + $"admin_disk_thermal_fallback_kind={FormatAdminTelemetryFallbackKind(adminTelemetryRuntime.DiskThermalFallbackKind)}, "
+                                    + $"admin_disk_thermal_fallback_reason={FormatAdminTelemetryReason(adminTelemetryRuntime.DiskThermalFallbackReason)}, "
+                                    + $"admin_usnmft_fallback_kind={FormatAdminTelemetryFallbackKind(adminTelemetryRuntime.UsnMftFallbackKind)}, "
+                                    + $"admin_usnmft_fallback_reason={FormatAdminTelemetryReason(adminTelemetryRuntime.UsnMftFallbackReason)}, "
+                                    + $"admin_supports_system_load={(adminTelemetryRuntime.Capabilities.SupportsSystemLoad ? 1 : 0)}, "
+                                    + $"admin_supports_disk_thermal={(adminTelemetryRuntime.Capabilities.SupportsDiskThermal ? 1 : 0)}, "
+                                    + $"admin_supports_usnmft={(adminTelemetryRuntime.Capabilities.SupportsUsnMftStatus ? 1 : 0)}, "
+                                    + $"thermal_state={adminTelemetryRuntime.DiskThermalSnapshot.ThermalState}, "
+                                    + $"thermal_temp_c={adminTelemetryRuntime.DiskThermalSnapshot.TemperatureCelsius}, "
+                                    + $"usnmft_status={adminTelemetryRuntime.UsnMftStatus.StatusKind}, "
+                                    + $"usnmft_available={(adminTelemetryRuntime.UsnMftStatus.Available ? 1 : 0)}, "
+                                    + $"usnmft_latency_ms={adminTelemetryRuntime.UsnMftStatus.LastScanLatencyMs}, "
+                                    + $"usnmft_backlog={adminTelemetryRuntime.UsnMftStatus.JournalBacklogCount}, "
+                                    + $"system_queue_backlog={adminTelemetryRuntime.SystemLoadSnapshot.QueueBacklogCount}, "
+                                    + $"system_slow_backlog={adminTelemetryRuntime.SystemLoadSnapshot.SlowLaneBacklogCount}, "
+                                    + $"system_recovery_backlog={adminTelemetryRuntime.SystemLoadSnapshot.RecoveryLaneBacklogCount}, "
+                                    + $"system_sample_ms={adminTelemetryRuntime.SystemLoadSnapshot.SampleWindowMs}, "
+                                    + $"high_load={highLoadScore.HighLoadScore:0.000}, error_score={highLoadScore.ErrorScore:0.000}, queue_score={highLoadScore.QueuePressureScore:0.000}, slow_score={highLoadScore.SlowBacklogScore:0.000}, recovery_score={highLoadScore.RecoveryBacklogScore:0.000}, throughput_score={highLoadScore.ThroughputPenaltyScore:0.000}, thermal_score={highLoadScore.ThermalScore:0.000}, usnmft_score={highLoadScore.UsnMftScore:0.000}, "
                                     + $"batch_count={completedCount}, batch_ms={batchMs}, "
                                     + $"batch_failed={failedCount}, recovery_done={recoveryCompletedCount}, recovery_failed={recoveryFailedCount}, "
                                     + $"active={activeCountAfterBatch}, "
@@ -1069,6 +1200,84 @@ namespace IndigoMovieManager.Thumbnail
             {
                 // ログ書き込み失敗時も処理継続を優先する。
             }
+        }
+
+        private static string FormatAdminTelemetryReason(string reason)
+        {
+            return string.IsNullOrWhiteSpace(reason) ? "none" : reason.Replace(' ', '_');
+        }
+
+        private static string FormatAdminTelemetryFallbackKind(
+            AdminTelemetryFallbackKind fallbackKind
+        )
+        {
+            return fallbackKind switch
+            {
+                AdminTelemetryFallbackKind.None => "none",
+                AdminTelemetryFallbackKind.AccessDenied => "access-denied",
+                AdminTelemetryFallbackKind.Timeout => "timeout",
+                _ => "unavailable",
+            };
+        }
+
+        private static string ResolveThermalDiskId(Func<string> thermalDiskIdResolver)
+        {
+            if (thermalDiskIdResolver == null)
+            {
+                return "";
+            }
+
+            try
+            {
+                return thermalDiskIdResolver() ?? "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static string ResolveUsnMftVolumeName(Func<string> usnMftVolumeResolver)
+        {
+            if (usnMftVolumeResolver == null)
+            {
+                return "";
+            }
+
+            try
+            {
+                return usnMftVolumeResolver() ?? "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static ThumbnailThermalSignalLevel ConvertThermalSignalLevel(
+            DiskThermalState thermalState
+        )
+        {
+            return thermalState switch
+            {
+                DiskThermalState.Warning => ThumbnailThermalSignalLevel.Warning,
+                DiskThermalState.Critical => ThumbnailThermalSignalLevel.Critical,
+                DiskThermalState.Normal => ThumbnailThermalSignalLevel.Normal,
+                _ => ThumbnailThermalSignalLevel.Unavailable,
+            };
+        }
+
+        private static ThumbnailUsnMftSignalLevel ConvertUsnMftSignalLevel(
+            UsnMftStatusKind statusKind
+        )
+        {
+            return statusKind switch
+            {
+                UsnMftStatusKind.Ready => ThumbnailUsnMftSignalLevel.Ready,
+                UsnMftStatusKind.Busy => ThumbnailUsnMftSignalLevel.Busy,
+                UsnMftStatusKind.AccessDenied => ThumbnailUsnMftSignalLevel.AccessDenied,
+                _ => ThumbnailUsnMftSignalLevel.Unavailable,
+            };
         }
 
         /// <summary>

@@ -11,6 +11,17 @@ public sealed class ThumbnailParallelControllerTests
     private int originalFastScaleUpCooldownSec;
     private int originalScaleUpBlockedAfterDownSec;
     private int originalFastRecoveryWindowSec;
+    private double originalHighLoadWeightError;
+    private double originalHighLoadWeightQueuePressure;
+    private double originalHighLoadWeightSlowBacklog;
+    private double originalHighLoadWeightRecoveryBacklog;
+    private double originalHighLoadWeightThroughputPenalty;
+    private double originalHighLoadWeightThermalWarning;
+    private double originalHighLoadWeightUsnMftBusy;
+    private double originalHighLoadRecoveryThreshold;
+    private double originalHighLoadMildThreshold;
+    private double originalHighLoadThreshold;
+    private double originalHighLoadDangerThreshold;
 
     [SetUp]
     public void SetUp()
@@ -21,6 +32,20 @@ public sealed class ThumbnailParallelControllerTests
         originalFastScaleUpCooldownSec = settings.ThumbnailParallelFastRecoveryScaleUpCooldownSec;
         originalScaleUpBlockedAfterDownSec = settings.ThumbnailParallelScaleUpBlockedAfterDownSec;
         originalFastRecoveryWindowSec = settings.ThumbnailParallelFastRecoveryWindowSec;
+        originalHighLoadWeightError = settings.ThumbnailParallelHighLoadWeightError;
+        originalHighLoadWeightQueuePressure = settings.ThumbnailParallelHighLoadWeightQueuePressure;
+        originalHighLoadWeightSlowBacklog = settings.ThumbnailParallelHighLoadWeightSlowBacklog;
+        originalHighLoadWeightRecoveryBacklog =
+            settings.ThumbnailParallelHighLoadWeightRecoveryBacklog;
+        originalHighLoadWeightThroughputPenalty =
+            settings.ThumbnailParallelHighLoadWeightThroughputPenalty;
+        originalHighLoadWeightThermalWarning =
+            settings.ThumbnailParallelHighLoadWeightThermalWarning;
+        originalHighLoadWeightUsnMftBusy = settings.ThumbnailParallelHighLoadWeightUsnMftBusy;
+        originalHighLoadRecoveryThreshold = settings.ThumbnailParallelHighLoadRecoveryThreshold;
+        originalHighLoadMildThreshold = settings.ThumbnailParallelHighLoadMildThreshold;
+        originalHighLoadThreshold = settings.ThumbnailParallelHighLoadThreshold;
+        originalHighLoadDangerThreshold = settings.ThumbnailParallelHighLoadDangerThreshold;
 
         // テストは既定値固定で実行し、ローカル user.config の影響を受けないようにする。
         settings.ThumbnailParallelFastRecoveryScaleUpStep = 2;
@@ -28,6 +53,17 @@ public sealed class ThumbnailParallelControllerTests
         settings.ThumbnailParallelFastRecoveryScaleUpCooldownSec = 12;
         settings.ThumbnailParallelScaleUpBlockedAfterDownSec = 15;
         settings.ThumbnailParallelFastRecoveryWindowSec = 180;
+        settings.ThumbnailParallelHighLoadWeightError = 0.30d;
+        settings.ThumbnailParallelHighLoadWeightQueuePressure = 0.25d;
+        settings.ThumbnailParallelHighLoadWeightSlowBacklog = 0.10d;
+        settings.ThumbnailParallelHighLoadWeightRecoveryBacklog = 0.10d;
+        settings.ThumbnailParallelHighLoadWeightThroughputPenalty = 0.10d;
+        settings.ThumbnailParallelHighLoadWeightThermalWarning = 0.20d;
+        settings.ThumbnailParallelHighLoadWeightUsnMftBusy = 0.10d;
+        settings.ThumbnailParallelHighLoadRecoveryThreshold = 0.48d;
+        settings.ThumbnailParallelHighLoadMildThreshold = 0.60d;
+        settings.ThumbnailParallelHighLoadThreshold = 0.82d;
+        settings.ThumbnailParallelHighLoadDangerThreshold = 0.95d;
     }
 
     [TearDown]
@@ -39,6 +75,22 @@ public sealed class ThumbnailParallelControllerTests
         settings.ThumbnailParallelFastRecoveryScaleUpCooldownSec = originalFastScaleUpCooldownSec;
         settings.ThumbnailParallelScaleUpBlockedAfterDownSec = originalScaleUpBlockedAfterDownSec;
         settings.ThumbnailParallelFastRecoveryWindowSec = originalFastRecoveryWindowSec;
+        settings.ThumbnailParallelHighLoadWeightError = originalHighLoadWeightError;
+        settings.ThumbnailParallelHighLoadWeightQueuePressure =
+            originalHighLoadWeightQueuePressure;
+        settings.ThumbnailParallelHighLoadWeightSlowBacklog = originalHighLoadWeightSlowBacklog;
+        settings.ThumbnailParallelHighLoadWeightRecoveryBacklog =
+            originalHighLoadWeightRecoveryBacklog;
+        settings.ThumbnailParallelHighLoadWeightThroughputPenalty =
+            originalHighLoadWeightThroughputPenalty;
+        settings.ThumbnailParallelHighLoadWeightThermalWarning =
+            originalHighLoadWeightThermalWarning;
+        settings.ThumbnailParallelHighLoadWeightUsnMftBusy = originalHighLoadWeightUsnMftBusy;
+        settings.ThumbnailParallelHighLoadRecoveryThreshold =
+            originalHighLoadRecoveryThreshold;
+        settings.ThumbnailParallelHighLoadMildThreshold = originalHighLoadMildThreshold;
+        settings.ThumbnailParallelHighLoadThreshold = originalHighLoadThreshold;
+        settings.ThumbnailParallelHighLoadDangerThreshold = originalHighLoadDangerThreshold;
     }
 
     [Test]
@@ -221,11 +273,15 @@ public sealed class ThumbnailParallelControllerTests
                 configuredParallelism: 10,
                 hasSlowDemand: true,
                 hasRecoveryDemand: true,
-                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(2, 0, 2)
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(2, 0, 2),
+                thermalState: ThumbnailThermalSignalLevel.Warning,
+                usnMftState: ThumbnailUsnMftSignalLevel.Busy,
+                usnMftLastScanLatencyMs: 6400,
+                usnMftJournalBacklogCount: 18
             )
         );
 
-        Assert.That(score.HighLoadScore, Is.GreaterThanOrEqualTo(0.90d));
+        Assert.That(score.HighLoadScore, Is.GreaterThanOrEqualTo(0.95d));
         Assert.That(score.IsDanger, Is.True);
     }
 
@@ -288,23 +344,154 @@ public sealed class ThumbnailParallelControllerTests
     }
 
     [Test]
+    public void CalculateHighLoadScore_温度警告があるとスコアを加点する()
+    {
+        ThumbnailHighLoadScoreResult normal = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 10,
+                batchFailedCount: 0,
+                batchElapsedMs: 5000,
+                queueActiveCount: 4,
+                currentParallelism: 4,
+                configuredParallelism: 4,
+                hasSlowDemand: false,
+                hasRecoveryDemand: false,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+                thermalState: ThumbnailThermalSignalLevel.Normal
+            )
+        );
+        ThumbnailHighLoadScoreResult warning = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 10,
+                batchFailedCount: 0,
+                batchElapsedMs: 5000,
+                queueActiveCount: 4,
+                currentParallelism: 4,
+                configuredParallelism: 4,
+                hasSlowDemand: false,
+                hasRecoveryDemand: false,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+                thermalState: ThumbnailThermalSignalLevel.Warning
+            )
+        );
+
+        Assert.That(warning.ThermalScore, Is.GreaterThan(0.0d));
+        Assert.That(warning.HighLoadScore, Is.GreaterThan(normal.HighLoadScore));
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_UsnMftBusyがあるとスコアを加点する()
+    {
+        ThumbnailHighLoadScoreResult normal = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 10,
+                batchFailedCount: 0,
+                batchElapsedMs: 5000,
+                queueActiveCount: 4,
+                currentParallelism: 4,
+                configuredParallelism: 4,
+                hasSlowDemand: false,
+                hasRecoveryDemand: false,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+                usnMftState: ThumbnailUsnMftSignalLevel.Ready,
+                usnMftLastScanLatencyMs: 1200,
+                usnMftJournalBacklogCount: 0
+            )
+        );
+        ThumbnailHighLoadScoreResult busy = ThumbnailParallelController.CalculateHighLoadScore(
+            new ThumbnailHighLoadInput(
+                batchProcessedCount: 10,
+                batchFailedCount: 0,
+                batchElapsedMs: 5000,
+                queueActiveCount: 4,
+                currentParallelism: 4,
+                configuredParallelism: 4,
+                hasSlowDemand: false,
+                hasRecoveryDemand: false,
+                engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+                usnMftState: ThumbnailUsnMftSignalLevel.Busy,
+                usnMftLastScanLatencyMs: 6400,
+                usnMftJournalBacklogCount: 18
+            )
+        );
+
+        Assert.That(busy.UsnMftScore, Is.GreaterThan(0.0d));
+        Assert.That(busy.HighLoadScore, Is.GreaterThan(normal.HighLoadScore));
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_UsnMftAccessDeniedは高負荷へ混ぜない()
+    {
+        ThumbnailHighLoadScoreResult accessDenied =
+            ThumbnailParallelController.CalculateHighLoadScore(
+                new ThumbnailHighLoadInput(
+                    batchProcessedCount: 10,
+                    batchFailedCount: 0,
+                    batchElapsedMs: 5000,
+                    queueActiveCount: 4,
+                    currentParallelism: 4,
+                    configuredParallelism: 4,
+                    hasSlowDemand: false,
+                    hasRecoveryDemand: false,
+                    engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+                    usnMftState: ThumbnailUsnMftSignalLevel.AccessDenied,
+                    usnMftLastScanLatencyMs: 6400,
+                    usnMftJournalBacklogCount: 18
+                )
+            );
+
+        Assert.That(accessDenied.UsnMftScore, Is.EqualTo(0.0d));
+    }
+
+    [Test]
+    public void CalculateHighLoadScore_軽度閾値設定を上げると判定へ反映する()
+    {
+        var settings = IndigoMovieManager.Properties.Settings.Default;
+        ThumbnailHighLoadInput input = new(
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            batchElapsedMs: 22000,
+            queueActiveCount: 20,
+            currentParallelism: 6,
+            configuredParallelism: 8,
+            hasSlowDemand: true,
+            hasRecoveryDemand: true,
+            engineSnapshot: new ThumbnailEngineRuntimeSnapshot(0, 0, 0),
+            thermalState: ThumbnailThermalSignalLevel.Warning,
+            usnMftState: ThumbnailUsnMftSignalLevel.Busy,
+            usnMftLastScanLatencyMs: 6400,
+            usnMftJournalBacklogCount: 18
+        );
+
+        ThumbnailHighLoadScoreResult defaultThresholdScore =
+            ThumbnailParallelController.CalculateHighLoadScore(input);
+
+        settings.ThumbnailParallelHighLoadMildThreshold = 0.70d;
+        ThumbnailHighLoadScoreResult raisedThresholdScore =
+            ThumbnailParallelController.CalculateHighLoadScore(input);
+
+        Assert.That(defaultThresholdScore.IsMildHighLoad, Is.True);
+        Assert.That(raisedThresholdScore.IsMildHighLoad, Is.False);
+    }
+
+    [Test]
     public void CalculateHighLoadScore_中立帯では復帰窓にならない()
     {
         ThumbnailHighLoadScoreResult score = ThumbnailParallelController.CalculateHighLoadScore(
             new ThumbnailHighLoadInput(
                 batchProcessedCount: 10,
                 batchFailedCount: 1,
-                batchElapsedMs: 33000,
+                batchElapsedMs: 55000,
                 queueActiveCount: 10,
                 currentParallelism: 4,
                 configuredParallelism: 8,
                 hasSlowDemand: true,
-                hasRecoveryDemand: false,
+                hasRecoveryDemand: true,
                 engineSnapshot: new ThumbnailEngineRuntimeSnapshot(1, 0, 0)
             )
         );
 
-        Assert.That(score.HighLoadScore, Is.GreaterThan(0.45d).And.LessThan(0.55d));
+        Assert.That(score.HighLoadScore, Is.GreaterThan(0.48d).And.LessThan(0.60d));
         Assert.That(score.IsRecoveryWindow, Is.False);
         Assert.That(score.IsMildHighLoad, Is.False);
     }
@@ -324,7 +511,11 @@ public sealed class ThumbnailParallelControllerTests
             configuredParallelism: 8,
             hasSlowDemand: true,
             hasRecoveryDemand: true,
-            engineSnapshot: emptySnapshot
+            engineSnapshot: emptySnapshot,
+            thermalState: ThumbnailThermalSignalLevel.Warning,
+            usnMftState: ThumbnailUsnMftSignalLevel.Busy,
+            usnMftLastScanLatencyMs: 6400,
+            usnMftJournalBacklogCount: 18
         );
 
         int next = controller.EvaluateNext(
@@ -358,7 +549,11 @@ public sealed class ThumbnailParallelControllerTests
             configuredParallelism: 10,
             hasSlowDemand: true,
             hasRecoveryDemand: true,
-            engineSnapshot: heavySnapshot
+            engineSnapshot: heavySnapshot,
+            thermalState: ThumbnailThermalSignalLevel.Warning,
+            usnMftState: ThumbnailUsnMftSignalLevel.Busy,
+            usnMftLastScanLatencyMs: 6400,
+            usnMftJournalBacklogCount: 18
         );
 
         int next = controller.EvaluateNext(
@@ -378,6 +573,42 @@ public sealed class ThumbnailParallelControllerTests
     }
 
     [Test]
+    public void EvaluateNext_温度危険域では即時に動的下限まで落とす()
+    {
+        ThumbnailParallelController controller = new(initialParallelism: 8);
+        ThumbnailEngineRuntimeSnapshot snapshot = new(0, 0, 0);
+        List<string> logs = [];
+        ThumbnailHighLoadInput thermalCriticalInput = new(
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            batchElapsedMs: 5000,
+            queueActiveCount: 2,
+            currentParallelism: 8,
+            configuredParallelism: 10,
+            hasSlowDemand: false,
+            hasRecoveryDemand: false,
+            engineSnapshot: snapshot,
+            thermalState: ThumbnailThermalSignalLevel.Critical
+        );
+
+        int next = controller.EvaluateNext(
+            configuredParallelism: 10,
+            batchProcessedCount: 10,
+            batchFailedCount: 0,
+            queueActiveCount: 2,
+            engineSnapshot: snapshot,
+            log: logs.Add,
+            dynamicMinimumParallelism: 4,
+            allowScaleUp: true,
+            scaleUpDemandFactor: 2,
+            highLoadInput: thermalCriticalInput
+        );
+
+        Assert.That(next, Is.EqualTo(4));
+        Assert.That(logs.Any(x => x.Contains("mode=thermal-critical")), Is.True);
+    }
+
+    [Test]
     public void EvaluateNext_中立帯高負荷では安定扱いせず復帰しない()
     {
         ThumbnailParallelController controller = new(initialParallelism: 4);
@@ -385,12 +616,12 @@ public sealed class ThumbnailParallelControllerTests
         ThumbnailHighLoadInput neutralHighLoadInput = new(
             batchProcessedCount: 10,
             batchFailedCount: 1,
-            batchElapsedMs: 33000,
+            batchElapsedMs: 55000,
             queueActiveCount: 100,
             currentParallelism: 4,
             configuredParallelism: 8,
             hasSlowDemand: true,
-            hasRecoveryDemand: false,
+            hasRecoveryDemand: true,
             engineSnapshot: snapshot
         );
 

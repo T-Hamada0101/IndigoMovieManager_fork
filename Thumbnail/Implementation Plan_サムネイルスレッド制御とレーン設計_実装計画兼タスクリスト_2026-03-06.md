@@ -1,7 +1,7 @@
 # Implementation Plan + tasklist（サムネイルスレッド制御とレーン設計, 2026-03-06）
 
 ## 0. 目的
-- `slow / normal / ballence / fast / max / custum` のプリセットを導入し、サムネイル作成の負荷感をユーザー設定として明確化する。
+- `idle / slow / normal / ballence / fast / max / custum` のプリセットを導入し、サムネイル作成の負荷感をユーザー設定として明確化する。
 - 通常レーン、低速レーン、リカバリーレーンの責務を維持したまま、低負荷モードと速度重視モードを両立する。
 - 既存の動的並列制御は維持しつつ、プリセット起点の初期解決とUI表現を追加する。
 
@@ -20,7 +20,9 @@
 ## 2. 変更対象
 - `CommonSettingsWindow.xaml`
 - `CommonSettingsWindow.xaml.cs`
+- `MainWindow.xaml`
 - `MainWindow.xaml.cs`
+- `Thumbnail/ThumbnailProgressRuntime.cs`
 - `Thumbnail/ThumbnailParallelController.cs`
 - `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs`
 - `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailLaneClassifier.cs`
@@ -39,6 +41,7 @@
 ### 3.1 新規設定値
 - `ThumbnailThreadPreset`
   - 値:
+    - `idle`
     - `slow`
     - `normal`
     - `ballence`
@@ -50,6 +53,9 @@
 - 既存の `ThumbnailPriorityLaneMaxMb` / `ThumbnailSlowLaneMinGb` は継続利用する。
 
 ### 3.2 プリセット解決
+- `idle`
+  - `1スレッド相当`
+  - 実行時は最小干渉モードフラグを併用する。
 - `slow`
   - `1スレッド相当`
   - 実行時は低負荷モードフラグを併用する。
@@ -65,14 +71,22 @@
   - 既存の `ThumbnailParallelism` をそのまま使う。
 
 ### 3.3 低負荷モード
-- `slow` 時は低負荷モードとして扱う。
+- `slow` と `idle` を低負荷系モードとして扱う。
 - 実装候補:
   - ポーリング待機を長めにする。
   - レーン処理間に小さな待機を入れる。
   - 必要なら優先度を下げる。
 - 初期実装:
-  - キューのポーリング間隔を通常の2倍にする。
-  - バッチ完了後に `750ms` のクールダウンを入れる。
+  - `slow`:
+    - キューのポーリング間隔を通常の2倍にする。
+    - バッチ完了後に `750ms` のクールダウンを入れる。
+    - ワーカー優先度は `BelowNormal` 候補。
+  - `idle`:
+    - 実効並列1。
+    - プレビュー停止または遅延。
+    - UI更新を `250ms-500ms` 以上で間引く。
+    - 保存並列1。
+    - ワーカー優先度は `Idle` 候補。
 - 注意:
   - リカバリーや巨大動画の飢餓を作らない範囲で行う。
 
@@ -125,6 +139,8 @@
   - エンジン結果と全体負荷情報を統合して並列度を決める。
 - 管理者権限サービス:
   - Disk温度、UsnMft、将来のSMART/センサー系情報を収集する。
+  - サービス能力を返す。
+  - 並列度の最終決定やUI通知文言は持たない。
 
 ### 3.7 サービス化前提
 - 第1段階:
@@ -133,6 +149,7 @@
   - サービス経由でDisk温度やUsnMft由来の追加シグナルを受け取れるようにする。
 - 第3段階:
   - 本体、エンジン、サービスの責務をIPCで疎結合化する。
+- 管理者権限サービスは `AdminTelemetry` 単一ホストを前提とし、`UsnMft Status` と `Disk Thermal` をモジュールとして同居させる。
 
 ### 3.8 IPC設計方針
 - オーケストレータ中心でDTOを定義し、エンジンと管理者権限サービスはそのDTOを介して情報を渡す。
@@ -142,8 +159,12 @@
   - `DiskThermalSnapshotDto`
   - `UsnMftStatusDto`
   - `ThrottleDecisionDto`
-- IPCは将来差し替え可能とし、初期段階ではプロセス内モックやインターフェースで代替できるようにする。
+- 第1採用のIPC方式は `named pipe + length-prefixed UTF-8 JSON` とする。
+- オーケストレータをクライアント、外部化エンジンと管理者権限サービスをサーバーに固定する。
+- 管理者権限サービスpipeは `IndigoMovieManager.AdminTelemetry.v1`、エンジンpipeは `IndigoMovieManager.Thumbnail.Engine.v1.{instanceId}` に固定する。
+- 接続固定値は `ThumbnailIpcTransportPolicy` へ集約し、初期段階ではプロセス内モックやインターフェースで代替できるようにする。
 - サービス未接続時は `SystemLoadSnapshotDto` を内部メトリクス由来で補完する。
+- `AdminTelemetryRuntimeResolver` を通して、未接続/未対応/失敗時は `internal-only` スナップショットへ自動移行する。
 - `Watcher` 側の `FileIndexProvider` 系IPC/Facadeとは責務を分け、再利用可能な名前付きパイプ基盤や権限サービス基盤のみを共通化する。
 
 ### 3.9 DTO実装方針
@@ -159,14 +180,20 @@
 - 縮退判定は、単発ピークではなく短時間の移動平均で行う。
 - 復帰判定は、縮退判定より厳しくしてヒステリシスを持たせる。
 - `ThermalState == Critical` は強制縮退、`Warning` は合成スコア加点とする。
+- `UsnMftStatusKind == Busy` は `JournalBacklogCount` と `LastScanLatencyMs` を使って I/O圧迫の補助シグナルへ変換する。
 - `Io` と `Timeout` の失敗連続は、I/O系高負荷の兆候として扱う。
 - `FileIndexProvider` の `availability_error:AdminRequired` などは、サムネイル高負荷とは別軸で扱い、合成スコアへは直接加算しない。
+- 係数と閾値は `Settings` で上書き可能にし、実測再調整をノーコードで回せるようにする。
 
 ## 4. UI方針
 - 設定画面にプリセット選択UIを追加する。
+- サムネイル進捗タブ上部にも、同じプリセットを切り替えられるモード選択ドロップを追加する。
+- 進捗タブのモード選択ドロップは、設定画面へ潜らずに一時変更できる即時操作導線として扱う。
+- 進捗タブで変更した値は `Properties.Settings` へ即時保存し、`ThumbnailProgressRuntime` の表示文言と実行中の制御状態へ同一値を反映する。
 - `custum` 時だけ手動並列スライダーを主設定として扱う。
-- `slow` の説明文に「バックグラウンドでゆっくり」、`fast` に「論理コア半分利用」を表示する。
+- `idle` の説明文に「最小干渉」、`slow` に「バックグラウンドでゆっくり」、`fast` に「論理コア半分利用」を表示する。
 - 現在の解決並列数が、プリセット値か手動値か分かる表示にする。
+- 進捗タブでは、現在選択中プリセットと、動的縮退後の実効並列を併記して、表示値と実行値の乖離を見分けられるようにする。
 
 ## 5. 移行方針
 - 既存ユーザーに `ThumbnailParallelism` の保存値がある場合、初回は `custum` とみなす。
@@ -175,6 +202,7 @@
 
 ## 6. テスト観点
 - `slow` 選択時に低負荷モードとして解釈されること。
+- `idle` 選択時に最小干渉モードとして解釈されること。
 - `fast` 選択時に論理コア半分へ解決されること。
 - `custum` 選択時に手動並列数が優先されること。
 - リカバリ動画がある時だけリカバリ枠予約が有効になること。
@@ -189,6 +217,8 @@
 - 権限不足時にエラー停止せず、`internal-only` 判定へ自動移行できること。
 - `HighLoadScore` の境界値で縮退と復帰が暴れないこと。
 - `ThermalState == Critical` で即時縮退すること。
+- `UsnMftStatusKind == Busy` で backlog / latency が高い時に高負荷スコアへ加点されること。
+- `UsnMftStatusKind == Unavailable / AccessDenied` が高負荷スコアへ直接加点されないこと。
 - `Io` / `Timeout` 連続失敗で I/O系縮退へ寄ること。
 - DTOの時刻差により古いスナップショットを誤採用しないこと。
 - `CommonSettingsWindow` の `FileIndexProvider` 3択UIを壊さずにサムネイルUIを追加できること。
@@ -201,22 +231,28 @@
 | THR-001A | 完了 | 共有設定画面の既存変更を棚卸しする | `CommonSettingsWindow.xaml`, `CommonSettingsWindow.xaml.cs` | FileIndexProvider 3択UIとの衝突点が把握できる |
 | THR-002 | 完了 | プリセット解決ロジックを追加 | `MainWindow.xaml.cs`, `CommonSettingsWindow.xaml.cs` | プリセットから解決並列数を求められる |
 | THR-003 | 完了 | 設定UIへプリセット選択を追加 | `CommonSettingsWindow.xaml`, `CommonSettingsWindow.xaml.cs` | UIから切替可能 |
+| THR-003A | 未着手 | 進捗タブへモード選択ドロップを追加 | `MainWindow.xaml`, `MainWindow.xaml.cs`, `Thumbnail/ThumbnailProgressRuntime.cs` | 進捗タブから `idle / slow / normal / ballence / fast / max / custum` を切替でき、表示と実行状態が追従する |
 | THR-004 | 完了 | `custum` 時の手動並列優先を実装 | `CommonSettingsWindow.xaml.cs`, `MainWindow.xaml.cs` | 既存手動設定と互換維持 |
 | THR-005 | 完了 | `slow` 用低負荷モードの実装 | `ThumbnailQueueProcessor.cs` 周辺 | バックグラウンド低負荷動作を実現 |
+| THR-005A | 未着手 | `idle` プリセット追加 | 設定/UI/解決ロジック | `idle` を選択・保存・解決できる |
+| THR-005B | 未着手 | `idle` 実行モード実装 | `ThumbnailQueueProcessor.cs`, UI更新導線 | `Idle` 優先度相当 + プレビュー抑止 + 更新間引きが動く |
+| THR-005C | 未着手 | `idle` 手動回帰追加 | 手動回帰手順 | カーソル引っかかり低減と進捗最低限表示を確認できる |
 | THR-006 | 完了 | 需要ベースの予約枠判定を実装 | `ThumbnailQueueProcessor.cs` | 空振り予約を避けつつレーン飢餓を防ぐ |
 | THR-007 | 完了 | 既存動的並列制御とプリセット起点の整合調整 | `ThumbnailParallelController.cs`, `ThumbnailQueueProcessor.cs` | プリセットと縮退復帰が両立する |
 | THR-007A | 完了 | 高負荷感知トリガーを追加 | `ThumbnailParallelController.cs`, `ThumbnailQueueProcessor.cs` | エラー以外の負荷要因でも抑制できる |
 | THR-007B | 未着手 | 高負荷検知の責務分離を整理 | 設計/実装境界 | エンジン・本体・サービスの責務が分離される |
-| THR-007C | 未着手 | 管理者権限サービス連携前提のI/F案を作る | 将来IPC設計 | Disk温度/UsnMft情報の受け口を定義できる |
-| THR-007D | 未着手 | IPC DTOと責務境界を定義 | 将来IPC設計 | メトリクス/負荷/縮退通知のDTOが固まる |
-| THR-007E | 未着手 | サービス未接続時フォールバックを設計 | `ThumbnailParallelController.cs` 周辺 | 内部メトリクスだけで継続動作できる |
-| THR-007F | 未着手 | IPC失敗・権限不足時のログ方針を定義 | ログ設計 | `unavailable`, `access-denied`, `timeout` を区別できる |
-| THR-007G | 未着手 | DTO列挙型と時刻基準を定義 | 将来IPC設計 | 状態値と時系列比較ルールが固定される |
+| THR-007C | 完了 | 管理者権限サービス連携前提のI/F案を作る | `Thumbnail/設計メモ_サムネイルサービスIPC構成図_2026-03-06.md`, `src/IndigoMovieManager.Thumbnail.Queue/Ipc/ThumbnailIpcTransportPolicy.cs` | Disk温度/UsnMft情報の受け口を定義できる |
+| THR-007D | 完了 | IPC DTOと責務境界を定義 | `src/IndigoMovieManager.Thumbnail.Queue/Ipc/ThumbnailIpcDtos.cs` | メトリクス/負荷/縮退通知のDTOが固まる |
+| THR-007E | 完了 | サービス未接続時フォールバックを設計 | `src/IndigoMovieManager.Thumbnail.Queue/Ipc/AdminTelemetryRuntimeResolver.cs`, `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs` | 内部メトリクスだけで継続動作できる |
+| THR-007F | 完了 | IPC失敗・権限不足時のログ方針を定義 | `Thumbnail/設計メモ_管理者権限テレメトリ劣化ログ方針_2026-03-07.md`, `src/IndigoMovieManager.Thumbnail.Queue/Ipc/AdminTelemetryRuntimeResolver.cs`, `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs` | `unavailable`, `access-denied`, `timeout` を区別できる |
+| THR-007G | 完了 | DTO列挙型と時刻基準を定義 | `src/IndigoMovieManager.Thumbnail.Queue/Ipc/ThumbnailIpcDtos.cs` | 状態値と時系列比較ルールが固定される |
 | THR-007H | 完了 | `HighLoadScore` の係数と閾値を仮実装 | `ThumbnailParallelController.cs` | 縮退と復帰の判定が動く |
-| THR-007I | 未着手 | 熱暴走優先の強制縮退ルールを追加 | 将来サービス連携 | 温度危険時に即時減速できる |
-| THR-007J | 未着手 | IPC構成図と責務図をドキュメント化 | `Thumbnail/*.md` | 構成図と通信責務を追跡できる |
-| THR-007K | 未着手 | 管理者権限サービスの共通化方針を決める | `Watcher` / `Thumbnail` 設計境界 | UsnMft と Disk温度で別サービスを作らない |
-| THR-007L | 未着手 | FileIndexProvider 異常とサムネイル高負荷のログ軸を分離する | ログ設計 | 可用性異常と負荷異常が混同されない |
+| THR-007I | 完了 | 熱暴走優先の強制縮退ルールを追加 | `Thumbnail/ThumbnailParallelController.cs`, `src/IndigoMovieManager.Thumbnail.Queue/Ipc/AdminTelemetryRuntimeResolver.cs`, `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs` | 温度危険時に即時減速できる |
+| THR-007J | 完了 | IPC構成図と責務図をドキュメント化 | `Thumbnail/設計メモ_サムネイルサービスIPC構成図_2026-03-06.md` | 構成図と通信責務を追跡できる |
+| THR-007K | 完了 | 管理者権限サービスの共通化方針を決める | `Thumbnail/設計メモ_共通管理者権限サービス基盤方針_2026-03-07.md`, `src/IndigoMovieManager.Thumbnail.Queue/Ipc/AdminTelemetryContracts.cs` | UsnMft と Disk温度で別サービスを作らない |
+| THR-007L | 完了 | FileIndexProvider 異常とサムネイル高負荷のログ軸を分離する | `Thumbnail/設計メモ_FileIndexProvider異常とサムネイル高負荷ログ分離_2026-03-07.md`, `Watcher/FileIndexReasonTable.cs`, `Watcher/MainWindow.Watcher.cs` | 可用性異常と負荷異常が混同されない |
+| THR-007M | 完了 | UsnMft状態の I/O圧迫シグナル統合を追加 | `Thumbnail/ThumbnailParallelController.cs`, `src/IndigoMovieManager.Thumbnail.Queue/Ipc/AdminTelemetryRuntimeResolver.cs`, `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs` | `Busy` と backlog / latency を縮退判断へ反映できる |
+| THR-007N | 完了 | high-load 係数と閾値の実測調整設定化を追加 | `Thumbnail/ThumbnailParallelController.cs`, `Properties/Settings.*`, `App.config`, `Thumbnail/実測調整メモ_サムネイル高負荷係数と閾値_2026-03-07.md` | 実機採取後に無改修で係数と閾値を調整できる |
 | THR-008 | 完了 | 進捗UIの説明・表示更新 | `ThumbnailProgressRuntime.cs`, UI関連 | レーン意味が分かる |
 | THR-009 | 完了 | 単体テスト追加 | `Tests/IndigoMovieManager_fork.Tests/*` | プリセット解決、予約条件、`HighLoadScore`、復帰制御を検証できる |
 | THR-010 | 完了 | 手動回帰チェック手順追加 | `Thumbnail/ManualRegressionCheck_サムネイルスレッド制御とレーン設計_2026-03-06.md` | 低負荷・高速・再試行の確認手順がある |
@@ -228,9 +264,11 @@
 - 共有設定UIの棚卸し
 - プリセットUI追加
 - 並列数解決の導入
+- 進捗タブのモード選択ドロップ追加
 
 ### Phase 2
 - `slow` 低負荷モード導入
+- `idle` 最小干渉モード導入
 - 需要ベース予約の導入
 - 高負荷感知による縮退導入
 
@@ -252,6 +290,10 @@
   - 対策:
     - UI文言で「低負荷バックグラウンド」を明示する。
 - リスク:
+  - `idle` が遅すぎて止まって見える。
+  - 対策:
+    - `idle` は別モードとして追加し、既存 `slow` を置き換えない。
+- リスク:
   - 予約条件が複雑になり挙動が読みにくくなる。
   - 対策:
     - 予約成立理由をログへ出す。
@@ -266,6 +308,7 @@
 
 ## 10. 受け入れ基準
 - プリセットをUIから選択できる。
+- `idle` が最小干渉モードとして成立する。
 - `slow` が低負荷バックグラウンド動作として成立する。
 - `fast` が論理コア半分利用の意味で成立する。
 - 再試行動画と巨大動画が通常レーンを詰まらせにくくなる。

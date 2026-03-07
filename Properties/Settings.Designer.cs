@@ -280,6 +280,138 @@ namespace IndigoMovieManager.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.3")]
+        public double ThumbnailParallelHighLoadWeightError {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadWeightError"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadWeightError"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.25")]
+        public double ThumbnailParallelHighLoadWeightQueuePressure {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadWeightQueuePressure"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadWeightQueuePressure"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.1")]
+        public double ThumbnailParallelHighLoadWeightSlowBacklog {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadWeightSlowBacklog"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadWeightSlowBacklog"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.1")]
+        public double ThumbnailParallelHighLoadWeightRecoveryBacklog {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadWeightRecoveryBacklog"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadWeightRecoveryBacklog"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.1")]
+        public double ThumbnailParallelHighLoadWeightThroughputPenalty {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadWeightThroughputPenalty"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadWeightThroughputPenalty"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.2")]
+        public double ThumbnailParallelHighLoadWeightThermalWarning {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadWeightThermalWarning"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadWeightThermalWarning"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.1")]
+        public double ThumbnailParallelHighLoadWeightUsnMftBusy {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadWeightUsnMftBusy"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadWeightUsnMftBusy"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.48")]
+        public double ThumbnailParallelHighLoadRecoveryThreshold {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadRecoveryThreshold"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadRecoveryThreshold"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.6")]
+        public double ThumbnailParallelHighLoadMildThreshold {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadMildThreshold"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadMildThreshold"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.82")]
+        public double ThumbnailParallelHighLoadThreshold {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadThreshold"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadThreshold"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.95")]
+        public double ThumbnailParallelHighLoadDangerThreshold {
+            get {
+                return ((double)(this["ThumbnailParallelHighLoadDangerThreshold"]));
+            }
+            set {
+                this["ThumbnailParallelHighLoadDangerThreshold"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool ThumbnailLanePresetInitialized {
             get {
