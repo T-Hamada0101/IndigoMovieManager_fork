@@ -15,7 +15,11 @@ namespace IndigoMovieManager.Thumbnail.Engines
         private const string GpuDecodeModeEnvName = "IMM_THUMB_GPU_DECODE";
         private const string FfmpegJpegQualityEnvName = "IMM_THUMB_JPEG_Q";
         private const string FfmpegScaleFlagsEnvName = "IMM_THUMB_SCALE_FLAGS";
+        private const string FfmpegTimeoutSecEnvName = "IMM_THUMB_FFMPEG_TIMEOUT_SEC";
+        private const string FfmpegPriorityEnvName = "IMM_THUMB_FFMPEG_PRIORITY";
         private const int DefaultJpegQuality = 5;
+        private static readonly ProcessPriorityClass DefaultFfmpegPriorityClass =
+            ProcessPriorityClass.Idle;
 
         public string EngineId => "ffmpeg1pass";
         public string EngineName => "ffmpeg1pass";
@@ -32,12 +36,12 @@ namespace IndigoMovieManager.Thumbnail.Engines
         {
             if (context == null)
             {
-                return ThumbnailCreationService.CreateFailedResult("", null, "context is null");
+                return ThumbnailResultFactory.CreateFailed("", null, "context is null");
             }
 
             if (context.IsManual)
             {
-                return ThumbnailCreationService.CreateFailedResult(
+                return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     context.DurationSec,
                     "ffmpeg1pass does not support manual mode"
@@ -46,7 +50,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
             if (context.ThumbInfo == null || context.ThumbInfo.ThumbSec == null || context.ThumbInfo.ThumbSec.Count < 1)
             {
-                return ThumbnailCreationService.CreateFailedResult(
+                return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     context.DurationSec,
                     "thumb info is empty"
@@ -56,7 +60,9 @@ namespace IndigoMovieManager.Thumbnail.Engines
             double? durationSec = context.DurationSec;
             if (!durationSec.HasValue || durationSec.Value <= 0)
             {
-                durationSec = ThumbnailCreationService.TryGetDurationSecFromShell(context.MovieFullPath);
+                durationSec = ThumbnailShellMetadataUtility.TryGetDurationSecFromShell(
+                    context.MovieFullPath
+                );
             }
 
             int panelCount = context.ThumbInfo.ThumbSec.Count;
@@ -64,7 +70,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int rows = context.TabInfo.Rows;
             if (panelCount < 1 || cols < 1 || rows < 1)
             {
-                return ThumbnailCreationService.CreateFailedResult(
+                return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     durationSec,
                     "invalid panel configuration"
@@ -83,16 +89,37 @@ namespace IndigoMovieManager.Thumbnail.Engines
             double intervalSec = ResolveFrameIntervalSec(context.ThumbInfo.ThumbSec, durationSec, panelCount);
             int jpegQuality = ResolveJpegQuality();
             string scaleFlags = ResolveScaleFlags();
+            bool useTolerantInput = ShouldUseTolerantInput(context.MovieFullPath);
+            bool useCandidateFiltering = ShouldUseCandidateFrameFiltering(context);
+            int candidatePanelCount = ResolveCandidatePanelCount(panelCount, useCandidateFiltering);
+            double sampleIntervalSec = ResolveSampleIntervalSec(
+                intervalSec,
+                candidatePanelCount,
+                panelCount,
+                useCandidateFiltering,
+                durationSec
+            );
+            int sampleCols = useCandidateFiltering ? candidatePanelCount : cols;
+            int sampleRows = useCandidateFiltering ? 1 : rows;
+            string ffmpegOutputPath = useCandidateFiltering
+                ? BuildCandidateTileTempPath(context.SaveThumbFileName)
+                : context.SaveThumbFileName;
+            TimeSpan ffmpegTimeout = ResolveProcessTimeout(
+                panelCount,
+                durationSec,
+                useTolerantInput,
+                useCandidateFiltering
+            );
 
             string startText = startSec.ToString("0.###", CultureInfo.InvariantCulture);
             string vf = BuildTileFilter(
-                intervalSec,
+                sampleIntervalSec,
                 targetSize.Width,
                 targetSize.Height,
-                cols,
-                rows,
+                sampleCols,
+                sampleRows,
                 durationSec,
-                panelCount,
+                candidatePanelCount,
                 scaleFlags
             );
 
@@ -108,14 +135,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
             psi.ArgumentList.Add("-hide_banner");
             psi.ArgumentList.Add("-loglevel");
             psi.ArgumentList.Add("error");
-            AddHwAccelArguments(psi);
+            if (!useTolerantInput)
+            {
+                AddHwAccelArguments(psi);
+            }
             psi.ArgumentList.Add("-an");
             psi.ArgumentList.Add("-sn");
             psi.ArgumentList.Add("-dn");
-            psi.ArgumentList.Add("-ss");
-            psi.ArgumentList.Add(startText);
-            psi.ArgumentList.Add("-i");
-            psi.ArgumentList.Add(context.MovieFullPath);
+            AddInputArguments(psi, context.MovieFullPath, startText, useTolerantInput);
             psi.ArgumentList.Add("-frames:v");
             psi.ArgumentList.Add("1");
             // 失敗率低減を優先し、厳格判定で弾かれやすい非標準YUV系も許容して処理継続しやすくする。
@@ -128,22 +155,47 @@ namespace IndigoMovieManager.Thumbnail.Engines
             psi.ArgumentList.Add(jpegQuality.ToString(CultureInfo.InvariantCulture));
             psi.ArgumentList.Add("-vf");
             psi.ArgumentList.Add(vf);
-            psi.ArgumentList.Add(context.SaveThumbFileName);
+            psi.ArgumentList.Add(ffmpegOutputPath);
 
-            (bool ok, string err) = await RunProcessAsync(psi, cts);
-            if (!ok || !Path.Exists(context.SaveThumbFileName))
+            (bool ok, string err) = await RunProcessAsync(psi, ffmpegTimeout, cts);
+            if (!ok || !Path.Exists(ffmpegOutputPath))
             {
-                return ThumbnailCreationService.CreateFailedResult(
+                return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     durationSec,
                     string.IsNullOrWhiteSpace(err) ? "ffmpeg one-pass failed" : err
                 );
             }
 
+            if (
+                useCandidateFiltering
+                && !TryComposeFilteredTile(
+                    ffmpegOutputPath,
+                    context.SaveThumbFileName,
+                    cols,
+                    rows,
+                    candidatePanelCount,
+                    out string composeError
+                )
+            )
+            {
+                TryDeleteFile(ffmpegOutputPath);
+                return ThumbnailResultFactory.CreateFailed(
+                    context.SaveThumbFileName,
+                    durationSec,
+                    composeError
+                );
+            }
+
+            if (useCandidateFiltering)
+            {
+                TryDeleteFile(ffmpegOutputPath);
+            }
+
             using FileStream dest = new(context.SaveThumbFileName, FileMode.Append, FileAccess.Write);
             dest.Write(context.ThumbInfo.SecBuffer);
             dest.Write(context.ThumbInfo.InfoBuffer);
-            return ThumbnailCreationService.CreateSuccessResult(context.SaveThumbFileName, durationSec);
+            return ThumbnailResultFactory.CreateSuccess(context.SaveThumbFileName, durationSec);
         }
 
         public async Task<bool> CreateBookmarkAsync(
@@ -168,6 +220,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             string posSec = Math.Max(0, capturePos).ToString("0.###", CultureInfo.InvariantCulture);
             int jpegQuality = ResolveJpegQuality();
             string scaleFlags = ResolveScaleFlags();
+            bool useTolerantInput = ShouldUseTolerantInput(movieFullPath);
             string vf =
                 $"crop='if(gte(iw/ih,4/3),ih*4/3,iw)':'if(gte(iw/ih,4/3),ih,iw*3/4)',scale=640:480:flags={scaleFlags}";
 
@@ -183,14 +236,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
             psi.ArgumentList.Add("-hide_banner");
             psi.ArgumentList.Add("-loglevel");
             psi.ArgumentList.Add("error");
-            AddHwAccelArguments(psi);
+            if (!useTolerantInput)
+            {
+                AddHwAccelArguments(psi);
+            }
             psi.ArgumentList.Add("-an");
             psi.ArgumentList.Add("-sn");
             psi.ArgumentList.Add("-dn");
-            psi.ArgumentList.Add("-ss");
-            psi.ArgumentList.Add(posSec);
-            psi.ArgumentList.Add("-i");
-            psi.ArgumentList.Add(movieFullPath);
+            AddInputArguments(psi, movieFullPath, posSec, useTolerantInput);
             psi.ArgumentList.Add("-frames:v");
             psi.ArgumentList.Add("1");
             // 失敗率低減を優先し、厳格判定で弾かれやすい非標準YUV系も許容して処理継続しやすくする。
@@ -205,7 +258,13 @@ namespace IndigoMovieManager.Thumbnail.Engines
             psi.ArgumentList.Add(vf);
             psi.ArgumentList.Add(saveThumbPath);
 
-            (bool ok, _) = await RunProcessAsync(psi, cts);
+            TimeSpan ffmpegTimeout = ResolveProcessTimeout(
+                panelCount: 1,
+                durationSec: null,
+                useTolerantInput,
+                useCandidateFiltering: false
+            );
+            (bool ok, _) = await RunProcessAsync(psi, ffmpegTimeout, cts);
             return ok && Path.Exists(saveThumbPath);
         }
 
@@ -282,6 +341,363 @@ namespace IndigoMovieManager.Thumbnail.Engines
             return vf.ToString();
         }
 
+        // 壊れ気味のASF/WMVはインデックス無視と破損許容を優先し、入力後シークへ切り替える。
+        internal static bool ShouldUseTolerantInput(string movieFullPath)
+        {
+            string extension = Path.GetExtension(movieFullPath ?? "");
+            return extension.Equals(".wmv", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".asf", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Recovery時の壊れ気味WMV/ASFだけ、候補を倍取りして黒コマを避ける。
+        internal static bool ShouldUseCandidateFrameFiltering(ThumbnailJobContext context)
+        {
+            if (context == null)
+            {
+                return false;
+            }
+
+            int attemptCount = context.QueueObj?.AttemptCount ?? 0;
+            return attemptCount > 0
+                && context.PanelCount > 0
+                && context.PanelCount <= 10
+                && ShouldUseTolerantInput(context.MovieFullPath);
+        }
+
+        internal static int ResolveCandidatePanelCount(int panelCount, bool useCandidateFiltering)
+        {
+            if (!useCandidateFiltering || panelCount < 1)
+            {
+                return panelCount;
+            }
+
+            return panelCount * 2;
+        }
+
+        internal static double ResolveSampleIntervalSec(
+            double intervalSec,
+            int candidatePanelCount,
+            int panelCount,
+            bool useCandidateFiltering,
+            double? durationSec
+        )
+        {
+            if (candidatePanelCount <= panelCount || intervalSec <= 0)
+            {
+                return intervalSec;
+            }
+
+            double oversampleFactor = (double)candidatePanelCount / panelCount;
+            double oversampledIntervalSec = Math.Max(0.1d, intervalSec / oversampleFactor);
+            if (!useCandidateFiltering)
+            {
+                return oversampledIntervalSec;
+            }
+
+            // 壊れ気味WMV/ASFは広く飛ぶより、前半区間を密に舐めた方が複数コマを拾いやすい。
+            int sampleStepCount = Math.Max(1, candidatePanelCount - 1);
+            double packedWindowSec = ResolvePackedRecoveryWindowSec(durationSec);
+            double packedIntervalSec = Math.Max(0.25d, packedWindowSec / sampleStepCount);
+            return Math.Max(0.25d, Math.Min(oversampledIntervalSec, packedIntervalSec));
+        }
+
+        internal static double ResolvePackedRecoveryWindowSec(double? durationSec)
+        {
+            if (!durationSec.HasValue || durationSec.Value <= 0)
+            {
+                return 12d;
+            }
+
+            return Math.Min(20d, Math.Max(4d, durationSec.Value * 0.25d));
+        }
+
+        // 救済優先モードでは入力側の寛容オプションを付け、-ss を入力後へ回して実フレーム取得を優先する。
+        internal static void AddInputArguments(
+            ProcessStartInfo psi,
+            string movieFullPath,
+            string startText,
+            bool useTolerantInput
+        )
+        {
+            if (useTolerantInput)
+            {
+                psi.ArgumentList.Add("-err_detect");
+                psi.ArgumentList.Add("ignore_err");
+                psi.ArgumentList.Add("-fflags");
+                psi.ArgumentList.Add("+genpts+igndts+ignidx+discardcorrupt");
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add(movieFullPath);
+                psi.ArgumentList.Add("-ss");
+                psi.ArgumentList.Add(startText);
+                return;
+            }
+
+            psi.ArgumentList.Add("-ss");
+            psi.ArgumentList.Add(startText);
+            psi.ArgumentList.Add("-i");
+            psi.ArgumentList.Add(movieFullPath);
+        }
+
+        internal static List<int> SelectCandidateIndices(
+            IReadOnlyList<bool> nonBlackCandidates,
+            int desiredCount
+        )
+        {
+            List<int> selected = [];
+            if (desiredCount < 1 || nonBlackCandidates == null || nonBlackCandidates.Count < 1)
+            {
+                return selected;
+            }
+
+            List<int> validIndices = [];
+            for (int i = 0; i < nonBlackCandidates.Count; i++)
+            {
+                if (nonBlackCandidates[i])
+                {
+                    validIndices.Add(i);
+                }
+            }
+
+            if (validIndices.Count > 0)
+            {
+                AddDistributedIndices(selected, validIndices, desiredCount);
+            }
+
+            if (selected.Count < desiredCount)
+            {
+                List<int> allIndices = [];
+                for (int i = 0; i < nonBlackCandidates.Count; i++)
+                {
+                    allIndices.Add(i);
+                }
+
+                AddDistributedIndices(selected, allIndices, desiredCount);
+            }
+
+            if (selected.Count > desiredCount)
+            {
+                selected.RemoveRange(desiredCount, selected.Count - desiredCount);
+            }
+
+            while (selected.Count < desiredCount)
+            {
+                selected.Add(selected.Count > 0 ? selected[selected.Count - 1] : 0);
+            }
+
+            return selected;
+        }
+
+        internal static bool IsMostlyBlackPanel(Bitmap bitmap)
+        {
+            if (bitmap == null || bitmap.Width < 1 || bitmap.Height < 1)
+            {
+                return true;
+            }
+
+            const int DarkLumaThreshold = 24;
+            const double AvgLumaThreshold = 20d;
+            const double DarkRatioThreshold = 0.92d;
+            int stepX = Math.Max(1, bitmap.Width / 24);
+            int stepY = Math.Max(1, bitmap.Height / 24);
+            double lumaTotal = 0;
+            int darkCount = 0;
+            int sampleCount = 0;
+
+            for (int y = 0; y < bitmap.Height; y += stepY)
+            {
+                for (int x = 0; x < bitmap.Width; x += stepX)
+                {
+                    Color color = bitmap.GetPixel(x, y);
+                    double luma = (0.299d * color.R) + (0.587d * color.G) + (0.114d * color.B);
+                    lumaTotal += luma;
+                    sampleCount++;
+                    if (luma <= DarkLumaThreshold)
+                    {
+                        darkCount++;
+                    }
+                }
+            }
+
+            if (sampleCount < 1)
+            {
+                return true;
+            }
+
+            double avgLuma = lumaTotal / sampleCount;
+            double darkRatio = (double)darkCount / sampleCount;
+            return avgLuma <= AvgLumaThreshold && darkRatio >= DarkRatioThreshold;
+        }
+
+        // 候補タイルを一度ばらし、黒っぽいコマを避けて本来のパネル数へ組み直す。
+        internal static bool TryComposeFilteredTile(
+            string candidateTilePath,
+            string destinationPath,
+            int cols,
+            int rows,
+            int candidatePanelCount,
+            out string error
+        )
+        {
+            error = "";
+            if (!Path.Exists(candidateTilePath))
+            {
+                error = "candidate tile image is missing";
+                return false;
+            }
+
+            if (cols < 1 || rows < 1 || candidatePanelCount < 1)
+            {
+                error = "invalid candidate tile configuration";
+                return false;
+            }
+
+            int desiredPanelCount = cols * rows;
+            using Bitmap candidateSheet = new(candidateTilePath);
+            int panelWidth = candidateSheet.Width / candidatePanelCount;
+            int panelHeight = candidateSheet.Height;
+            if (
+                panelWidth < 1
+                || panelHeight < 1
+                || panelWidth * candidatePanelCount != candidateSheet.Width
+            )
+            {
+                error = "candidate tile image size is invalid";
+                return false;
+            }
+
+            List<Bitmap> panels = [];
+            List<bool> nonBlackPanels = [];
+            try
+            {
+                for (int i = 0; i < candidatePanelCount; i++)
+                {
+                    Rectangle srcRect = new(i * panelWidth, 0, panelWidth, panelHeight);
+                    Bitmap panel = new(panelWidth, panelHeight, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                    using (Graphics g = Graphics.FromImage(panel))
+                    {
+                        g.DrawImage(
+                            candidateSheet,
+                            new Rectangle(0, 0, panelWidth, panelHeight),
+                            srcRect,
+                            GraphicsUnit.Pixel
+                        );
+                    }
+
+                    panels.Add(panel);
+                    nonBlackPanels.Add(!IsMostlyBlackPanel(panel));
+                }
+
+                List<int> selectedIndices = SelectCandidateIndices(
+                    nonBlackPanels,
+                    desiredPanelCount
+                );
+
+                using Bitmap canvas = new(
+                    panelWidth * cols,
+                    panelHeight * rows,
+                    System.Drawing.Imaging.PixelFormat.Format24bppRgb
+                );
+                using (Graphics g = Graphics.FromImage(canvas))
+                {
+                    g.Clear(Color.Black);
+                    for (int i = 0; i < selectedIndices.Count; i++)
+                    {
+                        int selectedIndex = selectedIndices[i];
+                        if (selectedIndex < 0 || selectedIndex >= panels.Count)
+                        {
+                            continue;
+                        }
+
+                        int drawX = (i % cols) * panelWidth;
+                        int drawY = (i / cols) * panelHeight;
+                        g.DrawImage(panels[selectedIndex], drawX, drawY, panelWidth, panelHeight);
+                    }
+                }
+
+                if (Path.Exists(destinationPath))
+                {
+                    File.Delete(destinationPath);
+                }
+
+                canvas.Save(destinationPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+            finally
+            {
+                foreach (Bitmap panel in panels)
+                {
+                    panel.Dispose();
+                }
+            }
+        }
+
+        private static void AddDistributedIndices(
+            List<int> selected,
+            IReadOnlyList<int> sourceIndices,
+            int desiredCount
+        )
+        {
+            if (sourceIndices == null || sourceIndices.Count < 1 || selected.Count >= desiredCount)
+            {
+                return;
+            }
+
+            if (sourceIndices.Count == 1)
+            {
+                if (!selected.Contains(sourceIndices[0]))
+                {
+                    selected.Add(sourceIndices[0]);
+                }
+                return;
+            }
+
+            for (int i = 0; i < desiredCount; i++)
+            {
+                int sourcePos = (int)Math.Round(
+                    ((double)(sourceIndices.Count - 1) * i) / Math.Max(1, desiredCount - 1)
+                );
+                sourcePos = Math.Max(0, Math.Min(sourceIndices.Count - 1, sourcePos));
+                int candidateIndex = sourceIndices[sourcePos];
+                if (!selected.Contains(candidateIndex))
+                {
+                    selected.Add(candidateIndex);
+                }
+
+                if (selected.Count >= desiredCount)
+                {
+                    return;
+                }
+            }
+        }
+
+        private static string BuildCandidateTileTempPath(string saveThumbFileName)
+        {
+            string directory = Path.GetDirectoryName(saveThumbFileName) ?? Path.GetTempPath();
+            string fileName = Path.GetFileNameWithoutExtension(saveThumbFileName);
+            string extension = Path.GetExtension(saveThumbFileName);
+            return Path.Combine(directory, $"{fileName}.candidates.{Guid.NewGuid():N}{extension}");
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (Path.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // 一時ファイル削除失敗は本処理を落とさない。
+            }
+        }
+
         // JPEG品質は 2〜31 の範囲のみ受け入れ、範囲外は既定値へフォールバックする。
         private static int ResolveJpegQuality()
         {
@@ -315,6 +731,46 @@ namespace IndigoMovieManager.Thumbnail.Engines
             };
         }
 
+        internal static TimeSpan ResolveProcessTimeout(
+            int panelCount,
+            double? durationSec,
+            bool useTolerantInput,
+            bool useCandidateFiltering
+        )
+        {
+            string raw = Environment.GetEnvironmentVariable(FfmpegTimeoutSecEnvName)?.Trim() ?? "";
+            if (
+                int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int envSec)
+                && envSec >= 5
+            )
+            {
+                return TimeSpan.FromSeconds(envSec);
+            }
+
+            return Timeout.InfiniteTimeSpan;
+        }
+
+        internal static ProcessPriorityClass? ResolveChildProcessPriorityClass()
+        {
+            string raw = Environment.GetEnvironmentVariable(FfmpegPriorityEnvName)?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return DefaultFfmpegPriorityClass;
+            }
+
+            if (string.Equals(raw, "off", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (Enum.TryParse(raw, true, out ProcessPriorityClass parsed))
+            {
+                return parsed;
+            }
+
+            return DefaultFfmpegPriorityClass;
+        }
+
         /// <summary>
         /// GPUモード設定に応じて ffmpeg の -hwaccel を付与する。
         /// </summary>
@@ -346,6 +802,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
         private static async Task<(bool ok, string err)> RunProcessAsync(
             ProcessStartInfo psi,
+            TimeSpan timeout,
             CancellationToken cts
         )
         {
@@ -357,8 +814,51 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     return (false, "process start returned false");
                 }
 
-                string stderr = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
-                await process.WaitForExitAsync(cts).ConfigureAwait(false);
+                TryApplyChildProcessPriority(process);
+
+                // 出力読取りを先に並走させ、ReadToEnd待ちが終了待ちを塞がないようにする。
+                Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+                Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+                Task waitForExitTask = process.WaitForExitAsync();
+                Task cancelTask = Task.Delay(Timeout.InfiniteTimeSpan, cts);
+                Task completedTask;
+                bool hasTimeout = timeout != Timeout.InfiniteTimeSpan;
+                Task timeoutTask = Task.CompletedTask;
+                if (!hasTimeout)
+                {
+                    completedTask = await Task.WhenAny(waitForExitTask, cancelTask).ConfigureAwait(false);
+                }
+                else
+                {
+                    timeoutTask = Task.Delay(timeout);
+                    completedTask = await Task
+                        .WhenAny(waitForExitTask, timeoutTask, cancelTask)
+                        .ConfigureAwait(false);
+                }
+
+                if (completedTask == cancelTask)
+                {
+                    TryKillProcess(process);
+                    throw new OperationCanceledException(cts);
+                }
+
+                if (hasTimeout && completedTask == timeoutTask)
+                {
+                    TryKillProcess(process);
+                    await process.WaitForExitAsync().ConfigureAwait(false);
+                    _ = await stdoutTask.ConfigureAwait(false);
+                    string timeoutErr = await SafeReadProcessErrorAsync(stderrTask).ConfigureAwait(false);
+                    return (
+                        false,
+                        string.IsNullOrWhiteSpace(timeoutErr)
+                            ? $"ffmpeg timeout after {timeout.TotalSeconds:0}s"
+                            : $"ffmpeg timeout after {timeout.TotalSeconds:0}s, err={timeoutErr}"
+                    );
+                }
+
+                await waitForExitTask.ConfigureAwait(false);
+                _ = await stdoutTask.ConfigureAwait(false);
+                string stderr = await SafeReadProcessErrorAsync(stderrTask).ConfigureAwait(false);
                 if (process.ExitCode != 0)
                 {
                     return (false, $"exit={process.ExitCode}, err={stderr}");
@@ -373,6 +873,51 @@ namespace IndigoMovieManager.Thumbnail.Engines
             catch (Exception ex)
             {
                 return (false, ex.Message);
+            }
+        }
+
+        private static async Task<string> SafeReadProcessErrorAsync(Task<string> stderrTask)
+        {
+            try
+            {
+                return await stderrTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static void TryKillProcess(Process process)
+        {
+            try
+            {
+                if (process != null && !process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // プロセス競合で殺せなくても、ここで二次障害にしない。
+            }
+        }
+
+        private static void TryApplyChildProcessPriority(Process process)
+        {
+            try
+            {
+                ProcessPriorityClass? priorityClass = ResolveChildProcessPriorityClass();
+                if (!priorityClass.HasValue)
+                {
+                    return;
+                }
+
+                process.PriorityClass = priorityClass.Value;
+            }
+            catch
+            {
+                // 優先度変更失敗でサムネ生成自体は落とさない。
             }
         }
 

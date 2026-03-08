@@ -21,6 +21,7 @@ namespace IndigoMovieManager.Thumbnail
     {
         private const string GpuDecodeModeEnvName = "IMM_THUMB_GPU_DECODE";
         private const string ThumbFileLogEnvName = "IMM_THUMB_FILE_LOG";
+        private const string ProcessPriorityEnvName = "IMM_THUMB_PROCESS_PRIORITY";
         private static readonly object PerfLogLock = new();
         private static long _totalProcessedCount = 0;
         private static long _totalElapsedMs = 0;
@@ -31,6 +32,9 @@ namespace IndigoMovieManager.Thumbnail
         private const int RecoveryLaneReservedMinParallelism = 2;
         private const int RecoveryLaneConcurrency = 1;
         private const int SlowLaneConcurrency = 1;
+        private const int RegularLaneBufferedLeaseCount = 4;
+        private static readonly ProcessPriorityClass DefaultThumbnailWorkerPriorityClass =
+            ProcessPriorityClass.BelowNormal;
 
         /// <summary>
         /// 全闘争の幕開け！キューの監視と処理を絶え間なく回し続けるメインループだ！
@@ -59,6 +63,7 @@ namespace IndigoMovieManager.Thumbnail
             Action<QueueObj> onJobCompleted = null,
             IThumbnailQueueProgressPresenter progressPresenter = null,
             IAdminTelemetryClient adminTelemetryClient = null,
+            ThumbnailQueueWorkerRole workerRole = ThumbnailQueueWorkerRole.All,
             CancellationToken cts = default
         )
         {
@@ -78,7 +83,7 @@ namespace IndigoMovieManager.Thumbnail
                 throw new ArgumentNullException(nameof(createThumbAsync));
             }
 
-            string title = "サムネイル作成中";
+            string title = ResolveProgressTitle(workerRole);
             int safePollIntervalMs = pollIntervalMs < 100 ? 100 : pollIntervalMs;
             int safeBatchCooldownMs = batchCooldownMs < 0 ? 0 : batchCooldownMs;
             int safeLeaseMinutes = leaseMinutes < 1 ? 1 : leaseMinutes;
@@ -87,6 +92,8 @@ namespace IndigoMovieManager.Thumbnail
                 progressPresenter ?? NoOpThumbnailQueueProgressPresenter.Instance;
             IAdminTelemetryClient safeAdminTelemetryClient =
                 adminTelemetryClient ?? NoOpAdminTelemetryClient.Instance;
+            ProcessPriorityClass? originalProcessPriorityClass = null;
+            bool backgroundPriorityApplied = false;
             AdminTelemetryRequestContext adminTelemetryRequestContext =
                 AdminTelemetryRuntimeResolver.CreateThumbnailRequestContext(ownerInstanceId);
             string lastAdminTelemetryLogKey = "";
@@ -154,6 +161,37 @@ namespace IndigoMovieManager.Thumbnail
                     return 2;
                 }
             }
+            void EnsureBackgroundPriority()
+            {
+                if (backgroundPriorityApplied)
+                {
+                    return;
+                }
+
+                ProcessPriorityClass targetPriorityClass = ResolveThumbnailWorkerPriorityClass();
+                if (
+                    TryApplyProcessPriority(
+                        targetPriorityClass,
+                        safeLog,
+                        out ProcessPriorityClass originalPriorityClass
+                    )
+                )
+                {
+                    originalProcessPriorityClass = originalPriorityClass;
+                    backgroundPriorityApplied = true;
+                }
+            }
+            void RestoreBackgroundPriority()
+            {
+                if (!backgroundPriorityApplied)
+                {
+                    return;
+                }
+
+                RestoreProcessPriority(originalProcessPriorityClass, safeLog);
+                originalProcessPriorityClass = null;
+                backgroundPriorityApplied = false;
+            }
 
             try
             {
@@ -194,12 +232,14 @@ namespace IndigoMovieManager.Thumbnail
                         runtimeLeaseBatchSize,
                         safeLeaseMinutes,
                         preferredTabIndexResolver,
-                        safeLog
+                        safeLog,
+                        workerRole
                     );
 
                     // DB上で処理対象が無い時だけ待機し、後回しジョブ確認を呼ぶ。
                     if (leasedItems.Count < 1)
                     {
+                        RestoreBackgroundPriority();
                         if (onQueueDrainedAsync != null)
                         {
                             await onQueueDrainedAsync(cts).ConfigureAwait(false);
@@ -214,6 +254,8 @@ namespace IndigoMovieManager.Thumbnail
                         await Task.Delay(safePollIntervalMs, cts).ConfigureAwait(false);
                         continue;
                     }
+
+                    EnsureBackgroundPriority();
 
                     object progressLock = new();
                     int sessionCompletedCount = 0;
@@ -255,6 +297,7 @@ namespace IndigoMovieManager.Thumbnail
                                 );
                                 if (activeCount < 1)
                                 {
+                                    RestoreBackgroundPriority();
                                     safeLog(
                                         $"consumer progress close: reason=queue_empty session_done={sessionCompletedCount}"
                                     );
@@ -294,7 +337,8 @@ namespace IndigoMovieManager.Thumbnail
                                     runtimeLeaseBatchSize,
                                     safeLeaseMinutes,
                                     preferredTabIndexResolver,
-                                    safeLog
+                                    safeLog,
+                                    workerRole
                                 );
                                 continue;
                             }
@@ -345,20 +389,28 @@ namespace IndigoMovieManager.Thumbnail
                                 maxWorkerPoolParallelism
                             );
                             bool hasRecoveryDemand =
-                                leasedItems.Any(IsRecoveryLeaseItem)
-                                || queueDbService.HasRecoveryQueueDemand(ownerInstanceId);
+                                workerRole == ThumbnailQueueWorkerRole.All
+                                    && (
+                                        leasedItems.Any(IsRecoveryLeaseItem)
+                                        || queueDbService.HasRecoveryQueueDemand(ownerInstanceId)
+                                    );
                             bool hasSlowDemand =
-                                leasedItems.Any(IsSlowNonRecoveryLeaseItem)
-                                || queueDbService.HasSlowQueueDemand(
-                                    ownerInstanceId,
-                                    ThumbnailLaneClassifier.ResolveSlowLaneMinBytes(),
-                                    maxAttemptCount: 0
-                                );
+                                workerRole == ThumbnailQueueWorkerRole.All
+                                    && (
+                                        leasedItems.Any(IsSlowNonRecoveryLeaseItem)
+                                        || queueDbService.HasSlowQueueDemand(
+                                            ownerInstanceId,
+                                            ThumbnailLaneClassifier.ResolveSlowLaneMinBytes(),
+                                            maxAttemptCount: 0
+                                        )
+                                    );
                             bool enableRecoveryLane =
-                                currentParallelism >= RecoveryLaneReservedMinParallelism
+                                workerRole == ThumbnailQueueWorkerRole.All
+                                && currentParallelism >= RecoveryLaneReservedMinParallelism
                                 && hasRecoveryDemand;
                             bool enableSlowLane =
-                                currentParallelism >= SlowLaneThrottleMinParallelism
+                                workerRole == ThumbnailQueueWorkerRole.All
+                                && currentParallelism >= SlowLaneThrottleMinParallelism
                                 && hasSlowDemand;
                             DynamicParallelGate regularLaneGate = new(
                                 ResolveRegularLaneLimit(
@@ -415,210 +467,271 @@ namespace IndigoMovieManager.Thumbnail
                                 return parallelGate.CurrentLimit;
                             }
 
-                            try
+                            Queue<QueueDbLeaseItem> pendingLeasedItems = new();
+                            EnqueueLeasedItems(pendingLeasedItems, leasedItems);
+
+                            static void EnqueueLeasedItems(
+                                Queue<QueueDbLeaseItem> destination,
+                                IEnumerable<QueueDbLeaseItem> source
+                            )
                             {
-                                await Parallel.ForEachAsync(
-                                    EnumerateLeasedItemsAsync(
-                                        queueDbService,
-                                        ownerInstanceId,
-                                        leasedItems,
-                                        runtimeLeaseBatchSize,
-                                        safeLeaseMinutes,
-                                        preferredTabIndexResolver,
-                                        safeLog,
-                                        cts
-                                    ),
-                                    new ParallelOptions
+                                if (destination == null || source == null)
+                                {
+                                    return;
+                                }
+
+                                foreach (QueueDbLeaseItem item in source)
+                                {
+                                    if (item != null)
                                     {
-                                        MaxDegreeOfParallelism = maxWorkerPoolParallelism,
-                                        CancellationToken = cts,
-                                    },
-                                    async (leasedItem, token) =>
+                                        destination.Enqueue(item);
+                                    }
+                                }
+                            }
+
+                            async Task ProcessLeasedItemAsync(
+                                QueueDbLeaseItem leasedItem,
+                                CancellationToken token
+                            )
+                            {
+                                QueueObj queueObj = new()
+                                {
+                                    MainDbFullPath = leasedItem.MainDbFullPath,
+                                    MovieFullPath = leasedItem.MoviePath,
+                                    MovieSizeBytes = leasedItem.MovieSizeBytes,
+                                    AttemptCount = leasedItem.AttemptCount,
+                                    Tabindex = leasedItem.TabIndex,
+                                    ThumbPanelPos = leasedItem.ThumbPanelPos,
+                                    ThumbTimePos = leasedItem.ThumbTimePos,
+                                };
+                                ThumbnailExecutionLane lane = ThumbnailLaneClassifier.ResolveLane(
+                                    leasedItem.MovieSizeBytes
+                                );
+                                bool isRecoveryItem = IsRecoveryLeaseItem(leasedItem);
+                                bool isSlowNonRecoveryItem =
+                                    !isRecoveryItem && lane == ThumbnailExecutionLane.Slow;
+                                bool leaseEntered = false;
+                                bool regularLaneEntered = false;
+                                bool recoveryLaneEntered = false;
+                                bool slowLaneEntered = false;
+                                bool startedNotified = false;
+
+                                try
+                                {
+                                    await parallelGate.WaitAsync(token).ConfigureAwait(false);
+                                    leaseEntered = true;
+                                    if (isRecoveryItem && recoveryLaneGate != null)
                                     {
-                                        QueueObj queueObj = new()
+                                        await recoveryLaneGate.WaitAsync(token)
+                                            .ConfigureAwait(false);
+                                        recoveryLaneEntered = true;
+                                    }
+                                    else
+                                    {
+                                        if (isSlowNonRecoveryItem && slowLaneGate != null)
                                         {
-                                            MovieFullPath = leasedItem.MoviePath,
-                                            MovieSizeBytes = leasedItem.MovieSizeBytes,
-                                            AttemptCount = leasedItem.AttemptCount,
-                                            Tabindex = leasedItem.TabIndex,
-                                            ThumbPanelPos = leasedItem.ThumbPanelPos,
-                                            ThumbTimePos = leasedItem.ThumbTimePos,
-                                        };
-                                        ThumbnailExecutionLane lane =
-                                            ThumbnailLaneClassifier.ResolveLane(
-                                                leasedItem.MovieSizeBytes
-                                            );
-                                        bool isRecoveryItem = IsRecoveryLeaseItem(leasedItem);
-                                        bool isSlowNonRecoveryItem =
-                                            !isRecoveryItem
-                                            && lane == ThumbnailExecutionLane.Slow;
-                                        bool leaseEntered = false;
-                                        bool regularLaneEntered = false;
-                                        bool recoveryLaneEntered = false;
-                                        bool slowLaneEntered = false;
-                                        bool startedNotified = false;
-
-                                        try
+                                            await slowLaneGate.WaitAsync(token)
+                                                .ConfigureAwait(false);
+                                            slowLaneEntered = true;
+                                        }
+                                        else
                                         {
-                                            await parallelGate.WaitAsync(token).ConfigureAwait(false);
-                                            leaseEntered = true;
-                                            if (isRecoveryItem && recoveryLaneGate != null)
-                                            {
-                                                await recoveryLaneGate.WaitAsync(token)
-                                                    .ConfigureAwait(false);
-                                                recoveryLaneEntered = true;
-                                            }
-                                            else
-                                            {
-                                                if (isSlowNonRecoveryItem && slowLaneGate != null)
-                                                {
-                                                    await slowLaneGate.WaitAsync(token)
-                                                        .ConfigureAwait(false);
-                                                    slowLaneEntered = true;
-                                                }
-                                                else
-                                                {
-                                                    await regularLaneGate.WaitAsync(token)
-                                                        .ConfigureAwait(false);
-                                                    regularLaneEntered = true;
-                                                }
-                                            }
-                                            NotifyJobCallback(onJobStarted, queueObj);
-                                            startedNotified = true;
+                                            await regularLaneGate.WaitAsync(token)
+                                                .ConfigureAwait(false);
+                                            regularLaneEntered = true;
+                                        }
+                                    }
+                                    NotifyJobCallback(onJobStarted, queueObj);
+                                    startedNotified = true;
 
-                                            try
-                                            {
-                                                // 【STEP 3: サムネイル生成処理本体の呼び出し】
-                                                // 処理中に他のプロセスが「止まった」と勘違いしないよう、ハートビート（ロック期限延長）しながら生成実行
-                                                await ExecuteWithLeaseHeartbeatAsync(
-                                                        queueDbService,
-                                                        leasedItem,
-                                                        ownerInstanceId,
-                                                        safeLeaseMinutes,
-                                                        () => createThumbAsync(queueObj, token),
-                                                        safeLog,
-                                                        token
-                                                    )
-                                                    .ConfigureAwait(false);
+                                    try
+                                    {
+                                        // ハング1件で全補充が止まらないよう、各ワーカー完了ごとに次リースを回せる形で実行する。
+                                        await ExecuteWithLeaseHeartbeatAsync(
+                                                queueDbService,
+                                                leasedItem,
+                                                ownerInstanceId,
+                                                safeLeaseMinutes,
+                                                () => createThumbAsync(queueObj, token),
+                                                safeLog,
+                                                token
+                                            )
+                                            .ConfigureAwait(false);
 
-                                                // 【STEP 4: 成功時の状態更新】
-                                                // 生成が終わったら、DBのステータスを Done（完了）に更新する
-                                                int updated = queueDbService.UpdateStatus(
-                                                    leasedItem.QueueId,
-                                                    ownerInstanceId,
-                                                    ThumbnailQueueStatus.Done,
-                                                    DateTime.UtcNow
-                                                );
-                                                if (updated < 1)
-                                                {
-                                                    safeLog(
-                                                        $"consumer done skipped: queue_id={leasedItem.QueueId} owner={ownerInstanceId}"
-                                                    );
-                                                }
-                                            }
-                                            catch (OperationCanceledException ex)
-                                            {
-                                                // アプリ終了要求時のみ外側へ伝播し、並列ループ全体を終了する。
-                                                if (cts.IsCancellationRequested)
-                                                {
-                                                    throw;
-                                                }
-
-                                                // 個別ジョブ都合のキャンセルは失敗として記録し、他ジョブは継続する。
-                                                HandleFailedItem(
-                                                    queueDbService,
-                                                    leasedItem,
-                                                    ownerInstanceId,
-                                                    ex,
-                                                    safeLog
-                                                );
-                                                _ = Interlocked.Increment(ref failedCount);
-                                                if (isRecoveryItem)
-                                                {
-                                                    _ = Interlocked.Increment(ref recoveryFailedCount);
-                                                }
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                // 【STEP 5: 失敗時のハンドリング】
-                                                // エラーになった場合、再試行回数を増やして Pending に戻すか、上限を超えていれば Failed にする
-                                                HandleFailedItem(
-                                                    queueDbService,
-                                                    leasedItem,
-                                                    ownerInstanceId,
-                                                    ex,
-                                                    safeLog
-                                                );
-                                                _ = Interlocked.Increment(ref failedCount);
-                                                if (isRecoveryItem)
-                                                {
-                                                    _ = Interlocked.Increment(ref recoveryFailedCount);
-                                                }
-                                            }
-
-                                            _ = Interlocked.Increment(ref completedCount);
-                                            if (isRecoveryItem)
-                                            {
-                                                _ = Interlocked.Increment(ref recoveryCompletedCount);
-                                            }
-                                            int doneInSession = Interlocked.Increment(
-                                                ref sessionCompletedCount
-                                            );
-                                            string reportTitle =
-                                                $"{GetTabProgressTitle(leasedItem.TabIndex)} ({doneInSession}/{sessionTotalCount})";
-                                            string message = leasedItem.MoviePath;
-                                            int safeSessionTotalCount =
-                                                sessionTotalCount < 1 ? 1 : sessionTotalCount;
-                                            double totalProgress =
-                                                (double)doneInSession * 100d / safeSessionTotalCount;
-                                            if (totalProgress > 100d)
-                                            {
-                                                totalProgress = 100d;
-                                            }
-
-                                            lock (progressLock)
-                                            {
-                                                progress.Report(
-                                                    totalProgress,
-                                                    message,
-                                                    reportTitle,
-                                                    false
-                                                );
-                                            }
-
-                                            ReportProgressSnapshot(
-                                                progressSnapshot,
-                                                doneInSession,
-                                                sessionTotalCount,
-                                                GetLiveParallelism(),
-                                                ResolveLatestConfiguredParallelism()
+                                        int updated = queueDbService.UpdateStatus(
+                                            leasedItem.QueueId,
+                                            ownerInstanceId,
+                                            ThumbnailQueueStatus.Done,
+                                            DateTime.UtcNow
+                                        );
+                                        if (updated < 1)
+                                        {
+                                            safeLog(
+                                                $"consumer done skipped: queue_id={leasedItem.QueueId} owner={ownerInstanceId}"
                                             );
                                         }
-                                        finally
+                                    }
+                                    catch (OperationCanceledException ex)
+                                    {
+                                        if (cts.IsCancellationRequested)
                                         {
-                                            if (startedNotified)
+                                            throw;
+                                        }
+
+                                        HandleFailedItem(
+                                            queueDbService,
+                                            leasedItem,
+                                            ownerInstanceId,
+                                            ex,
+                                            safeLog
+                                        );
+                                        if (!IsMainDbScopeChangedException(ex))
+                                        {
+                                            _ = Interlocked.Increment(ref failedCount);
+                                            if (isRecoveryItem)
                                             {
-                                                NotifyJobCallback(onJobCompleted, queueObj);
-                                            }
-                                            if (slowLaneEntered)
-                                            {
-                                                slowLaneGate?.Release();
-                                            }
-                                            if (recoveryLaneEntered)
-                                            {
-                                                recoveryLaneGate?.Release();
-                                            }
-                                            if (regularLaneEntered)
-                                            {
-                                                regularLaneGate.Release();
-                                            }
-                                            if (leaseEntered)
-                                            {
-                                                parallelGate.Release();
+                                                _ = Interlocked.Increment(ref recoveryFailedCount);
                                             }
                                         }
                                     }
-                                );
+                                    catch (Exception ex)
+                                    {
+                                        HandleFailedItem(
+                                            queueDbService,
+                                            leasedItem,
+                                            ownerInstanceId,
+                                            ex,
+                                            safeLog
+                                        );
+                                        if (!IsMainDbScopeChangedException(ex))
+                                        {
+                                            _ = Interlocked.Increment(ref failedCount);
+                                            if (isRecoveryItem)
+                                            {
+                                                _ = Interlocked.Increment(ref recoveryFailedCount);
+                                            }
+                                        }
+                                    }
+
+                                    _ = Interlocked.Increment(ref completedCount);
+                                    if (isRecoveryItem)
+                                    {
+                                        _ = Interlocked.Increment(ref recoveryCompletedCount);
+                                    }
+                                    int doneInSession = Interlocked.Increment(
+                                        ref sessionCompletedCount
+                                    );
+                                    string reportTitle =
+                                        $"{GetTabProgressTitle(leasedItem.TabIndex)} ({doneInSession}/{sessionTotalCount})";
+                                    string message = leasedItem.MoviePath;
+                                    int safeSessionTotalCount =
+                                        sessionTotalCount < 1 ? 1 : sessionTotalCount;
+                                    double totalProgress =
+                                        (double)doneInSession * 100d / safeSessionTotalCount;
+                                    if (totalProgress > 100d)
+                                    {
+                                        totalProgress = 100d;
+                                    }
+
+                                    lock (progressLock)
+                                    {
+                                        progress.Report(totalProgress, message, reportTitle, false);
+                                    }
+
+                                    ReportProgressSnapshot(
+                                        progressSnapshot,
+                                        doneInSession,
+                                        sessionTotalCount,
+                                        GetLiveParallelism(),
+                                        ResolveLatestConfiguredParallelism()
+                                    );
+                                }
+                                finally
+                                {
+                                    if (startedNotified)
+                                    {
+                                        NotifyJobCallback(onJobCompleted, queueObj);
+                                    }
+                                    if (slowLaneEntered)
+                                    {
+                                        slowLaneGate?.Release();
+                                    }
+                                    if (recoveryLaneEntered)
+                                    {
+                                        recoveryLaneGate?.Release();
+                                    }
+                                    if (regularLaneEntered)
+                                    {
+                                        regularLaneGate.Release();
+                                    }
+                                    if (leaseEntered)
+                                    {
+                                        parallelGate.Release();
+                                    }
+                                }
+                            }
+
+                            try
+                            {
+                                List<Task> activeWorkerTasks = [];
+
+                                while (true)
+                                {
+                                    cts.ThrowIfCancellationRequested();
+
+                                    int refillThreshold = Math.Max(1, GetLiveParallelism());
+                                    while (pendingLeasedItems.Count < refillThreshold)
+                                    {
+                                        List<QueueDbLeaseItem> nextItems = AcquireLeasedItems(
+                                            queueDbService,
+                                            ownerInstanceId,
+                                            runtimeLeaseBatchSize,
+                                            safeLeaseMinutes,
+                                            preferredTabIndexResolver,
+                                            safeLog,
+                                            workerRole
+                                        );
+                                        if (nextItems.Count < 1)
+                                        {
+                                            break;
+                                        }
+
+                                        EnqueueLeasedItems(pendingLeasedItems, nextItems);
+                                    }
+
+                                    int dispatchLimit = Math.Min(
+                                        maxWorkerPoolParallelism,
+                                        Math.Max(4, GetLiveParallelism() * 2)
+                                    );
+                                    while (
+                                        pendingLeasedItems.Count > 0
+                                        && activeWorkerTasks.Count < dispatchLimit
+                                    )
+                                    {
+                                        QueueDbLeaseItem nextItem = pendingLeasedItems.Dequeue();
+                                        activeWorkerTasks.Add(ProcessLeasedItemAsync(nextItem, cts));
+                                    }
+
+                                    if (activeWorkerTasks.Count < 1)
+                                    {
+                                        int activeCount = queueDbService.GetActiveQueueCount(
+                                            ownerInstanceId
+                                        );
+                                        if (pendingLeasedItems.Count < 1 && activeCount < 1)
+                                        {
+                                            break;
+                                        }
+
+                                        await Task.Delay(250, cts).ConfigureAwait(false);
+                                        continue;
+                                    }
+
+                                    Task completedTask = await Task
+                                        .WhenAny(activeWorkerTasks)
+                                        .ConfigureAwait(false);
+                                    activeWorkerTasks.Remove(completedTask);
+                                    await completedTask.ConfigureAwait(false);
+                                }
                             }
                             finally
                             {
@@ -829,7 +942,8 @@ namespace IndigoMovieManager.Thumbnail
                                 runtimeLeaseBatchSize,
                                 safeLeaseMinutes,
                                 preferredTabIndexResolver,
-                                safeLog
+                                safeLog,
+                                workerRole
                             );
                             if (safeBatchCooldownMs > 0 && leasedItems.Count > 0)
                             {
@@ -867,6 +981,10 @@ namespace IndigoMovieManager.Thumbnail
                 safeLog(msg);
                 throw;
             }
+            finally
+            {
+                RestoreBackgroundPriority();
+            }
         }
 
         /// <summary>
@@ -878,7 +996,8 @@ namespace IndigoMovieManager.Thumbnail
             int leaseBatchSize,
             int leaseMinutes,
             Func<int?> preferredTabIndexResolver,
-            Action<string> log
+            Action<string> log,
+            ThumbnailQueueWorkerRole workerRole
         )
         {
             int? preferredTabIndex = null;
@@ -899,10 +1018,109 @@ namespace IndigoMovieManager.Thumbnail
             DateTime utcNow = DateTime.UtcNow;
             TimeSpan leaseDuration = TimeSpan.FromMinutes(leaseMinutes);
             List<QueueDbLeaseItem> leasedItems = [];
+            long slowLaneMinMovieSizeBytes = ThumbnailLaneClassifier.ResolveSlowLaneMinBytes();
+            if (workerRole == ThumbnailQueueWorkerRole.Normal)
+            {
+                leasedItems.AddRange(
+                    queueDbService.GetPendingAndLease(
+                        ownerInstanceId,
+                        takeCount: leaseBatchSize,
+                        leaseDuration: leaseDuration,
+                        utcNow: utcNow,
+                        preferredTabIndex: preferredTabIndex,
+                        maxAttemptCount: 0,
+                        maxMovieSizeBytes: Math.Max(0, slowLaneMinMovieSizeBytes - 1),
+                        leaseOrder: QueueDbLeaseOrder.MovieSizeAsc
+                    )
+                );
+                if (
+                    leasedItems.Count < 1
+                    && !queueDbService.HasNormalQueueDemand(
+                        ownerInstanceId,
+                        slowLaneMinMovieSizeBytes,
+                        maxAttemptCount: 0
+                    )
+                )
+                {
+                    leasedItems.AddRange(
+                        queueDbService.GetPendingAndLease(
+                            ownerInstanceId,
+                            takeCount: leaseBatchSize,
+                            leaseDuration: leaseDuration,
+                            utcNow: utcNow,
+                            preferredTabIndex: preferredTabIndex,
+                            maxAttemptCount: 0,
+                            minMovieSizeBytes: slowLaneMinMovieSizeBytes,
+                            leaseOrder: QueueDbLeaseOrder.MovieSizeAsc
+                        )
+                    );
+                    if (leasedItems.Count > 0)
+                    {
+                        log?.Invoke(
+                            $"consumer lease: normal delegated slow-initial because regular queue is empty acquired={leasedItems.Count}"
+                        );
+                    }
+                }
+                SortLeasedItemsByLane(leasedItems);
+                long dedicatedLeaseTotal = ThumbnailQueueMetrics.RecordLeaseAcquired(
+                    leasedItems.Count
+                );
+                if (leasedItems.Count > 0)
+                {
+                    log?.Invoke(
+                        $"consumer lease: acquired={leasedItems.Count} total={dedicatedLeaseTotal} role={workerRole}"
+                    );
+                }
+                return leasedItems;
+            }
+
+            if (workerRole == ThumbnailQueueWorkerRole.Idle)
+            {
+                leasedItems.AddRange(
+                    queueDbService.GetPendingAndLease(
+                        ownerInstanceId,
+                        takeCount: leaseBatchSize,
+                        leaseDuration: leaseDuration,
+                        utcNow: utcNow,
+                        preferredTabIndex: preferredTabIndex,
+                        minAttemptCount: 1,
+                        leaseOrder: QueueDbLeaseOrder.MovieSizeDesc
+                    )
+                );
+
+                int remainingIdleCount = leaseBatchSize - leasedItems.Count;
+                if (remainingIdleCount > 0)
+                {
+                    leasedItems.AddRange(
+                        queueDbService.GetPendingAndLease(
+                            ownerInstanceId,
+                            takeCount: remainingIdleCount,
+                            leaseDuration: leaseDuration,
+                            utcNow: utcNow,
+                            preferredTabIndex: preferredTabIndex,
+                            maxAttemptCount: 0,
+                            minMovieSizeBytes: slowLaneMinMovieSizeBytes,
+                            leaseOrder: QueueDbLeaseOrder.MovieSizeDesc
+                        )
+                    );
+                }
+
+                SortLeasedItemsByLane(leasedItems);
+                long dedicatedLeaseTotal = ThumbnailQueueMetrics.RecordLeaseAcquired(
+                    leasedItems.Count
+                );
+                if (leasedItems.Count > 0)
+                {
+                    log?.Invoke(
+                        $"consumer lease: acquired={leasedItems.Count} total={dedicatedLeaseTotal} role={workerRole}"
+                    );
+                }
+                return leasedItems;
+            }
+
             bool reserveRecoveryLease =
                 leaseBatchSize >= RecoveryLaneReservedMinParallelism
                 && queueDbService.HasRecoveryQueueDemand(ownerInstanceId);
-            long slowLaneMinMovieSizeBytes = ThumbnailLaneClassifier.ResolveSlowLaneMinBytes();
 
             if (reserveRecoveryLease)
             {
@@ -914,7 +1132,8 @@ namespace IndigoMovieManager.Thumbnail
                         leaseDuration: leaseDuration,
                         utcNow: utcNow,
                         preferredTabIndex: preferredTabIndex,
-                        minAttemptCount: 1
+                        minAttemptCount: 1,
+                        leaseOrder: QueueDbLeaseOrder.MovieSizeDesc
                     )
                 );
             }
@@ -939,7 +1158,8 @@ namespace IndigoMovieManager.Thumbnail
                         utcNow: utcNow,
                         preferredTabIndex: preferredTabIndex,
                         maxAttemptCount: 0,
-                        minMovieSizeBytes: slowLaneMinMovieSizeBytes
+                        minMovieSizeBytes: slowLaneMinMovieSizeBytes,
+                        leaseOrder: QueueDbLeaseOrder.MovieSizeDesc
                     )
                 );
                 remainingCount = leaseBatchSize - leasedItems.Count;
@@ -947,9 +1167,6 @@ namespace IndigoMovieManager.Thumbnail
 
             if (remainingCount > 0)
             {
-                long? maxRegularMovieSizeBytes = reserveSlowLease
-                    ? Math.Max(0, slowLaneMinMovieSizeBytes - 1)
-                    : null;
                 leasedItems.AddRange(
                     queueDbService.GetPendingAndLease(
                         ownerInstanceId,
@@ -957,7 +1174,26 @@ namespace IndigoMovieManager.Thumbnail
                         leaseDuration: leaseDuration,
                         utcNow: utcNow,
                         preferredTabIndex: preferredTabIndex,
-                        maxMovieSizeBytes: maxRegularMovieSizeBytes
+                        maxAttemptCount: 0,
+                        maxMovieSizeBytes: Math.Max(0, slowLaneMinMovieSizeBytes - 1),
+                        leaseOrder: QueueDbLeaseOrder.MovieSizeAsc
+                    )
+                );
+                remainingCount = leaseBatchSize - leasedItems.Count;
+            }
+
+            if (remainingCount > 0)
+            {
+                leasedItems.AddRange(
+                    queueDbService.GetPendingAndLease(
+                        ownerInstanceId,
+                        takeCount: remainingCount,
+                        leaseDuration: leaseDuration,
+                        utcNow: utcNow,
+                        preferredTabIndex: preferredTabIndex,
+                        maxAttemptCount: 0,
+                        minMovieSizeBytes: slowLaneMinMovieSizeBytes,
+                        leaseOrder: QueueDbLeaseOrder.MovieSizeAsc
                     )
                 );
             }
@@ -972,8 +1208,89 @@ namespace IndigoMovieManager.Thumbnail
             return leasedItems;
         }
 
-        // バッチ先頭へリカバリを寄せ、その次に小動画を寄せ、巨大動画を後段へ回す。
-        // これにより再試行の専用枠が空振りしにくくなり、大動画の詰まりも避ける。
+        private static string ResolveProgressTitle(ThumbnailQueueWorkerRole workerRole)
+        {
+            return workerRole switch
+            {
+                ThumbnailQueueWorkerRole.Normal => "サムネイル作成中(通常)",
+                ThumbnailQueueWorkerRole.Idle => "サムネイル作成中(ゆっくり)",
+                _ => "サムネイル作成中",
+            };
+        }
+
+        // バックグラウンド処理中だけ通常系のプロセス優先度を下げ、UI操作への食い込みを少し抑える。
+        private static bool TryApplyProcessPriority(
+            ProcessPriorityClass targetPriorityClass,
+            Action<string> log,
+            out ProcessPriorityClass originalPriorityClass
+        )
+        {
+            originalPriorityClass = ProcessPriorityClass.Normal;
+            try
+            {
+                Process current = Process.GetCurrentProcess();
+                originalPriorityClass = current.PriorityClass;
+                if (current.PriorityClass != targetPriorityClass)
+                {
+                    current.PriorityClass = targetPriorityClass;
+                }
+
+                log?.Invoke(
+                    $"consumer priority applied: current={current.PriorityClass} original={originalPriorityClass}"
+                );
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"consumer priority apply skipped: {ex.Message}");
+                return false;
+            }
+        }
+
+        // UIと同居する通常系は BelowNormal に固定し、ffmpeg.exe 側だけ Idle へ落とす。
+        private static ProcessPriorityClass ResolveThumbnailWorkerPriorityClass()
+        {
+            string configured = Environment.GetEnvironmentVariable(ProcessPriorityEnvName)?.Trim()
+                ?? "";
+            if (string.IsNullOrWhiteSpace(configured))
+            {
+                return DefaultThumbnailWorkerPriorityClass;
+            }
+
+            return Enum.TryParse(configured, ignoreCase: true, out ProcessPriorityClass parsed)
+                ? parsed
+                : DefaultThumbnailWorkerPriorityClass;
+        }
+
+        // キューが空になったら元の優先度へ戻し、通常操作の足を引っ張らないようにする。
+        private static void RestoreProcessPriority(
+            ProcessPriorityClass? originalPriorityClass,
+            Action<string> log
+        )
+        {
+            if (!originalPriorityClass.HasValue)
+            {
+                return;
+            }
+
+            try
+            {
+                Process current = Process.GetCurrentProcess();
+                if (current.PriorityClass != originalPriorityClass.Value)
+                {
+                    current.PriorityClass = originalPriorityClass.Value;
+                }
+
+                log?.Invoke($"consumer priority restored: current={current.PriorityClass}");
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"consumer priority restore skipped: {ex.Message}");
+            }
+        }
+
+        // バッチ先頭へ再試行を寄せ、その次に小さい通常動画、最後に巨大動画を並べる。
+        // これにより通常系は小さい順で回り、巨大/再試行は専用枠へ自然に吸い込まれる。
         private static void SortLeasedItemsByLane(List<QueueDbLeaseItem> leasedItems)
         {
             if (leasedItems == null || leasedItems.Count < 2)
@@ -1007,8 +1324,7 @@ namespace IndigoMovieManager.Thumbnail
                 long rightSize = Math.Max(0, right?.MovieSizeBytes ?? 0);
                 return leftLane switch
                 {
-                    ThumbnailExecutionLane.Priority => leftSize.CompareTo(rightSize),
-                    ThumbnailExecutionLane.Slow => leftSize.CompareTo(rightSize),
+                    ThumbnailExecutionLane.Slow => rightSize.CompareTo(leftSize),
                     _ => leftSize.CompareTo(rightSize),
                 };
             });
@@ -1075,6 +1391,31 @@ namespace IndigoMovieManager.Thumbnail
             Action<string> log
         )
         {
+            if (IsMainDbScopeChangedException(ex))
+            {
+                int restored = queueDbService.UpdateStatus(
+                    leasedItem.QueueId,
+                    ownerInstanceId,
+                    ThumbnailQueueStatus.Pending,
+                    DateTime.UtcNow,
+                    ex.Message,
+                    incrementAttemptCount: false
+                );
+                if (restored < 1)
+                {
+                    log?.Invoke(
+                        $"consumer status skipped: category=db-scope-changed queue_id={leasedItem.QueueId} message={ex.Message}"
+                    );
+                }
+                else
+                {
+                    log?.Invoke(
+                        $"consumer deferred: category=db-scope-changed queue_id={leasedItem.QueueId} next={ThumbnailQueueStatus.Pending}"
+                    );
+                }
+                return;
+            }
+
             bool exceeded = leasedItem.AttemptCount + 1 >= DefaultMaxAttemptCount;
             bool missingFile =
                 string.IsNullOrWhiteSpace(leasedItem.MoviePath)
@@ -1109,6 +1450,11 @@ namespace IndigoMovieManager.Thumbnail
                         + $"retryable={retryable} failed_total={failedTotal}"
                 );
             }
+        }
+
+        private static bool IsMainDbScopeChangedException(Exception ex)
+        {
+            return ex is ThumbnailMainDbScopeChangedException;
         }
 
         private static void ReportProgressSnapshot(
@@ -1316,7 +1662,7 @@ namespace IndigoMovieManager.Thumbnail
             return ThumbnailParallelController.Clamp(resolved);
         }
 
-        // リース取得件数は、指定があればその値、未指定なら現在並列に合わせる。
+        // リース取得件数は、通常系4件 + ゆっくり1件 + 再試行1件を先読みできる数を既定にする。
         private static int ResolveLeaseBatchSize(int configuredLeaseBatchSize, int currentParallelism)
         {
             if (configuredLeaseBatchSize > 0)
@@ -1324,7 +1670,19 @@ namespace IndigoMovieManager.Thumbnail
                 return configuredLeaseBatchSize;
             }
 
-            return Math.Max(1, currentParallelism);
+            int safeParallelism = Math.Max(1, currentParallelism);
+            int reservedLaneCount = 0;
+            if (safeParallelism >= RecoveryLaneReservedMinParallelism)
+            {
+                reservedLaneCount++;
+            }
+            if (safeParallelism >= SlowLaneThrottleMinParallelism)
+            {
+                reservedLaneCount++;
+            }
+
+            int bufferedLeaseCount = RegularLaneBufferedLeaseCount + reservedLaneCount;
+            return Math.Max(safeParallelism, bufferedLeaseCount);
         }
 
         // RecoveryレーンやSlowレーンを有効化した場合、通常系へ割り当てる並列枠を減らす。
@@ -1380,7 +1738,8 @@ namespace IndigoMovieManager.Thumbnail
             int leaseMinutes,
             Func<int?> preferredTabIndexResolver,
             Action<string> log,
-            [EnumeratorCancellation] CancellationToken cts
+            ThumbnailQueueWorkerRole workerRole,
+            [EnumeratorCancellation] CancellationToken cts = default
         )
         {
             Queue<QueueDbLeaseItem> buffer = new();
@@ -1402,7 +1761,8 @@ namespace IndigoMovieManager.Thumbnail
                         leaseBatchSize,
                         leaseMinutes,
                         preferredTabIndexResolver,
-                        log
+                        log,
+                        workerRole
                     );
                     if (nextItems.Count > 0)
                     {

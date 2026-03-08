@@ -5,6 +5,8 @@ param(
     [int]$Iteration = 1,
     [int]$Warmup = 1,
     [int]$TabIndex = 4,
+    [string]$Priority = "Normal",
+    [switch]$Recovery,
     [string]$GpuMode = "cuda",
     [int]$FileTimeoutSec = 300,
     [string]$Configuration = "Debug",
@@ -28,6 +30,9 @@ if ($TabIndex -notin @(0, 1, 2, 3, 4, 99)) {
 }
 if ($FileTimeoutSec -lt 30 -or $FileTimeoutSec -gt 7200) {
     throw "FileTimeoutSec は 30 から 7200 の範囲で指定してください。"
+}
+if ($Priority.Trim().ToLowerInvariant() -notin @("idle", "belownormal", "normal", "abovenormal", "high")) {
+    throw "Priority は Idle / BelowNormal / Normal / AboveNormal / High のいずれかを指定してください。"
 }
 
 # スクリプト配置場所からリポジトリルートへ移動する。
@@ -99,6 +104,24 @@ function Read-FirstLogText {
     }
 
     return $text
+}
+
+function Resolve-DriveLetter {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$MoviePath
+    )
+
+    try {
+        $root = [System.IO.Path]::GetPathRoot($MoviePath)
+        if ([string]::IsNullOrWhiteSpace($root)) {
+            return ""
+        }
+        return $root.TrimEnd('\', '/')
+    }
+    catch {
+        return ""
+    }
 }
 
 function Stop-ProcessTree {
@@ -280,10 +303,14 @@ try {
             '-Iteration', $Iteration.ToString(),
             '-Warmup', $Warmup.ToString(),
             '-TabIndex', $TabIndex.ToString(),
+            '-Priority', (Quote-Arg $Priority),
             '-Configuration', (Quote-Arg $Configuration),
             '-Platform', (Quote-Arg $Platform),
             '-SkipBuild'
         )
+        if ($Recovery) {
+            $singleArgs += '-Recovery'
+        }
 
         $singleArgLine = $singleArgs -join ' '
         $stdoutPath = Join-Path $env:TEMP ("imm_bench_single_stdout_{0}.log" -f ([guid]::NewGuid().ToString("N")))
@@ -301,6 +328,12 @@ try {
                             gpu_mode = $GpuMode
                             input_file_name = $movie.Name
                             input_full_path = $movie.FullName
+                            input_size_bytes = $movie.Length
+                            bitrate_mbps = ""
+                            play_time_sec = ""
+                            priority = $Priority
+                            is_recovery = if ($Recovery) { "1" } else { "0" }
+                            drive_letter = Resolve-DriveLetter -MoviePath $movie.FullName
                             engine = $engine
                             iteration = $iter
                             tab_index = $TabIndex
@@ -329,6 +362,12 @@ try {
                             gpu_mode = $GpuMode
                             input_file_name = $movie.Name
                             input_full_path = $movie.FullName
+                            input_size_bytes = $movie.Length
+                            bitrate_mbps = ""
+                            play_time_sec = ""
+                            priority = $Priority
+                            is_recovery = if ($Recovery) { "1" } else { "0" }
+                            drive_letter = Resolve-DriveLetter -MoviePath $movie.FullName
                             engine = $engine
                             iteration = $iter
                             tab_index = $TabIndex
@@ -364,6 +403,12 @@ try {
                     gpu_mode = $GpuMode
                     input_file_name = $row.input_file_name
                     input_full_path = $movie.FullName
+                    input_size_bytes = $row.input_size_bytes
+                    bitrate_mbps = $row.bitrate_mbps
+                    play_time_sec = $row.play_time_sec
+                    priority = $row.priority
+                    is_recovery = $row.is_recovery
+                    drive_letter = $row.drive_letter
                     engine = $row.engine
                     iteration = [int]$row.iteration
                     tab_index = [int]$row.tab_index
@@ -391,7 +436,7 @@ $outSummary = Join-Path $repoRoot ("logs\thumbnail-engine-bench-folder-tab{0}-su
 $allRows | Export-Csv -LiteralPath $outCombined -Encoding UTF8 -NoTypeInformation
 
 $summary = $allRows |
-    Group-Object gpu_mode, engine |
+    Group-Object gpu_mode, priority, is_recovery, engine |
     ForEach-Object {
         $successRows = $_.Group | Where-Object { $_.success -eq "success" }
         $successCount = $successRows.Count
@@ -407,6 +452,8 @@ $summary = $allRows |
         }
         [pscustomobject]@{
             gpu_mode = $_.Group[0].gpu_mode
+            priority = $_.Group[0].priority
+            is_recovery = $_.Group[0].is_recovery
             engine = $_.Group[0].engine
             runs = $_.Count
             success = $successCount
@@ -416,7 +463,7 @@ $summary = $allRows |
             max_ms_success = $max
         }
     } |
-    Sort-Object gpu_mode, engine
+    Sort-Object gpu_mode, priority, is_recovery, engine
 
 $summary | Export-Csv -LiteralPath $outSummary -Encoding UTF8 -NoTypeInformation
 

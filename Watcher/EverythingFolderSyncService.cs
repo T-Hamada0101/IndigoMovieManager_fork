@@ -142,6 +142,10 @@ namespace IndigoMovieManager.Watcher
                         {
                             continue;
                         }
+                        if (MacMetadataSidecarDetector.IsAppleDoubleSidecar(fullPath))
+                        {
+                            continue;
+                        }
 
                         if (!IsUnderRoot(fullPath, normalizedRootWithSlash))
                         {
@@ -220,7 +224,9 @@ namespace IndigoMovieManager.Watcher
                 string normalizedRootWithSlash = NormalizeDirectoryPathWithTrailingSlash(
                     thumbFolder
                 );
-                string quotedRoot = QuoteForEverything(normalizedRootWithSlash);
+                string quotedRoot = QuoteForEverything(
+                    NormalizeDirectoryPathWithoutTrailingSlash(thumbFolder)
+                );
 
                 // サムネイルは jpg のみ出力される前提
                 string query = $"{quotedRoot} ext:jpg";
@@ -443,7 +449,9 @@ namespace IndigoMovieManager.Watcher
             HashSet<string> targetExtensions
         )
         {
-            string quotedRoot = QuoteForEverything(normalizedRootWithSlash);
+            string quotedRoot = QuoteForEverything(
+                NormalizeDirectoryPathWithoutTrailingSlash(normalizedRootWithSlash)
+            );
             if (targetExtensions.Count < 1)
             {
                 return [quotedRoot];

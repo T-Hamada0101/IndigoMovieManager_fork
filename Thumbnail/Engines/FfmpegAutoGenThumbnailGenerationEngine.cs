@@ -141,7 +141,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 {
                     if (!EnsureFfmpegInitializedSafe(out string initError))
                     {
-                        return ThumbnailCreationService.CreateFailedResult(
+                        return ThumbnailResultFactory.CreateFailed(
                             context?.SaveThumbFileName ?? "",
                             context?.DurationSec,
                             BuildInitFailedMessage(initError, _initFailureReason)
@@ -181,13 +181,13 @@ namespace IndigoMovieManager.Thumbnail.Engines
         )
         {
             if (context == null)
-                return ThumbnailCreationService.CreateFailedResult("", null, "context is null");
+                return ThumbnailResultFactory.CreateFailed("", null, "context is null");
             if (
                 context.ThumbInfo == null
                 || context.ThumbInfo.ThumbSec == null
                 || context.ThumbInfo.ThumbSec.Count < 1
             )
-                return ThumbnailCreationService.CreateFailedResult(
+                return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     context.DurationSec,
                     "thumb info is empty"
@@ -196,7 +196,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             double? durationSec = context.DurationSec;
             if (!durationSec.HasValue || durationSec.Value <= 0)
             {
-                durationSec = ThumbnailCreationService.TryGetDurationSecFromShell(
+                durationSec = ThumbnailShellMetadataUtility.TryGetDurationSecFromShell(
                     context.MovieFullPath
                 );
             }
@@ -204,7 +204,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int cols = context.TabInfo.Columns;
             int rows = context.TabInfo.Rows;
             if (cols < 1 || rows < 1)
-                return ThumbnailCreationService.CreateFailedResult(
+                return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     durationSec,
                     "invalid panel configuration"
@@ -214,12 +214,6 @@ namespace IndigoMovieManager.Thumbnail.Engines
             if (!string.IsNullOrWhiteSpace(saveDir))
             {
                 Directory.CreateDirectory(saveDir);
-            }
-
-            var captureSecs = new List<double>();
-            foreach (var sec in context.ThumbInfo.ThumbSec)
-            {
-                captureSecs.Add(sec);
             }
 
             int targetWidth = context.TabInfo.Width > 0 ? context.TabInfo.Width : 320;
@@ -243,7 +237,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 );
                 if (ret < 0)
                 {
-                    return ThumbnailCreationService.CreateFailedResult(
+                    return ThumbnailResultFactory.CreateFailed(
                         context.SaveThumbFileName,
                         durationSec,
                         "Failed to open input: " + GetErrorMessage(ret)
@@ -253,7 +247,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 ret = ffmpeg.avformat_find_stream_info(pFormatContext, null);
                 if (ret < 0)
                 {
-                    return ThumbnailCreationService.CreateFailedResult(
+                    return ThumbnailResultFactory.CreateFailed(
                         context.SaveThumbFileName,
                         durationSec,
                         "Failed to find stream info: " + GetErrorMessage(ret)
@@ -274,7 +268,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 }
 
                 if (pStream == null)
-                    return ThumbnailCreationService.CreateFailedResult(
+                    return ThumbnailResultFactory.CreateFailed(
                         context.SaveThumbFileName,
                         durationSec,
                         "Video stream not found"
@@ -283,7 +277,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 var codecId = pStream->codecpar->codec_id;
                 var pCodec = ffmpeg.avcodec_find_decoder(codecId);
                 if (pCodec == null)
-                    return ThumbnailCreationService.CreateFailedResult(
+                    return ThumbnailResultFactory.CreateFailed(
                         context.SaveThumbFileName,
                         durationSec,
                         "Decoder not found"
@@ -297,6 +291,8 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         durationSec = streamDur;
                 }
 
+                List<double> captureSecs = ResolveCaptureSeconds(context.ThumbInfo, durationSec);
+
                 pCodecContext = ffmpeg.avcodec_alloc_context3(pCodec);
                 ffmpeg.avcodec_parameters_to_context(pCodecContext, pStream->codecpar);
 
@@ -304,7 +300,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                 ret = ffmpeg.avcodec_open2(pCodecContext, pCodec, null);
                 if (ret < 0)
-                    return ThumbnailCreationService.CreateFailedResult(
+                    return ThumbnailResultFactory.CreateFailed(
                         context.SaveThumbFileName,
                         durationSec,
                         "Failed to open codec: " + GetErrorMessage(ret)
@@ -329,7 +325,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 );
                 if (pSwsContext == null)
                 {
-                    return ThumbnailCreationService.CreateFailedResult(
+                    return ThumbnailResultFactory.CreateFailed(
                         context.SaveThumbFileName,
                         durationSec,
                         "Failed to create sws context"
@@ -425,29 +421,36 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 if (bitmaps.Count > 0)
                 {
                     // 先頭フレームをミニパネル先行表示用に抜き出す。
-                    previewFrame = ThumbnailCreationService.CreatePreviewFrameFromBitmap(
+                    previewFrame = ThumbnailImageUtility.CreatePreviewFrameFromBitmap(
                         bitmaps[0],
                         120
                     );
-                    SaveCombinedThumbnail(
-                        bitmaps,
-                        cols,
-                        rows,
-                        targetWidth,
-                        targetHeight,
-                        context.SaveThumbFileName
-                    );
+                    if (
+                        !ThumbnailImageUtility.SaveCombinedThumbnail(
+                            context.SaveThumbFileName,
+                            bitmaps,
+                            cols,
+                            rows
+                        )
+                    )
+                    {
+                        return ThumbnailResultFactory.CreateFailed(
+                            context.SaveThumbFileName,
+                            durationSec,
+                            "autogen combined save failed"
+                        );
+                    }
                 }
                 else
                 {
-                    return ThumbnailCreationService.CreateFailedResult(
+                    return ThumbnailResultFactory.CreateFailed(
                         context.SaveThumbFileName,
                         durationSec,
                         "No frames decoded"
                     );
                 }
 
-                return ThumbnailCreationService.CreateSuccessResult(
+                return ThumbnailResultFactory.CreateSuccess(
                     context.SaveThumbFileName,
                     durationSec,
                     previewFrame
@@ -459,7 +462,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
             catch (Exception ex)
             {
-                return ThumbnailCreationService.CreateFailedResult(
+                return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     durationSec,
                     ex.Message
@@ -482,6 +485,48 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     bmp.Dispose();
                 }
             }
+        }
+
+        // 1秒未満の超短尺は整数秒だけだと全部0秒へ潰れるため、実デコード位置だけ実時間で均等化する。
+        internal static List<double> ResolveCaptureSeconds(ThumbInfo thumbInfo, double? durationSec)
+        {
+            List<double> captureSecs = [];
+            if (thumbInfo?.ThumbSec == null || thumbInfo.ThumbSec.Count < 1)
+            {
+                return captureSecs;
+            }
+
+            foreach (int sec in thumbInfo.ThumbSec)
+            {
+                captureSecs.Add(sec);
+            }
+
+            if (!durationSec.HasValue || durationSec.Value <= 0)
+            {
+                return captureSecs;
+            }
+
+            double safeEndSec = Math.Max(0, durationSec.Value - 0.001);
+            if (safeEndSec <= 0 || safeEndSec >= 1.0d)
+            {
+                return captureSecs;
+            }
+
+            bool allZero = thumbInfo.ThumbSec.All(sec => sec <= 0);
+            if (!allZero)
+            {
+                return captureSecs;
+            }
+
+            captureSecs.Clear();
+            int count = thumbInfo.ThumbSec.Count;
+            for (int i = 1; i <= count; i++)
+            {
+                double posSec = safeEndSec * i / (count + 1d);
+                captureSecs.Add(posSec);
+            }
+
+            return captureSecs;
         }
 
         private unsafe bool CreateBookmarkInternal(
@@ -641,7 +686,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     using (extracted)
                     {
                         if (
-                            !ThumbnailCreationService.TrySaveJpegWithRetry(
+                            !ThumbnailImageUtility.TrySaveJpegWithRetry(
                                 extracted,
                                 saveThumbPath,
                                 out _
@@ -722,37 +767,6 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 return null;
             }
             return bitmap;
-        }
-
-        private void SaveCombinedThumbnail(
-            List<Bitmap> frames,
-            int cols,
-            int rows,
-            int thumbW,
-            int thumbH,
-            string savePath
-        )
-        {
-            int combinedW = cols * thumbW;
-            int combinedH = rows * thumbH;
-
-            using Bitmap combined = new Bitmap(combinedW, combinedH, PixelFormat.Format24bppRgb);
-            using Graphics g = Graphics.FromImage(combined);
-            g.Clear(Color.Black);
-
-            for (int i = 0; i < frames.Count && i < (cols * rows); i++)
-            {
-                int r = i / cols;
-                int c = i % cols;
-                int x = c * thumbW;
-                int y = r * thumbH;
-                g.DrawImage(frames[i], new Rectangle(x, y, thumbW, thumbH));
-            }
-
-            if (!ThumbnailCreationService.TrySaveJpegWithRetry(combined, savePath, out string error))
-            {
-                throw new IOException($"autogen combined save failed: {error}");
-            }
         }
 
         private static unsafe string GetErrorMessage(int error)

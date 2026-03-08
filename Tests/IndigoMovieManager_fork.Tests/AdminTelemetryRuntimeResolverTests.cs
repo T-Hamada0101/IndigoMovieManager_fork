@@ -153,6 +153,31 @@ public sealed class AdminTelemetryRuntimeResolverTests
     }
 
     [Test]
+    public async Task ResolveAsync_SystemLoad未対応でも他signalだけserviceを使える()
+    {
+        PartialSignalOnlyAdminTelemetryClient client = new();
+
+        AdminTelemetryRuntimeSnapshot actual = await AdminTelemetryRuntimeResolver.ResolveAsync(
+            client,
+            AdminTelemetryRuntimeResolver.CreateThumbnailRequestContext("owner-7"),
+            CreateInput(queueActiveCount: 12, hasSlowDemand: true, hasRecoveryDemand: false),
+            "disk-05",
+            "volume-05",
+            CancellationToken.None
+        );
+
+        Assert.That(actual.Mode, Is.EqualTo(AdminTelemetryRuntimeMode.Service));
+        Assert.That(actual.SystemLoadSource, Is.EqualTo(AdminTelemetrySignalSourceKind.Internal));
+        Assert.That(actual.SystemLoadSnapshot.QueueBacklogCount, Is.EqualTo(12));
+        Assert.That(actual.DiskThermalSource, Is.EqualTo(AdminTelemetrySignalSourceKind.Service));
+        Assert.That(actual.DiskThermalFallbackKind, Is.EqualTo(AdminTelemetryFallbackKind.None));
+        Assert.That(actual.DiskThermalSnapshot.DiskId, Is.EqualTo("disk-05"));
+        Assert.That(actual.UsnMftSource, Is.EqualTo(AdminTelemetrySignalSourceKind.Service));
+        Assert.That(actual.UsnMftFallbackKind, Is.EqualTo(AdminTelemetryFallbackKind.None));
+        Assert.That(actual.UsnMftStatus.VolumeName, Is.EqualTo("volume-05"));
+    }
+
+    [Test]
     public void CreateThumbnailRequestContext_Thumbnail側既定値を返す()
     {
         AdminTelemetryRequestContext actual =
@@ -163,6 +188,17 @@ public sealed class AdminTelemetryRuntimeResolverTests
             Is.EqualTo(AdminTelemetryConsumerKind.ThumbnailOrchestrator)
         );
         Assert.That(actual.OrchestratorInstanceId, Is.EqualTo("owner-4"));
+        Assert.That(actual.CallerProcessId, Is.GreaterThan(0));
+        Assert.That(actual.RequestedAtUtc.Kind, Is.EqualTo(DateTimeKind.Utc));
+    }
+
+    [Test]
+    public void CreateWatcherRequestContext_Watcher側既定値を返す()
+    {
+        AdminTelemetryRequestContext actual =
+            AdminTelemetryRuntimeResolver.CreateWatcherRequestContext();
+
+        Assert.That(actual.ConsumerKind, Is.EqualTo(AdminTelemetryConsumerKind.WatcherFacade));
         Assert.That(actual.CallerProcessId, Is.GreaterThan(0));
         Assert.That(actual.RequestedAtUtc.Kind, Is.EqualTo(DateTimeKind.Utc));
     }
@@ -406,6 +442,68 @@ public sealed class AdminTelemetryRuntimeResolverTests
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return new UsnMftStatusDto();
+        }
+    }
+
+    private sealed class PartialSignalOnlyAdminTelemetryClient : IAdminTelemetryClient
+    {
+        public Task<AdminTelemetryServiceCapabilities> GetCapabilitiesAsync(
+            AdminTelemetryRequestContext requestContext,
+            CancellationToken cancellationToken
+        )
+        {
+            return Task.FromResult(
+                new AdminTelemetryServiceCapabilities
+                {
+                    ServiceVersion = "partial-signal-service",
+                    RequiresElevation = true,
+                    SupportsSystemLoad = false,
+                    SupportsDiskThermal = true,
+                    SupportsUsnMftStatus = true,
+                    SupportsWatcherIntegration = true,
+                }
+            );
+        }
+
+        public Task<SystemLoadSnapshotDto> GetSystemLoadSnapshotAsync(
+            AdminTelemetryRequestContext requestContext,
+            CancellationToken cancellationToken
+        )
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<DiskThermalSnapshotDto> GetDiskThermalSnapshotAsync(
+            AdminTelemetryRequestContext requestContext,
+            string diskId,
+            CancellationToken cancellationToken
+        )
+        {
+            return Task.FromResult(
+                new DiskThermalSnapshotDto
+                {
+                    DiskId = diskId,
+                    ThermalState = DiskThermalState.Unavailable,
+                    CapturedAtUtc = DateTime.UtcNow,
+                }
+            );
+        }
+
+        public Task<UsnMftStatusDto> GetUsnMftStatusAsync(
+            AdminTelemetryRequestContext requestContext,
+            string volumeName,
+            CancellationToken cancellationToken
+        )
+        {
+            return Task.FromResult(
+                new UsnMftStatusDto
+                {
+                    VolumeName = volumeName,
+                    Available = true,
+                    StatusKind = UsnMftStatusKind.Ready,
+                    CapturedAtUtc = DateTime.UtcNow,
+                }
+            );
         }
     }
 }

@@ -34,6 +34,7 @@
 - [SearchSpec.md](Docs/SearchSpec.md) : 現在の検索仕様！
 - [EncodingIncidentReport.md](Docs/EncodingIncidentReport.md) : 恐怖の文字化けインシデント報告と再発防止策😱
 - [ThumbnailLogic_2026-02-28.md](Docs/ThumbnailLogic_2026-02-28.md) : サムネイル処理のすべて！完全非同期キューDB×爆速FFmpegの最強アーキテクチャ解説！🎥🔥
+- [ProgressExternalizationArchitecture_2026-03-08.md](src/IndigoMovieManager.Thumbnail.Queue/ProgressExternalizationArchitecture_2026-03-08.md) : **【NEW】サムネ進捗をUIから完全分離！IPCを使わずファイル経由で爆速更新させる無敵アーキテクチャ！🔥**
 
 ### WhiteBrowser からの移行について
 - **SQLite DBファイル**: そのまま使えるようにするよ！これ超重要！
@@ -140,3 +141,8 @@
 - 古いFLVや壊れかけたMP4が来ても諦めない！エラーを検知して裏で勝手に構造を修復し、サムネイルを意地でもひねり出すリカバリーロジックを搭載！
 - しかも**元の動画ファイルは絶対に傷つけない（上書き完全ブロック）鉄壁の安全設計！** これでもうインデックス破損動画なんて怖くない！どや！！😎🛡️🔥
 - **💖 ユーザーLOVE宣言 💖** みんなからの熱い要望があれば、UIからポチッと押すだけで「元のぶっ壊れ動画自体を完璧に直してくれる本気の修復機能」も実装するぜ！！みんなの声待ってるよ！🥰💕
+
+### 🔗 サムネイル進捗外部化・IPC通信消滅アーキテクチャ完成！ (2026-03-08)
+- [サムネイル進捗外部化アーキテクチャ✨](src/IndigoMovieManager.Thumbnail.Queue/ProgressExternalizationArchitecture_2026-03-08.md) **【NEW】完全分離の極意！✨**
+- UIと裏のWorker同士の面倒な通信（IPC）を完全に消しとばし、Workerが専用JSONファイルに進捗を書き出し、UIがそれを読むだけの最強シンプル設計を導入！🔥
+- これによりUI側がフリーズしようが何をしようが、Workerの爆速サムネ処理の足を一切引っ張らないという、非同期・独立性の極みを達成したぜ！どや！😎🚀

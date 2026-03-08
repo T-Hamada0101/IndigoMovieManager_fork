@@ -37,6 +37,11 @@ namespace IndigoMovieManager
         private const long WatchCheckProbeSlowThresholdMs = 120;
         // 欠損サムネ救済は重い全件確認になるため、DB+タブ単位で最小間隔を設ける。
         private static readonly TimeSpan MissingThumbnailRescueMinInterval = TimeSpan.FromSeconds(60);
+        // 救済候補はメモリへ抱え、キューの空き枠分だけ段階投入する。
+        private const int MissingThumbnailRescueTargetActiveCount = 32;
+        private const int MissingThumbnailRescueMaxEnqueuePerRun = 32;
+        private static readonly TimeSpan MissingThumbnailRescueBufferRetention =
+            TimeSpan.FromHours(6);
         // Watch差分0件が続く時でも、低頻度で実フォルダとDBを再突合する。
         private static readonly TimeSpan WatchFolderFullReconcileMinInterval =
             TimeSpan.FromSeconds(60);
@@ -172,6 +177,14 @@ namespace IndigoMovieManager
         // DB+タブ単位で、欠損サムネ救済を直近いつ実行したかを記録する。
         private readonly object _missingThumbnailRescueSync = new();
         private readonly Dictionary<string, DateTime> _missingThumbnailRescueLastRunUtcByScope =
+            new(StringComparer.OrdinalIgnoreCase);
+        // DB+タブ単位の欠損候補バッファ。本当に必要な分だけ後からキューへ流す。
+        private readonly object _missingThumbnailRescueBufferSync = new();
+        private readonly Dictionary<string, MissingThumbnailRescueBufferState>
+            _missingThumbnailRescueBuffersByScope = new(StringComparer.OrdinalIgnoreCase);
+        // 起動直後のWatch自動救済は1回だけ見送り、初回描画と競合しないようにする。
+        private readonly object _initialWatchMissingThumbnailRescueSync = new();
+        private readonly HashSet<string> _initialWatchMissingThumbnailRescueSkippedScopes =
             new(StringComparer.OrdinalIgnoreCase);
         // DB+監視フォルダ単位で、低頻度の全量再突合を直近いつ実行したかを記録する。
         private readonly object _watchFolderFullReconcileSync = new();
@@ -898,10 +911,6 @@ namespace IndigoMovieManager
                                 continue;
                             }
 
-                            DebugRuntimeLog.Write(
-                                "watch-check",
-                                $"enqueue by missing-tab-thumb: tab={snapshotTabIndex}, movie='{pending.MovieFullPath}'"
-                            );
 
                             QueueObj temp = new()
                             {
@@ -1161,10 +1170,6 @@ namespace IndigoMovieManager
                             continue;
                         }
 
-                        DebugRuntimeLog.Write(
-                            "watch-check",
-                            $"enqueue by missing-tab-thumb: tab={snapshotTabIndex}, movie='{movieFullPath}'"
-                        );
 
                         // サムネイル作成キュー用のオブジェクトを用意してバッファのリストへ積む
                         QueueObj temp = new()
@@ -1294,12 +1299,14 @@ namespace IndigoMovieManager
                 return;
             }
 
+            bool isManualRequest = mode == CheckMode.Manual;
+
             // キュー高負荷中は救済スキャンを見送り、通常処理を優先する。
             if (TryGetCurrentQueueActiveCount(out int activeCount))
             {
                 if (
                     ShouldSkipMissingThumbnailRescueForBusyQueue(
-                        mode == CheckMode.Manual,
+                        isManualRequest,
                         activeCount,
                         EverythingWatchPollBusyThreshold
                     )
@@ -1315,6 +1322,15 @@ namespace IndigoMovieManager
 
             DateTime nowUtc = DateTime.UtcNow;
             string scopeKey = BuildMissingThumbnailRescueScopeKey(snapshotDbFullPath, snapshotTabIndex);
+            if (ShouldSkipInitialWatchMissingThumbnailRescue(mode == CheckMode.Watch, scopeKey))
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"missing-thumb rescue startup-skip: tab={snapshotTabIndex}"
+                );
+                return;
+            }
+
             if (!TryReserveMissingThumbnailRescueWindow(scopeKey, nowUtc, out TimeSpan nextIn))
             {
                 DebugRuntimeLog.Write(
@@ -1324,33 +1340,36 @@ namespace IndigoMovieManager
                 return;
             }
 
-            Stopwatch rescueStopwatch = Stopwatch.StartNew();
             try
             {
-                DebugRuntimeLog.Write(
-                    "watch-check",
-                    $"missing-thumb rescue start: mode={mode} tab={snapshotTabIndex} db='{snapshotDbFullPath}'"
-                );
-                await EnqueueMissingThumbnailsAsync(
+                MissingThumbnailRescueResult result = await EnqueueMissingThumbnailsAsync(
                     snapshotTabIndex,
                     snapshotDbFullPath,
                     snapshotDbName,
-                    snapshotThumbFolder
+                    snapshotThumbFolder,
+                    isManualRequest
                 );
+                if (
+                    result.RebuiltBuffer
+                    || result.EnqueuedCount > 0
+                    || result.SkippedMissingMovieCount > 0
+                    || result.SkippedExistingThumbCount > 0
+                )
+                {
+                    DebugRuntimeLog.WriteAlways(
+                        "watch-check",
+                        $"missing-thumb rescue: mode={mode} tab={snapshotTabIndex} rebuilt={result.RebuiltBuffer} "
+                            + $"prepared={result.PreparedCount} enqueued={result.EnqueuedCount} buffered={result.BufferedCount} "
+                            + $"skipped_missing_movie={result.SkippedMissingMovieCount} "
+                            + $"skipped_existing_thumb={result.SkippedExistingThumbCount}"
+                    );
+                }
             }
             catch (Exception ex)
             {
-                DebugRuntimeLog.Write(
+                DebugRuntimeLog.WriteAlways(
                     "watch-check",
-                    $"missing-thumb rescue failed: mode={mode} tab={snapshotTabIndex} reason='{ex.Message}'"
-                );
-            }
-            finally
-            {
-                rescueStopwatch.Stop();
-                DebugRuntimeLog.Write(
-                    "watch-check",
-                    $"missing-thumb rescue end: mode={mode} tab={snapshotTabIndex} elapsed_ms={rescueStopwatch.ElapsedMilliseconds}"
+                    $"[error] missing-thumb rescue failed: mode={mode} tab={snapshotTabIndex} reason='{ex.Message}'"
                 );
             }
         }
@@ -1411,6 +1430,109 @@ namespace IndigoMovieManager
                 }
 
                 return true;
+            }
+        }
+
+        // 現在のキュー量から、救済で追加投入してよい件数を決める。
+        internal static int ResolveMissingThumbnailRescueEnqueueQuota(
+            int activeCount,
+            int targetActiveCount,
+            int maxEnqueuePerRun
+        )
+        {
+            int safeActiveCount = Math.Max(0, activeCount);
+            int safeTargetActiveCount = Math.Max(0, targetActiveCount);
+            int safeMaxEnqueuePerRun = Math.Max(0, maxEnqueuePerRun);
+            if (safeTargetActiveCount < 1 || safeMaxEnqueuePerRun < 1)
+            {
+                return 0;
+            }
+
+            int quota = safeTargetActiveCount - safeActiveCount;
+            if (quota < 1)
+            {
+                return 0;
+            }
+
+            return Math.Min(quota, safeMaxEnqueuePerRun);
+        }
+
+        // 手動要求は最新状態を優先し、自動監視は既存バッファを使い切るまで再利用する。
+        internal static bool ShouldRebuildMissingThumbnailRescueBuffer(
+            bool isManualRequest,
+            int bufferedCount
+        )
+        {
+            return isManualRequest || bufferedCount < 1;
+        }
+
+        // DB+タブ単位の救済バッファを取得し、古い未使用バッファは掃除する。
+        private MissingThumbnailRescueBufferState GetOrCreateMissingThumbnailRescueBufferState(
+            string scopeKey,
+            string snapshotDbFullPath,
+            int snapshotTabIndex,
+            DateTime nowUtc
+        )
+        {
+            lock (_missingThumbnailRescueBufferSync)
+            {
+                if (
+                    !_missingThumbnailRescueBuffersByScope.TryGetValue(
+                        scopeKey,
+                        out MissingThumbnailRescueBufferState state
+                    )
+                )
+                {
+                    state = new MissingThumbnailRescueBufferState();
+                    _missingThumbnailRescueBuffersByScope[scopeKey] = state;
+                }
+
+                state.DbFullPath = snapshotDbFullPath ?? "";
+                state.TabIndex = snapshotTabIndex;
+                state.LastAccessUtc = nowUtc;
+
+                if (_missingThumbnailRescueBuffersByScope.Count > 32)
+                {
+                    DateTime cutoffUtc = nowUtc - MissingThumbnailRescueBufferRetention;
+                    List<string> staleKeys = _missingThumbnailRescueBuffersByScope
+                        .Where(x => x.Value.LastAccessUtc < cutoffUtc)
+                        .Select(x => x.Key)
+                        .ToList();
+                    foreach (string staleKey in staleKeys)
+                    {
+                        _missingThumbnailRescueBuffersByScope.Remove(staleKey);
+                    }
+                }
+
+                return state;
+            }
+        }
+
+        // Watch起動直後だけ、自動救済を1回見送って初回表示との競合を避ける。
+        private bool ShouldSkipInitialWatchMissingThumbnailRescue(bool isWatchMode, string scopeKey)
+        {
+            if (!isWatchMode || string.IsNullOrWhiteSpace(scopeKey))
+            {
+                return false;
+            }
+
+            lock (_initialWatchMissingThumbnailRescueSync)
+            {
+                return _initialWatchMissingThumbnailRescueSkippedScopes.Add(scopeKey);
+            }
+        }
+
+        // DB切り替え時に古い救済候補を持ち越さないよう、メモリ上の状態を全消去する。
+        private void ClearMissingThumbnailRescueBuffers()
+        {
+            lock (_missingThumbnailRescueBufferSync)
+            {
+                _missingThumbnailRescueBuffersByScope.Clear();
+            }
+
+            lock (_initialWatchMissingThumbnailRescueSync)
+            {
+                _initialWatchMissingThumbnailRescueSkippedScopes.Clear();
             }
         }
 
@@ -1525,11 +1647,11 @@ namespace IndigoMovieManager
         }
 
         // 100件たまるごとにサムネイルキューへ流すための共通処理。
-        private void FlushPendingQueueItems(List<QueueObj> pendingItems, string folderPath)
+        private int FlushPendingQueueItems(List<QueueObj> pendingItems, string folderPath)
         {
             if (pendingItems.Count < 1)
             {
-                return;
+                return 0;
             }
 
             bool bypassDebounce = string.Equals(
@@ -1545,11 +1667,21 @@ namespace IndigoMovieManager
                     flushedCount++;
                 }
             }
-            DebugRuntimeLog.Write(
-                "watch-check",
-                $"enqueue batch: folder='{folderPath}' requested={pendingItems.Count} flushed={flushedCount}"
+
+            bool isRescueFolder = string.Equals(
+                folderPath,
+                "RescueMissingThumbnails",
+                StringComparison.Ordinal
             );
+            if (!isRescueFolder || flushedCount != pendingItems.Count)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"enqueue batch: folder='{folderPath}' requested={pendingItems.Count} flushed={flushedCount}"
+                );
+            }
             pendingItems.Clear();
+            return flushedCount;
         }
 
         // 単体登録をバックグラウンドで実行し、監視イベント側の待機を短くする。
@@ -2041,125 +2173,7 @@ namespace IndigoMovieManager
             string detail
         )
         {
-            string safeProviderName = string.IsNullOrWhiteSpace(providerDisplayName)
-                ? "インデックス連携"
-                : providerDisplayName;
-            string safeDetail = string.IsNullOrWhiteSpace(detail) ? "unknown" : detail;
-            if (
-                safeDetail.StartsWith(
-                    EverythingReasonCodes.PathNotEligiblePrefix,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                string rawReason = safeDetail[EverythingReasonCodes.PathNotEligiblePrefix.Length..];
-                string message = rawReason switch
-                {
-                    "empty_path" => "監視フォルダが未設定です",
-                    "unc_path" => "UNC/NASパスはEverything高速経路の対象外です",
-                    "no_root" => "ドライブ情報を解決できません",
-                    "ok" => "対象フォルダ判定は正常です",
-                    _ when rawReason.StartsWith(
-                            "drive_type_",
-                            StringComparison.OrdinalIgnoreCase
-                        ) => $"ローカル固定ドライブ以外のため対象外です ({rawReason})",
-                    _ when rawReason.StartsWith(
-                            "drive_format_",
-                            StringComparison.OrdinalIgnoreCase
-                        ) => $"NTFS以外のため対象外です ({rawReason})",
-                    _ when rawReason.StartsWith(
-                            "eligibility_error:",
-                            StringComparison.OrdinalIgnoreCase
-                        ) => $"対象判定で例外が発生しました ({rawReason})",
-                    _ => $"対象外です ({rawReason})",
-                };
-                return (safeDetail, message);
-            }
-
-            if (
-                safeDetail.Equals(
-                    EverythingReasonCodes.SettingDisabled,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                return (safeDetail, "設定でインデックス連携が無効です");
-            }
-
-            if (
-                safeDetail.Equals(
-                    EverythingReasonCodes.EverythingNotAvailable,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                return (safeDetail, $"{safeProviderName} を利用できません");
-            }
-            if (
-                safeDetail.Equals(
-                    EverythingReasonCodes.AutoNotAvailable,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                return (
-                    safeDetail,
-                    $"AUTO設定中ですが {safeProviderName} を使えないため通常監視で動作します"
-                );
-            }
-
-            if (
-                safeDetail.StartsWith(
-                    EverythingReasonCodes.EverythingResultTruncatedPrefix,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                return (
-                    safeDetail,
-                    $"{safeProviderName} の検索結果が上限件数に達したため通常監視へ切り替えます"
-                );
-            }
-
-            if (
-                safeDetail.StartsWith(
-                    EverythingReasonCodes.AvailabilityErrorPrefix,
-                    StringComparison.OrdinalIgnoreCase
-                )
-                || safeDetail.StartsWith(
-                    EverythingReasonCodes.EverythingQueryErrorPrefix,
-                    StringComparison.OrdinalIgnoreCase
-                )
-                || safeDetail.StartsWith(
-                    EverythingReasonCodes.EverythingThumbQueryErrorPrefix,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                if (
-                    safeDetail.Equals(
-                        $"{EverythingReasonCodes.AvailabilityErrorPrefix}AdminRequired",
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-                {
-                    return (safeDetail, $"{safeProviderName} は管理者権限が必要です");
-                }
-
-                return (safeDetail, $"{safeProviderName} で例外が発生しました ({safeDetail})");
-            }
-
-            if (
-                safeDetail.StartsWith(
-                    EverythingReasonCodes.OkPrefix,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                return (safeDetail, $"{safeProviderName} で候補収集に成功しました");
-            }
-
-            return (safeDetail, $"不明な理由のため通常監視へ切り替えます ({safeDetail})");
+            return FileIndexDetailFormatter.Describe(providerDisplayName, detail);
         }
 
         /// <summary>
@@ -2214,6 +2228,24 @@ namespace IndigoMovieManager
 
             if (usedEverything)
             {
+                // 全量走査で0件が返るのは取りこぼし側が痛いので、通常走査で必ず再確認する。
+                if (ShouldFallbackToFilesystemOnEmptyIndexedScan(mode == CheckMode.Watch, candidatePaths.Count))
+                {
+                    FolderScanResult emptyResultFallback = ScanFolderInBackground(
+                        checkFolder,
+                        sub,
+                        checkExt,
+                        existingThumbBodies
+                    );
+                    return new FolderScanWithStrategyResult(
+                        emptyResultFallback,
+                        FileIndexStrategies.Filesystem,
+                        providerResult.ProviderKey,
+                        providerResult.ProviderDisplayName,
+                        EverythingReasonCodes.EmptyResultFallback
+                    );
+                }
+
                 List<string> newMoviePaths = [];
                 int scannedCount = 0;
                 foreach (string fullPath in candidatePaths)
@@ -2264,6 +2296,15 @@ namespace IndigoMovieManager
             );
         }
 
+        // Watch差分は0件が正常系なので維持し、全量走査だけ空結果を疑ってfilesystemへ落とす。
+        internal static bool ShouldFallbackToFilesystemOnEmptyIndexedScan(
+            bool isWatchMode,
+            int candidateCount
+        )
+        {
+            return !isWatchMode && candidateCount < 1;
+        }
+
         /// <summary>
         /// 監視フォルダの重い直列走査を担う静的メソッド。
         /// Task.Run経由でバックグラウンドスレッドで実行される。メモリ上に構築されたHashSetと突き合わせ、「新顔」だけを返す。
@@ -2308,6 +2349,10 @@ namespace IndigoMovieManager
                 {
                     scannedCount++;
                     string fullPath = file.FullName;
+                    if (MacMetadataSidecarDetector.IsAppleDoubleSidecar(fullPath))
+                    {
+                        continue;
+                    }
 
                     // DEBUG時の1ファイル単位ログは出力量が多く、走査を著しく遅くするため停止。
                     // 必要なときは次の1行コメントを外して再度有効化する。
@@ -2410,97 +2455,360 @@ namespace IndigoMovieManager
         }
 
         /// <summary>
-        /// 既存のDBに存在する動画のうち、指定タブ（例：Tab=2）のサムネイルが欠損しているものを探し出し、
-        /// 再度サムネイル生成キューへ投入するワンショット救済処理！これで抜け漏れも安心だぜ！🚀
+        /// 既存のDBに存在する欠損サムネ候補をメモリへ蓄え、必要な分だけキューへ流す。
         /// </summary>
-        public async Task EnqueueMissingThumbnailsAsync(
+        private async Task<MissingThumbnailRescueResult> EnqueueMissingThumbnailsAsync(
+            int targetTabIndex,
+            string snapshotDbFullPath,
+            string snapshotDbName,
+            string snapshotThumbFolder,
+            bool forceRebuildBuffer = false
+        )
+        {
+            MissingThumbnailRescueResult result = new();
+            if (string.IsNullOrWhiteSpace(snapshotDbFullPath))
+            {
+                return result;
+            }
+
+            DateTime nowUtc = DateTime.UtcNow;
+            string scopeKey = BuildMissingThumbnailRescueScopeKey(snapshotDbFullPath, targetTabIndex);
+            MissingThumbnailRescueBufferState state = GetOrCreateMissingThumbnailRescueBufferState(
+                scopeKey,
+                snapshotDbFullPath,
+                targetTabIndex,
+                nowUtc
+            );
+
+            bool rebuildBuffer = ShouldRebuildMissingThumbnailRescueBuffer(
+                forceRebuildBuffer,
+                state.BufferedCount
+            );
+            if (rebuildBuffer)
+            {
+                List<QueueObj> bufferedCandidates = await Task.Run(() =>
+                    BuildMissingThumbnailRescueBuffer(
+                        targetTabIndex,
+                        snapshotDbFullPath,
+                        snapshotDbName,
+                        snapshotThumbFolder
+                    )
+                );
+                state.ReplaceCandidates(bufferedCandidates, nowUtc);
+                result.RebuiltBuffer = true;
+                result.PreparedCount = bufferedCandidates.Count;
+            }
+
+            if (!TryGetCurrentQueueActiveCount(out int activeCount))
+            {
+                activeCount = 0;
+            }
+            int enqueueQuota = ResolveMissingThumbnailRescueEnqueueQuota(
+                activeCount,
+                MissingThumbnailRescueTargetActiveCount,
+                MissingThumbnailRescueMaxEnqueuePerRun
+            );
+            if (enqueueQuota > 0)
+            {
+                result.EnqueuedCount = DrainMissingThumbnailRescueBuffer(
+                    state,
+                    snapshotDbName,
+                    snapshotThumbFolder,
+                    enqueueQuota,
+                    out int skippedMissingMovieCount,
+                    out int skippedExistingThumbCount
+                );
+                result.SkippedMissingMovieCount = skippedMissingMovieCount;
+                result.SkippedExistingThumbCount = skippedExistingThumbCount;
+            }
+
+            state.LastAccessUtc = DateTime.UtcNow;
+            result.BufferedCount = state.BufferedCount;
+            return result;
+        }
+
+        // 欠損候補はmovie_id+tabを主キーに寄せ、DB1回走査でメモリバッファを組み立てる。
+        private List<QueueObj> BuildMissingThumbnailRescueBuffer(
             int targetTabIndex,
             string snapshotDbFullPath,
             string snapshotDbName,
             string snapshotThumbFolder
         )
         {
+            List<QueueObj> candidates = [];
             if (string.IsNullOrWhiteSpace(snapshotDbFullPath))
-                return;
+            {
+                return candidates;
+            }
 
-            // 1. そのタブの設定情報を構築（出力先フォルダなどを得るため）
             TabInfo tbi = new(targetTabIndex, snapshotDbName, snapshotThumbFolder);
             if (string.IsNullOrWhiteSpace(tbi.OutPath))
-                return;
+            {
+                return candidates;
+            }
 
-            // 2. DBから全ての動画(movie_id, movie_path, hash)を引く
             DataTable dt = GetData(
                 snapshotDbFullPath,
                 "SELECT movie_id, movie_path, hash FROM movie ORDER BY movie_id DESC"
             );
-            if (dt == null || dt.Rows.Count == 0)
-                return;
+            if (dt == null || dt.Rows.Count < 1)
+            {
+                return candidates;
+            }
 
-            int enqueuedCount = 0;
-            List<QueueObj> batch = [];
-
-            DebugRuntimeLog.Write(
-                "rescue-thumb",
-                $"start rescue missing thumbs for tab={targetTabIndex}. total docs={dt.Rows.Count}"
+            HashSet<string> existingThumbnailFileNames = BuildExistingThumbnailFileNameSet(
+                tbi.OutPath
             );
-
+            Dictionary<string, QueueObj> latestByKey = new(StringComparer.OrdinalIgnoreCase);
             foreach (DataRow row in dt.Rows)
             {
                 long.TryParse(row["movie_id"]?.ToString(), out long movieId);
-                string path = row["movie_path"]?.ToString() ?? "";
+                string moviePath = row["movie_path"]?.ToString() ?? "";
                 string hash = row["hash"]?.ToString() ?? "";
-
-                if (string.IsNullOrWhiteSpace(path))
-                    continue;
-
-                string fileBody = Path.GetFileNameWithoutExtension(path);
-                if (string.IsNullOrWhiteSpace(fileBody))
-                    continue;
-
-                // 対象タブの予想サムネイルパス
-                string expectedThumbPath = Path.Combine(tbi.OutPath, $"{fileBody}.#{hash}.jpg");
-
-                if (!Path.Exists(expectedThumbPath))
+                if (string.IsNullOrWhiteSpace(moviePath))
                 {
-                    // 動画ファイル自体が存在するかどうかも軽くチェック（削除済みの動画ならキューしない）
-                    if (Path.Exists(path))
+                    continue;
+                }
+
+                string fileBody = Path.GetFileNameWithoutExtension(moviePath);
+                if (string.IsNullOrWhiteSpace(fileBody))
+                {
+                    continue;
+                }
+
+                string expectedThumbFileName = $"{fileBody}.#{hash}.jpg";
+                if (existingThumbnailFileNames.Contains(expectedThumbFileName))
+                {
+                    continue;
+                }
+
+                QueueObj candidate = new()
+                {
+                    MovieId = movieId,
+                    MovieFullPath = moviePath,
+                    Hash = hash,
+                    Tabindex = targetTabIndex,
+                };
+                latestByKey[BuildMissingThumbnailRescueCandidateKey(candidate)] = candidate;
+            }
+
+            candidates.AddRange(latestByKey.Values);
+            return candidates;
+        }
+
+        // サムネ存在判定は1件ずつPath.Existsせず、出力先のjpg一覧を1回だけ集めて使い回す。
+        private static HashSet<string> BuildExistingThumbnailFileNameSet(string thumbFolder)
+        {
+            HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(thumbFolder) || !Directory.Exists(thumbFolder))
+            {
+                return result;
+            }
+
+            try
+            {
+                foreach (string fullPath in Directory.EnumerateFiles(thumbFolder, "*.jpg"))
+                {
+                    string fileName = Path.GetFileName(fullPath);
+                    if (!string.IsNullOrWhiteSpace(fileName))
                     {
-                        batch.Add(
-                            new QueueObj
-                            {
-                                MovieId = movieId,
-                                MovieFullPath = path,
-                                Hash = hash,
-                                Tabindex = targetTabIndex,
-                            }
-                        );
-
-                        enqueuedCount++;
-                        DebugRuntimeLog.Write(
-                            "rescue-thumb",
-                            $"enqueue by rescue: tab={targetTabIndex}, movie='{path}'"
-                        );
-
-                        // 100件単位でキューへ放り投げてUIスレッドの一時的な固まりを防ぐ！
-                        if (batch.Count >= FolderScanEnqueueBatchSize)
-                        {
-                            FlushPendingQueueItems(batch, "RescueMissingThumbnails");
-                            await Task.Delay(50); // 少し息継ぎ
-                        }
+                        result.Add(fileName);
                     }
                 }
             }
-
-            // 残りを流し込む
-            if (batch.Count > 0)
+            catch (Exception ex)
             {
-                FlushPendingQueueItems(batch, "RescueMissingThumbnails");
+                DebugRuntimeLog.WriteAlways(
+                    "watch-check",
+                    $"[error] BuildExistingThumbnailFileNameSet failed: {ex.GetType().Name}"
+                );
             }
 
-            DebugRuntimeLog.Write(
-                "rescue-thumb",
-                $"finished rescue missing thumbs for tab={targetTabIndex}. enqueued={enqueuedCount}"
-            );
+            return result;
+        }
+
+        // 候補の再生成ループを避けるため、同一候補はキーで1件に正規化する。
+        private static string BuildMissingThumbnailRescueCandidateKey(QueueObj candidate)
+        {
+            if (candidate == null)
+            {
+                return "";
+            }
+
+            if (candidate.MovieId > 0)
+            {
+                return $"movie:{candidate.MovieId}:tab:{candidate.Tabindex}";
+            }
+
+            string moviePath = candidate.MovieFullPath ?? "";
+            string hash = candidate.Hash ?? "";
+            return $"path:{moviePath.ToLowerInvariant()}|hash:{hash}|tab:{candidate.Tabindex}";
+        }
+
+        // メモリに貯めた候補から、今必要な分だけをキューへ流す。
+        private int DrainMissingThumbnailRescueBuffer(
+            MissingThumbnailRescueBufferState state,
+            string snapshotDbName,
+            string snapshotThumbFolder,
+            int enqueueQuota,
+            out int skippedMissingMovieCount,
+            out int skippedExistingThumbCount
+        )
+        {
+            skippedMissingMovieCount = 0;
+            skippedExistingThumbCount = 0;
+            if (state == null || enqueueQuota < 1)
+            {
+                return 0;
+            }
+
+            TabInfo tbi = new(state.TabIndex, snapshotDbName, snapshotThumbFolder);
+            if (string.IsNullOrWhiteSpace(tbi.OutPath))
+            {
+                return 0;
+            }
+
+            int enqueuedCount = 0;
+            List<QueueObj> batch = [];
+            while (state.TryDequeue(out QueueObj candidate))
+            {
+                if (!TryGetCurrentQueueActiveCount(out int activeCount))
+                {
+                    activeCount = 0;
+                }
+
+                int currentQuota = ResolveMissingThumbnailRescueEnqueueQuota(
+                    activeCount,
+                    MissingThumbnailRescueTargetActiveCount,
+                    MissingThumbnailRescueMaxEnqueuePerRun
+                );
+                if (currentQuota < 1 || enqueuedCount >= currentQuota)
+                {
+                    break;
+                }
+
+                if (candidate == null || string.IsNullOrWhiteSpace(candidate.MovieFullPath))
+                {
+                    continue;
+                }
+
+                if (!Path.Exists(candidate.MovieFullPath))
+                {
+                    skippedMissingMovieCount++;
+                    continue;
+                }
+
+                string fileBody = Path.GetFileNameWithoutExtension(candidate.MovieFullPath);
+                if (string.IsNullOrWhiteSpace(fileBody))
+                {
+                    continue;
+                }
+
+                string expectedThumbPath = Path.Combine(
+                    tbi.OutPath,
+                    $"{fileBody}.#{candidate.Hash}.jpg"
+                );
+                if (Path.Exists(expectedThumbPath))
+                {
+                    skippedExistingThumbCount++;
+                    continue;
+                }
+
+                batch.Add(
+                    new QueueObj
+                    {
+                        MovieId = candidate.MovieId,
+                        MovieFullPath = candidate.MovieFullPath,
+                        Hash = candidate.Hash,
+                        Tabindex = state.TabIndex,
+                    }
+                );
+
+                if (
+                    batch.Count >= FolderScanEnqueueBatchSize
+                    || enqueuedCount + batch.Count >= currentQuota
+                )
+                {
+                    enqueuedCount += FlushPendingQueueItems(batch, "RescueMissingThumbnails");
+                }
+            }
+
+            if (batch.Count > 0)
+            {
+                if (!TryGetCurrentQueueActiveCount(out int activeCount))
+                {
+                    activeCount = 0;
+                }
+
+                int currentQuota = ResolveMissingThumbnailRescueEnqueueQuota(
+                    activeCount,
+                    MissingThumbnailRescueTargetActiveCount,
+                    MissingThumbnailRescueMaxEnqueuePerRun
+                );
+                if (enqueuedCount < currentQuota)
+                {
+                    enqueuedCount += FlushPendingQueueItems(batch, "RescueMissingThumbnails");
+                }
+                else
+                {
+                    batch.Clear();
+                }
+            }
+
+            return enqueuedCount;
+        }
+
+        // 欠損救済の1回分結果を呼び出し元へ返す軽量DTO。
+        private sealed class MissingThumbnailRescueResult
+        {
+            public int PreparedCount { get; set; }
+            public int EnqueuedCount { get; set; }
+            public int BufferedCount { get; set; }
+            public int SkippedMissingMovieCount { get; set; }
+            public int SkippedExistingThumbCount { get; set; }
+            public bool RebuiltBuffer { get; set; }
+        }
+
+        // DB+タブ単位で欠損候補を保持し、必要な時だけ少量排出する。
+        private sealed class MissingThumbnailRescueBufferState
+        {
+            private readonly Queue<QueueObj> _candidates = new();
+
+            public string DbFullPath { get; set; } = "";
+            public int TabIndex { get; set; }
+            public DateTime LastBuiltUtc { get; private set; } = DateTime.MinValue;
+            public DateTime LastAccessUtc { get; set; } = DateTime.MinValue;
+            public int BufferedCount => _candidates.Count;
+
+            public void ReplaceCandidates(IEnumerable<QueueObj> candidates, DateTime nowUtc)
+            {
+                _candidates.Clear();
+                if (candidates != null)
+                {
+                    foreach (QueueObj candidate in candidates)
+                    {
+                        if (candidate != null)
+                        {
+                            _candidates.Enqueue(candidate);
+                        }
+                    }
+                }
+
+                LastBuiltUtc = nowUtc;
+                LastAccessUtc = nowUtc;
+            }
+
+            public bool TryDequeue(out QueueObj candidate)
+            {
+                if (_candidates.Count > 0)
+                {
+                    candidate = _candidates.Dequeue();
+                    return true;
+                }
+
+                candidate = null;
+                return false;
+            }
         }
     }
 }

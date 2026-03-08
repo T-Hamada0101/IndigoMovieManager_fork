@@ -39,6 +39,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
     public sealed class QueueDbLeaseItem
     {
         public long QueueId { get; set; }
+        public string MainDbFullPath { get; set; } = "";
         public string MoviePath { get; set; } = "";
         public string MoviePathKey { get; set; } = "";
         public int TabIndex { get; set; }
@@ -70,11 +71,36 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public string UpdatedAtUtc { get; set; } = "";
     }
 
+    // Coordinator が backlog と実行中件数を一目で把握するための集約結果。
+    public sealed class QueueDbDemandSnapshot
+    {
+        public int QueuedNormalCount { get; init; }
+        public int QueuedSlowCount { get; init; }
+        public int QueuedRecoveryCount { get; init; }
+        public int RunningNormalCount { get; init; }
+        public int RunningSlowCount { get; init; }
+        public int RunningRecoveryCount { get; init; }
+
+        public int QueuedTotalCount => QueuedNormalCount + QueuedSlowCount + QueuedRecoveryCount;
+        public int RunningTotalCount =>
+            RunningNormalCount + RunningSlowCount + RunningRecoveryCount;
+    }
+
+    // リース時の取得順。サイズ昇順/降順を分けて、通常系とゆっくり系で取り方を変える。
+    public enum QueueDbLeaseOrder
+    {
+        CreatedAtAsc = 0,
+        MovieSizeAsc = 1,
+        MovieSizeDesc = 2,
+    }
+
     // QueueDBに対するCRUDとリース制御をここへ集約する。
     public sealed class QueueDbService
     {
         private const string UtcDateFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+        private const int GuaranteedRecoveryAttemptCount = 2;
         private readonly object initializeLock = new();
+        private readonly string mainDbFullPath;
         private readonly string queueDbFullPath;
         private readonly string mainDbPathHash;
         private bool isInitialized;
@@ -86,10 +112,12 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
                 throw new ArgumentException("mainDbFullPath is required.", nameof(mainDbFullPath));
             }
 
+            this.mainDbFullPath = mainDbFullPath;
             queueDbFullPath = QueueDbPathResolver.ResolveQueueDbPath(mainDbFullPath);
             mainDbPathHash = QueueDbPathResolver.GetMainDbPathHash8(mainDbFullPath);
         }
 
+        public string MainDbFullPath => mainDbFullPath;
         public string QueueDbFullPath => queueDbFullPath;
         public string MainDbPathHash => mainDbPathHash;
 
@@ -187,8 +215,16 @@ DO UPDATE SET
     ThumbPanelPos = excluded.ThumbPanelPos,
     ThumbTimePos = excluded.ThumbTimePos,
     Status = @Status,
-    AttemptCount = 0,
-    LastError = '',
+    AttemptCount = CASE
+        WHEN ThumbnailQueue.AttemptCount >= @GuaranteedRecoveryAttemptCount
+            THEN ThumbnailQueue.AttemptCount
+        ELSE 0
+    END,
+    LastError = CASE
+        WHEN ThumbnailQueue.AttemptCount >= @GuaranteedRecoveryAttemptCount
+            THEN ThumbnailQueue.LastError
+        ELSE ''
+    END,
     OwnerInstanceId = '',
     LeaseUntilUtc = '',
     UpdatedAtUtc = @NowUtc
@@ -202,6 +238,10 @@ WHERE ThumbnailQueue.Status <> @Processing;";
             upsertCommand.Parameters.AddWithValue("@ThumbTimePos", DBNull.Value);
             upsertCommand.Parameters.AddWithValue("@Status", pendingStatus);
             upsertCommand.Parameters.AddWithValue("@Processing", processingStatus);
+            upsertCommand.Parameters.AddWithValue(
+                "@GuaranteedRecoveryAttemptCount",
+                GuaranteedRecoveryAttemptCount
+            );
             upsertCommand.Parameters.AddWithValue("@NowUtc", nowText);
             SQLiteParameter upsertMoviePathParameter = upsertCommand.Parameters["@MoviePath"];
             SQLiteParameter upsertMoviePathKeyParameter = upsertCommand.Parameters["@MoviePathKey"];
@@ -273,7 +313,8 @@ WHERE ThumbnailQueue.Status <> @Processing;";
             int? minAttemptCount = null,
             int? maxAttemptCount = null,
             long? minMovieSizeBytes = null,
-            long? maxMovieSizeBytes = null)
+            long? maxMovieSizeBytes = null,
+            QueueDbLeaseOrder leaseOrder = QueueDbLeaseOrder.CreatedAtAsc)
         {
             EnsureInitialized();
             if (string.IsNullOrWhiteSpace(ownerInstanceId))
@@ -351,6 +392,17 @@ ORDER BY
         WHEN @HasPreferredTab = 1 AND TabIndex = @PreferredTab THEN 0
         ELSE 1
     END ASC,
+    CASE
+        WHEN @LeaseOrder = 1 THEN CASE
+            WHEN MovieSizeBytes > 0 THEN MovieSizeBytes
+            ELSE 9223372036854775807
+        END
+        ELSE 0
+    END ASC,
+    CASE
+        WHEN @LeaseOrder = 2 THEN MovieSizeBytes
+        ELSE 0
+    END DESC,
     CreatedAtUtc ASC
 LIMIT @TakeCount;";
                     selectCommand.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
@@ -386,6 +438,7 @@ LIMIT @TakeCount;";
                         "@MaxMovieSizeBytes",
                         maxMovieSizeBytes ?? 0L
                     );
+                    selectCommand.Parameters.AddWithValue("@LeaseOrder", (int)leaseOrder);
 
                     using SQLiteDataReader reader = selectCommand.ExecuteReader();
                     while (reader.Read())
@@ -393,6 +446,7 @@ LIMIT @TakeCount;";
                         QueueDbLeaseItem leaseItem = new()
                         {
                             QueueId = reader.GetInt64(0),
+                            MainDbFullPath = mainDbFullPath,
                             MoviePath = reader.GetString(1),
                             MoviePathKey = reader.GetString(2),
                             TabIndex = reader.GetInt32(3),
@@ -568,6 +622,165 @@ WHERE MainDbPathHash = @MainDbPathHash
             return Convert.ToInt32(value, CultureInfo.InvariantCulture) > 0;
         }
 
+        // 通常系へ流すべき未再試行・巨大動画未満ジョブが残っているかを返す。
+        public bool HasNormalQueueDemand(
+            string ownerInstanceId,
+            long slowLaneMinMovieSizeBytes,
+            int? minAttemptCount = null,
+            int? maxAttemptCount = null)
+        {
+            EnsureInitialized();
+            if (string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                throw new ArgumentException("ownerInstanceId is required.", nameof(ownerInstanceId));
+            }
+
+            long safeSlowLaneMinMovieSizeBytes = slowLaneMinMovieSizeBytes < 0
+                ? 0
+                : slowLaneMinMovieSizeBytes;
+            if (minAttemptCount.HasValue && minAttemptCount.Value < 0)
+            {
+                minAttemptCount = 0;
+            }
+            if (maxAttemptCount.HasValue && maxAttemptCount.Value < 0)
+            {
+                maxAttemptCount = 0;
+            }
+            if (
+                minAttemptCount.HasValue
+                && maxAttemptCount.HasValue
+                && minAttemptCount.Value > maxAttemptCount.Value
+            )
+            {
+                return false;
+            }
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT COUNT(1)
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash
+  AND MovieSizeBytes < @SlowLaneMinMovieSizeBytes
+  AND (
+      Status = @Pending
+      OR (Status = @Processing AND OwnerInstanceId = @OwnerInstanceId)
+  )
+  AND (@HasMinAttempt = 0 OR AttemptCount >= @MinAttemptCount)
+  AND (@HasMaxAttempt = 0 OR AttemptCount <= @MaxAttemptCount);";
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue(
+                "@SlowLaneMinMovieSizeBytes",
+                safeSlowLaneMinMovieSizeBytes
+            );
+            command.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
+            command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+            command.Parameters.AddWithValue("@OwnerInstanceId", ownerInstanceId);
+            command.Parameters.AddWithValue(
+                "@HasMinAttempt",
+                minAttemptCount.HasValue ? 1 : 0
+            );
+            command.Parameters.AddWithValue("@MinAttemptCount", minAttemptCount ?? 0);
+            command.Parameters.AddWithValue(
+                "@HasMaxAttempt",
+                maxAttemptCount.HasValue ? 1 : 0
+            );
+            command.Parameters.AddWithValue("@MaxAttemptCount", maxAttemptCount ?? 0);
+            object value = command.ExecuteScalar();
+            return Convert.ToInt32(value, CultureInfo.InvariantCulture) > 0;
+        }
+
+        // Coordinator 用に、ready-to-lease と自分配下の実行中件数を lane 別に返す。
+        public QueueDbDemandSnapshot GetDemandSnapshot(
+            IEnumerable<string> activeOwnerInstanceIds,
+            long slowLaneMinMovieSizeBytes,
+            DateTime utcNow)
+        {
+            EnsureInitialized();
+
+            List<string> safeOwners = activeOwnerInstanceIds?
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.Ordinal)
+                .ToList() ?? [];
+            long safeSlowLaneMinMovieSizeBytes = slowLaneMinMovieSizeBytes < 0
+                ? 0
+                : slowLaneMinMovieSizeBytes;
+            string nowText = ToUtcText(utcNow);
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+
+            List<string> ownerConditions = [];
+            for (int i = 0; i < safeOwners.Count; i++)
+            {
+                string parameterName = $"@Owner{i}";
+                ownerConditions.Add($"OwnerInstanceId = {parameterName}");
+                command.Parameters.AddWithValue(parameterName, safeOwners[i]);
+            }
+
+            string ownedRunningCondition = safeOwners.Count < 1
+                ? "0 = 1"
+                : $"Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc >= @NowUtc AND ({string.Join(" OR ", ownerConditions)})";
+
+            command.CommandText =
+                $@"
+SELECT
+    COALESCE(SUM(CASE
+        WHEN (Status = @Pending OR (Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc < @NowUtc))
+             AND AttemptCount = 0
+             AND MovieSizeBytes < @SlowLaneMinMovieSizeBytes
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN (Status = @Pending OR (Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc < @NowUtc))
+             AND AttemptCount = 0
+             AND MovieSizeBytes >= @SlowLaneMinMovieSizeBytes
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN (Status = @Pending OR (Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc < @NowUtc))
+             AND AttemptCount > 0
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN ({ownedRunningCondition})
+             AND AttemptCount = 0
+             AND MovieSizeBytes < @SlowLaneMinMovieSizeBytes
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN ({ownedRunningCondition})
+             AND AttemptCount = 0
+             AND MovieSizeBytes >= @SlowLaneMinMovieSizeBytes
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN ({ownedRunningCondition})
+             AND AttemptCount > 0
+        THEN 1 ELSE 0 END), 0)
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash;";
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
+            command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+            command.Parameters.AddWithValue("@NowUtc", nowText);
+            command.Parameters.AddWithValue(
+                "@SlowLaneMinMovieSizeBytes",
+                safeSlowLaneMinMovieSizeBytes
+            );
+
+            using SQLiteDataReader reader = command.ExecuteReader();
+            if (!reader.Read())
+            {
+                return new QueueDbDemandSnapshot();
+            }
+
+            return new QueueDbDemandSnapshot
+            {
+                QueuedNormalCount = reader.IsDBNull(0) ? 0 : reader.GetInt32(0),
+                QueuedSlowCount = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+                QueuedRecoveryCount = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                RunningNormalCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                RunningSlowCount = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                RunningRecoveryCount = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+            };
+        }
+
         // 処理結果に応じて状態を更新し、リース所有者が一致する場合のみ反映する。
         // 戻り値0は「リース喪失や対象不在で更新されなかった」ことを示す。
         public int UpdateStatus(
@@ -650,7 +863,10 @@ WHERE QueueId = @QueueId
 UPDATE ThumbnailQueue
 SET
     Status = @Pending,
-    AttemptCount = 0,
+    AttemptCount = CASE
+        WHEN AttemptCount >= @GuaranteedRecoveryAttemptCount THEN AttemptCount
+        ELSE 0
+    END,
     LastError = '',
     OwnerInstanceId = '',
     LeaseUntilUtc = '',
@@ -659,6 +875,10 @@ WHERE MainDbPathHash = @MainDbPathHash
   AND Status = @Failed;";
             command.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
             command.Parameters.AddWithValue("@Failed", (int)ThumbnailQueueStatus.Failed);
+            command.Parameters.AddWithValue(
+                "@GuaranteedRecoveryAttemptCount",
+                GuaranteedRecoveryAttemptCount
+            );
             command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
             command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
             return command.ExecuteNonQuery();

@@ -708,6 +708,13 @@ namespace IndigoMovieManager
                                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
                                 };
                                 watchWindow.ShowDialog();
+                                // 編集結果を今のDBへ即時反映し、既存動画の取り込みも起動時と同じ条件で走らせる。
+                                StopAndClearFileWatchers();
+                                CreateWatcher();
+                                _ = QueueCheckFolderAsync(
+                                    CheckMode.Auto,
+                                    "Menu.WatchWindowClosed"
+                                );
                                 break;
 
                             case "監視フォルダ更新チェック":

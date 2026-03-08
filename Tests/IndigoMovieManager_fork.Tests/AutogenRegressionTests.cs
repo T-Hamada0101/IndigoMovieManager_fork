@@ -1,4 +1,3 @@
-using System.Reflection;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.Engines;
 
@@ -70,9 +69,9 @@ public class AutogenRegressionTests
     }
 
     [Test]
-    public void Service_AutogenSelected_FallbackOrder_IsStable()
+    public void Service_AutogenSelected_通常初回はAutogen単独順序を返す()
     {
-        // autogen 失敗時のフォールバック順が意図どおりであることを固定する。
+        // 通常初回は autogen 単独で判定し、失敗時の救済は別レーンへ委ねる。
         string? rawBackup = Environment.GetEnvironmentVariable(EngineEnvName);
         bool hadBackup = rawBackup != null;
         string backup = rawBackup ?? string.Empty;
@@ -84,13 +83,85 @@ public class AutogenRegressionTests
             var ffmedia = new FakeEngine("ffmediatoolkit");
             var ffmpeg1pass = new FakeEngine("ffmpeg1pass");
             var opencv = new FakeEngine("opencv");
-            var service = new ThumbnailCreationService(ffmedia, ffmpeg1pass, opencv, autogen);
-
             var context = CreateContext(isManual: false, tabIndex: 0, fileSizeBytes: 1024);
-            var order = InvokeBuildThumbnailEngineOrder(service, autogen, context);
+            var order = BuildThumbnailEngineOrder(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                autogen,
+                context
+            );
             string actual = string.Join(">", order.Select(x => x.EngineId));
 
-            Assert.That(actual, Is.EqualTo("autogen>ffmediatoolkit>ffmpeg1pass>opencv"));
+            Assert.That(actual, Is.EqualTo("autogen"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(EngineEnvName, hadBackup ? backup : null);
+        }
+    }
+
+    [Test]
+    public void Service_AutogenSelected_再試行はOnePassを後段に含む()
+    {
+        string? rawBackup = Environment.GetEnvironmentVariable(EngineEnvName);
+        bool hadBackup = rawBackup != null;
+        string backup = rawBackup ?? string.Empty;
+        try
+        {
+            Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+            var autogen = new FakeEngine("autogen");
+            var ffmedia = new FakeEngine("ffmediatoolkit");
+            var ffmpeg1pass = new FakeEngine("ffmpeg1pass");
+            var opencv = new FakeEngine("opencv");
+            var context = CreateContext(isManual: false, tabIndex: 0, fileSizeBytes: 1024);
+            context.QueueObj.AttemptCount = 1;
+            var order = BuildThumbnailEngineOrder(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                autogen,
+                context
+            );
+            string actual = string.Join(">", order.Select(x => x.EngineId));
+
+            Assert.That(actual, Is.EqualTo("autogen>ffmpeg1pass"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(EngineEnvName, hadBackup ? backup : null);
+        }
+    }
+
+    [Test]
+    public void Service_FfmediaSelected_手動時はOpenCvを後段に含む()
+    {
+        string? rawBackup = Environment.GetEnvironmentVariable(EngineEnvName);
+        bool hadBackup = rawBackup != null;
+        string backup = rawBackup ?? string.Empty;
+        try
+        {
+            Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+            var autogen = new FakeEngine("autogen");
+            var ffmedia = new FakeEngine("ffmediatoolkit");
+            var ffmpeg1pass = new FakeEngine("ffmpeg1pass");
+            var opencv = new FakeEngine("opencv");
+            var context = CreateContext(isManual: true, tabIndex: 0, fileSizeBytes: 1024);
+            var order = BuildThumbnailEngineOrder(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                ffmedia,
+                context
+            );
+            string actual = string.Join(">", order.Select(x => x.EngineId));
+
+            Assert.That(actual, Is.EqualTo("ffmediatoolkit>opencv"));
         }
         finally
         {
@@ -122,21 +193,22 @@ public class AutogenRegressionTests
         };
     }
 
-    private static List<IThumbnailGenerationEngine> InvokeBuildThumbnailEngineOrder(
-        ThumbnailCreationService service,
+    private static List<IThumbnailGenerationEngine> BuildThumbnailEngineOrder(
+        IThumbnailGenerationEngine ffmedia,
+        IThumbnailGenerationEngine ffmpeg1pass,
+        IThumbnailGenerationEngine opencv,
+        IThumbnailGenerationEngine autogen,
         IThumbnailGenerationEngine selectedEngine,
         ThumbnailJobContext context
     )
     {
-        MethodInfo? method = typeof(ThumbnailCreationService).GetMethod(
-            "BuildThumbnailEngineOrder",
-            BindingFlags.Instance | BindingFlags.NonPublic
+        ThumbnailEngineCatalog catalog = new(
+            ffmedia,
+            ffmpeg1pass,
+            opencv,
+            autogen
         );
-
-        Assert.That(method != null, Is.True);
-
-        object? raw = method!.Invoke(service, [selectedEngine, context]);
-        return raw as List<IThumbnailGenerationEngine> ?? [];
+        return catalog.BuildExecutionOrder(selectedEngine, context);
     }
 
     private sealed class FakeEngine : IThumbnailGenerationEngine
@@ -161,7 +233,7 @@ public class AutogenRegressionTests
         )
         {
             return Task.FromResult(
-                ThumbnailCreationService.CreateFailedResult(
+                ThumbnailResultFactory.CreateFailed(
                     context?.SaveThumbFileName ?? string.Empty,
                     context?.DurationSec,
                     "test"

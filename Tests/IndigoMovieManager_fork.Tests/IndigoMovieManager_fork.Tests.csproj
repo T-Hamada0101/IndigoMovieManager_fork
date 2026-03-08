@@ -21,7 +21,13 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\IndigoMovieManager_fork.csproj" />
+    <ProjectReference Include="..\..\src\IndigoMovieManager.AdminService\IndigoMovieManager.AdminService.csproj" />
     <ProjectReference Include="..\..\src\IndigoMovieManager.Thumbnail.Engine\IndigoMovieManager.Thumbnail.Engine.csproj" />
+    <ProjectReference Include="..\..\src\IndigoMovieManager.Thumbnail.Coordinator\IndigoMovieManager.Thumbnail.Coordinator.csproj" />
     <ProjectReference Include="..\..\src\IndigoMovieManager.Thumbnail.Queue\IndigoMovieManager.Thumbnail.Queue.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 純粋ロジックの文言整形は source link で直接テストし、本体WPF出力ロックの影響を受けないようにする -->
+    <Compile Include="..\..\Watcher\FileIndexDetailFormatter.cs" Link="Watcher\FileIndexDetailFormatter.cs" />
   </ItemGroup>
 </Project>

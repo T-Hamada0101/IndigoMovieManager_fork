@@ -17,7 +17,7 @@ public class ThumbnailPreviewFrameTests
             g.FillRectangle(Brushes.Orange, 10, 10, 200, 120);
         }
 
-        ThumbnailPreviewFrame frame = ThumbnailCreationService.CreatePreviewFrameFromBitmap(
+        ThumbnailPreviewFrame frame = ThumbnailImageUtility.CreatePreviewFrameFromBitmap(
             source,
             maxHeight: 120
         );

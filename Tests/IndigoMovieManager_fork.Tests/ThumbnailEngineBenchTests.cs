@@ -13,6 +13,8 @@ public class ThumbnailEngineBenchTests
     private const string BenchIterationEnvName = "IMM_BENCH_ITER";
     private const string BenchWarmupEnvName = "IMM_BENCH_WARMUP";
     private const string BenchTabIndexEnvName = "IMM_BENCH_TAB_INDEX";
+    private const string BenchPriorityEnvName = "IMM_BENCH_PRIORITY";
+    private const string BenchRecoveryEnvName = "IMM_BENCH_RECOVERY";
     private const string ThumbEngineEnvName = "IMM_THUMB_ENGINE";
 
     [Test]
@@ -40,6 +42,8 @@ public class ThumbnailEngineBenchTests
         int warmupCount = ResolveWarmupCount();
         int tabIndex = ResolveTabIndex();
         int panelCount = ResolvePanelCount(tabIndex);
+        bool isRecovery = ResolveRecoveryMode();
+        string requestedPriority = ResolveRequestedPriority();
         string benchRunId = DateTime.Now.ToString("yyyyMMdd-HHmmss");
         string benchRoot = Path.Combine(
             Path.GetTempPath(),
@@ -51,9 +55,13 @@ public class ThumbnailEngineBenchTests
         List<BenchRow> rows = [];
         var service = new ThumbnailCreationService();
         string oldEngine = Environment.GetEnvironmentVariable(ThumbEngineEnvName) ?? "";
+        ProcessPriorityClass? oldPriorityClass = null;
+        string priorityApplyError = "";
 
         try
         {
+            oldPriorityClass = TryApplyBenchPriority(out priorityApplyError);
+
             // 公平比較のため、先に各エンジンをウォームアップして初回初期化コストを計測から除外する。
             for (int w = 1; w <= warmupCount; w++)
             {
@@ -66,6 +74,9 @@ public class ThumbnailEngineBenchTests
                         benchRoot,
                         engine,
                         tabIndex,
+                        isRecovery,
+                        requestedPriority,
+                        priorityApplyError,
                         runId: -w,
                         folderPrefix: "warmup"
                     );
@@ -87,6 +98,9 @@ public class ThumbnailEngineBenchTests
                             benchRoot,
                             engine,
                             tabIndex,
+                            isRecovery,
+                            requestedPriority,
+                            priorityApplyError,
                             runId: i,
                             folderPrefix: "measure"
                         )
@@ -97,6 +111,7 @@ public class ThumbnailEngineBenchTests
         finally
         {
             Environment.SetEnvironmentVariable(ThumbEngineEnvName, oldEngine);
+            RestoreBenchPriority(oldPriorityClass);
         }
 
         string csvPath = WriteCsv(rows, benchRunId, moviePath);
@@ -104,6 +119,9 @@ public class ThumbnailEngineBenchTests
         TestContext.Out.WriteLine($"bench csv={csvPath}");
         TestContext.Out.WriteLine($"bench rows={rows.Count}");
         TestContext.Out.WriteLine($"bench tab_index={tabIndex} panel_count={panelCount}");
+        TestContext.Out.WriteLine(
+            $"bench requested_priority={requestedPriority} actual_priority={ResolveCurrentPriorityLabel()} apply_error={priorityApplyError} recovery={isRecovery}"
+        );
         TestContext.Out.WriteLine(
             $"bench fairness=canonical_order+offset_rotation warmup={warmupCount} canonical={string.Join(",", canonicalEngines)}"
         );
@@ -117,6 +135,9 @@ public class ThumbnailEngineBenchTests
         string benchRoot,
         string engine,
         int tabIndex,
+        bool isRecovery,
+        string requestedPriority,
+        string priorityApplyError,
         int runId,
         string folderPrefix
     )
@@ -130,6 +151,7 @@ public class ThumbnailEngineBenchTests
             MovieId = runId,
             Tabindex = tabIndex,
             MovieFullPath = moviePath,
+            AttemptCount = isRecovery ? 1 : 0,
         };
 
         Stopwatch sw = Stopwatch.StartNew();
@@ -158,15 +180,39 @@ public class ThumbnailEngineBenchTests
             }
         }
 
+        long inputSizeBytes = 0;
+        try
+        {
+            inputSizeBytes = new FileInfo(moviePath).Length;
+        }
+        catch
+        {
+            inputSizeBytes = 0;
+        }
+
+        double? bitrateMbps = null;
+        if (inputSizeBytes > 0 && result.DurationSec.HasValue && result.DurationSec.Value > 0)
+        {
+            bitrateMbps = (inputSizeBytes * 8d) / (result.DurationSec.Value * 1_000_000d);
+        }
+
         return new BenchRow(
             DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+            Path.GetFileName(moviePath) ?? "",
+            inputSizeBytes,
+            bitrateMbps,
+            result.DurationSec,
+            requestedPriority,
+            ResolveCurrentPriorityLabel(),
+            priorityApplyError,
+            isRecovery,
+            ResolveDriveLetter(moviePath),
             engine,
             runId,
             tabIndex,
             ResolvePanelCount(tabIndex),
             sw.ElapsedMilliseconds,
             result.IsSuccess,
-            result.DurationSec,
             outputBytes,
             result.SaveThumbFileName ?? "",
             result.ErrorMessage ?? ""
@@ -281,6 +327,108 @@ public class ThumbnailEngineBenchTests
         };
     }
 
+    private static string ResolveRequestedPriority()
+    {
+        string raw = Environment.GetEnvironmentVariable(BenchPriorityEnvName) ?? "";
+        return string.IsNullOrWhiteSpace(raw) ? "Normal" : raw.Trim();
+    }
+
+    private static ProcessPriorityClass? TryApplyBenchPriority(out string errorMessage)
+    {
+        errorMessage = "";
+        string requested = ResolveRequestedPriority();
+        if (!Enum.TryParse(requested, ignoreCase: true, out ProcessPriorityClass target))
+        {
+            errorMessage = $"unsupported:{requested}";
+            return null;
+        }
+
+        try
+        {
+            Process current = Process.GetCurrentProcess();
+            ProcessPriorityClass original = current.PriorityClass;
+            if (original != target)
+            {
+                current.PriorityClass = target;
+            }
+            return original;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"{ex.GetType().Name}:{ex.Message}";
+            return null;
+        }
+    }
+
+    private static void RestoreBenchPriority(ProcessPriorityClass? original)
+    {
+        if (!original.HasValue)
+        {
+            return;
+        }
+
+        try
+        {
+            Process current = Process.GetCurrentProcess();
+            if (current.PriorityClass != original.Value)
+            {
+                current.PriorityClass = original.Value;
+            }
+        }
+        catch
+        {
+            // 優先度復元失敗でもテスト結果を優先する。
+        }
+    }
+
+    private static bool ResolveRecoveryMode()
+    {
+        string raw = Environment.GetEnvironmentVariable(BenchRecoveryEnvName) ?? "";
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        string normalized = raw.Trim().ToLowerInvariant();
+        return normalized is "1" or "true" or "on" or "yes";
+    }
+
+    private static string ResolveCurrentPriorityLabel()
+    {
+        try
+        {
+            return Process.GetCurrentProcess().PriorityClass.ToString();
+        }
+        catch
+        {
+            return ResolveRequestedPriority();
+        }
+    }
+
+    private static string ResolveDriveLetter(string moviePath)
+    {
+        if (string.IsNullOrWhiteSpace(moviePath))
+        {
+            return "";
+        }
+
+        try
+        {
+            string root = Path.GetPathRoot(moviePath) ?? "";
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return "";
+            }
+
+            string trimmed = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return trimmed;
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
     private static int ResolvePanelCount(int tabIndex)
     {
         TabInfo tabInfo = new(tabIndex, "bench");
@@ -299,7 +447,7 @@ public class ThumbnailEngineBenchTests
         string csvPath = Path.Combine(logDir, $"thumbnail-engine-bench-{benchRunId}.csv");
         using StreamWriter writer = new(csvPath, append: false, new System.Text.UTF8Encoding(false));
         writer.WriteLine(
-            "datetime,input_file_name,engine,iteration,tab_index,panel_count,elapsed_ms,success,duration_sec,output_bytes,output_path,error_message"
+            "datetime,input_file_name,input_size_bytes,bitrate_mbps,play_time_sec,requested_priority,priority,priority_apply_error,is_recovery,drive_letter,engine,iteration,tab_index,panel_count,elapsed_ms,success,output_bytes,output_path,error_message"
         );
         foreach (BenchRow row in rows)
         {
@@ -307,18 +455,35 @@ public class ThumbnailEngineBenchTests
                 string.Join(
                     ",",
                     EscapeCsvValue(row.DateTimeText),
-                    EscapeCsvValue(Path.GetFileName(moviePath) ?? ""),
+                    EscapeCsvValue(row.InputFileName),
+                    EscapeCsvValue(row.InputSizeBytes.ToString()),
+                    EscapeCsvValue(
+                        row.BitrateMbps.HasValue
+                            ? row.BitrateMbps.Value.ToString(
+                                "0.###",
+                                System.Globalization.CultureInfo.InvariantCulture
+                            )
+                            : ""
+                    ),
+                    EscapeCsvValue(
+                        row.PlayTimeSec.HasValue
+                            ? row.PlayTimeSec.Value.ToString(
+                                "0.###",
+                                System.Globalization.CultureInfo.InvariantCulture
+                            )
+                            : ""
+                    ),
+                    EscapeCsvValue(row.RequestedPriority),
+                    EscapeCsvValue(row.Priority),
+                    EscapeCsvValue(row.PriorityApplyError),
+                    EscapeCsvValue(row.IsRecovery ? "1" : "0"),
+                    EscapeCsvValue(row.DriveLetter),
                     EscapeCsvValue(row.Engine),
                     EscapeCsvValue(row.Iteration.ToString()),
                     EscapeCsvValue(row.TabIndex.ToString()),
                     EscapeCsvValue(row.PanelCount.ToString()),
                     EscapeCsvValue(row.ElapsedMs.ToString()),
                     EscapeCsvValue(row.IsSuccess ? "success" : "failed"),
-                    EscapeCsvValue(
-                        row.DurationSec.HasValue
-                            ? row.DurationSec.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
-                            : ""
-                    ),
                     EscapeCsvValue(row.OutputBytes.ToString()),
                     EscapeCsvValue(row.OutputPath),
                     EscapeCsvValue(row.ErrorMessage)
@@ -345,13 +510,21 @@ public class ThumbnailEngineBenchTests
 
     private readonly record struct BenchRow(
         string DateTimeText,
+        string InputFileName,
+        long InputSizeBytes,
+        double? BitrateMbps,
+        double? PlayTimeSec,
+        string RequestedPriority,
+        string Priority,
+        string PriorityApplyError,
+        bool IsRecovery,
+        string DriveLetter,
         string Engine,
         int Iteration,
         int TabIndex,
         int PanelCount,
         long ElapsedMs,
         bool IsSuccess,
-        double? DurationSec,
         long OutputBytes,
         string OutputPath,
         string ErrorMessage

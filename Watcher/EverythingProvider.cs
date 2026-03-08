@@ -108,6 +108,10 @@ namespace IndigoMovieManager.Watcher
                         {
                             continue;
                         }
+                        if (MacMetadataSidecarDetector.IsAppleDoubleSidecar(fullPath))
+                        {
+                            continue;
+                        }
 
                         if (!IsUnderRoot(fullPath, normalizedRootWithSlash))
                         {
@@ -189,7 +193,9 @@ namespace IndigoMovieManager.Watcher
             {
                 SearchClient searchClient = new();
                 string normalizedRootWithSlash = NormalizeDirectoryPathWithTrailingSlash(thumbFolder);
-                string quotedRoot = QuoteForEverything(normalizedRootWithSlash);
+                string quotedRoot = QuoteForEverything(
+                    NormalizeDirectoryPathWithoutTrailingSlash(thumbFolder)
+                );
                 string query = $"{quotedRoot} ext:jpg";
 
                 Result result = searchClient.Search(
@@ -409,7 +415,9 @@ namespace IndigoMovieManager.Watcher
             HashSet<string> targetExtensions
         )
         {
-            string quotedRoot = QuoteForEverything(normalizedRootWithSlash);
+            string quotedRoot = QuoteForEverything(
+                NormalizeDirectoryPathWithoutTrailingSlash(normalizedRootWithSlash)
+            );
             if (targetExtensions.Count < 1)
             {
                 return [quotedRoot];

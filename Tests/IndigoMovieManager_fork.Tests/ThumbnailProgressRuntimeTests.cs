@@ -49,6 +49,7 @@ public class ThumbnailProgressRuntimeTests
         runtime.MarkThumbnailSaved(queueObj, @"C:\thumb\img1.jpg");
         ThumbnailProgressRuntimeSnapshot saved = runtime.CreateSnapshot();
         Assert.That(saved.ActiveWorkers[0].PreviewImagePath, Is.EqualTo(@"C:\thumb\img1.jpg"));
+        Assert.That(saved.WaitingWorkers, Is.Not.Null);
 
         runtime.MarkJobCompleted(queueObj);
         ThumbnailProgressRuntimeSnapshot completed = runtime.CreateSnapshot();
@@ -57,7 +58,38 @@ public class ThumbnailProgressRuntimeTests
     }
 
     [Test]
-    public void MarkJobStarted_サイズ別に優先低速スレッドへ割り当てる()
+    public void ProgressSnapshot_状態遷移をstarted_saved_failedで保持する()
+    {
+        ThumbnailProgressRuntime runtime = new();
+        QueueObj queueObj = new()
+        {
+            MovieId = 42,
+            MovieFullPath = @"C:\videos\sample.mp4",
+            Tabindex = 4,
+            MovieSizeBytes = 100,
+        };
+
+        runtime.MarkJobStarted(queueObj);
+        ThumbnailProgressRuntimeSnapshot started = runtime.CreateSnapshot();
+        Assert.That(started.SchemaVersion, Is.EqualTo(1));
+        Assert.That(started.ActiveWorkers[0].State, Is.EqualTo(ThumbnailProgressSnapshotState.Started));
+        Assert.That(started.ActiveWorkers[0].WorkerRole, Is.EqualTo(ThumbnailProgressWorkerRole.Normal));
+        Assert.That(started.ActiveWorkers[0].MovieId, Is.EqualTo(42));
+        Assert.That(started.ActiveWorkers[0].TabIndex, Is.EqualTo(4));
+        Assert.That(started.ActiveWorkers[0].MovieFullPath, Is.EqualTo(queueObj.MovieFullPath));
+
+        runtime.MarkThumbnailSaved(queueObj, @"C:\thumb\sample.jpg");
+        ThumbnailProgressRuntimeSnapshot saved = runtime.CreateSnapshot();
+        Assert.That(saved.ActiveWorkers[0].State, Is.EqualTo(ThumbnailProgressSnapshotState.Saved));
+
+        runtime.MarkJobFailed(queueObj);
+        ThumbnailProgressRuntimeSnapshot failed = runtime.CreateSnapshot();
+        Assert.That(failed.ActiveWorkers[0].State, Is.EqualTo(ThumbnailProgressSnapshotState.Failed));
+        Assert.That(failed.ActiveWorkers[0].IsActive, Is.False);
+    }
+
+    [Test]
+    public void MarkJobStarted_サイズ別にゆっくり再試行通常スレッドへ割り当てる()
     {
         ThumbnailProgressRuntime runtime = new();
         QueueObj smallJob = new()
@@ -82,6 +114,7 @@ public class ThumbnailProgressRuntimeTests
         runtime.MarkJobStarted(smallJob);
         runtime.MarkJobStarted(largeJob);
         runtime.MarkJobStarted(recoveryJob);
+        runtime.UpdateSessionProgress(0, 0, 3, 6);
 
         ThumbnailProgressRuntimeSnapshot snapshot = runtime.CreateSnapshot();
         ThumbnailProgressWorkerSnapshot smallWorker =
@@ -91,12 +124,17 @@ public class ThumbnailProgressRuntimeTests
         ThumbnailProgressWorkerSnapshot recoveryWorker =
             snapshot.ActiveWorkers.Single(x => x.DisplayMovieName == "retry.mp4");
 
-        Assert.That(smallWorker.WorkerId, Is.EqualTo(1));
-        Assert.That(smallWorker.WorkerLabel, Is.EqualTo("優先Thread"));
-        Assert.That(largeWorker.WorkerId, Is.EqualTo(2));
+        Assert.That(smallWorker.WorkerId, Is.EqualTo(3));
+        Assert.That(smallWorker.WorkerLabel, Is.EqualTo("通常 1"));
+        Assert.That(largeWorker.WorkerId, Is.EqualTo(1));
         Assert.That(largeWorker.WorkerLabel, Is.EqualTo("ゆっくり"));
-        Assert.That(recoveryWorker.WorkerId, Is.EqualTo(3));
-        Assert.That(recoveryWorker.WorkerLabel, Is.EqualTo("Recovery専"));
+        Assert.That(recoveryWorker.WorkerId, Is.EqualTo(2));
+        Assert.That(recoveryWorker.WorkerLabel, Is.EqualTo("再試行専"));
+        Assert.That(snapshot.WaitingWorkers.Any(x => x.WorkerId == 4), Is.True);
+        Assert.That(
+            snapshot.WaitingWorkers.All(x => x.State == ThumbnailProgressSnapshotState.Waiting),
+            Is.True
+        );
     }
 
     [Test]
@@ -196,16 +234,16 @@ public class ThumbnailProgressRuntimeTests
         Assert.That(viewState.ControlStateText, Is.EqualTo("通常運転 (6 / 6)"));
         Assert.That(
             viewState.LaneGuideText,
-            Is.EqualTo("優先Thread=小動画 / ゆっくり=巨大動画 / Recovery専=再試行・修復")
+            Is.EqualTo("ゆっくり=巨大動画 / 再試行専=失敗再処理 / 通常=小さい順")
         );
         Assert.That(viewState.CpuMeterText, Is.EqualTo("27.5%"));
         Assert.That(viewState.GpuMeterText, Is.EqualTo("N/A"));
         Assert.That(viewState.HddMeterText, Is.EqualTo("N/A"));
         Assert.That(viewState.QueueLogs.Count, Is.EqualTo(2));
         Assert.That(viewState.WorkerPanels.Count, Is.EqualTo(6));
-        Assert.That(viewState.WorkerPanels[0].WorkerLabel, Is.EqualTo("優先Thread"));
-        Assert.That(viewState.WorkerPanels[1].WorkerLabel, Is.EqualTo("ゆっくり"));
-        Assert.That(viewState.WorkerPanels[2].WorkerLabel, Is.EqualTo("Recovery専"));
+        Assert.That(viewState.WorkerPanels[0].WorkerLabel, Is.EqualTo("ゆっくり"));
+        Assert.That(viewState.WorkerPanels[1].WorkerLabel, Is.EqualTo("再試行専"));
+        Assert.That(viewState.WorkerPanels[2].WorkerLabel, Is.EqualTo("通常 1"));
         Assert.That(viewState.WorkerPanels[0].MovieName, Is.EqualTo("movieA.mp4"));
         Assert.That(viewState.WorkerPanels[5].StatusText, Is.EqualTo("待機"));
     }
@@ -462,9 +500,11 @@ public class ThumbnailProgressRuntimeTests
         runtime.MarkJobStarted(queueObj);
         ThumbnailProgressRuntimeSnapshot second = runtime.CreateSnapshot();
 
-        Assert.That(ReferenceEquals(first, second), Is.True);
+        Assert.That(ReferenceEquals(first, second), Is.False);
+        Assert.That(second.ActiveWorkers.Count, Is.EqualTo(first.ActiveWorkers.Count));
         Assert.That(second.ActiveWorkers.Count, Is.EqualTo(1));
         Assert.That(second.ActiveWorkers[0].DisplayMovieName, Is.EqualTo("same.mp4"));
+        Assert.That(second.ActiveWorkers[0].MovieFullPath, Is.EqualTo(first.ActiveWorkers[0].MovieFullPath));
     }
 
     [Test]

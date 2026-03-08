@@ -26,7 +26,7 @@ public class ThumbnailMemoryLeakPreventionTests
                 "autogen",
                 (ctx, _) =>
                     Task.FromResult(
-                        ThumbnailCreationService.CreateSuccessResult(
+                        ThumbnailResultFactory.CreateSuccess(
                             ctx.SaveThumbFileName,
                             ctx.DurationSec
                         )
@@ -35,9 +35,14 @@ public class ThumbnailMemoryLeakPreventionTests
             var ffmedia = new RecordingEngine("ffmediatoolkit", (_, _) => Task.FromException<ThumbnailCreateResult>(new InvalidOperationException("should not be used")));
             var ffmpeg1pass = new RecordingEngine("ffmpeg1pass", (_, _) => Task.FromException<ThumbnailCreateResult>(new InvalidOperationException("should not be used")));
             var opencv = new RecordingEngine("opencv", (_, _) => Task.FromException<ThumbnailCreateResult>(new InvalidOperationException("should not be used")));
-            var service = new ThumbnailCreationService(ffmedia, ffmpeg1pass, opencv, autogen);
+            var service = ThumbnailCreationServiceFactory.Create(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen
+            );
 
-            Assert.That(ThumbnailCreationService.GetOutputFileLockEntryCountForTest(), Is.EqualTo(0));
+            Assert.That(ThumbnailOutputLockManager.GetEntryCountForTest(), Is.EqualTo(0));
 
             ThumbnailCreateResult result = await service.CreateThumbAsync(
                 new QueueObj { MovieId = 1, Tabindex = 0, MovieFullPath = moviePath },
@@ -49,7 +54,7 @@ public class ThumbnailMemoryLeakPreventionTests
 
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(autogen.CreateCallCount, Is.EqualTo(1));
-            Assert.That(ThumbnailCreationService.GetOutputFileLockEntryCountForTest(), Is.EqualTo(0));
+            Assert.That(ThumbnailOutputLockManager.GetEntryCountForTest(), Is.EqualTo(0));
         }
         finally
         {

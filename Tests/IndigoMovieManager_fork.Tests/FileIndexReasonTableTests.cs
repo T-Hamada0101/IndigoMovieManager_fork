@@ -81,4 +81,24 @@ public sealed class FileIndexReasonTableTests
 
         Assert.That(axis, Is.EqualTo("file-index-unknown"));
     }
+
+    [Test]
+    public void ToLogAxis_AvailabilityTimeoutはAvailability軸へ分類する()
+    {
+        string axis = FileIndexReasonTable.ToLogAxis(
+            $"{EverythingReasonCodes.AvailabilityErrorPrefix}TimeoutException"
+        );
+
+        Assert.That(axis, Is.EqualTo("file-index-availability"));
+    }
+
+    [Test]
+    public void ToLogAxis_QueryTimeoutはQuery軸へ分類する()
+    {
+        string axis = FileIndexReasonTable.ToLogAxis(
+            $"{EverythingReasonCodes.EverythingQueryErrorPrefix}TimeoutException"
+        );
+
+        Assert.That(axis, Is.EqualTo("file-index-query"));
+    }
 }

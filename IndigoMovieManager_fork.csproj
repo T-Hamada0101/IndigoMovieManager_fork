@@ -15,6 +15,8 @@
     <PlatformTarget>x64</PlatformTarget>
     <FileVersion>1.0.0.6</FileVersion>
     <AssemblyVersion></AssemblyVersion>
+    <!-- 一時検証で作られた生成物が本体へ混入しないよう、既定includeの入口で除外する -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*;bench_worktrees\**\*;tools\SwfAirThumbnailProbe\**\*</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -33,6 +35,8 @@
     <!-- 既定は内包版UsnMftを参照し、必要時のみ外部UsnMftへ切り替える -->
     <UseExternalUsnMft>false</UseExternalUsnMft>
     <ExternalUsnMftProjectPath></ExternalUsnMftProjectPath>
+    <!-- SQLitePCLRaw の distro 固有 RID 警告を避けるため、既存互換の RID グラフを使う -->
+    <UseRidGraph>true</UseRidGraph>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(UseExternalUsnMft)'=='true'">
@@ -45,10 +49,12 @@
     <None Remove="errorGrid.jpg" />
     <None Remove="errorList.jpg" />
     <!-- ベンチ用資産は本体アプリのビルド対象から除外する -->
-    <Compile Remove="Thumbnail\Bench\**\*.cs;Thumbnail\BenchOutput\**\*.cs;Thumbnail\ChatHistoryBackup_*\**\*.cs;Thumbnail\Test\**\*.cs;Thumbnail\QueueObj.cs;Thumbnail\TabInfo.cs;Thumbnail\ThumbInfo.cs;Thumbnail\Tools.cs;Thumbnail\ThumbnailCreationService.cs;Thumbnail\ThumbnailEnvConfig.cs;Thumbnail\ThumbnailParallelController.cs;Thumbnail\ThumbnailPathResolver.cs;Thumbnail\Engines\**\*.cs;Thumbnail\Decoders\**\*.cs;Thumbnail\QueueDb\**\*.cs;Thumbnail\QueuePipeline\**\*.cs;Thumbnail\ThumbnailQueueProcessor.cs;Thumbnail\ThumbnailProgressRuntime.cs;Tests\**\*.cs;src\**\*.cs;obj2\**\*.cs;obj_lock_backup\**\*.cs" />
-    <None Remove="Thumbnail\Bench\**\*;Thumbnail\BenchOutput\**\*;Thumbnail\ChatHistoryBackup_*\**\*;Tests\**\*;obj2\**\*;obj_lock_backup\**\*" />
-    <Content Remove="Thumbnail\Bench\**\*;Thumbnail\BenchOutput\**\*;Thumbnail\ChatHistoryBackup_*\**\*;Tests\**\*;obj2\**\*;obj_lock_backup\**\*" />
-    <EmbeddedResource Remove="Thumbnail\Bench\**\*;Thumbnail\BenchOutput\**\*;Thumbnail\ChatHistoryBackup_*\**\*;Tests\**\*;obj2\**\*;obj_lock_backup\**\*" />
+    <Compile Remove="Thumbnail\Bench\**\*.cs;Thumbnail\BenchOutput\**\*.cs;Thumbnail\ChatHistoryBackup_*\**\*.cs;Thumbnail\Test\**\*.cs;Thumbnail\QueueObj.cs;Thumbnail\TabInfo.cs;Thumbnail\ThumbInfo.cs;Thumbnail\Tools.cs;Thumbnail\ThumbnailCreationService.cs;Thumbnail\ThumbnailCreationFacade.cs;Thumbnail\ThumbnailCreationRuntime.cs;Thumbnail\ThumbnailCreationRuntimeFactory.cs;Thumbnail\ThumbnailCreationRuntimeProvider.cs;Thumbnail\ThumbnailCreationServiceFactory.cs;Thumbnail\ThumbnailCreationOrchestrationCoordinator.cs;Thumbnail\ThumbnailCsvUtility.cs;Thumbnail\ThumbnailEngineCatalog.cs;Thumbnail\ThumbnailEngineExecutionCoordinator.cs;Thumbnail\ThumbnailExecutionFlowCoordinator.cs;Thumbnail\ThumbnailEnvConfig.cs;Thumbnail\ThumbnailFailureFinalizer.cs;Thumbnail\ThumbnailImageUtility.cs;Thumbnail\ThumbnailJobContextFactory.cs;Thumbnail\ThumbnailJobMaterialBuilder.cs;Thumbnail\ThumbnailMovieMetaCache.cs;Thumbnail\ThumbnailOutputLockManager.cs;Thumbnail\ThumbnailParallelController.cs;Thumbnail\ThumbnailPathResolver.cs;Thumbnail\ThumbnailPlaceholderUtility.cs;Thumbnail\ThumbnailPreflightChecker.cs;Thumbnail\ThumbnailProcessLogFinalizer.cs;Thumbnail\ThumbnailRepairExecutionCoordinator.cs;Thumbnail\ThumbnailRepairRerunCoordinator.cs;Thumbnail\ThumbnailRepairWorkflowCoordinator.cs;Thumbnail\ThumbnailResultCompletionCoordinator.cs;Thumbnail\ThumbnailResultFactory.cs;Thumbnail\ThumbnailResultFinalizer.cs;Thumbnail\ThumbnailShellMetadataUtility.cs;Thumbnail\Engines\**\*.cs;Thumbnail\Decoders\**\*.cs;Thumbnail\Swf\**\*.cs;Thumbnail\QueueDb\**\*.cs;Thumbnail\QueuePipeline\**\*.cs;Thumbnail\ThumbnailQueueProcessor.cs;Thumbnail\ThumbnailProgressRuntime.cs;Tests\**\*.cs;src\**\*.cs;tools\SwfAirThumbnailProbe\**\*.cs;tools\SwfAirThumbnailProbe\obj\**\*.cs;bench_worktrees\**\*.cs;obj2\**\*.cs;obj_lock_backup\**\*.cs" />
+    <Page Remove="src\**\*.xaml;bench_worktrees\**\*.xaml;obj2\**\*.xaml;obj_lock_backup\**\*.xaml" />
+    <ApplicationDefinition Remove="src\**\App.xaml;bench_worktrees\**\App.xaml;obj2\**\App.xaml;obj_lock_backup\**\App.xaml" />
+    <None Remove="Thumbnail\Bench\**\*;Thumbnail\BenchOutput\**\*;Thumbnail\ChatHistoryBackup_*\**\*;Tests\**\*;tools\SwfAirThumbnailProbe\**\*;bench_worktrees\**\*;obj2\**\*;obj_lock_backup\**\*" />
+    <Content Remove="Thumbnail\Bench\**\*;Thumbnail\BenchOutput\**\*;Thumbnail\ChatHistoryBackup_*\**\*;Tests\**\*;tools\SwfAirThumbnailProbe\**\*;bench_worktrees\**\*;obj2\**\*;obj_lock_backup\**\*" />
+    <EmbeddedResource Remove="Thumbnail\Bench\**\*;Thumbnail\BenchOutput\**\*;Thumbnail\ChatHistoryBackup_*\**\*;Tests\**\*;tools\SwfAirThumbnailProbe\**\*;bench_worktrees\**\*;obj2\**\*;obj_lock_backup\**\*" />
   </ItemGroup>
 
   <ItemGroup>
@@ -92,6 +98,26 @@
     Condition="'$(UseExternalUsnMft)'=='true' and !Exists('$(ExternalUsnMftProjectPath)')"
   >
     <Error Text="UseExternalUsnMft=true ですが外部参照が見つかりません: $(ExternalUsnMftProjectPath)" />
+  </Target>
+
+  <Target
+    Name="ForceIncludeGeneratedWpfCode"
+    BeforeTargets="CoreCompile"
+    Condition="'$(UseWPF)'=='true' and $([System.String]::Copy('$(MSBuildProjectFile)').Contains('wpftmp')) != 'True'"
+  >
+    <!-- SDK 側で g.cs が Compile に載らない環境があるため、生成済みの WPF コードだけを直前で補完する -->
+    <ItemGroup>
+      <Compile
+        Include="$(IntermediateOutputPath)**\*.g.cs"
+        Exclude="
+          @(Compile);
+          $(IntermediateOutputPath)**\*.GlobalUsings.g.cs;
+          $(IntermediateOutputPath)**\*.AssemblyInfo.cs;
+          $(IntermediateOutputPath)src\**\*.g.cs;
+          $(IntermediateOutputPath)**\*wpftmp*.g.cs;
+          $(IntermediateOutputPath)bench_worktrees\**\*.g.cs"
+      />
+    </ItemGroup>
   </Target>
 
   <ItemGroup>
@@ -173,4 +199,188 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <Target Name="BuildThumbnailWorker" AfterTargets="Build">
+    <!-- 外部Workerを本体出力へ同梱し、UIから直接起動できるようにする -->
+    <PropertyGroup>
+      <ThumbnailWorkerSourceDir>$(MSBuildThisFileDirectory)src\IndigoMovieManager.Thumbnail.Worker\bin\$(Platform)\$(Configuration)\net8.0-windows\</ThumbnailWorkerSourceDir>
+      <ThumbnailWorkerTargetDir>$(OutDir)thumbnail-worker\</ThumbnailWorkerTargetDir>
+      <ThumbnailWorkerRuntimeSourceDir>$(OutDir)</ThumbnailWorkerRuntimeSourceDir>
+      <!-- no-restore 相当では既存 assets を使ってビルドだけ進める -->
+      <ThumbnailWorkerBuildTargets Condition="'$(Restore)'=='false'">Build</ThumbnailWorkerBuildTargets>
+      <ThumbnailWorkerBuildTargets Condition="'$(Restore)'!='false'">Restore;Build</ThumbnailWorkerBuildTargets>
+      <!-- 旧実装の残骸で自己再帰コピーが起きるため、thumbnail-worker配下は除外する -->
+      <ThumbnailWorkerNestedOutputDir>$(ThumbnailWorkerSourceDir)thumbnail-worker\</ThumbnailWorkerNestedOutputDir>
+      <ThumbnailWorkerNestedTargetDir>$(ThumbnailWorkerTargetDir)thumbnail-worker\</ThumbnailWorkerNestedTargetDir>
+    </PropertyGroup>
+    <Exec
+      Command="pwsh -NoLogo -Command &quot;$target=[IO.Path]::GetFullPath('$(ThumbnailWorkerTargetDir)'); Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'IndigoMovieManager.Thumbnail.Worker.exe' } | ForEach-Object { $cmd=$_.CommandLine; if([string]::IsNullOrWhiteSpace($cmd)){ return }; if($cmd.IndexOf($target,[System.StringComparison]::OrdinalIgnoreCase) -lt 0){ return }; if($null -eq (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)){ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }&quot;"
+      IgnoreExitCode="true"
+    />
+    <MSBuild
+      Projects="src\IndigoMovieManager.Thumbnail.Worker\IndigoMovieManager.Thumbnail.Worker.csproj"
+      Targets="$(ThumbnailWorkerBuildTargets)"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);Restore=$(Restore)"
+    />
+    <RemoveDir Directories="$(ThumbnailWorkerNestedOutputDir)" Condition="Exists('$(ThumbnailWorkerNestedOutputDir)')" />
+    <RemoveDir Directories="$(ThumbnailWorkerNestedTargetDir)" Condition="Exists('$(ThumbnailWorkerNestedTargetDir)')" />
+    <ItemGroup>
+      <ThumbnailWorkerOutputFiles
+        Include="$(ThumbnailWorkerSourceDir)**\*"
+        Exclude="$(ThumbnailWorkerNestedOutputDir)**\*"
+      />
+      <!-- Worker単体起動でもQueueDBへ触れるよう、SQLite系の実行依存を本体出力から補完する -->
+      <ThumbnailWorkerRuntimeRootFiles
+        Include="
+          $(ThumbnailWorkerRuntimeSourceDir)System.Data.SQLite.dll;
+          $(ThumbnailWorkerRuntimeSourceDir)SQLitePCLRaw*.dll"
+      />
+      <ThumbnailWorkerRuntimeNativeFiles
+        Include="$(ThumbnailWorkerRuntimeSourceDir)runtimes\**\*"
+      />
+    </ItemGroup>
+    <MakeDir Directories="$(ThumbnailWorkerTargetDir)" />
+    <Copy
+      SourceFiles="@(ThumbnailWorkerOutputFiles)"
+      DestinationFiles="@(ThumbnailWorkerOutputFiles->'$(ThumbnailWorkerTargetDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+    <Copy
+      SourceFiles="@(ThumbnailWorkerRuntimeRootFiles)"
+      DestinationFiles="@(ThumbnailWorkerRuntimeRootFiles->'$(ThumbnailWorkerTargetDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+    <Copy
+      SourceFiles="@(ThumbnailWorkerRuntimeNativeFiles)"
+      DestinationFiles="@(ThumbnailWorkerRuntimeNativeFiles->'$(ThumbnailWorkerTargetDir)runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+  </Target>
+
+  <Target Name="BuildAdminTelemetryService" AfterTargets="Build">
+    <!-- 管理者サービスを本体出力へ同梱し、通常権限UIから昇格起動できるようにする -->
+    <PropertyGroup>
+      <AdminServiceSourceDir>$(MSBuildThisFileDirectory)src\IndigoMovieManager.AdminService\bin\$(Platform)\$(Configuration)\net8.0-windows\</AdminServiceSourceDir>
+      <AdminServiceTargetDir>$(OutDir)admin-service\</AdminServiceTargetDir>
+      <AdminServiceBuildTargets Condition="'$(Restore)'=='false'">Build</AdminServiceBuildTargets>
+      <AdminServiceBuildTargets Condition="'$(Restore)'!='false'">Restore;Build</AdminServiceBuildTargets>
+    </PropertyGroup>
+    <MSBuild
+      Projects="src\IndigoMovieManager.AdminService\IndigoMovieManager.AdminService.csproj"
+      Targets="$(AdminServiceBuildTargets)"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);Restore=$(Restore)"
+    />
+    <ItemGroup>
+      <AdminServiceOutputFiles Include="$(AdminServiceSourceDir)**\*" />
+    </ItemGroup>
+    <MakeDir Directories="$(AdminServiceTargetDir)" />
+    <Copy
+      SourceFiles="@(AdminServiceOutputFiles)"
+      DestinationFiles="@(AdminServiceOutputFiles->'$(AdminServiceTargetDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+  </Target>
+
+  <Target Name="BuildThumbnailProgressViewer" AfterTargets="Build">
+    <!-- 進捗Viewerを別窓配布し、本体タブは軽量表示へ寄せる -->
+    <PropertyGroup>
+      <ThumbnailProgressViewerSourceDir>$(MSBuildThisFileDirectory)artifacts\thumbnail-progress-viewer-stage\$(Platform)\$(Configuration)\</ThumbnailProgressViewerSourceDir>
+      <ThumbnailProgressViewerTargetDir>$(OutDir)thumbnail-progress-viewer\</ThumbnailProgressViewerTargetDir>
+      <!-- no-restore 相当では既存 assets を使ってビルドだけ進める -->
+      <ThumbnailProgressViewerBuildTargets Condition="'$(Restore)'=='false'">Build</ThumbnailProgressViewerBuildTargets>
+      <ThumbnailProgressViewerBuildTargets Condition="'$(Restore)'!='false'">Restore;Build</ThumbnailProgressViewerBuildTargets>
+      <ThumbnailProgressViewerNestedOutputDir>$(ThumbnailProgressViewerSourceDir)thumbnail-progress-viewer\</ThumbnailProgressViewerNestedOutputDir>
+      <ThumbnailProgressViewerNestedTargetDir>$(ThumbnailProgressViewerTargetDir)thumbnail-progress-viewer\</ThumbnailProgressViewerNestedTargetDir>
+    </PropertyGroup>
+    <Exec
+      Command="pwsh -NoLogo -Command &quot;$target=[IO.Path]::GetFullPath('$(ThumbnailProgressViewerTargetDir)'); Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'IndigoMovieManager.Thumbnail.ProgressViewer.exe' } | ForEach-Object { $cmd=$_.CommandLine; if([string]::IsNullOrWhiteSpace($cmd)){ return }; if($cmd.IndexOf($target,[System.StringComparison]::OrdinalIgnoreCase) -lt 0){ return }; if($null -eq (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)){ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }&quot;"
+      IgnoreExitCode="true"
+    />
+    <MSBuild
+      Projects="src\IndigoMovieManager.Thumbnail.ProgressViewer\IndigoMovieManager.Thumbnail.ProgressViewer.csproj"
+      Targets="$(ThumbnailProgressViewerBuildTargets)"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);OutDir=$(ThumbnailProgressViewerSourceDir);Restore=$(Restore)"
+    />
+    <RemoveDir
+      Directories="$(ThumbnailProgressViewerNestedOutputDir)"
+      Condition="Exists('$(ThumbnailProgressViewerNestedOutputDir)')"
+    />
+    <RemoveDir
+      Directories="$(ThumbnailProgressViewerNestedTargetDir)"
+      Condition="Exists('$(ThumbnailProgressViewerNestedTargetDir)')"
+    />
+    <ItemGroup>
+      <ThumbnailProgressViewerOutputFiles
+        Include="$(ThumbnailProgressViewerSourceDir)**\*"
+        Exclude="$(ThumbnailProgressViewerNestedOutputDir)**\*"
+      />
+    </ItemGroup>
+    <MakeDir Directories="$(ThumbnailProgressViewerTargetDir)" />
+    <Copy
+      SourceFiles="@(ThumbnailProgressViewerOutputFiles)"
+      DestinationFiles="@(ThumbnailProgressViewerOutputFiles->'$(ThumbnailProgressViewerTargetDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+  </Target>
+
+  <Target Name="BuildThumbnailCoordinator" AfterTargets="Build">
+    <!-- 外側の運転席制御口を同梱し、本体から Coordinator を直接起動できるようにする -->
+    <PropertyGroup>
+      <ThumbnailCoordinatorSourceDir>$(MSBuildThisFileDirectory)artifacts\thumbnail-coordinator-stage\$(Platform)\$(Configuration)\</ThumbnailCoordinatorSourceDir>
+      <ThumbnailCoordinatorTargetDir>$(OutDir)thumbnail-coordinator\</ThumbnailCoordinatorTargetDir>
+      <ThumbnailCoordinatorBuildTargets Condition="'$(Restore)'=='false'">Build</ThumbnailCoordinatorBuildTargets>
+      <ThumbnailCoordinatorBuildTargets Condition="'$(Restore)'!='false'">Restore;Build</ThumbnailCoordinatorBuildTargets>
+      <ThumbnailCoordinatorNestedOutputDir>$(ThumbnailCoordinatorSourceDir)thumbnail-coordinator\</ThumbnailCoordinatorNestedOutputDir>
+      <ThumbnailCoordinatorNestedTargetDir>$(ThumbnailCoordinatorTargetDir)thumbnail-coordinator\</ThumbnailCoordinatorNestedTargetDir>
+      <ThumbnailCoordinatorRuntimeSourceDir>$(OutDir)</ThumbnailCoordinatorRuntimeSourceDir>
+    </PropertyGroup>
+    <Exec
+      Command="pwsh -NoLogo -Command &quot;$target=[IO.Path]::GetFullPath('$(ThumbnailCoordinatorTargetDir)'); Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'IndigoMovieManager.Thumbnail.Coordinator.exe' } | ForEach-Object { $cmd=$_.CommandLine; if([string]::IsNullOrWhiteSpace($cmd)){ return }; if($cmd.IndexOf($target,[System.StringComparison]::OrdinalIgnoreCase) -lt 0){ return }; if($null -eq (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)){ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }&quot;"
+      IgnoreExitCode="true"
+    />
+    <MSBuild
+      Projects="src\IndigoMovieManager.Thumbnail.Coordinator\IndigoMovieManager.Thumbnail.Coordinator.csproj"
+      Targets="$(ThumbnailCoordinatorBuildTargets)"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);OutDir=$(ThumbnailCoordinatorSourceDir);Restore=$(Restore)"
+    />
+    <RemoveDir
+      Directories="$(ThumbnailCoordinatorNestedOutputDir)"
+      Condition="Exists('$(ThumbnailCoordinatorNestedOutputDir)')"
+    />
+    <RemoveDir
+      Directories="$(ThumbnailCoordinatorNestedTargetDir)"
+      Condition="Exists('$(ThumbnailCoordinatorNestedTargetDir)')"
+    />
+    <ItemGroup>
+      <ThumbnailCoordinatorOutputFiles
+        Include="$(ThumbnailCoordinatorSourceDir)**\*"
+        Exclude="$(ThumbnailCoordinatorNestedOutputDir)**\*"
+      />
+      <!-- Coordinator 単体起動でも QueueDB を開けるよう、SQLite 系 native/runtime を本体出力から補完する -->
+      <ThumbnailCoordinatorRuntimeRootFiles
+        Include="
+          $(ThumbnailCoordinatorRuntimeSourceDir)System.Data.SQLite.dll;
+          $(ThumbnailCoordinatorRuntimeSourceDir)SQLitePCLRaw*.dll"
+      />
+      <ThumbnailCoordinatorRuntimeNativeFiles
+        Include="$(ThumbnailCoordinatorRuntimeSourceDir)runtimes\**\*"
+      />
+    </ItemGroup>
+    <MakeDir Directories="$(ThumbnailCoordinatorTargetDir)" />
+    <Copy
+      SourceFiles="@(ThumbnailCoordinatorOutputFiles)"
+      DestinationFiles="@(ThumbnailCoordinatorOutputFiles->'$(ThumbnailCoordinatorTargetDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+    <Copy
+      SourceFiles="@(ThumbnailCoordinatorRuntimeRootFiles)"
+      DestinationFiles="@(ThumbnailCoordinatorRuntimeRootFiles->'$(ThumbnailCoordinatorTargetDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+    <Copy
+      SourceFiles="@(ThumbnailCoordinatorRuntimeNativeFiles)"
+      DestinationFiles="@(ThumbnailCoordinatorRuntimeNativeFiles->'$(ThumbnailCoordinatorTargetDir)runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+  </Target>
 </Project>

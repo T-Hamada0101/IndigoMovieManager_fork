@@ -47,6 +47,12 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 return forcedEngine;
             }
 
+            if (context?.QueueObj?.AttemptCount > 0 && context.IsManual == false)
+            {
+                // 初回autogen失敗後の専用再試行は、ffmpeg1pass をゆっくり系で処理する。
+                return ResolveOrFallback("ffmpeg1pass");
+            }
+
             // 既定運用では自動・手動ともに autogen を固定採用する。
             if (context?.IsManual == true)
             {

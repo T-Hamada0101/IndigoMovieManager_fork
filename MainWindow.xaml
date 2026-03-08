@@ -9,6 +9,7 @@
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:notifications="clr-namespace:Notification.Wpf.Controls;assembly=Notification.Wpf"
+    xmlns:prop="clr-namespace:IndigoMovieManager.Properties"
     xmlns:view="clr-namespace:IndigoMovieManager.UserControls"
     xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
     x:Name="window"
@@ -20,7 +21,6 @@
     <Window.Resources>
         <c:FileSizeConverter x:Key="FileSizeConverter" />
         <c:NoLockImageConverter x:Key="noLockImageConverter" />
-        <c:ThumbnailProgressPreviewConverter x:Key="thumbnailProgressPreviewConverter" />
         <!--  BoolToVisibilityConverter を追加  -->
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
@@ -925,7 +925,7 @@
 
                         <avalonDock:LayoutAnchorable
                             x:Name="ThumbnailProgressTab"
-                            Title="サムネイル進捗"
+                            Title="サムネイル"
                             AutoHideHeight="200"
                             CanAutoHide="True"
                             CanClose="False"
@@ -946,6 +946,10 @@
                                     <DockPanel Margin="0,0,0,4">
                                         <TextBlock Width="160" Text="作成済み / 総キュー" />
                                         <TextBlock Text="{Binding ThumbnailProgress.CreatedQueueText}" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,4">
+                                        <TextBlock Width="160" Text="起動後の総作成枚数" />
+                                        <TextBlock Text="{Binding ThumbnailProgress.CreatedTotalText}" />
                                     </DockPanel>
                                     <DockPanel Margin="0,0,0,8">
                                         <TextBlock Width="160" Text="DB登録待ち / DB総数" />
@@ -996,108 +1000,131 @@
                                         Margin="0,0,0,8"
                                         FontSize="12"
                                         Text="ショートカット: Ctrl + + で並列数を増加 / Ctrl + - で並列数を減少" />
+                                    <Separator Margin="0,0,0,8" />
+                                    <TextBlock FontSize="14" FontWeight="Bold" Text="設定" />
+                                    <Separator Margin="0,4,0,8" />
 
-                                    <TextBlock FontWeight="Bold" Text="CPU" />
-                                    <ProgressBar
-                                        Height="12"
-                                        Margin="0,2,0,0"
-                                        Maximum="100"
-                                        Minimum="0"
-                                        Value="{Binding ThumbnailProgress.CpuMeterValue, Mode=OneWay}" />
-                                    <TextBlock Margin="0,2,0,6" Text="{Binding ThumbnailProgress.CpuMeterText}" />
-
-                                    <TextBlock FontWeight="Bold" Text="GPU" />
-                                    <ProgressBar
-                                        Height="12"
-                                        Margin="0,2,0,0"
-                                        Maximum="100"
-                                        Minimum="0"
-                                        Value="{Binding ThumbnailProgress.GpuMeterValue, Mode=OneWay}" />
-                                    <TextBlock Margin="0,2,0,6" Text="{Binding ThumbnailProgress.GpuMeterText}" />
-
-                                    <TextBlock FontWeight="Bold" Text="HDD" />
-                                    <ProgressBar
-                                        Height="12"
-                                        Margin="0,2,0,0"
-                                        Maximum="100"
-                                        Minimum="0"
-                                        Value="{Binding ThumbnailProgress.HddMeterValue, Mode=OneWay}" />
-                                    <TextBlock Margin="0,2,0,8" Text="{Binding ThumbnailProgress.HddMeterText}" />
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Width="160" VerticalAlignment="Center" Text="プリセット" />
+                                        <ComboBox
+                                            x:Name="ThumbnailTabPresetSelector"
+                                            Width="120"
+                                            SelectedValue="{Binding ThumbnailThreadPreset, Source={x:Static prop:Settings.Default}}"
+                                            SelectedValuePath="Tag"
+                                            SelectionChanged="ThumbnailTabPresetSelector_SelectionChanged">
+                                            <ComboBoxItem Tag="slow" Content="slow" />
+                                            <ComboBoxItem Tag="normal" Content="normal" />
+                                            <ComboBoxItem Tag="ballence" Content="ballence" />
+                                            <ComboBoxItem Tag="fast" Content="fast" />
+                                            <ComboBoxItem Tag="max" Content="max" />
+                                            <ComboBoxItem Tag="custum" Content="custum" />
+                                        </ComboBox>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,4">
+                                        <TextBlock Width="160" Text="巨大動画判定(GB)" />
+                                        <TextBlock
+                                            Width="40"
+                                            Text="{Binding ThumbnailSlowLaneMinGb, Source={x:Static prop:Settings.Default}}" />
+                                    </DockPanel>
+                                    <Slider
+                                        x:Name="ThumbnailTabSlowLaneMinGbSlider"
+                                        Margin="0,0,0,8"
+                                        Maximum="1024"
+                                        Minimum="1"
+                                        Style="{StaticResource MaterialDesignDiscreteSlider}"
+                                        TickFrequency="1"
+                                        Value="{Binding ThumbnailSlowLaneMinGb, Source={x:Static prop:Settings.Default}}"
+                                        ValueChanged="ThumbnailTabSlowLaneMinGbSlider_ValueChanged" />
+                                    <CheckBox
+                                        x:Name="ThumbnailTabResizeThumbCheckBox"
+                                        Margin="0,0,0,6"
+                                        Click="ThumbnailTabResizeThumbCheckBox_Click"
+                                        Content="サムネイルを縮小する"
+                                        IsChecked="{Binding IsResizeThumb, Source={x:Static prop:Settings.Default}}" />
+                                    <CheckBox
+                                        x:Name="ThumbnailTabGpuDecodeCheckBox"
+                                        Margin="0,0,0,6"
+                                        Click="ThumbnailTabGpuDecodeCheckBox_Click"
+                                        Content="GPUデコードを使う"
+                                        IsChecked="{Binding ThumbnailGpuDecodeEnabled, Source={x:Static prop:Settings.Default}}" />
 
                                 </StackPanel>
 
-                                <ScrollViewer
-                                    Grid.Column="2"
-                                    HorizontalScrollBarVisibility="Disabled"
-                                    VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding ThumbnailProgress.WorkerPanels}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel IsItemsHost="True" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border
-                                                    Width="230"
-                                                    Margin="4"
-                                                    Padding="6"
-                                                    BorderBrush="#664A4A4A"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Background" Value="#00FFFFFF" />
-                                                            <Setter Property="Opacity" Value="1.0" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsActive, Mode=OneWay}" Value="False">
-                                                                    <Setter Property="Background" Value="#22A0A0A0" />
-                                                                    <Setter Property="Opacity" Value="0.70" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                    <StackPanel>
-                                                        <DockPanel Margin="0,0,0,2">
+                                <Grid Grid.Column="2">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="8" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <Border
+                                        Padding="10"
+                                        Background="#FFF5F7FA"
+                                        BorderBrush="#FFD5DDE5"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                        <StackPanel>
+                                            <TextBlock FontSize="14" FontWeight="Bold" Text="別窓ビューアー" />
+                                            <TextBlock
+                                                x:Name="ThumbnailProgressViewerLifecycleText"
+                                                Margin="0,6,0,4"
+                                                TextWrapping="Wrap"
+                                                Text="別窓ビューアー起動待ち" />
+                                            <TextBlock
+                                                x:Name="ThumbnailProgressViewerProgressText"
+                                                Margin="0,0,0,4"
+                                                TextWrapping="Wrap"
+                                                Text="進捗: 取得待ち" />
+                                            <TextBlock
+                                                x:Name="ThumbnailProgressViewerWorkerHealthText"
+                                                Margin="0,0,0,8"
+                                                TextWrapping="Wrap"
+                                                Text="Worker: health未取得" />
+                                            <TextBlock
+                                                x:Name="ThumbnailCoordinatorControlText"
+                                                Margin="0,0,0,8"
+                                                TextWrapping="Wrap"
+                                                Text="運転席: control未取得" />
+                                            <TextBlock
+                                                Margin="0,0,0,8"
+                                                Foreground="#FF586573"
+                                                Text="重いワーカーパネルとプレビューは別プロセスへ逃がしています。本体側は要約と設定だけを保持します。"
+                                                TextWrapping="Wrap" />
+                                            <Button
+                                                Width="180"
+                                                Click="RestartThumbnailProgressViewerButton_Click"
+                                                Content="別窓ビューアーを再起動" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border
+                                        Grid.Row="2"
+                                        Padding="10"
+                                        BorderBrush="#FFD5DDE5"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock
+                                                DockPanel.Dock="Top"
+                                                Margin="0,0,0,8"
+                                                FontSize="14"
+                                                FontWeight="Bold"
+                                                Text="投入ログ" />
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl ItemsSource="{Binding ThumbnailProgress.QueueLogs}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
                                                             <TextBlock
-                                                                FontSize="12"
-                                                                FontWeight="Bold"
-                                                                Text="{Binding WorkerLabel, Mode=OneWay}" />
-                                                            <Border
-                                                                DockPanel.Dock="Right"
-                                                                Margin="6,0,0,0"
-                                                                Padding="6,1"
-                                                                Background="#33000000"
-                                                                CornerRadius="3">
-                                                                <TextBlock
-                                                                    FontSize="10"
-                                                                    Text="{Binding StatusText, Mode=OneWay}" />
-                                                            </Border>
-                                                        </DockPanel>
-                                                        <TextBlock
-                                                            Margin="0,2,0,6"
-                                                            Text="{Binding MovieName, Mode=OneWay}"
-                                                            TextTrimming="CharacterEllipsis"
-                                                            ToolTip="{Binding MovieName, Mode=OneWay}" />
-                                                        <Border BorderBrush="#44333333" BorderThickness="1">
-                                                            <Image
-                                                                Height="72"
-                                                                Stretch="Uniform">
-                                                                <Image.Source>
-                                                                    <MultiBinding Converter="{StaticResource thumbnailProgressPreviewConverter}" ConverterParameter="72">
-                                                                        <Binding Mode="OneWay" Path="PreviewCacheKey" />
-                                                                        <Binding Mode="OneWay" Path="PreviewRevision" />
-                                                                        <Binding Mode="OneWay" Path="PreviewImagePath" />
-                                                                    </MultiBinding>
-                                                                </Image.Source>
-                                                            </Image>
-                                                        </Border>
-                                                    </StackPanel>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
+                                                                Margin="0,0,0,4"
+                                                                Text="{Binding}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </DockPanel>
+                                    </Border>
+                                </Grid>
                             </Grid>
                         </avalonDock:LayoutAnchorable>
                     </avalonDock:LayoutAnchorablePane>

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using IndigoMovieManager.Watcher;
 
 namespace IndigoMovieManager_fork.Tests;
@@ -74,86 +73,96 @@ public sealed class UsnMftProviderTests
     }
 
     [Test]
-    public void CollectMoviePaths_SecondCallWithinCooldown_WhenAvailable_UsesCachedIndex()
+    public void CollectThumbnailBodies_管理者サービス未使用でもローカル収集できる()
     {
         UsnMftProvider provider = new();
-        AvailabilityResult availability = provider.CheckAvailability();
-        if (!availability.CanUse)
-        {
-            Assert.Ignore($"UsnMft を利用できないためスキップ: {availability.Reason}");
-        }
-
-        string root = CreateTempDir();
+        string thumbFolder = CreateTempDir();
         try
         {
-            File.WriteAllText(Path.Combine(root, "movie.mp4"), "x");
+            File.WriteAllText(Path.Combine(thumbFolder, "movie.#123.jpg"), "x");
 
-            FileIndexQueryOptions options = new()
-            {
-                RootPath = root,
-                IncludeSubdirectories = true,
-                CheckExt = "*.mp4",
-                ChangedSinceUtc = null,
-            };
+            FileIndexThumbnailBodyResult result = provider.CollectThumbnailBodies(thumbFolder);
 
-            FileIndexMovieResult first = provider.CollectMoviePaths(options);
-            FileIndexMovieResult second = provider.CollectMoviePaths(options);
-
-            Assert.That(first.Success, Is.True);
-            Assert.That(second.Success, Is.True);
-            Assert.That(first.Reason.Contains("index=rebuilt", StringComparison.Ordinal), Is.True);
-            Assert.That(second.Reason.Contains("index=cached", StringComparison.Ordinal), Is.True);
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Bodies.Contains("movie"), Is.True);
         }
         finally
         {
-            DeleteTempDir(root);
+            DeleteTempDir(thumbFolder);
         }
     }
 
     [Test]
-    public void CollectMoviePaths_ManyRoots_WhenAvailable_CacheEntryCountIsLimited()
+    public void CollectMoviePaths_AvailabilityFalseなら理由をそのまま返す()
     {
-        UsnMftProvider provider = new();
-        AvailabilityResult availability = provider.CheckAvailability();
-        if (!availability.CanUse)
+        FakeAdminFileIndexClient client = new()
         {
-            Assert.Ignore($"UsnMft を利用できないためスキップ: {availability.Reason}");
-        }
+            Availability = new AvailabilityResult(
+                false,
+                $"{EverythingReasonCodes.AvailabilityErrorPrefix}AdminServiceUnavailable"
+            ),
+        };
+        UsnMftProvider provider = new(client);
 
-        List<string> roots = [];
-        try
-        {
-            int target = UsnMftProvider.GetCacheCapacityForTesting() + 8;
-            for (int i = 0; i < target; i++)
+        FileIndexMovieResult result = provider.CollectMoviePaths(
+            new FileIndexQueryOptions
             {
-                string root = CreateTempDir();
-                roots.Add(root);
-                File.WriteAllText(Path.Combine(root, $"movie_{i}.mp4"), "x");
-
-                FileIndexMovieResult result = provider.CollectMoviePaths(
-                    new FileIndexQueryOptions
-                    {
-                        RootPath = root,
-                        IncludeSubdirectories = true,
-                        CheckExt = "*.mp4",
-                        ChangedSinceUtc = null,
-                    }
-                );
-                Assert.That(result.Success, Is.True);
+                RootPath = @"C:\movies",
+                IncludeSubdirectories = true,
+                CheckExt = "*.mp4",
             }
+        );
 
-            Assert.That(
-                UsnMftProvider.GetCacheEntryCountForTesting(),
-                Is.LessThanOrEqualTo(UsnMftProvider.GetCacheCapacityForTesting())
-            );
-        }
-        finally
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.Reason, Is.EqualTo(client.Availability.Reason));
+        Assert.That(client.CollectMoviePathsCallCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void CollectMoviePaths_ServiceTimeoutならQueryErrorへ包む()
+    {
+        FakeAdminFileIndexClient client = new()
         {
-            foreach (string root in roots)
+            Availability = new AvailabilityResult(true, EverythingReasonCodes.Ok),
+            CollectMoviePathsException = new TimeoutException("timeout"),
+        };
+        UsnMftProvider provider = new(client);
+
+        FileIndexMovieResult result = provider.CollectMoviePaths(
+            new FileIndexQueryOptions
             {
-                DeleteTempDir(root);
+                RootPath = @"C:\movies",
+                IncludeSubdirectories = true,
+                CheckExt = "*.mp4",
             }
-        }
+        );
+
+        Assert.That(result.Success, Is.False);
+        Assert.That(
+            result.Reason.StartsWith(
+                EverythingReasonCodes.EverythingQueryErrorPrefix,
+                StringComparison.Ordinal
+            ),
+            Is.True
+        );
+        Assert.That(result.Reason.Contains("TimeoutException", StringComparison.Ordinal), Is.True);
+        Assert.That(client.CollectMoviePathsCallCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void CheckAvailability_InjectedClientの結果を返す()
+    {
+        FakeAdminFileIndexClient client = new()
+        {
+            Availability = new AvailabilityResult(true, EverythingReasonCodes.Ok),
+        };
+        UsnMftProvider provider = new(client);
+
+        AvailabilityResult result = provider.CheckAvailability();
+
+        Assert.That(result.CanUse, Is.True);
+        Assert.That(result.Reason, Is.EqualTo(EverythingReasonCodes.Ok));
+        Assert.That(client.CheckAvailabilityCallCount, Is.EqualTo(1));
     }
 
     private static string CreateTempDir()
@@ -175,5 +184,36 @@ public sealed class UsnMftProviderTests
         }
 
         Directory.Delete(path, true);
+    }
+
+    private sealed class FakeAdminFileIndexClient : IAdminFileIndexClient
+    {
+        public AvailabilityResult Availability { get; set; } =
+            new(false, $"{EverythingReasonCodes.AvailabilityErrorPrefix}NotConfigured");
+
+        public FileIndexMovieResult CollectMoviePathsResult { get; set; } =
+            new(true, [], null, EverythingReasonCodes.Ok);
+
+        public Exception? CollectMoviePathsException { get; set; }
+
+        public int CheckAvailabilityCallCount { get; private set; }
+        public int CollectMoviePathsCallCount { get; private set; }
+
+        public AvailabilityResult CheckAvailability()
+        {
+            CheckAvailabilityCallCount++;
+            return Availability;
+        }
+
+        public FileIndexMovieResult CollectMoviePaths(FileIndexQueryOptions options)
+        {
+            CollectMoviePathsCallCount++;
+            if (CollectMoviePathsException != null)
+            {
+                throw CollectMoviePathsException;
+            }
+
+            return CollectMoviePathsResult;
+        }
     }
 }

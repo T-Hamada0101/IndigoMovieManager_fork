@@ -45,6 +45,7 @@ namespace IndigoMovieManager
             {
                 MovieId = source.MovieId,
                 MovieFullPath = source.MovieFullPath,
+                MainDbFullPath = source.MainDbFullPath,
                 Hash = source.Hash,
                 MovieSizeBytes = source.MovieSizeBytes,
                 Tabindex = source.Tabindex,
@@ -190,6 +191,7 @@ namespace IndigoMovieManager
             }
 
             QueueRequest request = QueueRequest.FromQueueObj(mainDbFullPath, queueObj);
+            queueObj.MainDbFullPath = mainDbFullPath;
             bool accepted = queueRequestChannel.Writer.TryWrite(request);
             if (!accepted)
             {

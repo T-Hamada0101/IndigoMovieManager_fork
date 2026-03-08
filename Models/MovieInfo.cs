@@ -13,6 +13,8 @@ namespace IndigoMovieManager
     public class MovieInfo : MovieCore
     {
         private const double DefaultFps = 30;
+        private const double DurationMismatchRatioThreshold = 2.0;
+        private const double DurationMismatchAbsoluteThresholdSec = 5.0;
         private static readonly object FfmpegLoadSync = new();
         private static bool ffmpegLoadAttempted;
         private static bool ffmpegLoadSucceeded;
@@ -314,20 +316,44 @@ namespace IndigoMovieManager
         /// 真の再生時間(Duration)を導き出す最終アンサー！⏳
         /// コンテナ由来の時間がアテにならなければ、総フレーム数とFPSから執念で計算し直すサバイバル特化のメソッドだ！🔥
         /// </summary>
-        private static double NormalizeDurationSec(
+        internal static double NormalizeDurationSec(
             double durationSec,
             double totalFrames,
             double fps
         )
         {
+            // 映像フレーム数が取れている時は、コンテナ長が壊れていても映像実尺を復元できる。
+            double frameDerivedDurationSec =
+                IsFinitePositive(totalFrames) && IsFinitePositive(fps)
+                    ? totalFrames / fps
+                    : 0;
+
             if (IsFinitePositive(durationSec))
             {
+                if (IsFinitePositive(frameDerivedDurationSec))
+                {
+                    double diff = Math.Abs(durationSec - frameDerivedDurationSec);
+                    double ratio = durationSec > frameDerivedDurationSec
+                        ? durationSec / frameDerivedDurationSec
+                        : frameDerivedDurationSec / durationSec;
+
+                    // AVIなどで音声側メタだけ壊れていると、コンテナ尺が数百倍に化けることがある。
+                    // サムネ用途ではシーク可能な映像尺を優先した方が安全。
+                    if (
+                        diff >= DurationMismatchAbsoluteThresholdSec
+                        && ratio >= DurationMismatchRatioThreshold
+                    )
+                    {
+                        return frameDerivedDurationSec;
+                    }
+                }
+
                 return durationSec;
             }
 
-            if (IsFinitePositive(totalFrames) && IsFinitePositive(fps))
+            if (IsFinitePositive(frameDerivedDurationSec))
             {
-                return totalFrames / fps;
+                return frameDerivedDurationSec;
             }
 
             return 0;

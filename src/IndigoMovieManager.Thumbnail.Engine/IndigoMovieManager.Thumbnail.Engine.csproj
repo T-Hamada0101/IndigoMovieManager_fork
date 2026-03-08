@@ -24,10 +24,38 @@
     <Compile Include="..\..\Thumbnail\ThumbInfo.cs" Link="ThumbInfo.cs" />
     <Compile Include="..\..\Thumbnail\Tools.cs" Link="Tools.cs" />
     <Compile Include="..\..\Thumbnail\ThumbnailEnvConfig.cs" Link="ThumbnailEnvConfig.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailCsvUtility.cs" Link="ThumbnailCsvUtility.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailEngineCatalog.cs" Link="ThumbnailEngineCatalog.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailEngineExecutionCoordinator.cs" Link="ThumbnailEngineExecutionCoordinator.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailExecutionFlowCoordinator.cs" Link="ThumbnailExecutionFlowCoordinator.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailExecutionPolicy.cs" Link="ThumbnailExecutionPolicy.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailFailureFinalizer.cs" Link="ThumbnailFailureFinalizer.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailImageUtility.cs" Link="ThumbnailImageUtility.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailJobMaterialBuilder.cs" Link="ThumbnailJobMaterialBuilder.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailJobContextFactory.cs" Link="ThumbnailJobContextFactory.cs" />
     <Compile Include="..\..\Thumbnail\ThumbnailParallelController.cs" Link="ThumbnailParallelController.cs" />
     <Compile Include="..\..\Thumbnail\ThumbnailPathResolver.cs" Link="ThumbnailPathResolver.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailPlaceholderUtility.cs" Link="ThumbnailPlaceholderUtility.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailMovieMetaCache.cs" Link="ThumbnailMovieMetaCache.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailOutputLockManager.cs" Link="ThumbnailOutputLockManager.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailPreflightChecker.cs" Link="ThumbnailPreflightChecker.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailProcessLogFinalizer.cs" Link="ThumbnailProcessLogFinalizer.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailRepairExecutionCoordinator.cs" Link="ThumbnailRepairExecutionCoordinator.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailRepairRerunCoordinator.cs" Link="ThumbnailRepairRerunCoordinator.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailResultCompletionCoordinator.cs" Link="ThumbnailResultCompletionCoordinator.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailResultFactory.cs" Link="ThumbnailResultFactory.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailRepairWorkflowCoordinator.cs" Link="ThumbnailRepairWorkflowCoordinator.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailResultFinalizer.cs" Link="ThumbnailResultFinalizer.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailShellMetadataUtility.cs" Link="ThumbnailShellMetadataUtility.cs" />
     <Compile Include="..\..\Thumbnail\ThumbnailCreationService.cs" Link="ThumbnailCreationService.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailCreationFacade.cs" Link="ThumbnailCreationFacade.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailCreationRuntime.cs" Link="ThumbnailCreationRuntime.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailCreationRuntimeFactory.cs" Link="ThumbnailCreationRuntimeFactory.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailCreationRuntimeProvider.cs" Link="ThumbnailCreationRuntimeProvider.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailCreationServiceFactory.cs" Link="ThumbnailCreationServiceFactory.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailCreationOrchestrationCoordinator.cs" Link="ThumbnailCreationOrchestrationCoordinator.cs" />
     <Compile Include="..\..\Thumbnail\Decoders\**\*.cs" Link="Decoders\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\Thumbnail\Engines\**\*.cs" Link="Engines\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\Thumbnail\Swf\**\*.cs" Link="Swf\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

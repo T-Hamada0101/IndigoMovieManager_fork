@@ -163,23 +163,39 @@ namespace IndigoMovieManager.Thumbnail.Ipc
                 );
             }
 
-            if (!capabilities.SupportsSystemLoad)
+            bool supportsAnyServiceSignal =
+                capabilities.SupportsSystemLoad
+                || capabilities.SupportsDiskThermal
+                || capabilities.SupportsUsnMftStatus;
+            if (!supportsAnyServiceSignal)
             {
                 return CreateInternalOnlySnapshot(
                     internalHighLoadInput,
                     AdminTelemetryFallbackKind.Unavailable,
-                    "unsupported-system-load",
+                    "unsupported",
                     capabilities
                 );
             }
 
             try
             {
-                SystemLoadSnapshotDto systemLoadSnapshot = await ExecuteWithTimeoutAsync(
-                    token => safeClient.GetSystemLoadSnapshotAsync(requestContext, token),
-                    TimeSpan.FromMilliseconds(ThumbnailIpcTransportPolicy.RequestTimeoutMs),
-                    cancellationToken
-                ).ConfigureAwait(false);
+                SystemLoadSnapshotDto systemLoadSnapshot =
+                    CreateInternalSystemLoadSnapshot(internalHighLoadInput);
+                AdminTelemetrySignalSourceKind systemLoadSource =
+                    AdminTelemetrySignalSourceKind.Internal;
+                AdminTelemetryFallbackKind fallbackKind =
+                    AdminTelemetryFallbackKind.None;
+                string fallbackReason = "";
+                if (capabilities.SupportsSystemLoad)
+                {
+                    systemLoadSnapshot = await ExecuteWithTimeoutAsync(
+                        token => safeClient.GetSystemLoadSnapshotAsync(requestContext, token),
+                        TimeSpan.FromMilliseconds(ThumbnailIpcTransportPolicy.RequestTimeoutMs),
+                        cancellationToken
+                    ).ConfigureAwait(false);
+                    systemLoadSource = AdminTelemetrySignalSourceKind.Service;
+                }
+
                 DiskThermalSnapshotDto diskThermalSnapshot = new();
                 AdminTelemetrySignalSourceKind diskThermalSource =
                     AdminTelemetrySignalSourceKind.Internal;
@@ -270,11 +286,11 @@ namespace IndigoMovieManager.Thumbnail.Ipc
                 return new AdminTelemetryRuntimeSnapshot
                 {
                     Mode = AdminTelemetryRuntimeMode.Service,
-                    SystemLoadSource = AdminTelemetrySignalSourceKind.Service,
+                    SystemLoadSource = systemLoadSource,
                     DiskThermalSource = diskThermalSource,
                     UsnMftSource = usnMftSource,
-                    FallbackKind = AdminTelemetryFallbackKind.None,
-                    FallbackReason = "",
+                    FallbackKind = fallbackKind,
+                    FallbackReason = fallbackReason,
                     DiskThermalFallbackKind = diskThermalFallbackKind,
                     DiskThermalFallbackReason = diskThermalFallbackReason,
                     UsnMftFallbackKind = usnMftFallbackKind,
@@ -334,6 +350,19 @@ namespace IndigoMovieManager.Thumbnail.Ipc
             {
                 ConsumerKind = AdminTelemetryConsumerKind.ThumbnailOrchestrator,
                 OrchestratorInstanceId = ownerInstanceId ?? "",
+                CallerProcessName = current.ProcessName ?? "",
+                CallerProcessId = current.Id,
+                RequestedAtUtc = DateTime.UtcNow,
+            };
+        }
+
+        public static AdminTelemetryRequestContext CreateWatcherRequestContext()
+        {
+            Process current = Process.GetCurrentProcess();
+            return new AdminTelemetryRequestContext
+            {
+                ConsumerKind = AdminTelemetryConsumerKind.WatcherFacade,
+                OrchestratorInstanceId = "",
                 CallerProcessName = current.ProcessName ?? "",
                 CallerProcessId = current.Id,
                 RequestedAtUtc = DateTime.UtcNow,

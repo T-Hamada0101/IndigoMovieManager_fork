@@ -9,11 +9,12 @@ namespace IndigoMovieManager.ModelViews
     public sealed class ThumbnailProgressViewState : INotifyPropertyChanged
     {
         private string createdQueueText = "0 / 0";
+        private string createdTotalText = "0";
         private string dbPendingText = "0 / 0";
         private string threadText = "0 / 0 / 0";
         private string controlStateText = "待機中";
         private string laneGuideText =
-            "優先Thread=小動画 / ゆっくり=巨大動画 / Recovery専=再試行・修復";
+            "ゆっくり=巨大動画 / 失敗再処理=再実行 / 通常=小さい順";
         private double cpuMeterValue;
         private string cpuMeterText = "0%";
         private double gpuMeterValue;
@@ -25,6 +26,12 @@ namespace IndigoMovieManager.ModelViews
         {
             get => createdQueueText;
             private set => SetField(ref createdQueueText, value);
+        }
+
+        public string CreatedTotalText
+        {
+            get => createdTotalText;
+            private set => SetField(ref createdTotalText, value);
         }
 
         public string DbPendingText
@@ -117,13 +124,17 @@ namespace IndigoMovieManager.ModelViews
 
             CreatedQueueText =
                 $"{runtimeSnapshot?.SessionCompletedCount ?? 0} / {runtimeSnapshot?.SessionTotalCount ?? 0}";
+            CreatedTotalText = $"{Math.Max(0, runtimeSnapshot?.SessionCreatedThumbnailCount ?? 0)}";
             DbPendingText = $"{Math.Max(0, dbPendingCount)} / {Math.Max(0, dbTotalCount)}";
             ThreadText = $"{activeWorkerCount} / {configuredParallelism} / {Math.Max(0, logicalCoreCount)}";
             ControlStateText = ResolveControlStateText(runtimeSnapshot, activeWorkerCount);
-            LaneGuideText = "優先Thread=小動画 / ゆっくり=巨大動画 / Recovery専=再試行・修復";
+            LaneGuideText = "ゆっくり=巨大動画 / 失敗再処理=再実行 / 通常=小さい順";
 
             SyncQueueLogs(runtimeSnapshot?.EnqueueLogs ?? []);
-            SyncWorkerPanels(runtimeSnapshot?.ActiveWorkers ?? [], configuredParallelism);
+            SyncWorkerPanels(
+                MergeWorkers(runtimeSnapshot?.ActiveWorkers ?? [], runtimeSnapshot?.WaitingWorkers ?? []),
+                configuredParallelism
+            );
         }
 
         // 一時停止中はDB件数を固定文言で表示する。
@@ -280,6 +291,35 @@ namespace IndigoMovieManager.ModelViews
             }
         }
 
+        private static IReadOnlyList<ThumbnailProgressWorkerSnapshot> MergeWorkers(
+            IReadOnlyList<ThumbnailProgressWorkerSnapshot> activeWorkers,
+            IReadOnlyList<ThumbnailProgressWorkerSnapshot> waitingWorkers
+        )
+        {
+            Dictionary<long, ThumbnailProgressWorkerSnapshot> merged = new();
+            foreach (ThumbnailProgressWorkerSnapshot worker in activeWorkers ?? [])
+            {
+                if (worker == null || worker.WorkerId < 1)
+                {
+                    continue;
+                }
+
+                merged[worker.WorkerId] = worker;
+            }
+
+            foreach (ThumbnailProgressWorkerSnapshot worker in waitingWorkers ?? [])
+            {
+                if (worker == null || worker.WorkerId < 1 || merged.ContainsKey(worker.WorkerId))
+                {
+                    continue;
+                }
+
+                merged[worker.WorkerId] = worker;
+            }
+
+            return merged.Values.OrderBy(x => x.WorkerId).ToArray();
+        }
+
         // スナップショット1件をスロットへ反映する。
         private static void ApplyWorkerSnapshot(
             ThumbnailProgressWorkerPanelViewState panel,
@@ -333,10 +373,11 @@ namespace IndigoMovieManager.ModelViews
         {
             return workerId switch
             {
-                1 => "優先Thread",
-                2 => "ゆっくり",
-                3 => "Recovery専",
-                _ => string.IsNullOrWhiteSpace(fallbackLabel) ? $"Thread {workerId}" : fallbackLabel,
+                1 => "ゆっくり",
+                2 => "再試行専",
+                _ => string.IsNullOrWhiteSpace(fallbackLabel)
+                    ? $"通常 {Math.Max(1, workerId - 2)}"
+                    : fallbackLabel,
             };
         }
 

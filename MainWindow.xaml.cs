@@ -10,6 +10,7 @@ using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using AvalonDock;
 using AvalonDock.Layout.Serialization;
@@ -29,6 +30,13 @@ namespace IndigoMovieManager
     /// </summary>
     public partial class MainWindow : System.Windows.Window
     {
+        private enum ThumbnailSummarySeverity
+        {
+            Normal,
+            Warning,
+            Error,
+        }
+
         //監視モード
         private enum CheckMode
         {
@@ -71,8 +79,11 @@ namespace IndigoMovieManager
         /// QueueDBに怒涛の勢いで書き込むためのバッチ窓口（100〜300ms）！ここでまとめてドカンと流す！🔥
         /// </summary>
         private const int ThumbnailQueuePersistBatchWindowMs = 150;
-        private const int ThumbnailProgressUiIntervalMs = 500;
-        private const int ThumbnailProgressSnapshotFallbackIntervalMs = 3000;
+        private const int ThumbnailProgressUiIntervalMs = 1000;
+        private const int ThumbnailProgressSnapshotFallbackIntervalMs = 4000;
+        private static readonly TimeSpan ThumbnailExternalProgressMaxAge = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan ThumbnailExternalHealthMaxAge = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan ThumbnailExternalControlMaxAge = TimeSpan.FromSeconds(15);
         private Stack<string> recentFiles = new();
 
         private IEnumerable<MovieRecords> filterList = [];
@@ -95,18 +106,35 @@ namespace IndigoMovieManager
             new AppThumbnailLogger()
         );
         private readonly ThumbnailQueueProcessor _thumbnailQueueProcessor = new();
+        private readonly AdminTelemetryServiceProcessManager _adminTelemetryServiceProcessManager =
+            new();
+        private readonly ThumbnailWorkerProcessManager _thumbnailWorkerProcessManager = new();
+        private readonly ThumbnailCoordinatorProcessManager _thumbnailCoordinatorProcessManager =
+            new();
+        private readonly ThumbnailProgressViewerProcessManager _thumbnailProgressViewerProcessManager =
+            new();
         private readonly IThumbnailQueueProgressPresenter _thumbnailQueueProgressPresenter =
             TemporaryPauseThumbnailProgressDialog
                 ? NoOpThumbnailQueueProgressPresenter.Instance
                 : new AppThumbnailQueueProgressPresenter();
         private readonly ThumbnailProgressRuntime _thumbnailProgressRuntime = new();
         private readonly ThumbnailQueuePersister _thumbnailQueuePersister;
+        private readonly string thumbnailNormalWorkerOwnerInstanceId =
+            $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        private readonly string thumbnailIdleWorkerOwnerInstanceId =
+            $"thumb-idle:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        private readonly string thumbnailCoordinatorOwnerInstanceId =
+            $"thumb-coordinator:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
 
         /// <summary>
         /// Persister本体じゃなく「監視タスク」を握っておくぜ！もし例外で死んでも不死鳥の如く蘇らせるための命綱だ！🐦‍🔥
         /// </summary>
         private Task _thumbnailQueuePersisterTask;
         private CancellationTokenSource _thumbnailQueuePersisterCts = new();
+        private Task _thumbnailCoordinatorTask;
+        private CancellationTokenSource _thumbnailCoordinatorCts = new();
+        private Task _thumbnailProgressViewerTask;
+        private CancellationTokenSource _thumbnailProgressViewerCts = new();
 
         /// <summary>
         /// Everything先生による監視ポーリングの完全常駐タスク！こいつが休むことはない！👁️
@@ -130,7 +158,6 @@ namespace IndigoMovieManager
 
         //private DateTime _lastInputTime = DateTime.MinValue;  //インクリメントサーチで使用。一旦オミット。
         private readonly TimeSpan _timeInputInterval = TimeSpan.FromSeconds(0.5);
-        private const int ThumbnailLightweightPresetPriorityLaneMaxMb = 128;
         private const int ThumbnailLightweightPresetSlowLaneMinGb = 50;
 
         //結局、タイマー方式で動画とマニュアルサムネイルのスライダーを同期させた
@@ -174,11 +201,8 @@ namespace IndigoMovieManager
         /// </summary>
         private static int GetThumbnailQueueMaxParallelism()
         {
-            return ThumbnailThreadPresetResolver.ResolveParallelism(
-                Properties.Settings.Default.ThumbnailThreadPreset,
-                Properties.Settings.Default.ThumbnailParallelism,
-                Environment.ProcessorCount
-            );
+            return ResolveCurrentThumbnailQueueSettings(ThumbnailQueueWorkerRole.All)
+                .MaxParallelism;
         }
 
         // サムネイル並列数を設定範囲（2〜24）へ丸める。
@@ -187,60 +211,105 @@ namespace IndigoMovieManager
             return ThumbnailThreadPresetResolver.ClampParallelism(parallelism);
         }
 
-        // 軽量動画重視プリセットの並列数（論理コアの1/2）を算出する。
+        // 初期プリセットの並列数を算出する。
         private static int ResolveLightweightPresetParallelism()
         {
-            return ThumbnailThreadPresetResolver.ResolveParallelism(
-                ThumbnailThreadPresetResolver.PresetFast,
-                manualParallelism: ThumbnailThreadPresetResolver.ClampParallelism(8),
-                logicalCoreCount: Environment.ProcessorCount
+            ThumbnailWorkerSettingsSnapshot snapshot = BuildThumbnailWorkerSettingsSnapshot(
+                preset: ThumbnailThreadPresetResolver.PresetFast,
+                requestedParallelism: ThumbnailThreadPresetResolver.ClampParallelism(8),
+                slowLaneMinGb: ThumbnailLightweightPresetSlowLaneMinGb
             );
+            return ThumbnailWorkerSettingsResolver.Resolve(
+                    snapshot,
+                    ThumbnailQueueWorkerRole.All,
+                    Environment.ProcessorCount
+                )
+                .MaxParallelism;
         }
 
         // 現在のプリセットに応じて、キュー監視の待機間隔を解決する。
         private static int GetThumbnailQueuePollIntervalMs()
         {
-            return ThumbnailThreadPresetResolver.ResolveQueuePollIntervalMs(
-                Properties.Settings.Default.ThumbnailThreadPreset,
-                ThumbnailQueuePollIntervalMs
-            );
+            return ResolveCurrentThumbnailQueueSettings(ThumbnailQueueWorkerRole.All)
+                .PollIntervalMs;
         }
 
         // slow 時だけバッチ完了後のクールダウンを有効化する。
         private static int GetThumbnailQueueBatchCooldownMs()
         {
-            return ThumbnailThreadPresetResolver.ResolveBatchCooldownMs(
-                Properties.Settings.Default.ThumbnailThreadPreset
-            );
+            return ResolveCurrentThumbnailQueueSettings(ThumbnailQueueWorkerRole.All)
+                .BatchCooldownMs;
         }
 
         // プリセット意図を反映した、動的制御の下限並列数を返す。
         private static int GetThumbnailQueueDynamicMinimumParallelism()
         {
-            int configuredParallelism = GetThumbnailQueueMaxParallelism();
-            return ThumbnailThreadPresetResolver.ResolveDynamicMinimumParallelism(
-                Properties.Settings.Default.ThumbnailThreadPreset,
-                configuredParallelism
-            );
+            return ResolveCurrentThumbnailQueueSettings(ThumbnailQueueWorkerRole.All)
+                .DynamicMinimumParallelism;
         }
 
         // slow は低負荷優先なので、動的復帰では積極的に上げない。
         private static bool GetThumbnailQueueAllowDynamicScaleUp()
         {
-            return ThumbnailThreadPresetResolver.ResolveAllowDynamicScaleUp(
-                Properties.Settings.Default.ThumbnailThreadPreset
-            );
+            return ResolveCurrentThumbnailQueueSettings(ThumbnailQueueWorkerRole.All)
+                .AllowDynamicScaleUp;
         }
 
         // プリセットごとに、復帰に必要なバックログ量を調整する。
         private static int GetThumbnailQueueScaleUpDemandFactor()
         {
-            return ThumbnailThreadPresetResolver.ResolveScaleUpDemandFactor(
-                Properties.Settings.Default.ThumbnailThreadPreset
+            return ResolveCurrentThumbnailQueueSettings(ThumbnailQueueWorkerRole.All)
+                .ScaleUpDemandFactor;
+        }
+
+        // Worker と fallback が同じ設定解釈を使うよう、UI側も snapshot から実効値を引く。
+        private static ThumbnailWorkerResolvedSettings ResolveCurrentThumbnailQueueSettings(
+            ThumbnailQueueWorkerRole workerRole
+        )
+        {
+            ThumbnailWorkerSettingsSnapshot snapshot = BuildThumbnailWorkerSettingsSnapshot();
+            return ThumbnailWorkerSettingsResolver.Resolve(
+                snapshot,
+                workerRole,
+                Environment.ProcessorCount
             );
         }
 
-        // 初回起動だけ軽量動画重視プリセットを既定値としてハード適用する。
+        // UIで保持している生設定を、Workerと同じ snapshot 形式へまとめる。
+        private static ThumbnailWorkerSettingsSnapshot BuildThumbnailWorkerSettingsSnapshot(
+            string mainDbFullPath = "",
+            string dbName = "",
+            string thumbFolder = "",
+            string preset = null,
+            int? requestedParallelism = null,
+            int? slowLaneMinGb = null,
+            bool? gpuDecodeEnabled = null,
+            bool? resizeThumb = null,
+            int? basePollIntervalMs = null,
+            int? leaseMinutes = null
+        )
+        {
+            ThumbnailFallbackModeDecision fallbackDecision =
+                ThumbnailFallbackModeResolver.Resolve();
+            return new ThumbnailWorkerSettingsSnapshot
+            {
+                MainDbFullPath = mainDbFullPath ?? "",
+                DbName = dbName ?? "",
+                ThumbFolder = thumbFolder ?? "",
+                Preset = preset ?? Properties.Settings.Default.ThumbnailThreadPreset,
+                RequestedParallelism =
+                    requestedParallelism ?? Properties.Settings.Default.ThumbnailParallelism,
+                SlowLaneMinGb = slowLaneMinGb ?? Properties.Settings.Default.ThumbnailSlowLaneMinGb,
+                GpuDecodeEnabled =
+                    gpuDecodeEnabled ?? Properties.Settings.Default.ThumbnailGpuDecodeEnabled,
+                ResizeThumb = resizeThumb ?? Properties.Settings.Default.IsResizeThumb,
+                AllowFallbackInProcess = fallbackDecision.AllowInProcessFallback,
+                BasePollIntervalMs = basePollIntervalMs ?? ThumbnailQueuePollIntervalMs,
+                LeaseMinutes = leaseMinutes ?? 5,
+            };
+        }
+
+        // 初回起動だけ新方式の既定値を適用し、巨大動画閾値と並列数を初期化する。
         private static void EnsureThumbnailLaneInitialPreset()
         {
             if (Properties.Settings.Default.ThumbnailLanePresetInitialized)
@@ -249,8 +318,6 @@ namespace IndigoMovieManager
             }
 
             int initialParallelism = ResolveLightweightPresetParallelism();
-            Properties.Settings.Default.ThumbnailPriorityLaneMaxMb =
-                ThumbnailLightweightPresetPriorityLaneMaxMb;
             Properties.Settings.Default.ThumbnailSlowLaneMinGb =
                 ThumbnailLightweightPresetSlowLaneMinGb;
             Properties.Settings.Default.ThumbnailParallelism = initialParallelism;
@@ -259,7 +326,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "thumbnail",
-                $"thumbnail preset initialized: priority={ThumbnailLightweightPresetPriorityLaneMaxMb}MB slow={ThumbnailLightweightPresetSlowLaneMinGb}GB parallel={initialParallelism}"
+                $"thumbnail preset initialized: slow={ThumbnailLightweightPresetSlowLaneMinGb}GB parallel={initialParallelism}"
             );
         }
 
@@ -308,6 +375,10 @@ namespace IndigoMovieManager
             DebugRuntimeLog.Write(
                 "thumbnail",
                 $"parallel setting updated: {current} -> {next} source={source}"
+            );
+            PublishThumbnailCoordinatorCommandFromCurrentSettings(
+                $"main-window:{source}",
+                prioritizeUi
             );
         }
 
@@ -417,6 +488,208 @@ namespace IndigoMovieManager
                 "panel-button-plus",
                 prioritizeUi: true
             );
+        }
+
+        // サムネイルタブのプリセット変更を即時反映する。
+        private void ThumbnailTabPresetSelector_SelectionChanged(
+            object sender,
+            SelectionChangedEventArgs e
+        )
+        {
+            if (ThumbnailTabPresetSelector == null)
+            {
+                return;
+            }
+
+            string selectedPreset = ThumbnailTabPresetSelector.SelectedValue as string;
+            string normalizedPreset = ThumbnailThreadPresetResolver.NormalizePresetKey(selectedPreset);
+            if (Properties.Settings.Default.ThumbnailThreadPreset == normalizedPreset)
+            {
+                return;
+            }
+
+            Properties.Settings.Default.ThumbnailThreadPreset = normalizedPreset;
+            UpdateThumbnailProgressConfiguredParallelism(GetThumbnailQueueMaxParallelism());
+            SaveThumbnailTabSettings();
+            RequestThumbnailProgressSnapshotRefresh();
+            PublishThumbnailCoordinatorCommandFromCurrentSettings(
+                "main-window:tab-preset-change"
+            );
+        }
+
+        // サムネイルタブの巨大動画判定閾値を即時反映する。
+        private void ThumbnailTabSlowLaneMinGbSlider_ValueChanged(
+            object sender,
+            RoutedPropertyChangedEventArgs<double> e
+        )
+        {
+            int next = Math.Clamp((int)Math.Round(e.NewValue), 1, 1024);
+            if (Properties.Settings.Default.ThumbnailSlowLaneMinGb == next)
+            {
+                return;
+            }
+
+            Properties.Settings.Default.ThumbnailSlowLaneMinGb = next;
+            SaveThumbnailTabSettings();
+            RequestThumbnailProgressSnapshotRefresh();
+            PublishThumbnailCoordinatorCommandFromCurrentSettings(
+                "main-window:tab-slow-threshold-change"
+            );
+        }
+
+        // サムネイル縮小設定をタブ上から切り替えられるようにする。
+        private void ThumbnailTabResizeThumbCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            Properties.Settings.Default.IsResizeThumb =
+                ThumbnailTabResizeThumbCheckBox.IsChecked == true;
+            SaveThumbnailTabSettings();
+        }
+
+        // GPUデコード設定はタブ上から切り替え、その場で実行モードも更新する。
+        private void ThumbnailTabGpuDecodeCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            Properties.Settings.Default.ThumbnailGpuDecodeEnabled =
+                ThumbnailTabGpuDecodeCheckBox.IsChecked == true;
+            SaveThumbnailTabSettings();
+            ApplyThumbnailGpuDecodeSetting();
+            PublishThumbnailCoordinatorCommandFromCurrentSettings(
+                "main-window:tab-gpu-change"
+            );
+        }
+
+        // サムネイルタブから触った設定は、その場で保存して次回起動にも引き継ぐ。
+        private static void SaveThumbnailTabSettings()
+        {
+            try
+            {
+                Properties.Settings.Default.Save();
+            }
+            catch
+            {
+                // 保存失敗で操作自体を止めない。
+            }
+        }
+
+        // 本体UIからの変更は、最終的に command snapshot へ寄せて Coordinator へ渡す。
+        internal void PublishThumbnailCoordinatorCommandFromCurrentSettings(
+            string issuedBy,
+            bool prioritizeUi = false,
+            int? temporaryParallelismDelta = null,
+            string operationMode = null
+        )
+        {
+            if (!ShouldUseThumbnailCoordinatorMode())
+            {
+                return;
+            }
+
+            string mainDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            string dbName = MainVM?.DbInfo?.DBName ?? "";
+            if (string.IsNullOrWhiteSpace(mainDbFullPath) || string.IsNullOrWhiteSpace(dbName))
+            {
+                return;
+            }
+
+            ThumbnailCoordinatorCommandSnapshot baseline =
+                ThumbnailCoordinatorCommandStore.LoadLatest(
+                    mainDbFullPath,
+                    thumbnailCoordinatorOwnerInstanceId,
+                    TimeSpan.FromDays(1)
+                )
+                ?? new ThumbnailCoordinatorCommandSnapshot();
+            ThumbnailCoordinatorControlSnapshot controlBaseline =
+                ThumbnailCoordinatorControlStore.LoadLatest(
+                    mainDbFullPath,
+                    thumbnailCoordinatorOwnerInstanceId,
+                    ThumbnailExternalControlMaxAge
+                );
+
+            string resolvedOperationMode = ResolveThumbnailCoordinatorOperationMode(
+                operationMode,
+                baseline.OperationMode,
+                controlBaseline?.OperationMode
+            );
+            int resolvedTemporaryDelta = temporaryParallelismDelta
+                ?? ResolveThumbnailCoordinatorTemporaryParallelismDelta(
+                    baseline,
+                    controlBaseline
+                );
+
+            ThumbnailCoordinatorCommandStore.Save(
+                new ThumbnailCoordinatorCommandSnapshot
+                {
+                    MainDbFullPath = mainDbFullPath,
+                    DbName = dbName,
+                    OwnerInstanceId = thumbnailCoordinatorOwnerInstanceId,
+                    RequestedParallelism = GetThumbnailQueueMaxParallelism(),
+                    TemporaryParallelismDelta = Math.Clamp(resolvedTemporaryDelta, -8, 8),
+                    LargeMovieThresholdGb = Math.Max(
+                        1,
+                        Properties.Settings.Default.ThumbnailSlowLaneMinGb
+                    ),
+                    GpuDecodeEnabled = Properties.Settings.Default.ThumbnailGpuDecodeEnabled,
+                    OperationMode = resolvedOperationMode,
+                    IssuedBy = string.IsNullOrWhiteSpace(issuedBy) ? "main-window" : issuedBy,
+                    IssuedAtUtc = DateTime.UtcNow,
+                }
+            );
+
+            if (prioritizeUi)
+            {
+                ForceThumbnailProgressSnapshotRefreshNow();
+            }
+
+            UpdateThumbnailProgressViewerStatusUi();
+        }
+
+        private static string ResolveThumbnailCoordinatorOperationMode(
+            string requestedOperationMode,
+            string commandOperationMode,
+            string controlOperationMode
+        )
+        {
+            if (!string.IsNullOrWhiteSpace(requestedOperationMode))
+            {
+                return requestedOperationMode;
+            }
+
+            if (!string.IsNullOrWhiteSpace(commandOperationMode))
+            {
+                return commandOperationMode;
+            }
+
+            if (!string.IsNullOrWhiteSpace(controlOperationMode))
+            {
+                return controlOperationMode;
+            }
+
+            return string.Equals(
+                ThumbnailThreadPresetResolver.NormalizePresetKey(
+                    Properties.Settings.Default.ThumbnailThreadPreset
+                ),
+                "slow",
+                StringComparison.Ordinal
+            )
+                ? ThumbnailCoordinatorOperationMode.PowerSave
+                : ThumbnailCoordinatorOperationMode.NormalFirst;
+        }
+
+        private static int ResolveThumbnailCoordinatorTemporaryParallelismDelta(
+            ThumbnailCoordinatorCommandSnapshot baseline,
+            ThumbnailCoordinatorControlSnapshot controlBaseline
+        )
+        {
+            if (baseline != null && baseline.IssuedAtUtc > DateTime.MinValue)
+            {
+                return baseline.TemporaryParallelismDelta;
+            }
+
+            if (controlBaseline != null && controlBaseline.UpdatedAtUtc > DateTime.MinValue)
+            {
+                return controlBaseline.TemporaryParallelismDelta;
+            }
+
+            return 0;
         }
 
         /// <summary>
@@ -596,8 +869,11 @@ namespace IndigoMovieManager
                     }
                 }
 
-                // サムネイル監視タスクを一度だけ起動
-                if (_thumbCheckTask == null || _thumbCheckTask.IsCompleted)
+                // Coordinator がある構成では、worker 本線は外側へ逃がして本体は持たない。
+                if (
+                    !ShouldUseThumbnailCoordinatorMode()
+                    && (_thumbCheckTask == null || _thumbCheckTask.IsCompleted)
+                )
                 {
                     DebugRuntimeLog.TaskStart(nameof(CheckThumbAsync), "trigger=ContentRendered");
                     _thumbCheckTask = CheckThumbAsync(_thumbCheckCts.Token);
@@ -631,8 +907,11 @@ namespace IndigoMovieManager
                 }
 
                 EnsureThumbnailProgressUiTimerRunning();
+                EnsureThumbnailCoordinatorSupervisorRunning();
+                EnsureThumbnailProgressViewerSupervisorRunning();
                 UpdateThumbnailProgressMetersUi();
                 UpdateThumbnailProgressSnapshotUi();
+                UpdateThumbnailProgressViewerStatusUi();
             }
             catch (Exception)
             {
@@ -715,11 +994,24 @@ namespace IndigoMovieManager
                 _thumbCheckCts.Cancel();
                 _thumbnailQueuePersisterCts.Cancel();
                 _everythingWatchPollCts.Cancel();
+                _thumbnailCoordinatorCts.Cancel();
+                _thumbnailProgressViewerCts.Cancel();
+                _thumbnailWorkerProcessManager.StopAllWorkers(
+                    message => DebugRuntimeLog.Write("thumbnail-worker", message)
+                );
+                _thumbnailCoordinatorProcessManager.StopCoordinatorNow(
+                    message => DebugRuntimeLog.Write("thumbnail-coordinator", message)
+                );
+                _thumbnailProgressViewerProcessManager.StopViewerNow(
+                    message => DebugRuntimeLog.Write("thumbnail-progress-viewer", message)
+                );
 
                 // 即終了優先を守るため、各タスク待機は最大500msで打ち切る。
                 WaitBackgroundTaskForShutdown(_thumbCheckTask, "thumbnail-consumer");
                 WaitBackgroundTaskForShutdown(_thumbnailQueuePersisterTask, "thumbnail-persister");
                 WaitBackgroundTaskForShutdown(_everythingWatchPollTask, "everything-poll");
+                WaitBackgroundTaskForShutdown(_thumbnailCoordinatorTask, "thumbnail-coordinator");
+                WaitBackgroundTaskForShutdown(_thumbnailProgressViewerTask, "thumbnail-progress-viewer");
             }
         }
 
@@ -823,6 +1115,14 @@ namespace IndigoMovieManager
             try
             {
                 UpdateThumbnailProgressMetersUi();
+                UpdateThumbnailProgressViewerStatusUi();
+                if (_thumbnailWorkerProcessManager.IsWorkerAvailable())
+                {
+                    UpdateThumbnailProgressSnapshotUi();
+                    _thumbnailProgressUiTickAccumulatedMs = 0;
+                    return;
+                }
+
                 // DB登録待ち/DB総数はイベント更新を主軸にしつつ、
                 // キュー無変化時間帯の表示古さを防ぐため低頻度フォールバックを入れる。
                 _thumbnailProgressUiTickAccumulatedMs += ThumbnailProgressUiIntervalMs;
@@ -842,7 +1142,7 @@ namespace IndigoMovieManager
         private void UpdateThumbnailProgressSnapshotUi()
         {
             ThumbnailProgressRuntimeSnapshot runtimeSnapshot =
-                _thumbnailProgressRuntime.CreateSnapshot();
+                CreateThumbnailProgressDisplaySnapshot();
             ThumbnailProgressViewState thumbnailProgress = MainVM?.ThumbnailProgress;
             if (thumbnailProgress == null)
             {
@@ -875,6 +1175,7 @@ namespace IndigoMovieManager
                 dbTotalCount,
                 logicalCoreCount
             );
+            ApplyWorkerThumbnailResultsToMovieRecords(runtimeSnapshot);
             if (TemporaryPauseThumbnailProgressDbCount)
             {
                 thumbnailProgress.ApplyDbPendingPaused();
@@ -893,6 +1194,25 @@ namespace IndigoMovieManager
                 dbTotalCount,
                 runtimeSnapshot.ActiveWorkers.Count,
                 applyStopwatch.Elapsed.TotalMilliseconds
+            );
+        }
+
+        // Worker進捗ファイルがある時はそれを優先し、UIローカル状態は設定値と投入ログだけ残す。
+        private ThumbnailProgressRuntimeSnapshot CreateThumbnailProgressDisplaySnapshot()
+        {
+            _thumbnailProgressRuntime.SetPersistentMainDbFullPath(MainVM?.DbInfo?.DBFullPath ?? "");
+            ThumbnailProgressRuntimeSnapshot localSnapshot = _thumbnailProgressRuntime.CreateSnapshot();
+            string mainDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (!_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                return localSnapshot;
+            }
+
+            return ThumbnailProgressExternalSnapshotStore.CreateMergedSnapshot(
+                mainDbFullPath,
+                localSnapshot,
+                [thumbnailNormalWorkerOwnerInstanceId, thumbnailIdleWorkerOwnerInstanceId],
+                ThumbnailExternalProgressMaxAge
             );
         }
 
@@ -967,6 +1287,552 @@ namespace IndigoMovieManager
             }
 
             _thumbnailProgressUiTimer.Start();
+        }
+
+        // 外側の運転席は接続点だけ先に固定し、exe が乗ったら自動で追従する。
+        private void EnsureThumbnailCoordinatorSupervisorRunning()
+        {
+            if (!_thumbnailCoordinatorProcessManager.IsCoordinatorAvailable())
+            {
+                UpdateThumbnailProgressViewerStatusUi();
+                return;
+            }
+
+            if (_thumbnailCoordinatorTask != null && !_thumbnailCoordinatorTask.IsCompleted)
+            {
+                return;
+            }
+
+            _thumbnailCoordinatorCts = new CancellationTokenSource();
+            DebugRuntimeLog.TaskStart(
+                nameof(RunThumbnailCoordinatorSupervisorAsync),
+                "trigger=EnsureThumbnailCoordinatorSupervisorRunning"
+            );
+            _thumbnailCoordinatorTask = RunThumbnailCoordinatorSupervisorAsync(
+                _thumbnailCoordinatorCts.Token
+            );
+        }
+
+        // Coordinator は processing の本線なので、手動再起動時もここを使って切り替える。
+        private void RestartThumbnailCoordinatorSupervisor()
+        {
+            _thumbnailCoordinatorCts.Cancel();
+            WaitBackgroundTaskForShutdown(_thumbnailCoordinatorTask, "thumbnail-coordinator");
+            _thumbnailCoordinatorCts = new CancellationTokenSource();
+
+            if (!_thumbnailCoordinatorProcessManager.IsCoordinatorAvailable())
+            {
+                UpdateThumbnailProgressViewerStatusUi();
+                return;
+            }
+
+            DebugRuntimeLog.TaskStart(
+                nameof(RunThumbnailCoordinatorSupervisorAsync),
+                "trigger=manual-restart"
+            );
+            _thumbnailCoordinatorTask = RunThumbnailCoordinatorSupervisorAsync(
+                _thumbnailCoordinatorCts.Token
+            );
+            UpdateThumbnailProgressViewerStatusUi();
+        }
+
+        // Coordinator supervisor も薄く包み、将来の差し替えでも UI 側の扱いを固定する。
+        private async Task RunThumbnailCoordinatorSupervisorAsync(CancellationToken cts)
+        {
+            string endStatus = "completed";
+            try
+            {
+                await _thumbnailCoordinatorProcessManager
+                    .RunSupervisorAsync(
+                        ResolveThumbnailCoordinatorLaunchConfig,
+                        message => DebugRuntimeLog.Write("thumbnail-coordinator", message),
+                        cts
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                endStatus = "canceled";
+                throw;
+            }
+            catch (Exception ex)
+            {
+                endStatus = $"fault message='{ex.Message}'";
+                throw;
+            }
+            finally
+            {
+                DebugRuntimeLog.TaskEnd(
+                    nameof(RunThumbnailCoordinatorSupervisorAsync),
+                    $"status={endStatus}"
+                );
+            }
+        }
+
+        // 別窓ViewerはDB切替をまたいで設定が変わるので、常駐supervisorで追従させる。
+        private void EnsureThumbnailProgressViewerSupervisorRunning()
+        {
+            if (!_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                UpdateThumbnailProgressViewerStatusUi();
+                return;
+            }
+
+            if (
+                _thumbnailProgressViewerTask != null
+                && !_thumbnailProgressViewerTask.IsCompleted
+            )
+            {
+                return;
+            }
+
+            _thumbnailProgressViewerCts = new CancellationTokenSource();
+            DebugRuntimeLog.TaskStart(
+                nameof(RunThumbnailProgressViewerSupervisorAsync),
+                "trigger=EnsureThumbnailProgressViewerSupervisorRunning"
+            );
+            _thumbnailProgressViewerTask = RunThumbnailProgressViewerSupervisorAsync(
+                _thumbnailProgressViewerCts.Token
+            );
+        }
+
+        // Viewer supervisor自体も落ちたら再起動できるよう、外側で薄く包む。
+        private async Task RunThumbnailProgressViewerSupervisorAsync(CancellationToken cts)
+        {
+            string endStatus = "completed";
+            try
+            {
+                await _thumbnailProgressViewerProcessManager
+                    .RunSupervisorAsync(
+                        ResolveThumbnailProgressViewerLaunchConfig,
+                        message => DebugRuntimeLog.Write("thumbnail-progress-viewer", message),
+                        cts
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                endStatus = "canceled";
+                throw;
+            }
+            catch (Exception ex)
+            {
+                endStatus = $"fault message='{ex.Message}'";
+                throw;
+            }
+            finally
+            {
+                DebugRuntimeLog.TaskEnd(
+                    nameof(RunThumbnailProgressViewerSupervisorAsync),
+                    $"status={endStatus}"
+                );
+            }
+        }
+
+        // 内蔵タブは要約表示だけに落とし、詳細は別窓の生死を案内する。
+        private void UpdateThumbnailProgressViewerStatusUi()
+        {
+            if (
+                ThumbnailProgressViewerLifecycleText == null
+                || ThumbnailProgressViewerProgressText == null
+                || ThumbnailProgressViewerWorkerHealthText == null
+                || ThumbnailCoordinatorControlText == null
+            )
+            {
+                return;
+            }
+
+            string lifecycleText;
+            if (!_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                lifecycleText = "内蔵モード: Worker未配置のため別窓ビューアーは使いません。";
+            }
+            else if (!_thumbnailProgressViewerProcessManager.IsViewerAvailable())
+            {
+                lifecycleText = "別窓ビューアー未配置: 次回ビルドで同梱されます。";
+            }
+            else if (ResolveThumbnailProgressViewerLaunchConfig() == null)
+            {
+                lifecycleText = "DB未接続: 接続後に別窓ビューアーを起動します。";
+            }
+            else if (_thumbnailProgressViewerProcessManager.IsViewerRunning())
+            {
+                lifecycleText = BuildViewerLifecycleStatusText(
+                    "別窓ビューアー稼働中",
+                    "詳細パネルは別ウィンドウ側で更新しています。"
+                );
+            }
+            else
+            {
+                lifecycleText = BuildViewerLifecycleStatusText(
+                    "別窓ビューアー起動待ち",
+                    "1秒以内に自動起動します。"
+                );
+            }
+
+            ThumbnailProgressViewerLifecycleText.Text = lifecycleText;
+            ThumbnailProgressViewerProgressText.Text = BuildThumbnailProgressSummaryForUi();
+            ThumbnailProgressViewerWorkerHealthText.Text = BuildThumbnailWorkerHealthSummaryForUi();
+            ThumbnailCoordinatorControlText.Text = BuildThumbnailCoordinatorControlSummaryForUi();
+
+            ApplyThumbnailProgressViewerStatusStyle(
+                ThumbnailProgressViewerLifecycleText,
+                ResolveThumbnailViewerLifecycleSeverity()
+            );
+            ApplyThumbnailProgressViewerStatusStyle(
+                ThumbnailProgressViewerProgressText,
+                ResolveThumbnailProgressSummarySeverity()
+            );
+            ApplyThumbnailProgressViewerStatusStyle(
+                ThumbnailProgressViewerWorkerHealthText,
+                ResolveThumbnailWorkerHealthSummarySeverity()
+            );
+            ApplyThumbnailProgressViewerStatusStyle(
+                ThumbnailCoordinatorControlText,
+                ResolveThumbnailCoordinatorControlSummarySeverity()
+            );
+        }
+
+        private static string BuildViewerLifecycleStatusText(string title, string detail)
+        {
+            return string.IsNullOrWhiteSpace(detail) ? title ?? "" : $"{title}: {detail}";
+        }
+
+        private string BuildThumbnailProgressSummaryForUi()
+        {
+            ThumbnailProgressRuntimeSnapshot snapshot = CreateThumbnailProgressDisplaySnapshot();
+            if (snapshot == null)
+            {
+                return "進捗: 取得待ち";
+            }
+
+            int activeCount = snapshot.ActiveWorkers?.Count(x => x.IsActive) ?? 0;
+            int failedCount =
+                snapshot.ActiveWorkers?.Count(x =>
+                    string.Equals(
+                        x.State,
+                        ThumbnailProgressSnapshotState.Failed,
+                        StringComparison.Ordinal
+                    )
+                ) ?? 0;
+            int completedCount =
+                snapshot.ActiveWorkers?.Count(x =>
+                    string.Equals(
+                        x.State,
+                        ThumbnailProgressSnapshotState.Completed,
+                        StringComparison.Ordinal
+                    )
+                ) ?? 0;
+            int waitingCount = snapshot.WaitingWorkers?.Count ?? 0;
+
+            return $"進捗: 稼働={activeCount} / 待機={waitingCount} / 失敗={failedCount} / 完了={completedCount}";
+        }
+
+        private string BuildThumbnailWorkerHealthSummaryForUi()
+        {
+            IReadOnlyList<ThumbnailWorkerHealthSnapshot> healthSnapshots =
+                LoadThumbnailWorkerHealthSnapshotsForUi();
+            if (healthSnapshots == null || healthSnapshots.Count < 1)
+            {
+                return "Worker: health未取得";
+            }
+
+            return "Worker: "
+                + string.Join(" / ", healthSnapshots.Select(BuildThumbnailWorkerHealthTextForUi));
+        }
+
+        private string BuildThumbnailCoordinatorControlSummaryForUi()
+        {
+            if (!_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                return "運転席: 内蔵モードのため未使用";
+            }
+
+            string mainDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(mainDbFullPath))
+            {
+                return "運転席: DB未接続";
+            }
+
+            if (!_thumbnailCoordinatorProcessManager.IsCoordinatorAvailable())
+            {
+                return "運転席: Coordinator未配置";
+            }
+
+            ThumbnailCoordinatorControlSnapshot snapshot =
+                LoadThumbnailCoordinatorControlSnapshotForUi();
+            if (snapshot == null)
+            {
+                return _thumbnailCoordinatorProcessManager.IsCoordinatorRunning()
+                    ? "運転席: control取得待ち"
+                    : "運転席: 起動待ち";
+            }
+
+            string stateText = ThumbnailCoordinatorStateResolver.ToDisplayText(
+                snapshot.CoordinatorState
+            );
+            string modeText = ThumbnailCoordinatorOperationModeResolver.ToDisplayText(
+                snapshot.OperationMode
+            );
+            string queueText =
+                $" / q={snapshot.QueuedNormalCount}/{snapshot.QueuedSlowCount}/{snapshot.QueuedRecoveryCount}"
+                + $" / run={snapshot.RunningNormalCount}/{snapshot.RunningSlowCount}/{snapshot.RunningRecoveryCount}";
+            string decisionText =
+                $" / cat={ThumbnailCoordinatorDecisionCategoryResolver.ToDisplayText(snapshot.DecisionCategory)}"
+                + $" / need={snapshot.DemandNormalCount}/{snapshot.DemandSlowCount}/{snapshot.DemandRecoveryCount}"
+                + $" / weight={snapshot.WeightedNormalDemand}/{snapshot.WeightedSlowDemand}"
+                + $" / range={snapshot.SlowSlotMinimum}-{snapshot.SlowSlotMaximum}";
+            string reasonText = string.IsNullOrWhiteSpace(snapshot.Reason)
+                ? ""
+                : $" / 理由={snapshot.Reason}";
+
+            return $"運転席: 状態={stateText} / 希望={snapshot.RequestedParallelism} / 実効={snapshot.EffectiveParallelism} / fast={snapshot.FastSlotCount} / slow={snapshot.SlowSlotCount} / mode={modeText}{queueText}{decisionText}{reasonText}";
+        }
+
+        private IReadOnlyList<ThumbnailWorkerHealthSnapshot> LoadThumbnailWorkerHealthSnapshotsForUi()
+        {
+            string mainDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(mainDbFullPath))
+            {
+                return [];
+            }
+
+            return ThumbnailWorkerHealthStore.LoadSnapshots(
+                mainDbFullPath,
+                [thumbnailNormalWorkerOwnerInstanceId, thumbnailIdleWorkerOwnerInstanceId],
+                ThumbnailExternalHealthMaxAge
+            );
+        }
+
+        private ThumbnailCoordinatorControlSnapshot LoadThumbnailCoordinatorControlSnapshotForUi()
+        {
+            string mainDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(mainDbFullPath))
+            {
+                return null;
+            }
+
+            return ThumbnailCoordinatorControlStore.LoadLatest(
+                mainDbFullPath,
+                thumbnailCoordinatorOwnerInstanceId,
+                ThumbnailExternalControlMaxAge
+            );
+        }
+
+        private static string BuildThumbnailWorkerHealthTextForUi(
+            ThumbnailWorkerHealthSnapshot snapshot
+        )
+        {
+            if (snapshot == null)
+            {
+                return "worker:不明";
+            }
+
+            string roleText = string.Equals(snapshot.WorkerRole, "Idle", StringComparison.OrdinalIgnoreCase)
+                ? "ゆっくり"
+                : "通常";
+            string stateText = (snapshot.State ?? "").ToLowerInvariant() switch
+            {
+                ThumbnailWorkerHealthState.Starting => "起動中",
+                ThumbnailWorkerHealthState.Running => "稼働",
+                ThumbnailWorkerHealthState.Stopped => "停止",
+                ThumbnailWorkerHealthState.Exited => "終了",
+                ThumbnailWorkerHealthState.StartFailed => "起動失敗",
+                ThumbnailWorkerHealthState.Missing => "未配置",
+                _ => "不明",
+            };
+            string reasonText = ThumbnailWorkerHealthReasonResolver.ToDisplayText(
+                snapshot.ReasonCode
+            );
+
+            string stateWithReason = string.IsNullOrWhiteSpace(reasonText)
+                ? stateText
+                : $"{stateText}[{reasonText}]";
+
+            return string.IsNullOrWhiteSpace(snapshot.CurrentPriority)
+                ? $"{roleText}:{stateWithReason}"
+                : $"{roleText}:{stateWithReason}({snapshot.CurrentPriority})";
+        }
+
+        private ThumbnailSummarySeverity ResolveThumbnailViewerLifecycleSeverity()
+        {
+            if (!_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            if (!_thumbnailProgressViewerProcessManager.IsViewerAvailable())
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            if (ResolveThumbnailProgressViewerLaunchConfig() == null)
+            {
+                return ThumbnailSummarySeverity.Normal;
+            }
+
+            if (!_thumbnailProgressViewerProcessManager.IsViewerRunning())
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            return ThumbnailSummarySeverity.Normal;
+        }
+
+        private ThumbnailSummarySeverity ResolveThumbnailProgressSummarySeverity()
+        {
+            ThumbnailProgressRuntimeSnapshot snapshot = CreateThumbnailProgressDisplaySnapshot();
+            if (snapshot == null)
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            int failedCount =
+                snapshot.ActiveWorkers?.Count(x =>
+                    string.Equals(
+                        x.State,
+                        ThumbnailProgressSnapshotState.Failed,
+                        StringComparison.Ordinal
+                    )
+                ) ?? 0;
+            return failedCount > 0 ? ThumbnailSummarySeverity.Error : ThumbnailSummarySeverity.Normal;
+        }
+
+        private ThumbnailSummarySeverity ResolveThumbnailWorkerHealthSummarySeverity()
+        {
+            IReadOnlyList<ThumbnailWorkerHealthSnapshot> healthSnapshots =
+                LoadThumbnailWorkerHealthSnapshotsForUi();
+            if (healthSnapshots == null || healthSnapshots.Count < 1)
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            return healthSnapshots.Any(IsThumbnailWorkerHealthError)
+                ? ThumbnailSummarySeverity.Error
+                : ThumbnailSummarySeverity.Normal;
+        }
+
+        private ThumbnailSummarySeverity ResolveThumbnailCoordinatorControlSummarySeverity()
+        {
+            if (!_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            if (!_thumbnailCoordinatorProcessManager.IsCoordinatorAvailable())
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            if ((MainVM?.DbInfo?.DBFullPath ?? "") == "")
+            {
+                return ThumbnailSummarySeverity.Normal;
+            }
+
+            ThumbnailCoordinatorControlSnapshot snapshot =
+                LoadThumbnailCoordinatorControlSnapshotForUi();
+            if (snapshot == null)
+            {
+                return ThumbnailSummarySeverity.Warning;
+            }
+
+            return (snapshot.CoordinatorState ?? "").ToLowerInvariant() switch
+            {
+                ThumbnailCoordinatorState.Running => ThumbnailSummarySeverity.Normal,
+                ThumbnailCoordinatorState.Starting => ThumbnailSummarySeverity.Warning,
+                ThumbnailCoordinatorState.Stopped => ThumbnailSummarySeverity.Warning,
+                ThumbnailCoordinatorState.StartFailed => ThumbnailSummarySeverity.Error,
+                ThumbnailCoordinatorState.Degraded => ThumbnailSummarySeverity.Error,
+                _ => ThumbnailSummarySeverity.Warning,
+            };
+        }
+
+        private static bool IsThumbnailWorkerHealthError(ThumbnailWorkerHealthSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return true;
+            }
+
+            if (
+                string.Equals(snapshot.State, ThumbnailWorkerHealthState.Missing, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(snapshot.State, ThumbnailWorkerHealthState.StartFailed, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(snapshot.State, ThumbnailWorkerHealthState.Exited, StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return true;
+            }
+
+            return (snapshot.ReasonCode ?? "") switch
+            {
+                ThumbnailWorkerHealthReasonCode.WorkerMissing => true,
+                ThumbnailWorkerHealthReasonCode.ProcessStartFailed => true,
+                ThumbnailWorkerHealthReasonCode.DbMismatch => true,
+                ThumbnailWorkerHealthReasonCode.DllMissing => true,
+                ThumbnailWorkerHealthReasonCode.Exception => true,
+                _ => false,
+            };
+        }
+
+        private static void ApplyThumbnailProgressViewerStatusStyle(
+            TextBlock target,
+            ThumbnailSummarySeverity severity
+        )
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            switch (severity)
+            {
+                case ThumbnailSummarySeverity.Error:
+                    target.Foreground = new SolidColorBrush(
+                        Color.FromRgb(0xB7, 0x1C, 0x1C)
+                    );
+                    target.FontWeight = FontWeights.Bold;
+                    break;
+                case ThumbnailSummarySeverity.Warning:
+                    target.Foreground = new SolidColorBrush(
+                        Color.FromRgb(0x9A, 0x67, 0x00)
+                    );
+                    target.FontWeight = FontWeights.SemiBold;
+                    break;
+                default:
+                    target.Foreground = new SolidColorBrush(
+                        Color.FromRgb(0x58, 0x65, 0x73)
+                    );
+                    target.FontWeight = FontWeights.Normal;
+                    break;
+            }
+        }
+
+        private void RestartThumbnailProgressViewerButton_Click(object sender, RoutedEventArgs e)
+        {
+            RestartThumbnailProgressViewerSupervisor();
+        }
+
+        // 手動再起動ボタンは、別窓を張り直したい時の保険。
+        private void RestartThumbnailProgressViewerSupervisor()
+        {
+            _thumbnailProgressViewerCts.Cancel();
+            WaitBackgroundTaskForShutdown(_thumbnailProgressViewerTask, "thumbnail-progress-viewer");
+            _thumbnailProgressViewerCts = new CancellationTokenSource();
+
+            if (!_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                UpdateThumbnailProgressViewerStatusUi();
+                return;
+            }
+
+            DebugRuntimeLog.TaskStart(
+                nameof(RunThumbnailProgressViewerSupervisorAsync),
+                "trigger=manual-restart"
+            );
+            _thumbnailProgressViewerTask = RunThumbnailProgressViewerSupervisorAsync(
+                _thumbnailProgressViewerCts.Token
+            );
+            UpdateThumbnailProgressViewerStatusUi();
         }
 
         // CPUはシステム全体使用率を取得して0〜100へクランプする。
@@ -1530,6 +2396,7 @@ namespace IndigoMovieManager
         /// </summary>
         private void BootNewDb(string dbFullPath)
         {
+            ClearMissingThumbnailRescueBuffers();
             MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbFullPath);
             MainVM.DbInfo.DBFullPath = dbFullPath;
             MarkThumbnailFailedListDirty(incrementRevision: true, reason: "db-boot");

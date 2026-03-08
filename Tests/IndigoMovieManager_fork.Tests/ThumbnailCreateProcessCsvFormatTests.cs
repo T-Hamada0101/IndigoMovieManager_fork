@@ -1,4 +1,3 @@
-using System.Reflection;
 using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager_fork.Tests;
@@ -70,14 +69,8 @@ public class ThumbnailCreateProcessCsvFormatTests
     [Test]
     public void EscapeCsvValue_CommaAndQuote_AreEscaped()
     {
-        MethodInfo? method = typeof(ThumbnailCreationService).GetMethod(
-            "EscapeCsvValue",
-            BindingFlags.Static | BindingFlags.NonPublic
-        );
-        Assert.That(method, Is.Not.Null);
-
-        object? raw = method!.Invoke(null, ["a,\"b\",c"]);
-        Assert.That(raw as string, Is.EqualTo("\"a,\"\"b\"\",c\""));
+        string raw = ThumbnailCsvUtility.EscapeCsvValue("a,\"b\",c");
+        Assert.That(raw, Is.EqualTo("\"a,\"\"b\"\",c\""));
     }
 
     private static string GetProcessLogPath()
@@ -101,15 +94,17 @@ public class ThumbnailCreateProcessCsvFormatTests
         string errorMessage
     )
     {
-        MethodInfo? method = typeof(ThumbnailCreationService).GetMethod(
-            "WriteThumbnailCreateProcessLog",
-            BindingFlags.Static | BindingFlags.NonPublic
-        );
-        Assert.That(method, Is.Not.Null);
-
-        _ = method!.Invoke(
-            null,
-            [engineId, movieFullPath, codec, durationSec, fileSizeBytes, outputPath, isSuccess, errorMessage]
+        ThumbnailCsvUtility.WriteThumbnailCreateProcessLog(
+            "thumbnail-create-process.csv",
+            new object(),
+            engineId,
+            movieFullPath,
+            codec,
+            durationSec,
+            fileSizeBytes,
+            outputPath,
+            isSuccess,
+            errorMessage
         );
     }
 

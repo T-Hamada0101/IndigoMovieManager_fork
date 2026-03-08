@@ -5,6 +5,8 @@ param(
     [int]$Iteration = 3,
     [int]$Warmup = 1,
     [int]$TabIndex = 0,
+    [string]$Priority = "Normal",
+    [switch]$Recovery,
     [string]$Configuration = "Debug",
     [string]$Platform = "x64",
     [switch]$SkipBuild
@@ -27,6 +29,24 @@ if ($TabIndex -notin @(0, 1, 2, 3, 4, 99)) {
     throw "TabIndex は 0,1,2,3,4,99 のいずれかを指定してください。"
 }
 
+function Resolve-ProcessPriorityClass {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PriorityName
+    )
+
+    switch ($PriorityName.Trim().ToLowerInvariant()) {
+        "idle" { return [System.Diagnostics.ProcessPriorityClass]::Idle }
+        "belownormal" { return [System.Diagnostics.ProcessPriorityClass]::BelowNormal }
+        "normal" { return [System.Diagnostics.ProcessPriorityClass]::Normal }
+        "abovenormal" { return [System.Diagnostics.ProcessPriorityClass]::AboveNormal }
+        "high" { return [System.Diagnostics.ProcessPriorityClass]::High }
+        default {
+            throw "Priority は Idle / BelowNormal / Normal / AboveNormal / High のいずれかを指定してください。"
+        }
+    }
+}
+
 # スクリプト配置場所からリポジトリルートへ移動する。
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $repoRoot
@@ -47,6 +67,7 @@ if ($expectedEngines.Count -lt 1) {
 }
 $normalizedEnginesCsv = $expectedEngines -join ","
 $expectedRowCount = $expectedEngines.Count * $Iteration
+$targetPriorityClass = Resolve-ProcessPriorityClass -PriorityName $Priority
 
 function Resolve-BenchCsvForCurrentRun {
     param(
@@ -108,6 +129,10 @@ $oldEngines = [Environment]::GetEnvironmentVariable("IMM_BENCH_ENGINES")
 $oldIter = [Environment]::GetEnvironmentVariable("IMM_BENCH_ITER")
 $oldWarmup = [Environment]::GetEnvironmentVariable("IMM_BENCH_WARMUP")
 $oldTabIndex = [Environment]::GetEnvironmentVariable("IMM_BENCH_TAB_INDEX")
+$oldPriority = [Environment]::GetEnvironmentVariable("IMM_BENCH_PRIORITY")
+$oldRecovery = [Environment]::GetEnvironmentVariable("IMM_BENCH_RECOVERY")
+$currentProcess = [System.Diagnostics.Process]::GetCurrentProcess()
+$oldProcessPriorityClass = $currentProcess.PriorityClass
 
 try {
     [Environment]::SetEnvironmentVariable("IMM_BENCH_INPUT", $resolvedInputMovie)
@@ -116,6 +141,13 @@ try {
     [Environment]::SetEnvironmentVariable("IMM_BENCH_ITER", $Iteration.ToString())
     [Environment]::SetEnvironmentVariable("IMM_BENCH_WARMUP", $Warmup.ToString())
     [Environment]::SetEnvironmentVariable("IMM_BENCH_TAB_INDEX", $TabIndex.ToString())
+    [Environment]::SetEnvironmentVariable("IMM_BENCH_PRIORITY", $targetPriorityClass.ToString())
+    [Environment]::SetEnvironmentVariable("IMM_BENCH_RECOVERY", $(if ($Recovery) { "1" } else { "0" }))
+
+    if ($currentProcess.PriorityClass -ne $targetPriorityClass) {
+        $currentProcess.PriorityClass = $targetPriorityClass
+    }
+    Write-Host "ベンチ優先度: $($currentProcess.PriorityClass) / Recovery=$($Recovery.IsPresent)"
 
     if (-not $SkipBuild) {
         if (-not (Test-Path $msbuildPath)) {
@@ -134,6 +166,7 @@ try {
         $testProject,
         "-c",
         $Configuration,
+        "-p:Platform=$Platform",
         "--no-build",
         "--filter",
         $testFilter
@@ -193,4 +226,14 @@ finally {
     [Environment]::SetEnvironmentVariable("IMM_BENCH_ITER", $oldIter)
     [Environment]::SetEnvironmentVariable("IMM_BENCH_WARMUP", $oldWarmup)
     [Environment]::SetEnvironmentVariable("IMM_BENCH_TAB_INDEX", $oldTabIndex)
+    [Environment]::SetEnvironmentVariable("IMM_BENCH_PRIORITY", $oldPriority)
+    [Environment]::SetEnvironmentVariable("IMM_BENCH_RECOVERY", $oldRecovery)
+    try {
+        if ($currentProcess.PriorityClass -ne $oldProcessPriorityClass) {
+            $currentProcess.PriorityClass = $oldProcessPriorityClass
+        }
+    }
+    catch {
+        Write-Warning "ベンチ後の優先度復元に失敗しました: $($_.Exception.Message)"
+    }
 }

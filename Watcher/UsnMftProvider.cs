@@ -1,63 +1,156 @@
+using System.IO;
 using System.Runtime.Versioning;
-using System.Security.Principal;
 
 namespace IndigoMovieManager.Watcher
 {
     /// <summary>
-    /// UsnMft バックエンドを IFileIndexProvider 契約へ接続する。
-    /// StandardFileSystem とは分離し、USN/MFT 専用経路として扱う。
+    /// 管理者サービス経由で UsnMft を使う provider。
+    /// 管理者判定はローカルではなく service 側へ寄せる。
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class UsnMftProvider : LiteFileIndexProviderBase
+    internal sealed class UsnMftProvider : IFileIndexProvider
     {
-        public override string ProviderKey => FileIndexProviderFactory.ProviderUsnMft;
-        public override string ProviderDisplayName => "usnmft";
+        private readonly IAdminFileIndexClient client;
 
-        protected override Lite.FileIndexBackendMode BackendMode =>
-            Lite.FileIndexBackendMode.AdminUsnMft;
+        public UsnMftProvider()
+            : this(new AdminFileIndexClient()) { }
 
-        protected override AvailabilityResult CheckWindowsAvailability()
+        internal UsnMftProvider(IAdminFileIndexClient client)
         {
-            // StandardFileSystem と混同しないよう、管理者権限がない環境では未使用扱いにする。
-            if (!IsAdministrator())
+            this.client = client ?? throw new ArgumentNullException(nameof(client));
+        }
+
+        public string ProviderKey => FileIndexProviderFactory.ProviderUsnMft;
+        public string ProviderDisplayName => "usnmft";
+
+        public AvailabilityResult CheckAvailability()
+        {
+            if (!OperatingSystem.IsWindows())
             {
-                return new AvailabilityResult(
+                return new AvailabilityResult(false, EverythingReasonCodes.EverythingNotAvailable);
+            }
+
+            return client.CheckAvailability();
+        }
+
+        public FileIndexMovieResult CollectMoviePaths(FileIndexQueryOptions options)
+        {
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            AvailabilityResult availability = CheckAvailability();
+            if (!availability.CanUse)
+            {
+                return new FileIndexMovieResult(false, [], null, availability.Reason);
+            }
+
+            try
+            {
+                return client.CollectMoviePaths(options);
+            }
+            catch (Exception ex)
+            {
+                return new FileIndexMovieResult(
                     false,
-                    $"{EverythingReasonCodes.AvailabilityErrorPrefix}AdminRequired"
+                    [],
+                    null,
+                    EverythingReasonCodes.BuildEverythingQueryError(ex)
                 );
             }
-
-            return new AvailabilityResult(true, EverythingReasonCodes.Ok);
         }
 
-        // テストからキャッシュ状態を検証するための補助API。
-        internal static int GetCacheEntryCountForTesting()
+        public FileIndexThumbnailBodyResult CollectThumbnailBodies(string thumbFolder)
         {
-            return GetCacheEntryCountForTestingCore();
-        }
-
-        // テストから上限値を参照し、将来の定数変更に追従できるようにする。
-        internal static int GetCacheCapacityForTesting()
-        {
-            return GetCacheCapacityForTestingCore();
-        }
-
-        // テスト終了時にキャッシュを明示クリアして、ケース間の干渉を防ぐ。
-        internal static void ClearCacheForTesting()
-        {
-            ClearCacheForTestingCore();
-        }
-
-        private static bool IsAdministrator()
-        {
-            using WindowsIdentity identity = WindowsIdentity.GetCurrent();
-            if (identity == null)
+            if (string.IsNullOrWhiteSpace(thumbFolder))
             {
-                return false;
+                throw new ArgumentException("thumbFolder is required.", nameof(thumbFolder));
             }
 
-            WindowsPrincipal principal = new(identity);
-            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            HashSet<string> existingThumbBodies = new(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (!Directory.Exists(thumbFolder))
+                {
+                    return new FileIndexThumbnailBodyResult(
+                        true,
+                        existingThumbBodies,
+                        EverythingReasonCodes.Ok
+                    );
+                }
+
+                foreach (
+                    string filePath in Directory.EnumerateFiles(
+                        thumbFolder,
+                        "*.jpg",
+                        SearchOption.TopDirectoryOnly
+                    )
+                )
+                {
+                    string fileName = Path.GetFileName(filePath) ?? "";
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        continue;
+                    }
+
+                    string body = ExtractThumbnailBody(fileName);
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        existingThumbBodies.Add(body);
+                    }
+                }
+
+                return new FileIndexThumbnailBodyResult(
+                    true,
+                    existingThumbBodies,
+                    EverythingReasonCodes.Ok
+                );
+            }
+            catch (Exception ex)
+            {
+                return new FileIndexThumbnailBodyResult(
+                    false,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    EverythingReasonCodes.BuildEverythingThumbQueryError(ex)
+                );
+            }
+        }
+
+        // service 側へキャッシュを移したため、Watcher から観測できるローカルキャッシュは持たない。
+        internal static int GetCacheEntryCountForTesting()
+        {
+            return 0;
+        }
+
+        // service 側へキャッシュを移したため、Watcher から観測できるローカル上限は持たない。
+        internal static int GetCacheCapacityForTesting()
+        {
+            return 0;
+        }
+
+        internal static void ClearCacheForTesting()
+        {
+        }
+
+        private static string ExtractThumbnailBody(string fileName)
+        {
+            string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+            if (string.IsNullOrWhiteSpace(nameWithoutExt))
+            {
+                return "";
+            }
+
+            int hashMarkerIndex = nameWithoutExt.LastIndexOf(
+                ".#",
+                StringComparison.OrdinalIgnoreCase
+            );
+            if (hashMarkerIndex >= 0)
+            {
+                return nameWithoutExt[..hashMarkerIndex];
+            }
+
+            return nameWithoutExt;
         }
     }
 }

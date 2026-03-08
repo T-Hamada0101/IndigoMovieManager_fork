@@ -488,6 +488,155 @@ WHERE name = 'MovieSizeBytes';";
     }
 
     [Test]
+    public void Upsert_二度失敗済み動画は再投入されてもRecovery対象を維持する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-recovery-keep-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(Path.GetTempPath(), $"movie-recovery-keep-{Guid.NewGuid():N}.mp4");
+        string owner = "RECOVERY-KEEP-OWNER";
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc.AddSeconds(attempt)
+                );
+                Assert.That(leased.Count, Is.EqualTo(1));
+
+                _ = queueDbService.UpdateStatus(
+                    leased[0].QueueId,
+                    owner,
+                    ThumbnailQueueStatus.Pending,
+                    nowUtc.AddSeconds(attempt + 1),
+                    $"retry-{attempt + 1}",
+                    incrementAttemptCount: true
+                );
+            }
+
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc.AddSeconds(3)
+            );
+
+            List<QueueDbLeaseItem> recoveryLease = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc.AddSeconds(4),
+                minAttemptCount: 1
+            );
+
+            Assert.That(recoveryLease.Count, Is.EqualTo(1));
+            Assert.That(recoveryLease[0].AttemptCount, Is.EqualTo(2));
+            Assert.That(queueDbService.HasRecoveryQueueDemand(owner), Is.True);
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void ResetFailedToPending_二度失敗済み動画はRecovery対象を維持する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-reset-recovery-keep-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(Path.GetTempPath(), $"movie-reset-recovery-{Guid.NewGuid():N}.mp4");
+        string owner = "RESET-RECOVERY-OWNER";
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc.AddSeconds(attempt)
+                );
+                Assert.That(leased.Count, Is.EqualTo(1));
+
+                ThumbnailQueueStatus status = attempt == 4
+                    ? ThumbnailQueueStatus.Failed
+                    : ThumbnailQueueStatus.Pending;
+                bool incrementAttemptCount = attempt < 4;
+                _ = queueDbService.UpdateStatus(
+                    leased[0].QueueId,
+                    owner,
+                    status,
+                    nowUtc.AddSeconds(attempt + 1),
+                    $"retry-{attempt + 1}",
+                    incrementAttemptCount: incrementAttemptCount
+                );
+            }
+
+            int resetCount = queueDbService.ResetFailedToPending(nowUtc.AddSeconds(10));
+            Assert.That(resetCount, Is.EqualTo(1));
+
+            List<QueueDbLeaseItem> recoveryLease = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc.AddSeconds(11),
+                minAttemptCount: 1
+            );
+
+            Assert.That(recoveryLease.Count, Is.EqualTo(1));
+            Assert.That(recoveryLease[0].AttemptCount, Is.EqualTo(4));
+            Assert.That(queueDbService.HasRecoveryQueueDemand(owner), Is.True);
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
     public void GetPendingAndLease_Attempt範囲が逆転している時は空を返す()
     {
         string mainDbPath = Path.Combine(

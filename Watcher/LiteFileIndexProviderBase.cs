@@ -86,6 +86,10 @@ namespace IndigoMovieManager.Watcher
                     {
                         continue;
                     }
+                    if (MacMetadataSidecarDetector.IsAppleDoubleSidecar(item.FullPath))
+                    {
+                        continue;
+                    }
 
                     if (!IsUnderRoot(item.FullPath, normalizedRootWithSlash))
                     {

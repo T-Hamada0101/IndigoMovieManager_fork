@@ -39,7 +39,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 {
                     if (context == null)
                     {
-                        return ThumbnailCreationService.CreateFailedResult("", null, "context is null");
+                        return ThumbnailResultFactory.CreateFailed("", null, "context is null");
                     }
 
                     cts.ThrowIfCancellationRequested();
@@ -57,7 +57,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                             "thumbnail",
                             $"thumb open failed: lib={decoder.LibraryName}, movie='{context.MovieFullPath}', reason='{openError}'"
                         );
-                        return ThumbnailCreationService.CreateFailedResult(
+                        return ThumbnailResultFactory.CreateFailed(
                             context.SaveThumbFileName,
                             context.DurationSec,
                             openError
@@ -72,7 +72,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                             durationSec = decoderDurationSec;
                             if (!durationSec.HasValue || durationSec.Value <= 0)
                             {
-                                durationSec = ThumbnailCreationService.TryGetDurationSecFromShell(
+                                durationSec = ThumbnailShellMetadataUtility.TryGetDurationSecFromShell(
                                     context.MovieFullPath
                                 );
                             }
@@ -81,7 +81,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         ThumbInfo thumbInfo = context.ThumbInfo;
                         if (!context.IsManual && (!context.DurationSec.HasValue || context.DurationSec.Value <= 0))
                         {
-                            thumbInfo = ThumbnailCreationService.BuildAutoThumbInfo(
+                            thumbInfo = ThumbnailImageUtility.BuildAutoThumbInfo(
                                 context.TabInfo,
                                 durationSec
                             );
@@ -89,7 +89,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                         if (thumbInfo == null || thumbInfo.ThumbSec == null || thumbInfo.ThumbSec.Count < 1)
                         {
-                            return ThumbnailCreationService.CreateFailedResult(
+                            return ThumbnailResultFactory.CreateFailed(
                                 context.SaveThumbFileName,
                                 durationSec,
                                 "thumb info is empty"
@@ -124,14 +124,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                 thumbInfo.ThumbSec[i] = sec;
 
                                 if (
-                                    !ThumbnailCreationService.TryReadFrameWithRetry(
+                                    !ThumbnailImageUtility.TryReadFrameWithRetry(
                                         frameSource,
                                         TimeSpan.FromSeconds(Math.Max(0, sec)),
                                         out Bitmap frame
                                     )
                                 )
                                 {
-                                    return ThumbnailCreationService.CreateFailedResult(
+                                    return ThumbnailResultFactory.CreateFailed(
                                         context.SaveThumbFileName,
                                         durationSec,
                                         $"frame decode failed at sec={sec}"
@@ -140,11 +140,11 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                                 using (frame)
                                 {
-                                    Rectangle cropRect = ThumbnailCreationService.GetAspectRect(
+                                    Rectangle cropRect = ThumbnailImageUtility.GetAspectRect(
                                         frame.Width,
                                         frame.Height
                                     );
-                                    using Bitmap cropped = ThumbnailCreationService.CropBitmap(
+                                    using Bitmap cropped = ThumbnailImageUtility.CropBitmap(
                                         frame,
                                         cropRect
                                     );
@@ -155,12 +155,12 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                         || targetSize.Value.Height <= 0
                                     )
                                     {
-                                        targetSize = ThumbnailCreationService.ResolveDefaultTargetSize(
+                                        targetSize = ThumbnailImageUtility.ResolveDefaultTargetSize(
                                             cropped
                                         );
                                     }
 
-                                    Bitmap resized = ThumbnailCreationService.ResizeBitmap(
+                                    Bitmap resized = ThumbnailImageUtility.ResizeBitmap(
                                         cropped,
                                         targetSize.Value
                                     );
@@ -170,14 +170,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                             if (resizedFrames.Count < 1)
                             {
-                                return ThumbnailCreationService.CreateFailedResult(
+                                return ThumbnailResultFactory.CreateFailed(
                                     context.SaveThumbFileName,
                                     durationSec,
                                     "decoded frame list is empty"
                                 );
                             }
 
-                            bool saved = ThumbnailCreationService.SaveCombinedThumbnail(
+                            bool saved = ThumbnailImageUtility.SaveCombinedThumbnail(
                                 context.SaveThumbFileName,
                                 resizedFrames,
                                 context.TabInfo.Columns,
@@ -185,7 +185,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                             );
                             if (!saved)
                             {
-                                return ThumbnailCreationService.CreateFailedResult(
+                                return ThumbnailResultFactory.CreateFailed(
                                     context.SaveThumbFileName,
                                     durationSec,
                                     "combined thumbnail save failed"
@@ -199,14 +199,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
                             );
                             dest.Write(thumbInfo.SecBuffer);
                             dest.Write(thumbInfo.InfoBuffer);
-                            return ThumbnailCreationService.CreateSuccessResult(
+                            return ThumbnailResultFactory.CreateSuccess(
                                 context.SaveThumbFileName,
                                 durationSec
                             );
                         }
                         catch (Exception ex)
                         {
-                            return ThumbnailCreationService.CreateFailedResult(
+                            return ThumbnailResultFactory.CreateFailed(
                                 context.SaveThumbFileName,
                                 durationSec,
                                 ex.Message
@@ -260,7 +260,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     using (frameSource)
                     {
                         if (
-                            !ThumbnailCreationService.TryReadFrameWithRetry(
+                            !ThumbnailImageUtility.TryReadFrameWithRetry(
                                 frameSource,
                                 TimeSpan.FromSeconds(Math.Max(0, capturePos)),
                                 out Bitmap frame
@@ -272,12 +272,12 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                         using (frame)
                         {
-                            Rectangle cropRect = ThumbnailCreationService.GetAspectRect(
+                            Rectangle cropRect = ThumbnailImageUtility.GetAspectRect(
                                 frame.Width,
                                 frame.Height
                             );
-                            using Bitmap cropped = ThumbnailCreationService.CropBitmap(frame, cropRect);
-                            using Bitmap resized = ThumbnailCreationService.ResizeBitmap(
+                            using Bitmap cropped = ThumbnailImageUtility.CropBitmap(frame, cropRect);
+                            using Bitmap resized = ThumbnailImageUtility.ResizeBitmap(
                                 cropped,
                                 new Size(640, 480)
                             );

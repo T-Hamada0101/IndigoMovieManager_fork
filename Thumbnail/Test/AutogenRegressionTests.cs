@@ -1,4 +1,3 @@
-using System.Reflection;
 using IndigoMovieManager.Thumbnail.Engines;
 using NUnit.Framework;
 
@@ -77,15 +76,15 @@ namespace IndigoMovieManager.Thumbnail.Test
                 var ffmedia = new FakeEngine("ffmediatoolkit");
                 var ffmpeg1pass = new FakeEngine("ffmpeg1pass");
                 var opencv = new FakeEngine("opencv");
-                var service = new ThumbnailCreationService(
+                var context = CreateContext(isManual: false, tabIndex: 0, fileSizeBytes: 1024);
+                var order = BuildThumbnailEngineOrder(
                     ffmedia,
                     ffmpeg1pass,
                     opencv,
-                    autogen
+                    autogen,
+                    autogen,
+                    context
                 );
-
-                var context = CreateContext(isManual: false, tabIndex: 0, fileSizeBytes: 1024);
-                var order = InvokeBuildThumbnailEngineOrder(service, autogen, context);
                 string actual = string.Join(">", order.Select(x => x.EngineId));
 
                 Assert.That(actual, Is.EqualTo("autogen>ffmediatoolkit>ffmpeg1pass>opencv"));
@@ -124,18 +123,22 @@ namespace IndigoMovieManager.Thumbnail.Test
             };
         }
 
-        private static List<IThumbnailGenerationEngine> InvokeBuildThumbnailEngineOrder(
-            ThumbnailCreationService service,
+        private static List<IThumbnailGenerationEngine> BuildThumbnailEngineOrder(
+            IThumbnailGenerationEngine ffmedia,
+            IThumbnailGenerationEngine ffmpeg1pass,
+            IThumbnailGenerationEngine opencv,
+            IThumbnailGenerationEngine autogen,
             IThumbnailGenerationEngine selectedEngine,
             ThumbnailJobContext context
         )
         {
-            MethodInfo method = typeof(ThumbnailCreationService).GetMethod(
-                "BuildThumbnailEngineOrder",
-                BindingFlags.Instance | BindingFlags.NonPublic
+            ThumbnailEngineCatalog catalog = new(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen
             );
-            object raw = method.Invoke(service, [selectedEngine, context]);
-            return raw as List<IThumbnailGenerationEngine> ?? [];
+            return catalog.BuildExecutionOrder(selectedEngine, context);
         }
 
         private sealed class FakeEngine : IThumbnailGenerationEngine
@@ -160,7 +163,7 @@ namespace IndigoMovieManager.Thumbnail.Test
             )
             {
                 return Task.FromResult(
-                    ThumbnailCreationService.CreateFailedResult(
+                    ThumbnailResultFactory.CreateFailed(
                         context?.SaveThumbFileName ?? "",
                         context?.DurationSec,
                         "test"

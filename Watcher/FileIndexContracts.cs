@@ -134,6 +134,7 @@ namespace IndigoMovieManager.Watcher
         public const string EverythingThumbQueryErrorPrefix = "everything_thumb_query_error:";
         public const string EverythingResultTruncatedPrefix = "everything_result_truncated:";
         public const string PathNotEligiblePrefix = "path_not_eligible:";
+        public const string EmptyResultFallback = "ok:empty_result_fallback";
 
         public static string BuildAvailabilityError(Exception ex)
         {

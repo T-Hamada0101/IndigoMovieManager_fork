@@ -11,8 +11,21 @@ namespace IndigoMovieManager
         [Conditional("DEBUG")]
         internal static void Write(string category, string message)
         {
+            WriteCore(category, message, writeToDebug: true);
+        }
+
+        internal static void WriteAlways(string category, string message)
+        {
+            WriteCore(category, message, writeToDebug: true);
+        }
+
+        private static void WriteCore(string category, string message, bool writeToDebug)
+        {
             string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{category}] {message}";
-            Debug.WriteLine(line);
+            if (writeToDebug)
+            {
+                Debug.WriteLine(line);
+            }
 
             try
             {
