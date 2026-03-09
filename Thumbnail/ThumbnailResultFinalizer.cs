@@ -19,8 +19,18 @@ namespace IndigoMovieManager.Thumbnail
                 request.IsManual,
                 request.Result,
                 request.TabInfo,
-                request.MovieFullPath
+                request.MovieFullPath,
+                request.AttemptCount
             );
+
+            // 再試行中や成功時は固定化マーカーを残さず、再スキャンで拾える状態を保つ。
+            if (request.Result?.IsSuccess == true || request.AttemptCount + 1 < 5)
+            {
+                ThumbnailFailureFinalizer.DeleteErrorMarkerIfExists(
+                    request.TabInfo,
+                    request.MovieFullPath
+                );
+            }
 
             if (
                 (!request.CachedDurationSec.HasValue || request.CachedDurationSec.Value <= 0)
@@ -72,5 +82,7 @@ namespace IndigoMovieManager.Thumbnail
         public double? CachedDurationSec { get; init; }
 
         public Action<double?> OnCacheDuration { get; init; }
+
+        public int AttemptCount { get; init; }
     }
 }

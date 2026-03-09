@@ -50,7 +50,8 @@ namespace IndigoMovieManager
                 MovieSizeBytes = source.MovieSizeBytes,
                 Tabindex = source.Tabindex,
                 ThumbPanelPos = source.ThumbPanelPos,
-                ThumbTimePos = source.ThumbTimePos
+                ThumbTimePos = source.ThumbTimePos,
+                IsRescueRequest = source.IsRescueRequest
             };
         }
 
@@ -110,7 +111,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "queue",
-                    $"enqueue accepted: path='{queueObj.MovieFullPath}' tab={queueObj.Tabindex} total={enqueueTotal}");
+                    $"enqueue accepted: path='{queueObj.MovieFullPath}' tab={queueObj.Tabindex} rescue={queueObj.IsRescueRequest} total={enqueueTotal}");
             }
             return true;
         }
@@ -195,7 +196,7 @@ namespace IndigoMovieManager
             bool accepted = queueRequestChannel.Writer.TryWrite(request);
             if (!accepted)
             {
-                DebugRuntimeLog.Write("queue-db", $"channel write failed: path='{queueObj.MovieFullPath}' tab={queueObj.Tabindex}");
+                DebugRuntimeLog.Write("queue-db", $"channel write failed: path='{queueObj.MovieFullPath}' tab={queueObj.Tabindex} rescue={queueObj.IsRescueRequest}");
             }
             return accepted;
         }

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS ThumbnailQueue (
     MovieSizeBytes INTEGER NOT NULL DEFAULT 0,
     ThumbPanelPos INTEGER,
     ThumbTimePos INTEGER,
+    IsRescueRequest INTEGER NOT NULL DEFAULT 0,
     Status INTEGER NOT NULL DEFAULT 0,
     AttemptCount INTEGER NOT NULL DEFAULT 0,
     LastError TEXT NOT NULL DEFAULT '',
@@ -29,6 +30,10 @@ CREATE TABLE IF NOT EXISTS ThumbnailQueue (
         private const string AddMovieSizeColumnSql = @"
 ALTER TABLE ThumbnailQueue
 ADD COLUMN MovieSizeBytes INTEGER NOT NULL DEFAULT 0;";
+
+        private const string AddIsRescueRequestColumnSql = @"
+ALTER TABLE ThumbnailQueue
+ADD COLUMN IsRescueRequest INTEGER NOT NULL DEFAULT 0;";
 
         private const string CreateIndexStatusLeaseSql = @"
 CREATE INDEX IF NOT EXISTS IX_ThumbnailQueue_Status_Lease
@@ -53,6 +58,12 @@ ON ThumbnailQueue (MainDbPathHash, Status, UpdatedAtUtc);";
                 "ThumbnailQueue",
                 "MovieSizeBytes",
                 AddMovieSizeColumnSql
+            );
+            EnsureColumnExists(
+                connection,
+                "ThumbnailQueue",
+                "IsRescueRequest",
+                AddIsRescueRequestColumnSql
             );
             ExecuteNonQuery(connection, CreateIndexStatusLeaseSql);
             ExecuteNonQuery(connection, CreateIndexMainDbSql);

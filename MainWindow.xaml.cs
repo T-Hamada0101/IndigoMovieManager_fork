@@ -2608,7 +2608,8 @@ namespace IndigoMovieManager
                 systemData = GetData(dbPath, sql);
 
                 var skin = SelectSystemTable("skin");
-                MainVM.DbInfo.Skin = skin == "" ? "Default Small" : skin;
+                // 旧値や空文字をここで吸収して、以降は同じ名前で扱う。
+                MainVM.DbInfo.Skin = NormalizeSkinName(skin);
 
                 var sort = SelectSystemTable("sort");
                 MainVM.DbInfo.Sort = sort == "" ? "1" : sort;
@@ -2688,6 +2689,11 @@ namespace IndigoMovieManager
         /// </summary>
         private void UpdateSkin()
         {
+            if (string.IsNullOrEmpty(Properties.Settings.Default.LastDoc))
+            {
+                return;
+            }
+
             //5x2はあえて書き込まない。互換性の関係で。
             string tabName = Tabs.SelectedIndex switch
             {
@@ -2695,8 +2701,12 @@ namespace IndigoMovieManager
                 1 => "DefaultBig",
                 2 => "DefaultGrid",
                 3 => "DefaultList",
-                _ => "DefaultSmall",
+                4 => "DefaultBig10",
+                5 => "ThumbnailFailed",
+                _ => NormalizeSkinName(MainVM.DbInfo.Skin),
             };
+
+            MainVM.DbInfo.Skin = tabName;
             UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", tabName);
         }
 
@@ -2705,7 +2715,7 @@ namespace IndigoMovieManager
         /// </summary>
         private void SwitchTab(string skin)
         {
-            switch (skin)
+            switch (NormalizeSkinName(skin))
             {
                 case "DefaultSmall":
                     TabSmall.IsSelected = true;
@@ -2735,6 +2745,16 @@ namespace IndigoMovieManager
                         ListDataGrid.SelectedIndex = 0;
                     }
                     break;
+                case "DefaultBig10":
+                    TabBig10.IsSelected = true;
+                    if (BigList10.Items.Count > 0)
+                    {
+                        BigList10.SelectedIndex = 0;
+                    }
+                    break;
+                case "ThumbnailFailed":
+                    TabThumbnailFailed.IsSelected = true;
+                    break;
                 default:
                     TabSmall.IsSelected = true;
                     if (SmallList.Items.Count > 0)
@@ -2743,6 +2763,29 @@ namespace IndigoMovieManager
                     }
                     break;
             }
+        }
+
+        /// <summary>
+        /// skinの保存名を互換性込みで正規化し、保存と復元の表記ゆれを潰す。
+        /// </summary>
+        private static string NormalizeSkinName(string skin)
+        {
+            return skin switch
+            {
+                "DefaultSmall" => "DefaultSmall",
+                "Default Small" => "DefaultSmall",
+                "DefaultBig" => "DefaultBig",
+                "Default Big" => "DefaultBig",
+                "DefaultGrid" => "DefaultGrid",
+                "Default Grid" => "DefaultGrid",
+                "DefaultList" => "DefaultList",
+                "Default List" => "DefaultList",
+                "DefaultBig10" => "DefaultBig10",
+                "Default Big10" => "DefaultBig10",
+                "ThumbnailFailed" => "ThumbnailFailed",
+                "Thumbnail Failed" => "ThumbnailFailed",
+                _ => "DefaultSmall",
+            };
         }
 
         /// <summary>
@@ -3663,6 +3706,8 @@ namespace IndigoMovieManager
                 ClearThumbnailQueue();
 
                 MainVM.DbInfo.CurrentTabIndex = index;
+                // タブを切り替えた時点で保存して、次回起動時の復元を確実にする。
+                UpdateSkin();
 
                 if (!filterList.Any())
                     return;

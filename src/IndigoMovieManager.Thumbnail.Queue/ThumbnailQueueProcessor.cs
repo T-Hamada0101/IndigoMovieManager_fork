@@ -503,6 +503,7 @@ namespace IndigoMovieManager.Thumbnail
                                     Tabindex = leasedItem.TabIndex,
                                     ThumbPanelPos = leasedItem.ThumbPanelPos,
                                     ThumbTimePos = leasedItem.ThumbTimePos,
+                                    IsRescueRequest = leasedItem.IsRescueRequest,
                                 };
                                 ThumbnailExecutionLane lane = ThumbnailLaneClassifier.ResolveLane(
                                     leasedItem.MovieSizeBytes
@@ -543,6 +544,12 @@ namespace IndigoMovieManager.Thumbnail
                                     }
                                     NotifyJobCallback(onJobStarted, queueObj);
                                     startedNotified = true;
+                                    if (queueObj.IsRescueRequest)
+                                    {
+                                        safeLog(
+                                            $"repair start: queue_id={leasedItem.QueueId} tab={queueObj.Tabindex} attempt={queueObj.AttemptCount} movie='{queueObj.MovieFullPath}'"
+                                        );
+                                    }
 
                                     try
                                     {
@@ -570,11 +577,24 @@ namespace IndigoMovieManager.Thumbnail
                                                 $"consumer done skipped: queue_id={leasedItem.QueueId} owner={ownerInstanceId}"
                                             );
                                         }
+                                        else if (queueObj.IsRescueRequest)
+                                        {
+                                            safeLog(
+                                                $"repair success: queue_id={leasedItem.QueueId} tab={queueObj.Tabindex} movie='{queueObj.MovieFullPath}'"
+                                            );
+                                        }
                                     }
                                     catch (OperationCanceledException ex)
                                     {
                                         if (cts.IsCancellationRequested)
                                         {
+                                            HandleCanceledItem(
+                                                queueDbService,
+                                                leasedItem,
+                                                ownerInstanceId,
+                                                ex,
+                                                safeLog
+                                            );
                                             throw;
                                         }
 
@@ -1448,6 +1468,52 @@ namespace IndigoMovieManager.Thumbnail
                 log?.Invoke(
                     $"consumer failed: category=error queue_id={leasedItem.QueueId} next={nextStatus} "
                         + $"retryable={retryable} failed_total={failedTotal}"
+                );
+            }
+
+            if (leasedItem.IsRescueRequest)
+            {
+                log?.Invoke(
+                    $"repair failed: queue_id={leasedItem.QueueId} next={nextStatus} retryable={retryable} "
+                        + $"attempt={leasedItem.AttemptCount + (retryable ? 1 : 0)} movie='{leasedItem.MoviePath}' message={ex.Message}"
+                );
+            }
+        }
+
+        // 停止要求で中断したジョブは失敗扱いにせず、AttemptCountを増やさずPendingへ戻す。
+        private static void HandleCanceledItem(
+            QueueDbService queueDbService,
+            QueueDbLeaseItem leasedItem,
+            string ownerInstanceId,
+            OperationCanceledException ex,
+            Action<string> log
+        )
+        {
+            int restored = queueDbService.UpdateStatus(
+                leasedItem.QueueId,
+                ownerInstanceId,
+                ThumbnailQueueStatus.Pending,
+                DateTime.UtcNow,
+                "operation canceled by stop request",
+                incrementAttemptCount: false
+            );
+
+            if (restored < 1)
+            {
+                log?.Invoke(
+                    $"consumer cancel skipped: queue_id={leasedItem.QueueId} owner={ownerInstanceId} message={ex.Message}"
+                );
+                return;
+            }
+
+            log?.Invoke(
+                $"consumer canceled: queue_id={leasedItem.QueueId} next={ThumbnailQueueStatus.Pending} attempt={leasedItem.AttemptCount}"
+            );
+
+            if (leasedItem.IsRescueRequest)
+            {
+                log?.Invoke(
+                    $"repair canceled: queue_id={leasedItem.QueueId} next={ThumbnailQueueStatus.Pending} attempt={leasedItem.AttemptCount} movie='{leasedItem.MoviePath}'"
                 );
             }
         }

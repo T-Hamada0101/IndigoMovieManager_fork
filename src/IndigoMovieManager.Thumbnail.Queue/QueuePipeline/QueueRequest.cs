@@ -13,6 +13,7 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
         public long MovieSizeBytes { get; set; }
         public int? ThumbPanelPos { get; set; }
         public int? ThumbTimePos { get; set; }
+        public bool IsRescueRequest { get; set; }
         public DateTime RequestedAtUtc { get; set; } = DateTime.UtcNow;
 
         // QueueObjからQueueRequestへ変換する共通入口。
@@ -28,6 +29,7 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
                 MovieSizeBytes = Math.Max(0, queueObj?.MovieSizeBytes ?? 0),
                 ThumbPanelPos = queueObj?.ThumbPanelPos,
                 ThumbTimePos = queueObj?.ThumbTimePos,
+                IsRescueRequest = queueObj?.IsRescueRequest == true,
                 RequestedAtUtc = DateTime.UtcNow
             };
         }

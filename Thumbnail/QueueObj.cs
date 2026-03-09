@@ -11,6 +11,7 @@
         private int _attemptCount;
         private int? _thumbPanelPos = null;
         private int? _thumbTimePos = null;
+        private bool _isRescueRequest;
 
         public int Tabindex { get { return _tabIndex; } set { _tabIndex = value; } }
         public long MovieId { get { return _movieId; } set { _movieId = value; } }
@@ -21,5 +22,6 @@
         public int AttemptCount { get { return _attemptCount; } set { _attemptCount = value; } }
         public int? ThumbPanelPos { get { return _thumbPanelPos; } set { _thumbPanelPos = value; } }
         public int? ThumbTimePos { get { return _thumbTimePos; } set { _thumbTimePos = value; } }
+        public bool IsRescueRequest { get { return _isRescueRequest; } set { _isRescueRequest = value; } }
     }
 }

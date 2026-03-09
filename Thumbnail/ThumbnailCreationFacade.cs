@@ -57,7 +57,8 @@ namespace IndigoMovieManager.Thumbnail
                 tabInfo,
                 movieFullPath,
                 value => ThumbnailMovieMetaCache.UpdateDuration(cacheLookup.CacheKey, cacheMeta, value),
-                durationSec
+                durationSec,
+                queueObj?.AttemptCount ?? 0
             );
 
             try

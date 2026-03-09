@@ -60,7 +60,8 @@ namespace IndigoMovieManager
 
             FPS = NormalizeFps(fps);
             TotalFrames = NormalizeTotalFrames(totalFrames);
-            MovieLength = (long)NormalizeDurationSec(durationSec, TotalFrames, FPS);
+            MovieLength = (long)
+                NormalizeDurationSec(rawPath, durationSec, TotalFrames, FPS, "movieinfo-final");
 
             // 3. ファイルシステムの属性（ファイルサイズ、更新日時など）を取得
             FileInfo file = new(rawPath);
@@ -200,7 +201,9 @@ namespace IndigoMovieManager
                     fps = NormalizeFps(videoInfo.AvgFrameRate);
                     totalFrames =
                         videoInfo.NumberOfFrames
-                        ?? Math.Truncate(NormalizeDurationSec(durationSec, totalFrames, fps) * fps);
+                        ?? Math.Truncate(
+                            NormalizeDurationSec(durationSec, totalFrames, fps) * fps
+                        );
 
                     videoCodec = videoInfo.CodecName ?? "";
                 }
@@ -317,6 +320,26 @@ namespace IndigoMovieManager
         /// コンテナ由来の時間がアテにならなければ、総フレーム数とFPSから執念で計算し直すサバイバル特化のメソッドだ！🔥
         /// </summary>
         internal static double NormalizeDurationSec(
+            string moviePath,
+            double durationSec,
+            double totalFrames,
+            double fps,
+            string sourceTag
+        )
+        {
+            double normalized = NormalizeDurationSec(durationSec, totalFrames, fps);
+            WriteAviDurationRecoveryDebugLog(
+                moviePath,
+                sourceTag,
+                durationSec,
+                totalFrames,
+                fps,
+                normalized
+            );
+            return normalized;
+        }
+
+        internal static double NormalizeDurationSec(
             double durationSec,
             double totalFrames,
             double fps
@@ -357,6 +380,67 @@ namespace IndigoMovieManager
             }
 
             return 0;
+        }
+
+        // AVI系だけ詳細を出し、尺補正に入ったかどうかを debug-runtime.log で追えるようにする。
+        private static void WriteAviDurationRecoveryDebugLog(
+            string moviePath,
+            string sourceTag,
+            double containerDurationSec,
+            double totalFrames,
+            double fps,
+            double normalizedDurationSec
+        )
+        {
+            string extension = Path.GetExtension(moviePath ?? "");
+            if (
+                !string.Equals(extension, ".avi", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(extension, ".divx", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return;
+            }
+
+            double frameDerivedDurationSec =
+                IsFinitePositive(totalFrames) && IsFinitePositive(fps) ? totalFrames / fps : 0;
+            bool hasContainerDuration = IsFinitePositive(containerDurationSec);
+            bool hasFrameDerivedDuration = IsFinitePositive(frameDerivedDurationSec);
+            double diff =
+                hasContainerDuration && hasFrameDerivedDuration
+                    ? Math.Abs(containerDurationSec - frameDerivedDurationSec)
+                    : 0;
+            double ratio =
+                hasContainerDuration && hasFrameDerivedDuration
+                    ? (
+                        containerDurationSec > frameDerivedDurationSec
+                            ? containerDurationSec / frameDerivedDurationSec
+                            : frameDerivedDurationSec / containerDurationSec
+                    )
+                    : 0;
+            bool mismatchDetected =
+                hasContainerDuration
+                && hasFrameDerivedDuration
+                && diff >= DurationMismatchAbsoluteThresholdSec
+                && ratio >= DurationMismatchRatioThreshold;
+            bool usedFrameDerived =
+                hasFrameDerivedDuration
+                && Math.Abs(normalizedDurationSec - frameDerivedDurationSec) < 0.001d;
+
+            string decision = mismatchDetected
+                ? (usedFrameDerived ? "use_frame_duration" : "keep_container_duration")
+                : hasContainerDuration
+                    ? "container_duration_ok"
+                    : hasFrameDerivedDuration
+                        ? "frame_duration_only"
+                        : "duration_unresolved";
+
+            DebugRuntimeLog.Write(
+                "avi-duration-recovery",
+                $"source={sourceTag} decision={decision} movie='{moviePath}' "
+                    + $"container_sec={containerDurationSec:0.###} frame_sec={frameDerivedDurationSec:0.###} "
+                    + $"normalized_sec={normalizedDurationSec:0.###} frames={totalFrames:0.###} fps={fps:0.###} "
+                    + $"diff_sec={diff:0.###} ratio={ratio:0.###}"
+            );
         }
 
         /// <summary>

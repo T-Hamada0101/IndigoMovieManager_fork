@@ -1154,5 +1154,58 @@ namespace IndigoMovieManager
                 _ = TryEnqueueThumbnailJob(tempObj);
             }
         }
+
+        /// <summary>
+        /// 明示的に救済フラグ付きで再投入し、通常投入より先に処理させる。
+        /// </summary>
+        private void RepairThumbnail_Click(object sender, RoutedEventArgs e)
+        {
+            if (Tabs.SelectedItem == null)
+            {
+                return;
+            }
+
+            List<MovieRecords> selectedItems = GetSelectedItemsByTabIndex();
+            if (selectedItems == null || selectedItems.Count == 0)
+            {
+                return;
+            }
+
+            int acceptedCount = 0;
+            int rejectedCount = 0;
+            foreach (MovieRecords mv in selectedItems)
+            {
+                QueueObj rescueQueueObj = new()
+                {
+                    MovieId = mv.Movie_Id,
+                    MovieFullPath = mv.Movie_Path,
+                    Hash = mv.Hash,
+                    Tabindex = Tabs.SelectedIndex,
+                    IsRescueRequest = true,
+                };
+
+                if (TryEnqueueThumbnailJob(rescueQueueObj, bypassDebounce: true))
+                {
+                    acceptedCount++;
+                    DebugRuntimeLog.Write(
+                        "thumbnail-repair",
+                        $"repair requested: movie='{mv.Movie_Path}' tab={rescueQueueObj.Tabindex}"
+                    );
+                }
+                else
+                {
+                    rejectedCount++;
+                    DebugRuntimeLog.Write(
+                        "thumbnail-repair",
+                        $"repair enqueue rejected: movie='{mv.Movie_Path}' tab={rescueQueueObj.Tabindex}"
+                    );
+                }
+            }
+
+            DebugRuntimeLog.Write(
+                "thumbnail-repair",
+                $"repair request summary: selected={selectedItems.Count} accepted={acceptedCount} rejected={rejectedCount}"
+            );
+        }
     }
 }

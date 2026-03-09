@@ -10,6 +10,7 @@ namespace IndigoMovieManager.Thumbnail
         private readonly TabInfo tabInfo;
         private readonly string movieFullPath;
         private readonly Action<double?> onCacheDuration;
+        private readonly int attemptCount;
         private double? cachedDurationSec;
 
         public ThumbnailResultCompletionCoordinator(
@@ -17,7 +18,8 @@ namespace IndigoMovieManager.Thumbnail
             TabInfo tabInfo,
             string movieFullPath,
             Action<double?> onCacheDuration,
-            double? cachedDurationSec
+            double? cachedDurationSec,
+            int attemptCount
         )
         {
             this.isManual = isManual;
@@ -26,6 +28,7 @@ namespace IndigoMovieManager.Thumbnail
             this.onCacheDuration =
                 onCacheDuration ?? throw new ArgumentNullException(nameof(onCacheDuration));
             this.cachedDurationSec = cachedDurationSec;
+            this.attemptCount = Math.Max(0, attemptCount);
         }
 
         public void UpdateCachedDuration(double? durationSec)
@@ -52,6 +55,7 @@ namespace IndigoMovieManager.Thumbnail
                     FileSizeBytes = fileSizeBytes,
                     CachedDurationSec = cachedDurationSec,
                     OnCacheDuration = HandleCacheDuration,
+                    AttemptCount = attemptCount,
                 }
             );
         }

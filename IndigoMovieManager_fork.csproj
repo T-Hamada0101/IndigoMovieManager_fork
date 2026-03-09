@@ -297,9 +297,19 @@
       IgnoreExitCode="true"
     />
     <MSBuild
-      Projects="src\IndigoMovieManager.Thumbnail.ProgressViewer\IndigoMovieManager.Thumbnail.ProgressViewer.csproj"
+      Projects="src\IndigoMovieManager.Thumbnail.Engine\IndigoMovieManager.Thumbnail.Engine.csproj"
       Targets="$(ThumbnailProgressViewerBuildTargets)"
       Properties="Configuration=$(Configuration);Platform=$(Platform);OutDir=$(ThumbnailProgressViewerSourceDir);Restore=$(Restore)"
+    />
+    <MSBuild
+      Projects="src\IndigoMovieManager.Thumbnail.Queue\IndigoMovieManager.Thumbnail.Queue.csproj"
+      Targets="$(ThumbnailProgressViewerBuildTargets)"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);OutDir=$(ThumbnailProgressViewerSourceDir);Restore=$(Restore)"
+    />
+    <MSBuild
+      Projects="src\IndigoMovieManager.Thumbnail.ProgressViewer\IndigoMovieManager.Thumbnail.ProgressViewer.csproj"
+      Targets="$(ThumbnailProgressViewerBuildTargets)"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);OutDir=$(ThumbnailProgressViewerSourceDir);Restore=$(Restore);BuildProjectReferences=false"
     />
     <RemoveDir
       Directories="$(ThumbnailProgressViewerNestedOutputDir)"

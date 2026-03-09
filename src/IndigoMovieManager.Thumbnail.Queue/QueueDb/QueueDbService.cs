@@ -23,6 +23,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public long MovieSizeBytes { get; set; }
         public int? ThumbPanelPos { get; set; }
         public int? ThumbTimePos { get; set; }
+        public bool IsRescueRequest { get; set; }
     }
 
     // Upsert実行結果。投入件数と実際にDBへ反映された内訳を保持する。
@@ -46,6 +47,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public long MovieSizeBytes { get; set; }
         public int? ThumbPanelPos { get; set; }
         public int? ThumbTimePos { get; set; }
+        public bool IsRescueRequest { get; set; }
         public int AttemptCount { get; set; }
         public string OwnerInstanceId { get; set; } = "";
         public DateTime LeaseUntilUtc { get; set; }
@@ -62,6 +64,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public long MovieSizeBytes { get; set; }
         public int? ThumbPanelPos { get; set; }
         public int? ThumbTimePos { get; set; }
+        public bool IsRescueRequest { get; set; }
         public ThumbnailQueueStatus Status { get; set; } = ThumbnailQueueStatus.Failed;
         public int AttemptCount { get; set; }
         public string LastError { get; set; } = "";
@@ -185,6 +188,7 @@ INSERT INTO ThumbnailQueue (
     MovieSizeBytes,
     ThumbPanelPos,
     ThumbTimePos,
+    IsRescueRequest,
     Status,
     AttemptCount,
     LastError,
@@ -200,6 +204,7 @@ INSERT INTO ThumbnailQueue (
     @MovieSizeBytes,
     @ThumbPanelPos,
     @ThumbTimePos,
+    @IsRescueRequest,
     @Status,
     0,
     '',
@@ -214,6 +219,7 @@ DO UPDATE SET
     MovieSizeBytes = excluded.MovieSizeBytes,
     ThumbPanelPos = excluded.ThumbPanelPos,
     ThumbTimePos = excluded.ThumbTimePos,
+    IsRescueRequest = excluded.IsRescueRequest,
     Status = @Status,
     AttemptCount = CASE
         WHEN ThumbnailQueue.AttemptCount >= @GuaranteedRecoveryAttemptCount
@@ -236,6 +242,7 @@ WHERE ThumbnailQueue.Status <> @Processing;";
             upsertCommand.Parameters.AddWithValue("@MovieSizeBytes", 0L);
             upsertCommand.Parameters.AddWithValue("@ThumbPanelPos", DBNull.Value);
             upsertCommand.Parameters.AddWithValue("@ThumbTimePos", DBNull.Value);
+            upsertCommand.Parameters.AddWithValue("@IsRescueRequest", 0);
             upsertCommand.Parameters.AddWithValue("@Status", pendingStatus);
             upsertCommand.Parameters.AddWithValue("@Processing", processingStatus);
             upsertCommand.Parameters.AddWithValue(
@@ -250,6 +257,8 @@ WHERE ThumbnailQueue.Status <> @Processing;";
                 upsertCommand.Parameters["@MovieSizeBytes"];
             SQLiteParameter upsertThumbPanelPosParameter = upsertCommand.Parameters["@ThumbPanelPos"];
             SQLiteParameter upsertThumbTimePosParameter = upsertCommand.Parameters["@ThumbTimePos"];
+            SQLiteParameter upsertIsRescueRequestParameter =
+                upsertCommand.Parameters["@IsRescueRequest"];
 
             foreach (QueueDbUpsertItem item in safeItems)
             {
@@ -277,6 +286,7 @@ WHERE ThumbnailQueue.Status <> @Processing;";
                 upsertThumbTimePosParameter.Value = item.ThumbTimePos.HasValue
                     ? item.ThumbTimePos.Value
                     : (object)DBNull.Value;
+                upsertIsRescueRequestParameter.Value = item.IsRescueRequest ? 1 : 0;
                 int affected = upsertCommand.ExecuteNonQuery();
 
                 if (affected > 0)
@@ -376,6 +386,7 @@ SELECT
     MovieSizeBytes,
     ThumbPanelPos,
     ThumbTimePos,
+    IsRescueRequest,
     AttemptCount
 FROM ThumbnailQueue
 WHERE MainDbPathHash = @MainDbPathHash
@@ -388,6 +399,10 @@ WHERE MainDbPathHash = @MainDbPathHash
   AND (@HasMinMovieSize = 0 OR MovieSizeBytes >= @MinMovieSizeBytes)
   AND (@HasMaxMovieSize = 0 OR MovieSizeBytes <= @MaxMovieSizeBytes)
 ORDER BY
+    CASE
+        WHEN IsRescueRequest = 1 THEN 0
+        ELSE 1
+    END ASC,
     CASE
         WHEN @HasPreferredTab = 1 AND TabIndex = @PreferredTab THEN 0
         ELSE 1
@@ -453,7 +468,8 @@ LIMIT @TakeCount;";
                             MovieSizeBytes = reader.IsDBNull(4) ? 0 : reader.GetInt64(4),
                             ThumbPanelPos = reader.IsDBNull(5) ? null : reader.GetInt32(5),
                             ThumbTimePos = reader.IsDBNull(6) ? null : reader.GetInt32(6),
-                            AttemptCount = reader.GetInt32(7),
+                            IsRescueRequest = !reader.IsDBNull(7) && reader.GetInt32(7) != 0,
+                            AttemptCount = reader.GetInt32(8),
                             OwnerInstanceId = ownerInstanceId,
                             LeaseUntilUtc = utcNow.Add(leaseDuration),
                         };
@@ -884,7 +900,6 @@ WHERE MainDbPathHash = @MainDbPathHash
             return command.ExecuteNonQuery();
         }
 
-
         // 登録削除時に、その動画に紐づく全タブのキュー行をまとめて落とす。
         public int DeleteMovieEntries(string moviePath)
         {
@@ -906,6 +921,7 @@ WHERE MainDbPathHash = @MainDbPathHash
             command.Parameters.AddWithValue("@MoviePathKey", moviePathKey);
             return command.ExecuteNonQuery();
         }
+
         // サムネ失敗タブ表示用に、最終状態がFailedの行を全件取得する。
         public List<QueueDbFailedItem> GetFailedItems()
         {
@@ -923,6 +939,7 @@ SELECT
     MovieSizeBytes,
     ThumbPanelPos,
     ThumbTimePos,
+    IsRescueRequest,
     Status,
     AttemptCount,
     LastError,
@@ -942,9 +959,9 @@ ORDER BY UpdatedAtUtc DESC, QueueId DESC;";
             while (reader.Read())
             {
                 ThumbnailQueueStatus status = ThumbnailQueueStatus.Failed;
-                if (!reader.IsDBNull(8))
+                if (!reader.IsDBNull(9))
                 {
-                    status = (ThumbnailQueueStatus)reader.GetInt32(8);
+                    status = (ThumbnailQueueStatus)reader.GetInt32(9);
                 }
 
                 QueueDbFailedItem item = new()
@@ -957,13 +974,14 @@ ORDER BY UpdatedAtUtc DESC, QueueId DESC;";
                     MovieSizeBytes = reader.IsDBNull(5) ? 0 : reader.GetInt64(5),
                     ThumbPanelPos = reader.IsDBNull(6) ? null : reader.GetInt32(6),
                     ThumbTimePos = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                    IsRescueRequest = !reader.IsDBNull(8) && reader.GetInt32(8) != 0,
                     Status = status,
-                    AttemptCount = reader.IsDBNull(9) ? 0 : reader.GetInt32(9),
-                    LastError = reader.IsDBNull(10) ? "" : reader.GetString(10),
-                    OwnerInstanceId = reader.IsDBNull(11) ? "" : reader.GetString(11),
-                    LeaseUntilUtc = reader.IsDBNull(12) ? "" : reader.GetString(12),
-                    CreatedAtUtc = reader.IsDBNull(13) ? "" : reader.GetString(13),
-                    UpdatedAtUtc = reader.IsDBNull(14) ? "" : reader.GetString(14),
+                    AttemptCount = reader.IsDBNull(10) ? 0 : reader.GetInt32(10),
+                    LastError = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                    OwnerInstanceId = reader.IsDBNull(12) ? "" : reader.GetString(12),
+                    LeaseUntilUtc = reader.IsDBNull(13) ? "" : reader.GetString(13),
+                    CreatedAtUtc = reader.IsDBNull(14) ? "" : reader.GetString(14),
+                    UpdatedAtUtc = reader.IsDBNull(15) ? "" : reader.GetString(15),
                 };
                 items.Add(item);
             }
