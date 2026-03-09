@@ -884,6 +884,28 @@ WHERE MainDbPathHash = @MainDbPathHash
             return command.ExecuteNonQuery();
         }
 
+
+        // 登録削除時に、その動画に紐づく全タブのキュー行をまとめて落とす。
+        public int DeleteMovieEntries(string moviePath)
+        {
+            EnsureInitialized();
+
+            string moviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath ?? "");
+            if (string.IsNullOrWhiteSpace(moviePathKey))
+            {
+                return 0;
+            }
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+DELETE FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash
+  AND MoviePathKey = @MoviePathKey;";
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue("@MoviePathKey", moviePathKey);
+            return command.ExecuteNonQuery();
+        }
         // サムネ失敗タブ表示用に、最終状態がFailedの行を全件取得する。
         public List<QueueDbFailedItem> GetFailedItems()
         {

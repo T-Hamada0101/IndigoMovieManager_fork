@@ -230,6 +230,62 @@ WHERE name = 'MovieSizeBytes';";
     }
 
     [Test]
+    public void DeleteMovieEntries_同一動画の全タブキューを削除する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-delete-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        string moviePath = Path.Combine(
+            Path.GetTempPath(),
+            "imm_queue_delete_test",
+            $"movie-{Guid.NewGuid():N}.mp4"
+        );
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 2,
+                    },
+                ],
+                DateTime.UtcNow
+            );
+
+            int deleted = queueDbService.DeleteMovieEntries(moviePath);
+            Assert.That(deleted, Is.EqualTo(2));
+
+            using SQLiteConnection connection = new($"Data Source={queueDbPath}");
+            connection.Open();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT COUNT(1)
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash;";
+            command.Parameters.AddWithValue("@MainDbPathHash", queueDbService.MainDbPathHash);
+            int remaining = Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+
+            Assert.That(remaining, Is.EqualTo(0));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
     public void GetFailedItems_Failedのみを更新時刻降順で返す()
     {
         string mainDbPath = Path.Combine(

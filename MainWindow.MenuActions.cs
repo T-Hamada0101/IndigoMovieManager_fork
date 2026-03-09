@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using IndigoMovieManager.DB;
 using IndigoMovieManager.Thumbnail;
+using IndigoMovieManager.Thumbnail.QueueDb;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 using static IndigoMovieManager.DB.SQLite;
@@ -340,6 +341,8 @@ namespace IndigoMovieManager
                 return;
             }
 
+            QueueDbService queueDbService = ResolveCurrentQueueDbService();
+            int deletedQueueEntryCount = 0;
             foreach (var rec in mv)
             {
                 if (dialogWindow.checkBox.IsChecked == true)
@@ -398,6 +401,12 @@ namespace IndigoMovieManager
                         }
                     }
                 }
+
+                if (queueDbService != null)
+                {
+                    // 本体登録が消える動画は QueueDB からも外し、孤立ジョブを残さない。
+                    deletedQueueEntryCount += queueDbService.DeleteMovieEntries(rec.Movie_Path);
+                }
                 DeleteMovieTable(MainVM.DbInfo.DBFullPath, rec.Movie_Id);
 
                 // 実ファイルの削除、2パターン。
@@ -427,6 +436,18 @@ namespace IndigoMovieManager
                         RecycleOption.SendToRecycleBin
                     );
                 }
+            }
+            if (deletedQueueEntryCount > 0)
+            {
+                DebugRuntimeLog.Write(
+                    "queue-ops",
+                    $"movie delete removed queue entries: count={deletedQueueEntryCount}"
+                );
+                MarkThumbnailFailedListDirty(
+                    incrementRevision: true,
+                    reason: "movie-record-delete-removed-queue"
+                );
+                RequestThumbnailProgressSnapshotRefresh();
             }
             FilterAndSort(MainVM.DbInfo.Sort, true);
         }
