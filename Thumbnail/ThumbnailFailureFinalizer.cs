@@ -8,7 +8,7 @@ namespace IndigoMovieManager.Thumbnail
     {
         private const int FinalFailureAttemptThreshold = 5;
 
-        public static void WriteErrorMarkerIfNeeded(
+        public static string WriteErrorMarkerIfNeeded(
             bool isManual,
             ThumbnailCreateResult result,
             TabInfo tabInfo,
@@ -18,13 +18,13 @@ namespace IndigoMovieManager.Thumbnail
         {
             if (isManual || result?.IsSuccess != false || tabInfo == null)
             {
-                return;
+                return "skip";
             }
 
             // 失敗中の途中経過では固定化せず、最終失敗だけ ERROR マーカーを置く。
             if (attemptCount + 1 < FinalFailureAttemptThreshold)
             {
-                return;
+                return "skip-not-final";
             }
 
             try
@@ -40,7 +40,9 @@ namespace IndigoMovieManager.Thumbnail
                         "thumbnail",
                         $"error marker created: '{errorMarkerPath}'"
                     );
+                    return "created";
                 }
+                return "already-exists";
             }
             catch (Exception markerEx)
             {
@@ -48,14 +50,15 @@ namespace IndigoMovieManager.Thumbnail
                     "thumbnail",
                     $"error marker write failed: '{markerEx.Message}'"
                 );
+                return $"write-failed:{markerEx.GetType().Name}";
             }
         }
 
-        public static void DeleteErrorMarkerIfExists(TabInfo tabInfo, string movieFullPath)
+        public static string DeleteErrorMarkerIfExists(TabInfo tabInfo, string movieFullPath)
         {
             if (tabInfo == null || string.IsNullOrWhiteSpace(movieFullPath))
             {
-                return;
+                return "skip";
             }
 
             try
@@ -66,7 +69,7 @@ namespace IndigoMovieManager.Thumbnail
                 );
                 if (!Path.Exists(errorMarkerPath))
                 {
-                    return;
+                    return "not-found";
                 }
 
                 File.Delete(errorMarkerPath);
@@ -74,6 +77,7 @@ namespace IndigoMovieManager.Thumbnail
                     "thumbnail",
                     $"error marker deleted: '{errorMarkerPath}'"
                 );
+                return "deleted";
             }
             catch (Exception markerEx)
             {
@@ -81,6 +85,7 @@ namespace IndigoMovieManager.Thumbnail
                     "thumbnail",
                     $"error marker delete failed: '{markerEx.Message}'"
                 );
+                return $"delete-failed:{markerEx.GetType().Name}";
             }
         }
     }

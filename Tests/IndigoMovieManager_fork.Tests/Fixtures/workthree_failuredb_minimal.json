@@ -1,0 +1,16 @@
+{
+  "failure_kind_source": "playground",
+  "material_duration_sec": 2872.529,
+  "thumb_sec": 1200,
+  "engine_attempted": "ffmpeg1pass",
+  "engine_succeeded": true,
+  "seek_strategy": "midpoint",
+  "seek_sec": 1200,
+  "repair_attempted": false,
+  "repair_succeeded": false,
+  "preflight_branch": "none",
+  "result_signature": "no-frames-decoded",
+  "repro_confirmed": true,
+  "recovery_route": "ffmpeg1pass",
+  "decision_basis": "autogen-no-frames-longclip"
+}

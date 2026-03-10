@@ -156,6 +156,21 @@ public class ThumbnailProgressRuntimeTests
     }
 
     [Test]
+    public void UpdateQueueObservation_LeasedRunningHangCountsを保持する()
+    {
+        ThumbnailProgressRuntime runtime = new();
+        runtime.UpdateQueueObservation(leased: 2, running: 3, hangSuspected: 1);
+
+        ThumbnailProgressRuntimeSnapshot snapshot = runtime.CreateSnapshot();
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshot.LeasedCount, Is.EqualTo(2));
+            Assert.That(snapshot.RunningCount, Is.EqualTo(3));
+            Assert.That(snapshot.HangSuspectedCount, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
     public void CreateSnapshot_無変更時は同一インスタンスを再利用する()
     {
         ThumbnailProgressRuntime runtime = new();
@@ -203,6 +218,9 @@ public class ThumbnailProgressRuntimeTests
         {
             SessionCompletedCount = 5,
             SessionTotalCount = 20,
+            LeasedCount = 1,
+            RunningCount = 2,
+            HangSuspectedCount = 3,
             CurrentParallelism = 6,
             ConfiguredParallelism = 6,
             ActiveWorkers =
@@ -229,12 +247,13 @@ public class ThumbnailProgressRuntimeTests
         );
 
         Assert.That(viewState.CreatedQueueText, Is.EqualTo("5 / 20"));
+        Assert.That(viewState.QueueStateText, Is.EqualTo("1 / 2 / 3"));
         Assert.That(viewState.DbPendingText, Is.EqualTo("3 / 100"));
         Assert.That(viewState.ThreadText, Is.EqualTo("1 / 6 / 16"));
         Assert.That(viewState.ControlStateText, Is.EqualTo("通常運転 (6 / 6)"));
         Assert.That(
             viewState.LaneGuideText,
-            Is.EqualTo("ゆっくり=巨大動画 / 再試行専=失敗再処理 / 通常=小さい順")
+            Is.EqualTo("ゆっくり=巨大動画 / 失敗再処理=再実行 / 通常=小さい順")
         );
         Assert.That(viewState.CpuMeterText, Is.EqualTo("27.5%"));
         Assert.That(viewState.GpuMeterText, Is.EqualTo("N/A"));

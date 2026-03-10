@@ -547,7 +547,7 @@ namespace IndigoMovieManager
             set
             {
                 thumbPathBig10 = value;
-                OnPropertyChanged(nameof(thumbPathBig10));
+                OnPropertyChanged(nameof(ThumbPathBig10));
             }
         }
 

@@ -41,10 +41,12 @@ namespace IndigoMovieManager.Thumbnail
         public static CachedMovieMetaLookup GetOrCreate(string movieFullPath, string hashHint)
         {
             string cacheKey = BuildCacheKey(movieFullPath);
+            bool created = false;
             CachedMovieMeta meta = Cache.GetOrAdd(
                 cacheKey,
                 _ =>
                 {
+                    created = true;
                     string hash = ResolveMovieHash(movieFullPath, hashHint);
                     bool isDrmSuspected = false;
                     string drmDetail = "";
@@ -73,6 +75,12 @@ namespace IndigoMovieManager.Thumbnail
                 }
             );
 
+            WriteDurationCacheDebugLog(
+                movieFullPath,
+                created ? "create" : "hit",
+                meta?.DurationSec
+            );
+
             return new CachedMovieMetaLookup(cacheKey, meta);
         }
 
@@ -97,6 +105,8 @@ namespace IndigoMovieManager.Thumbnail
                 currentMeta?.IsUnsupportedPrecheck ?? false,
                 currentMeta?.UnsupportedDetail ?? ""
             );
+
+            WriteDurationCacheDebugLog(cacheKey, "update", durationSec);
 
             if (Cache.Count > MovieMetaCacheMaxCount)
             {
@@ -130,6 +140,34 @@ namespace IndigoMovieManager.Thumbnail
             {
                 return movieFullPath;
             }
+        }
+
+        private static void WriteDurationCacheDebugLog(
+            string moviePathOrCacheKey,
+            string phase,
+            double? durationSec
+        )
+        {
+            string moviePath = moviePathOrCacheKey ?? "";
+            int separatorIndex = moviePath.IndexOf('|');
+            if (separatorIndex >= 0)
+            {
+                moviePath = moviePath[..separatorIndex];
+            }
+
+            string ext = Path.GetExtension(moviePath);
+            if (
+                !string.Equals(ext, ".avi", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(ext, ".divx", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return;
+            }
+
+            ThumbnailRuntimeLog.Write(
+                "thumbinfo-cache",
+                $"phase={phase} movie='{moviePath}' duration_sec={durationSec:0.###}"
+            );
         }
 
         private static bool IsAsfFamilyFile(string movieFullPath)

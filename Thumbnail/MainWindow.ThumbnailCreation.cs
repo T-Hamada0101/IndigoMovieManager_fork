@@ -5,6 +5,7 @@ using System.Windows.Media.Imaging;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.Ipc;
 using IndigoMovieManager.Thumbnail.Engines.IndexRepair;
+using IndigoMovieManager.Thumbnail.QueueDb;
 using static IndigoMovieManager.DB.SQLite;
 
 namespace IndigoMovieManager
@@ -547,8 +548,9 @@ namespace IndigoMovieManager
                 // 生成失敗は例外としてキュー層へ伝播し、Failedで可視化する。
                 if (!result.IsSuccess)
                 {
-                    throw new InvalidOperationException(
-                        $"thumbnail create failed: movie='{queueObj?.MovieFullPath}', tab={queueObj?.Tabindex}, reason='{result.ErrorMessage}'"
+                    throw new ThumbnailCreateFailedException(
+                        $"thumbnail create failed: movie='{queueObj?.MovieFullPath}', tab={queueObj?.Tabindex}, reason='{result.ErrorMessage}'",
+                        result
                     );
                 }
 
@@ -806,10 +808,13 @@ namespace IndigoMovieManager
 
             try
             {
-                string escapedMoviePath = movieFullPath.Replace("'", "''");
                 var dt = GetData(
                     dbFullPath,
-                    $"select movie_id, hash from movie where lower(movie_path) = lower('{escapedMoviePath}') limit 1"
+                    "select movie_id, hash from movie where movie_path = @movie_path limit 1",
+                    new Dictionary<string, object>
+                    {
+                        ["@movie_path"] = movieFullPath,
+                    }
                 );
                 if (dt == null || dt.Rows.Count < 1)
                 {
@@ -879,6 +884,15 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            // 実保存前の started/waiting は旧ジョブ画像を保持し得るため、本体一覧へは反映しない。
+            bool hasCommittedPreview =
+                string.Equals(worker.State, ThumbnailProgressSnapshotState.Saved, StringComparison.Ordinal)
+                || string.Equals(worker.State, ThumbnailProgressSnapshotState.Completed, StringComparison.Ordinal);
+            if (!hasCommittedPreview)
+            {
+                return false;
+            }
+
             if (
                 string.IsNullOrWhiteSpace(worker.PreviewImagePath)
                 || !Path.Exists(worker.PreviewImagePath)
@@ -943,81 +957,27 @@ namespace IndigoMovieManager
             switch (tabIndex)
             {
                 case 0:
-                    if (
-                        string.Equals(
-                            item.ThumbPathSmall,
-                            thumbnailPath,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        return false;
-                    }
+                    // 同一パス上書きでも画像中身は更新されるので、必ず通知を飛ばす。
                     item.ThumbPathSmall = thumbnailPath;
                     return true;
                 case 1:
-                    if (
-                        string.Equals(
-                            item.ThumbPathBig,
-                            thumbnailPath,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        return false;
-                    }
+                    // 同一パス上書きでも画像中身は更新されるので、必ず通知を飛ばす。
                     item.ThumbPathBig = thumbnailPath;
                     return true;
                 case 2:
-                    if (
-                        string.Equals(
-                            item.ThumbPathGrid,
-                            thumbnailPath,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        return false;
-                    }
+                    // 同一パス上書きでも画像中身は更新されるので、必ず通知を飛ばす。
                     item.ThumbPathGrid = thumbnailPath;
                     return true;
                 case 3:
-                    if (
-                        string.Equals(
-                            item.ThumbPathList,
-                            thumbnailPath,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        return false;
-                    }
+                    // 同一パス上書きでも画像中身は更新されるので、必ず通知を飛ばす。
                     item.ThumbPathList = thumbnailPath;
                     return true;
                 case 4:
-                    if (
-                        string.Equals(
-                            item.ThumbPathBig10,
-                            thumbnailPath,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        return false;
-                    }
+                    // 同一パス上書きでも画像中身は更新されるので、必ず通知を飛ばす。
                     item.ThumbPathBig10 = thumbnailPath;
                     return true;
                 case 99:
-                    if (
-                        string.Equals(
-                            item.ThumbDetail,
-                            thumbnailPath,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        return false;
-                    }
+                    // 詳細サムネも同じパスへ上書きされるため、通知を抑止しない。
                     item.ThumbDetail = thumbnailPath;
                     return true;
                 default:
@@ -1142,14 +1102,25 @@ namespace IndigoMovieManager
                 return;
             }
 
+            int targetTabIndex = Tabs.SelectedIndex;
+            string currentDbName = MainVM?.DbInfo?.DBName ?? "";
+            string currentThumbFolder = ResolveWorkerThumbFolder(
+                currentDbName,
+                MainVM?.DbInfo?.ThumbFolder ?? ""
+            );
+            TabInfo targetTabInfo = new(targetTabIndex, currentDbName, currentThumbFolder);
+
             foreach (var mv in selectedItems)
             {
+                // 明示手動作成では stale な失敗固定マーカーを先に外す。
+                TryDeleteThumbnailErrorMarker(targetTabInfo.OutPath, mv.Movie_Path);
+
                 QueueObj tempObj = new()
                 {
                     MovieId = mv.Movie_Id,
                     MovieFullPath = mv.Movie_Path,
                     Hash = mv.Hash,
-                    Tabindex = Tabs.SelectedIndex,
+                    Tabindex = targetTabIndex,
                 };
                 _ = TryEnqueueThumbnailJob(tempObj);
             }
@@ -1171,16 +1142,39 @@ namespace IndigoMovieManager
                 return;
             }
 
+            int targetTabIndex = Tabs.SelectedIndex;
+            string currentDbName = MainVM?.DbInfo?.DBName ?? "";
+            string currentThumbFolder = ResolveWorkerThumbFolder(
+                currentDbName,
+                MainVM?.DbInfo?.ThumbFolder ?? ""
+            );
+            TabInfo targetTabInfo = new(targetTabIndex, currentDbName, currentThumbFolder);
+            QueueDbService queueDbService = ResolveCurrentQueueDbService();
+
             int acceptedCount = 0;
             int rejectedCount = 0;
             foreach (MovieRecords mv in selectedItems)
             {
+                // 救済再投入でも古い失敗固定マーカーを外し、再実行を妨げない。
+                TryDeleteThumbnailErrorMarker(targetTabInfo.OutPath, mv.Movie_Path);
+
+                int forcedResetCount = 0;
+                if (queueDbService != null)
+                {
+                    forcedResetCount = queueDbService.ForceRetryMovieToPending(
+                        mv.Movie_Path,
+                        targetTabIndex,
+                        DateTime.UtcNow,
+                        promoteToRecovery: true
+                    );
+                }
+
                 QueueObj rescueQueueObj = new()
                 {
                     MovieId = mv.Movie_Id,
                     MovieFullPath = mv.Movie_Path,
                     Hash = mv.Hash,
-                    Tabindex = Tabs.SelectedIndex,
+                    Tabindex = targetTabIndex,
                     IsRescueRequest = true,
                 };
 
@@ -1189,7 +1183,7 @@ namespace IndigoMovieManager
                     acceptedCount++;
                     DebugRuntimeLog.Write(
                         "thumbnail-repair",
-                        $"repair requested: movie='{mv.Movie_Path}' tab={rescueQueueObj.Tabindex}"
+                        $"repair requested: movie='{mv.Movie_Path}' tab={rescueQueueObj.Tabindex} forced_reset={forcedResetCount}"
                     );
                 }
                 else
@@ -1197,7 +1191,7 @@ namespace IndigoMovieManager
                     rejectedCount++;
                     DebugRuntimeLog.Write(
                         "thumbnail-repair",
-                        $"repair enqueue rejected: movie='{mv.Movie_Path}' tab={rescueQueueObj.Tabindex}"
+                        $"repair enqueue rejected: movie='{mv.Movie_Path}' tab={rescueQueueObj.Tabindex} forced_reset={forcedResetCount}"
                     );
                 }
             }

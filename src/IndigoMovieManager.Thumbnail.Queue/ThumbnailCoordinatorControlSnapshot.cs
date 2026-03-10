@@ -27,9 +27,13 @@ namespace IndigoMovieManager.Thumbnail
         public int QueuedNormalCount { get; init; }
         public int QueuedSlowCount { get; init; }
         public int QueuedRecoveryCount { get; init; }
+        public int LeasedNormalCount { get; init; }
+        public int LeasedSlowCount { get; init; }
+        public int LeasedRecoveryCount { get; init; }
         public int RunningNormalCount { get; init; }
         public int RunningSlowCount { get; init; }
         public int RunningRecoveryCount { get; init; }
+        public int HangSuspectedCount { get; init; }
         public int DemandNormalCount { get; init; }
         public int DemandSlowCount { get; init; }
         public int DemandRecoveryCount { get; init; }

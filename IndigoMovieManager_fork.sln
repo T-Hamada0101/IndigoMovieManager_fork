@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndigoMovieManager.Thumbnai
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndigoMovieManager.Thumbnail.ProgressViewer", "src\IndigoMovieManager.Thumbnail.ProgressViewer\IndigoMovieManager.Thumbnail.ProgressViewer.csproj", "{3BC020B0-7565-48FB-9F74-C90D795BB855}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "IndigoMovieManager.Thumbnail.Coordinator", "src\IndigoMovieManager.Thumbnail.Coordinator\IndigoMovieManager.Thumbnail.Coordinator.csproj", "{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndigoMovieManager.AdminService", "src\IndigoMovieManager.AdminService\IndigoMovieManager.AdminService.csproj", "{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}"
 EndProject
 Global
@@ -131,6 +133,18 @@ Global
 		{3BC020B0-7565-48FB-9F74-C90D795BB855}.Release|Any CPU.Build.0 = Release|x64
 		{3BC020B0-7565-48FB-9F74-C90D795BB855}.Release|x86.ActiveCfg = Release|x64
 		{3BC020B0-7565-48FB-9F74-C90D795BB855}.Release|x86.Build.0 = Release|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Debug|x64.ActiveCfg = Debug|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Debug|x64.Build.0 = Debug|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Debug|Any CPU.Build.0 = Debug|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Debug|x86.ActiveCfg = Debug|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Debug|x86.Build.0 = Debug|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Release|x64.ActiveCfg = Release|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Release|x64.Build.0 = Release|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Release|Any CPU.ActiveCfg = Release|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Release|Any CPU.Build.0 = Release|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Release|x86.ActiveCfg = Release|x64
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A}.Release|x86.Build.0 = Release|x64
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}.Debug|x64.ActiveCfg = Debug|x64
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}.Debug|x64.Build.0 = Debug|x64
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}.Debug|Any CPU.ActiveCfg = Debug|x64
@@ -155,6 +169,7 @@ Global
 		{BE490B01-2478-4D5C-8E49-1DA1A2D6DFD9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{E992227E-7022-4315-A5CA-EFCDD0B839D9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{3BC020B0-7565-48FB-9F74-C90D795BB855} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution

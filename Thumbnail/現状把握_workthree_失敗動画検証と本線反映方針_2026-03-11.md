@@ -1,0 +1,76 @@
+# 現状把握 workthree 失敗動画検証と本線反映方針
+
+最終更新: 2026-03-11
+
+## 1. この作業ラインの目的
+- `workthree` は「サムネイル失敗動画を実動画で検証し、成功パターンを本線へ戻す」ための専用ラインとする。
+- ここでの価値は機能追加そのものではなく、失敗条件と救済条件を実データで固めることにある。
+- 個別動画にだけ効く場当たり対応は避け、再現した失敗パターンを一般条件へ落とす。
+
+## 2. 現状
+- 本線側には、`SWF` 事前判定、`FailureDb`、短尺 `ffmpeg1pass` 救済、長尺 `autogen no-frames` 救済の一部が入っている。
+- それでも `E:\_サムネイル作成困難動画` の一括試行では未救済動画が残っている。
+- 2026-03-11 時点の一括試行結果は以下。
+  - 対象: 48件
+  - 成功: 39件
+  - 失敗: 9件
+  - 主な失敗理由: `Autogen produced a near-black thumbnail` 5件、`No frames decoded` 4件
+- `35967.mp4` は代表例として、`ffmpeg.exe` では中間位置 1200 秒で1枚抜ける一方、`autogen` は同条件でも `No frames decoded` になることを確認済み。
+
+## 3. このラインでやること
+- 失敗動画を実動画で再現し、`autogen` / `ffmpeg1pass` / repair のどこで救えるかを切り分ける。
+- 成功した条件を、ファイル名ではなく失敗パターンベースの一般条件へ変換する。
+- 明示テスト、playground テスト、`FailureDb`、runtime log を使って、成功理由と失敗理由を記録する。
+- 本線へ戻す時は「救済条件」「除外条件」「回帰テスト」をセットで渡す。
+
+## 4. このラインでやらないこと
+- 特定ファイル名だけを見て分岐する本番実装。
+- UI 都合の暫定逃げや、検証結果のない推測修正。
+- 本線の責務分離を崩す近道実装。
+
+## 5. 本線へ戻す判断基準
+- 失敗パターンが2件以上の実例、または代表ケース1件で再現性を確認できること。
+- 条件がファイル名依存ではなく、動画特性または実行結果で説明できること。
+- 追加した救済で既存成功ケースを壊さない回帰テストがあること。
+- 可能なら `FailureKind` と対策文書へ反映し、運用側が追えること。
+
+
+## 6. 本線へ戻す時に必ず欲しい判断材料
+- 動画ごとの失敗理由
+  - どの engine で、どのエラーで失敗したか。
+  - `near-black` と `No frames decoded` のような見た目が似た失敗も分離する。
+- 成功した条件
+  - 成功した `engine`、`seek`、`repair`、`preflight` 条件を動画単位で残す。
+  - 成功時に追加で必要だった分岐や補助条件があるなら併記する。
+- 再現率
+  - 1回だけ成功したのか、複数回同条件で再現するのかを分ける。
+  - 本線へ入れる条件は、最低でも代表ケースで再現確認済みであることを前提にする。
+- 本番導入位置
+  - `preflight`、`retry policy`、`repair workflow`、`finalizer` 前のどこへ入れるのが最小かを明記する。
+  - playground で効いた条件でも、本番導入位置が曖昧なら保留扱いにする。
+- 既存 `FailureKind` で足りるか
+  - 既存分類で吸収できるなら新設しない。
+  - 既存分類で判断が濁る場合だけ、`FailureKind` の追加または補助属性を検討する。
+
+## 6.1 受領後に本線側で直ちに切る観点
+- 一般化できる救済条件か。
+- 特定動画専用の回避策に落ちていないか。
+- 既存成功ケースへの副作用が小さい導入位置はどこか。
+- `FailureDb`、`HangSuspected`、失敗タブ、観測スクリプト、計画書のどこへ反映が必要か。
+## 7. 直近の重点対象
+- `Autogen produced a near-black thumbnail` の救済条件整理。
+- `No frames decoded` だが `ffmpeg.exe` では取得できる長尺動画の一般救済。
+- `画像1枚あり顔.mkv`、`画像1枚ありページ.mkv`、`ライブ配信真空エラー2_ghq5_temp.mp4` など未救済ケースの掘り下げ。
+
+## 8. 関連資料
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\サムネイルが作成できない動画対策.md`
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\設計整理_FailureDbExtraJson先行反映範囲_2026-03-11.md`
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\DifficultVideoBatchPlaygroundTests.cs`
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\AutogenRepairPlaygroundTests.cs`
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\FfmpegShortClipRecoveryPlaygroundTests.cs`
+
+## 9. 備考
+- `workthree` は検証専用ラインであり、ここで確定した一般条件だけを本線へ戻す。
+- 本線へ戻す際は、検証用 playground そのものを持ち込むのではなく、必要最小限の実装と回帰テストへ畳む。

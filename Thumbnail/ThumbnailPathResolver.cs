@@ -16,7 +16,8 @@ namespace IndigoMovieManager.Thumbnail
                 body = Path.GetFileNameWithoutExtension(movieNameOrPath) ?? "";
             }
 
-            return $"{body}.#{hash ?? ""}.jpg";
+            string safeHash = ResolveSafeHash(movieNameOrPath, hash);
+            return $"{body}.#{safeHash}.jpg";
         }
 
         // 出力フォルダとファイル名を結合して最終パスを返す。
@@ -64,6 +65,25 @@ namespace IndigoMovieManager.Thumbnail
 
             string fileName = Path.GetFileName(thumbnailPath);
             return fileName.Contains($".#{ErrorMarkerHash}.", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // hash 欠落時でも別動画と衝突しないよう、パス文字列から安定代替値を作る。
+        private static string ResolveSafeHash(string movieNameOrPath, string hash)
+        {
+            string trimmedHash = (hash ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(trimmedHash))
+            {
+                return trimmedHash;
+            }
+
+            string source = movieNameOrPath ?? "";
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return "nohash";
+            }
+
+            int stableHash = StringComparer.OrdinalIgnoreCase.GetHashCode(source);
+            return $"path{stableHash:x8}";
         }
     }
 }

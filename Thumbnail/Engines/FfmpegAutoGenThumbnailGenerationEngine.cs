@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -292,6 +293,8 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 }
 
                 List<double> captureSecs = ResolveCaptureSeconds(context.ThumbInfo, durationSec);
+                List<double> actualCaptureSecs = [.. captureSecs];
+                WriteFinalThumbInfoDebugLog(context, durationSec, captureSecs);
 
                 pCodecContext = ffmpeg.avcodec_alloc_context3(pCodec);
                 ffmpeg.avcodec_parameters_to_context(pCodecContext, pStream->codecpar);
@@ -334,87 +337,71 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                 pPacket = ffmpeg.av_packet_alloc();
                 pFrame = ffmpeg.av_frame_alloc();
+                bool enableSeekDebugLog = ShouldWriteSeekDebugLog(context.MovieFullPath);
 
                 foreach (double sec in captureSecs)
                 {
                     cts.ThrowIfCancellationRequested();
-
-                    long ts = (long)(sec / ffmpeg.av_q2d(pStream->time_base));
-                    ffmpeg.av_seek_frame(
-                        pFormatContext,
-                        pStream->index,
-                        ts,
-                        ffmpeg.AVSEEK_FLAG_BACKWARD
-                    );
-                    ffmpeg.avcodec_flush_buffers(pCodecContext);
-
-                    bool frameCaptured = false;
-                    bool streamEnded = false;
-                    while (
-                        !frameCaptured
-                        && !streamEnded
-                        && ffmpeg.av_read_frame(pFormatContext, pPacket) >= 0
+                    if (
+                        TryCaptureFrameAtSecond(
+                            context.MovieFullPath,
+                            sec,
+                            pFormatContext,
+                            pStream,
+                            pCodecContext,
+                            pPacket,
+                            pFrame,
+                            pSwsContext,
+                            targetWidth,
+                            targetHeight,
+                            enableSeekDebugLog,
+                            cts,
+                            out Bitmap capturedBitmap
+                        )
                     )
                     {
-                        cts.ThrowIfCancellationRequested();
-                        try
-                        {
-                            if (pPacket->stream_index != pStream->index)
-                            {
-                                continue;
-                            }
-
-                            ret = ffmpeg.avcodec_send_packet(pCodecContext, pPacket);
-                            if (
-                                ret < 0
-                                && ret != ffmpeg.AVERROR(ffmpeg.EAGAIN)
-                                && ret != ffmpeg.AVERROR_EOF
-                            )
-                            {
-                                continue;
-                            }
-
-                            while (true)
-                            {
-                                ret = ffmpeg.avcodec_receive_frame(pCodecContext, pFrame);
-                                if (ret == 0)
-                                {
-                                    Bitmap bmp = ConvertFrameToBitmap(
-                                        pFrame,
-                                        pSwsContext,
-                                        targetWidth,
-                                        targetHeight
-                                    );
-                                    if (bmp != null)
-                                    {
-                                        bitmaps.Add(bmp);
-                                        frameCaptured = true;
-                                    }
-                                    ffmpeg.av_frame_unref(pFrame);
-                                    break;
-                                }
-
-                                if (ret == ffmpeg.AVERROR(ffmpeg.EAGAIN))
-                                {
-                                    break;
-                                }
-
-                                if (ret == ffmpeg.AVERROR_EOF)
-                                {
-                                    streamEnded = true;
-                                    break;
-                                }
-
-                                break;
-                            }
-                        }
-                        finally
-                        {
-                            ffmpeg.av_packet_unref(pPacket);
-                        }
+                        bitmaps.Add(capturedBitmap);
                     }
+                }
 
-                    ffmpeg.av_frame_unref(pFrame);
+                if (bitmaps.Count < 1)
+                {
+                    ThumbnailRuntimeLog.Write(
+                        "autogen-header-frame-fallback",
+                        $"fallback requested: movie='{context.MovieFullPath}' duration_sec={durationSec:0.###} cols={cols} rows={rows} "
+                            + $"thumb_sec=[{string.Join(",", captureSecs.Select(x => x.ToString("0.###", CultureInfo.InvariantCulture)))}]"
+                    );
+                    Bitmap headerFallbackBitmap = TryCaptureNearHeaderFallbackFrame(
+                        context.MovieFullPath,
+                        durationSec,
+                        pFormatContext,
+                        pStream,
+                        pCodecContext,
+                        pPacket,
+                        pFrame,
+                        pSwsContext,
+                        targetWidth,
+                        targetHeight,
+                        enableSeekDebugLog,
+                        cts,
+                        out double headerFallbackSec
+                    );
+                    if (headerFallbackBitmap != null)
+                    {
+                        // 先頭付近で1枚だけ拾えた時も、既存タイル形式で表示できるよう複製する。
+                        ThumbnailRuntimeLog.Write(
+                            "autogen-header-frame-fallback",
+                            $"fallback tile replicate: movie='{context.MovieFullPath}' tile_count={cols * rows}"
+                        );
+                        for (int i = 0; i < cols * rows; i++)
+                        {
+                            bitmaps.Add((Bitmap)headerFallbackBitmap.Clone());
+                        }
+                        actualCaptureSecs = Enumerable
+                            .Repeat(headerFallbackSec, cols * rows)
+                            .ToList();
+                        headerFallbackBitmap.Dispose();
+                    }
                 }
 
                 ThumbnailPreviewFrame previewFrame = null;
@@ -449,6 +436,18 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         "No frames decoded"
                     );
                 }
+
+                ThumbInfo saveThumbInfo = ThumbnailImageUtility.RebuildThumbInfoWithCaptureSeconds(
+                    context.ThumbInfo,
+                    actualCaptureSecs
+                );
+                using FileStream dest = new(
+                    context.SaveThumbFileName,
+                    FileMode.Append,
+                    FileAccess.Write
+                );
+                dest.Write(saveThumbInfo.SecBuffer);
+                dest.Write(saveThumbInfo.InfoBuffer);
 
                 return ThumbnailResultFactory.CreateSuccess(
                     context.SaveThumbFileName,
@@ -485,6 +484,283 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     bmp.Dispose();
                 }
             }
+        }
+
+        // 調査対象になりやすいAVI系だけ、seek詳細ログを出してデコード不能かシーク外しを判別する。
+        private static bool ShouldWriteSeekDebugLog(string movieFullPath)
+        {
+            string extension = Path.GetExtension(movieFullPath ?? "");
+            return string.Equals(extension, ".avi", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(extension, ".divx", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // autogen入口で最終的に使うThumbSecとcapture秒を残し、混入地点を切り分ける。
+        private static void WriteFinalThumbInfoDebugLog(
+            ThumbnailJobContext context,
+            double? durationSec,
+            List<double> captureSecs
+        )
+        {
+            if (context == null || !ShouldWriteSeekDebugLog(context.MovieFullPath))
+            {
+                return;
+            }
+
+            string thumbSecText =
+                context.ThumbInfo?.ThumbSec == null ? "" : string.Join(",", context.ThumbInfo.ThumbSec);
+            string captureSecText =
+                captureSecs == null
+                    ? ""
+                    : string.Join(",", captureSecs.Select(sec => sec.ToString("0.###")));
+            string queuePanelText = context.QueueObj?.ThumbPanelPos?.ToString() ?? "";
+            string queueTimeText = context.QueueObj?.ThumbTimePos?.ToString() ?? "";
+            ThumbnailRuntimeLog.Write(
+                "thumbinfo-final",
+                $"engine=autogen movie='{context.MovieFullPath}' duration_sec={durationSec:0.###} "
+                    + $"manual={context.IsManual} queue_panel={queuePanelText} queue_time={queueTimeText} "
+                    + $"thumb_sec=[{thumbSecText}] capture_sec=[{captureSecText}]"
+            );
+        }
+
+        // 通常 seek と先頭 fallback の両方で使う、指定秒からの単発フレーム取得。
+        private unsafe static bool TryCaptureFrameAtSecond(
+            string movieFullPath,
+            double sec,
+            AVFormatContext* pFormatContext,
+            AVStream* pStream,
+            AVCodecContext* pCodecContext,
+            AVPacket* pPacket,
+            AVFrame* pFrame,
+            SwsContext* pSwsContext,
+            int targetWidth,
+            int targetHeight,
+            bool enableSeekDebugLog,
+            CancellationToken cts,
+            out Bitmap capturedBitmap
+        )
+        {
+            capturedBitmap = null;
+
+            double timeBaseSec = ffmpeg.av_q2d(pStream->time_base);
+            long ts = (long)(sec / timeBaseSec);
+            int seekRet = ffmpeg.av_seek_frame(
+                pFormatContext,
+                pStream->index,
+                ts,
+                ffmpeg.AVSEEK_FLAG_BACKWARD
+            );
+            if (enableSeekDebugLog)
+            {
+                ThumbnailRuntimeLog.Write(
+                    "autogen-seek",
+                    $"seek start: movie='{movieFullPath}' requested_sec={sec:0.###} ts={ts} time_base={timeBaseSec:0.########} ret={seekRet}"
+                );
+            }
+            ffmpeg.avcodec_flush_buffers(pCodecContext);
+
+            bool frameCaptured = false;
+            bool streamEnded = false;
+            int readPacketCount = 0;
+            int skippedPacketCount = 0;
+            int sentPacketCount = 0;
+            int receiveFrameCount = 0;
+            while (
+                !frameCaptured
+                && !streamEnded
+                && ffmpeg.av_read_frame(pFormatContext, pPacket) >= 0
+            )
+            {
+                cts.ThrowIfCancellationRequested();
+                readPacketCount++;
+                try
+                {
+                    if (pPacket->stream_index != pStream->index)
+                    {
+                        skippedPacketCount++;
+                        continue;
+                    }
+
+                    int ret = ffmpeg.avcodec_send_packet(pCodecContext, pPacket);
+                    if (
+                        ret < 0
+                        && ret != ffmpeg.AVERROR(ffmpeg.EAGAIN)
+                        && ret != ffmpeg.AVERROR_EOF
+                    )
+                    {
+                        if (enableSeekDebugLog)
+                        {
+                            ThumbnailRuntimeLog.Write(
+                                "autogen-seek",
+                                $"send packet skipped: movie='{movieFullPath}' requested_sec={sec:0.###} ret={ret} err='{GetErrorMessage(ret)}'"
+                            );
+                        }
+                        continue;
+                    }
+                    sentPacketCount++;
+
+                    while (true)
+                    {
+                        ret = ffmpeg.avcodec_receive_frame(pCodecContext, pFrame);
+                        if (ret == 0)
+                        {
+                            receiveFrameCount++;
+                            Bitmap bmp = ConvertFrameToBitmap(
+                                pFrame,
+                                pSwsContext,
+                                targetWidth,
+                                targetHeight
+                            );
+                            if (bmp != null)
+                            {
+                                capturedBitmap = bmp;
+                                frameCaptured = true;
+                                if (enableSeekDebugLog)
+                                {
+                                    double decodedPtsSec =
+                                        pFrame->best_effort_timestamp != ffmpeg.AV_NOPTS_VALUE
+                                            ? pFrame->best_effort_timestamp * timeBaseSec
+                                            : -1;
+                                    ThumbnailRuntimeLog.Write(
+                                        "autogen-seek",
+                                        $"seek hit: movie='{movieFullPath}' requested_sec={sec:0.###} decoded_pts_sec={decodedPtsSec:0.###} read_packets={readPacketCount} skipped_packets={skippedPacketCount} sent_packets={sentPacketCount} received_frames={receiveFrameCount}"
+                                    );
+                                }
+                            }
+                            ffmpeg.av_frame_unref(pFrame);
+                            break;
+                        }
+
+                        if (ret == ffmpeg.AVERROR(ffmpeg.EAGAIN))
+                        {
+                            break;
+                        }
+
+                        if (ret == ffmpeg.AVERROR_EOF)
+                        {
+                            streamEnded = true;
+                            break;
+                        }
+
+                        break;
+                    }
+                }
+                finally
+                {
+                    ffmpeg.av_packet_unref(pPacket);
+                }
+            }
+
+            ffmpeg.av_frame_unref(pFrame);
+            if (enableSeekDebugLog && !frameCaptured)
+            {
+                ThumbnailRuntimeLog.Write(
+                    "autogen-seek",
+                    $"seek miss: movie='{movieFullPath}' requested_sec={sec:0.###} read_packets={readPacketCount} skipped_packets={skippedPacketCount} sent_packets={sentPacketCount} received_frames={receiveFrameCount} stream_ended={streamEnded}"
+                );
+            }
+
+            return frameCaptured;
+        }
+
+        // 通常の代表秒が全部外れた時だけ、ヘッダー直後相当の先頭付近を浅く探る。
+        private unsafe static Bitmap TryCaptureNearHeaderFallbackFrame(
+            string movieFullPath,
+            double? durationSec,
+            AVFormatContext* pFormatContext,
+            AVStream* pStream,
+            AVCodecContext* pCodecContext,
+            AVPacket* pPacket,
+            AVFrame* pFrame,
+            SwsContext* pSwsContext,
+            int targetWidth,
+            int targetHeight,
+            bool enableSeekDebugLog,
+            CancellationToken cts,
+            out double capturedSec
+        )
+        {
+            capturedSec = 0;
+            List<double> candidateSecs = BuildHeaderFallbackCandidateSeconds(durationSec);
+            ThumbnailRuntimeLog.Write(
+                "autogen-header-frame-fallback",
+                $"fallback candidates: movie='{movieFullPath}' duration_sec={durationSec:0.###} candidates=[{FormatCandidateSeconds(candidateSecs)}]"
+            );
+            foreach (double sec in candidateSecs)
+            {
+                ThumbnailRuntimeLog.Write(
+                    "autogen-header-frame-fallback",
+                    $"fallback try: movie='{movieFullPath}' sec={sec:0.###}"
+                );
+                if (
+                    TryCaptureFrameAtSecond(
+                        movieFullPath,
+                        sec,
+                        pFormatContext,
+                        pStream,
+                        pCodecContext,
+                        pPacket,
+                        pFrame,
+                        pSwsContext,
+                        targetWidth,
+                        targetHeight,
+                        enableSeekDebugLog,
+                        cts,
+                        out Bitmap capturedBitmap
+                    )
+                )
+                {
+                    ThumbnailRuntimeLog.Write(
+                        "autogen-header-frame-fallback",
+                        $"fallback hit: movie='{movieFullPath}' sec={sec:0.###}"
+                    );
+                    capturedSec = sec;
+                    return capturedBitmap;
+                }
+            }
+
+            ThumbnailRuntimeLog.Write(
+                "autogen-header-frame-fallback",
+                $"fallback exhausted: movie='{movieFullPath}' candidates=[{FormatCandidateSeconds(candidateSecs)}]"
+            );
+            return null;
+        }
+
+        // 先頭の黒味やロード直後も考慮して、少しずつ後ろへずらした候補を作る。
+        // テストからも同じ候補列を検証できるよう internal にしている。
+        internal static List<double> BuildHeaderFallbackCandidateSeconds(double? durationSec)
+        {
+            double[] baseCandidates = [0d, 0.1d, 0.25d, 0.5d, 1d, 2d];
+            double maxSec = durationSec.HasValue && durationSec.Value > 0
+                ? Math.Max(0d, durationSec.Value - 0.001d)
+                : 2d;
+            HashSet<long> seen = [];
+            List<double> result = [];
+            foreach (double candidate in baseCandidates)
+            {
+                double normalized = Math.Max(0d, Math.Min(candidate, maxSec));
+                long key = (long)Math.Round(normalized * 1000d);
+                if (seen.Add(key))
+                {
+                    result.Add(normalized);
+                }
+            }
+
+            return result;
+        }
+
+        private static string FormatCandidateSeconds(IReadOnlyList<double> candidateSecs)
+        {
+            if (candidateSecs == null || candidateSecs.Count < 1)
+            {
+                return "";
+            }
+
+            List<string> parts = [];
+            foreach (double sec in candidateSecs)
+            {
+                parts.Add(sec.ToString("0.###"));
+            }
+            return string.Join(",", parts);
         }
 
         // 1秒未満の超短尺は整数秒だけだと全部0秒へ潰れるため、実デコード位置だけ実時間で均等化する。
@@ -723,7 +999,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
         }
 
-        private unsafe Bitmap ConvertFrameToBitmap(
+        private static unsafe Bitmap ConvertFrameToBitmap(
             AVFrame* pFrame,
             SwsContext* pSwsContext,
             int width,

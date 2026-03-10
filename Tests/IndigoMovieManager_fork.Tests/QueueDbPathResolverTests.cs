@@ -1,6 +1,7 @@
 using System.Data.SQLite;
 using System.Globalization;
 using System.Linq;
+using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.QueueDb;
 
 namespace IndigoMovieManager_fork.Tests;
@@ -1046,6 +1047,412 @@ WHERE MainDbPathHash = @MainDbPathHash;";
 
             Assert.That(onlyNormal.Count, Is.EqualTo(1));
             Assert.That(onlyNormal[0].MoviePath, Is.EqualTo(normalMoviePath));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void GetPendingAndLease_workerExitedHealthがあれば未来leaseのProcessingも回収する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-dead-owner-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-dead-owner-{Guid.NewGuid():N}.mp4"
+        );
+        string staleOwner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        string nextOwner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            using (SQLiteConnection connection = new($"Data Source={queueDbPath}"))
+            {
+                connection.Open();
+                using SQLiteCommand command = connection.CreateCommand();
+                command.CommandText = @"
+UPDATE ThumbnailQueue
+SET
+    Status = @Processing,
+    OwnerInstanceId = @OwnerInstanceId,
+    LeaseUntilUtc = @LeaseUntilUtc
+WHERE TabIndex = 0;";
+                command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+                command.Parameters.AddWithValue("@OwnerInstanceId", staleOwner);
+                command.Parameters.AddWithValue(
+                    "@LeaseUntilUtc",
+                    nowUtc.AddMinutes(5).ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture)
+                );
+                _ = command.ExecuteNonQuery();
+            }
+
+            ThumbnailWorkerHealthStore.Save(
+                new ThumbnailWorkerHealthSnapshot
+                {
+                    MainDbFullPath = mainDbPath,
+                    OwnerInstanceId = staleOwner,
+                    WorkerRole = ThumbnailQueueWorkerRole.Normal.ToString(),
+                    State = ThumbnailWorkerHealthState.Exited,
+                    ReasonCode = ThumbnailWorkerHealthReasonCode.Exception,
+                    Message = "test exited",
+                    UpdatedAtUtc = nowUtc,
+                    LastHeartbeatUtc = nowUtc,
+                }
+            );
+
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                nextOwner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc.AddSeconds(1)
+            );
+
+            Assert.That(leased.Count, Is.EqualTo(1));
+            Assert.That(leased[0].MoviePath, Is.EqualTo(moviePath));
+            Assert.That(leased[0].OwnerInstanceId, Is.EqualTo(nextOwner));
+
+            using SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}");
+            verifyConnection.Open();
+            using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = @"
+SELECT Status, OwnerInstanceId
+FROM ThumbnailQueue
+WHERE TabIndex = 0;";
+            using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+            Assert.That(reader.Read(), Is.True);
+            Assert.That(reader.GetInt32(0), Is.EqualTo((int)ThumbnailQueueStatus.Processing));
+            Assert.That(reader.GetString(1), Is.EqualTo(nextOwner));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void MarkLeaseAsRunning後だけStartedAtUtcが入りExtendLeaseが効く()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-running-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(Path.GetTempPath(), $"movie-running-{Guid.NewGuid():N}.mp4");
+        string owner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+
+            queueDbService.ExtendLease(
+                leased[0].QueueId,
+                owner,
+                nowUtc.AddMinutes(10),
+                nowUtc.AddSeconds(1)
+            );
+
+            using (SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}"))
+            {
+                verifyConnection.Open();
+                using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+                verifyCommand.CommandText = @"
+SELECT LeaseUntilUtc, StartedAtUtc
+FROM ThumbnailQueue
+WHERE QueueId = @QueueId;";
+                verifyCommand.Parameters.AddWithValue("@QueueId", leased[0].QueueId);
+                using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+                Assert.That(reader.Read(), Is.True);
+                Assert.That(reader.IsDBNull(1) ? "" : reader.GetString(1), Is.EqualTo(""));
+            }
+
+            int runningUpdated = queueDbService.MarkLeaseAsRunning(
+                leased[0].QueueId,
+                owner,
+                nowUtc.AddSeconds(2)
+            );
+            Assert.That(runningUpdated, Is.EqualTo(1));
+
+            queueDbService.ExtendLease(
+                leased[0].QueueId,
+                owner,
+                nowUtc.AddMinutes(10),
+                nowUtc.AddSeconds(3)
+            );
+
+            using SQLiteConnection verifyConnection2 = new($"Data Source={queueDbPath}");
+            verifyConnection2.Open();
+            using SQLiteCommand verifyCommand2 = verifyConnection2.CreateCommand();
+            verifyCommand2.CommandText = @"
+SELECT LeaseUntilUtc, StartedAtUtc
+FROM ThumbnailQueue
+WHERE QueueId = @QueueId;";
+            verifyCommand2.Parameters.AddWithValue("@QueueId", leased[0].QueueId);
+            using SQLiteDataReader reader2 = verifyCommand2.ExecuteReader();
+            Assert.That(reader2.Read(), Is.True);
+            Assert.That(reader2.IsDBNull(0) ? "" : reader2.GetString(0), Does.Contain("T"));
+            Assert.That(reader2.IsDBNull(1) ? "" : reader2.GetString(1), Does.Contain("T"));
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void UpdateStatusとForceRetryMovieToPendingはStartedAtUtcを必ずクリアする()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-started-clear-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string owner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        string owner2 = $"thumb-idle:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        string moviePath1 = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-started-clear-a-{Guid.NewGuid():N}.mp4"
+        );
+        string moviePath2 = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-started-clear-b-{Guid.NewGuid():N}.mp4"
+        );
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath1,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath1),
+                        TabIndex = 0,
+                    },
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath2,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath2),
+                        TabIndex = 1,
+                    },
+                ],
+                nowUtc
+            );
+
+            QueueDbLeaseItem leased1 = queueDbService
+                .GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc,
+                    preferredTabIndex: 0
+                )
+                .Single();
+            QueueDbLeaseItem leased2 = queueDbService
+                .GetPendingAndLease(
+                    owner2,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc.AddSeconds(1),
+                    preferredTabIndex: 1
+                )
+                .Single();
+
+            _ = queueDbService.MarkLeaseAsRunning(leased1.QueueId, owner, nowUtc.AddSeconds(2));
+            _ = queueDbService.MarkLeaseAsRunning(leased2.QueueId, owner2, nowUtc.AddSeconds(3));
+
+            int updated = queueDbService.UpdateStatus(
+                leased1.QueueId,
+                owner,
+                ThumbnailQueueStatus.Pending,
+                nowUtc.AddSeconds(4),
+                lastError: "retry",
+                incrementAttemptCount: true
+            );
+            int retried = queueDbService.ForceRetryMovieToPending(
+                moviePath2,
+                tabIndex: 1,
+                utcNow: nowUtc.AddSeconds(5),
+                promoteToRecovery: true
+            );
+
+            Assert.That(updated, Is.EqualTo(1));
+            Assert.That(retried, Is.EqualTo(1));
+
+            using SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}");
+            verifyConnection.Open();
+            using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = @"
+SELECT TabIndex, Status, AttemptCount, IsRescueRequest, OwnerInstanceId, LeaseUntilUtc, StartedAtUtc
+FROM ThumbnailQueue
+WHERE TabIndex IN (0, 1)
+ORDER BY TabIndex;";
+            using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+
+            Assert.That(reader.Read(), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(reader.GetInt32(0), Is.EqualTo(0));
+                Assert.That(reader.GetInt32(1), Is.EqualTo((int)ThumbnailQueueStatus.Pending));
+                Assert.That(reader.GetInt32(2), Is.EqualTo(1));
+                Assert.That(reader.GetInt32(3), Is.EqualTo(0));
+                Assert.That(reader.IsDBNull(4) ? "" : reader.GetString(4), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(5) ? "" : reader.GetString(5), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(6) ? "" : reader.GetString(6), Is.EqualTo(""));
+            });
+
+            Assert.That(reader.Read(), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(reader.GetInt32(0), Is.EqualTo(1));
+                Assert.That(reader.GetInt32(1), Is.EqualTo((int)ThumbnailQueueStatus.Pending));
+                Assert.That(reader.GetInt32(2), Is.EqualTo(2));
+                Assert.That(reader.GetInt32(3), Is.EqualTo(1));
+                Assert.That(reader.IsDBNull(4) ? "" : reader.GetString(4), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(5) ? "" : reader.GetString(5), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(6) ? "" : reader.GetString(6), Is.EqualTo(""));
+            });
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void ResetFailedToPendingはStartedAtUtcをクリアしRecovery対象を維持する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-reset-failed-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string owner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        string moviePath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-reset-failed-{Guid.NewGuid():N}.mp4"
+        );
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            QueueDbLeaseItem leased = queueDbService
+                .GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc
+                )
+                .Single();
+
+            _ = queueDbService.MarkLeaseAsRunning(leased.QueueId, owner, nowUtc.AddSeconds(1));
+            _ = queueDbService.UpdateStatus(
+                leased.QueueId,
+                owner,
+                ThumbnailQueueStatus.Failed,
+                nowUtc.AddSeconds(2),
+                lastError: "final",
+                incrementAttemptCount: true
+            );
+            _ = queueDbService.ForceRetryMovieToPending(
+                moviePath,
+                tabIndex: 0,
+                utcNow: nowUtc.AddSeconds(3),
+                promoteToRecovery: true
+            );
+
+            QueueDbLeaseItem recoveryLease = queueDbService
+                .GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc.AddSeconds(4)
+                )
+                .Single();
+
+            _ = queueDbService.MarkLeaseAsRunning(recoveryLease.QueueId, owner, nowUtc.AddSeconds(5));
+            _ = queueDbService.UpdateStatus(
+                recoveryLease.QueueId,
+                owner,
+                ThumbnailQueueStatus.Failed,
+                nowUtc.AddSeconds(6),
+                lastError: "failed again",
+                incrementAttemptCount: true
+            );
+
+            int resetCount = queueDbService.ResetFailedToPending(nowUtc.AddSeconds(7));
+            Assert.That(resetCount, Is.EqualTo(1));
+
+            using SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}");
+            verifyConnection.Open();
+            using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = @"
+SELECT Status, AttemptCount, IsRescueRequest, OwnerInstanceId, LeaseUntilUtc, StartedAtUtc, LastError
+FROM ThumbnailQueue
+WHERE TabIndex = 0;";
+            using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+            Assert.That(reader.Read(), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(reader.GetInt32(0), Is.EqualTo((int)ThumbnailQueueStatus.Pending));
+                Assert.That(reader.GetInt32(1), Is.GreaterThanOrEqualTo(2));
+                Assert.That(reader.GetInt32(2), Is.EqualTo(1));
+                Assert.That(reader.IsDBNull(3) ? "" : reader.GetString(3), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(4) ? "" : reader.GetString(4), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(5) ? "" : reader.GetString(5), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(6) ? "" : reader.GetString(6), Is.EqualTo(""));
+            });
         }
         finally
         {

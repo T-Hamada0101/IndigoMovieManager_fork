@@ -7,17 +7,24 @@
 
 ## 1. 目的
 - メインタブに `サムネ失敗` タブを追加する。
-- QueueDBの `Status=Failed`（最終状態）を全件一覧表示する。
+- サムネ失敗専用DBを読み、失敗情報を全件一覧表示する。
 - DataGridに調査必要情報を欠損なく表示する。
 
 ## 2. 要件（確定）
-- 対象は「現在開いているMainDBに紐づくQueueDB」の `Status=Failed` のみ。
-- 最終失敗の定義:
-  - `UNIQUE(MainDbPathHash, MoviePathKey, TabIndex)` の現行行が `Failed`。
+- 対象は「現在開いているMainDBに紐づくサムネ失敗専用DB」の行のみ。
+- `サムネ失敗` タブ active 時は、サムネ失敗専用DBを正として表示する。
+- 初版では最終失敗だけでなく、専用DBに記録された失敗履歴も表示対象に含めてよい。
 - 表示列（全情報）:
-  - `QueueId`, `MainDbPathHash`, `MoviePath`, `MoviePathKey`, `TabIndex`, `MovieSizeBytes`
-  - `ThumbPanelPos`, `ThumbTimePos`, `Status`, `AttemptCount`, `LastError`
-  - `OwnerInstanceId`, `LeaseUntilUtc`, `CreatedAtUtc`, `UpdatedAtUtc`
+  - `DbName`, `MoviePath`, `PanelType`, `MovieSizeBytes`, `Duration`
+  - `Reason`, `FailureKind`, `AttemptCount`
+  - `OwnerInstanceId`, `OccurredAtUtc`, `UpdatedAtUtc`
+  - 将来列:
+    - `TabIndex`
+    - `ThumbPanelPos`
+    - `ThumbTimePos`
+    - `EngineId`
+    - `WorkerRole`
+    - `DebugContextJson`
 - 初版はシンプル実装:
   - 反映は全置換（`Clear + Add`）。
   - 差分更新は将来拡張。
@@ -27,7 +34,7 @@
 
 ## 3. スコープ
 - IN
-  - QueueDB失敗一覧取得API
+  - サムネ失敗専用DB 読み取りAPI
   - ViewModelコレクション追加
   - MainWindowタブ + DataGrid追加
   - 非同期更新・DB切替競合ガード・dirty制御
@@ -37,7 +44,7 @@
   - サムネイルエンジン失敗判定変更
 
 ## 4. 設計方針
-- 取得元はQueueDBを正とする（UI一時プレースホルダは使わない）。
+- 取得元はサムネ失敗専用DBを正とする。
 - UIブロック回避のため、取得はバックグラウンド実行。
 - 失敗少件数前提で初版は全置換反映。
 - DataGrid仮想化を有効化し、将来増加にも備える。
@@ -45,13 +52,13 @@
 
 ## 5. 実装詳細
 
-### 5.1 QueueDB取得API
-- `QueueDbService` に `GetFailedItems()` を追加（戻り値 `List<QueueDbFailedItem>`）。
-- SQL:
-  - `MainDbPathHash = current`
-  - `Status = Failed`
-  - `ORDER BY UpdatedAtUtc DESC, QueueId DESC`
-- DTOは表示15項目を保持。
+### 5.1 失敗専用DB取得API
+- `ThumbnailFailureDebugDbService` 相当の専用サービスを追加する。
+- 取得対象:
+  - `MainDbFullPath = current`
+  - `ORDER BY OccurredAtUtc DESC, FailureId DESC`
+- DTOは失敗タブ表示列を保持する。
+- QueueDB の `Failed` 一覧は、専用DB未整備時の暫定 fallback に留める。
 
 ### 5.2 更新コーディネータ（明文化）
 - `MainWindow` 側に以下を追加:
@@ -67,6 +74,7 @@
 ### 5.3 トリガー仕様（固定）
 - dirtyを立てる契機:
   - `onJobCompleted`（成功/失敗問わず）
+  - debug failure insert 完了時
   - `ResetFailedThumbnailJobsForCurrentDb()` 実行後
   - MainDBオープン/切替時
 - 実際に再読込する契機:
@@ -108,14 +116,15 @@
 
 | ID | 状態 | タスク | 対象ファイル | 完了条件 |
 |---|---|---|---|---|
-| FAILTAB-001 | 未着手 | 失敗一覧DTOと取得API追加 | `src/IndigoMovieManager.Thumbnail.Queue/QueueDb/QueueDbService.cs` | `Failed` 行のみ取得できる |
+| FAILTAB-001 | 未着手 | 失敗専用DB DTOと取得API追加 | `ThumbnailFailureDebugDbService` 相当 | 現在DB向け失敗行を取得できる |
 | FAILTAB-002 | 未着手 | 失敗一覧コレクション追加 | `ModelViews/MainWindowViewModel.cs` | バインド可能な公開プロパティ追加 |
 | FAILTAB-003 | 未着手 | `サムネ失敗` タブ + DataGrid追加 | `MainWindow.xaml` | 全列が表示される |
 | FAILTAB-004 | 未着手 | 非同期取得 + 全置換反映実装 | `MainWindow.xaml.cs` | UI操作を阻害しない |
 | FAILTAB-005 | 未着手 | dirty制御（非選択時は再読込抑止）実装 | `MainWindow.xaml.cs` | 非選択時にDB再読込しない |
 | FAILTAB-006 | 未着手 | refreshRevision競合ガード実装 | `MainWindow.xaml.cs` | 旧DB結果が混在しない |
-| FAILTAB-007 | 未着手 | トリガー接続（onJobCompleted/Reset/DB切替/タブ選択） | `Thumbnail/MainWindow.ThumbnailCreation.cs` `Thumbnail/MainWindow.ThumbnailQueue.cs` `MainWindow.xaml.cs` | 更新発火が仕様通り |
-| FAILTAB-008 | 未着手 | テスト追加（取得/並び順/dirty/デバウンス/DB切替破棄） | `Tests/IndigoMovieManager_fork.Tests/*` | 主要回帰を自動検知 |
+| FAILTAB-007 | 未着手 | トリガー接続（onJobCompleted/debug insert/Reset/DB切替/タブ選択） | `Thumbnail/MainWindow.ThumbnailCreation.cs` `Thumbnail/MainWindow.ThumbnailQueue.cs` `MainWindow.xaml.cs` | 更新発火が仕様通り |
+| FAILTAB-008 | 未着手 | 専用DB active 時の表示切替実装 | `MainWindow.xaml.cs` | active 時は専用DB表示になる |
+| FAILTAB-009 | 未着手 | テスト追加（取得/並び順/dirty/デバウンス/DB切替破棄） | `Tests/IndigoMovieManager_fork.Tests/*` | 主要回帰を自動検知 |
 
 ## 7. 検証項目
 - 失敗0件: 空DataGridで崩れない。
@@ -132,3 +141,7 @@
   - 対策: dirtyフラグ方式で、非選択中イベントを選択時に必ず回収。
 - リスク: DB切替直後の取り違え
   - 対策: `requestedMainDbPath` + `requestedRevision` 一致時のみ反映。
+
+## 9. 関連文書
+- [連絡用doc_サムネ失敗専用DB先行実装_2026-03-10.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/%E9%80%A3%E7%B5%A1%E7%94%A8doc_%E3%82%B5%E3%83%A0%E3%83%8D%E5%A4%B1%E6%95%97%E5%B0%82%E7%94%A8DB%E5%85%88%E8%A1%8C%E5%AE%9F%E8%A3%85_2026-03-10.md)
+- [Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/Implementation%20Plan_Queue%E5%AE%9F%E8%A1%8C%E7%8A%B6%E6%85%8B%E5%88%86%E9%9B%A2%E3%81%A8HangSuspected_%E5%AE%9F%E8%A3%85%E8%A8%88%E7%94%BB%E5%85%BC%E3%82%BF%E3%82%B9%E3%82%AF%E3%83%AA%E3%82%B9%E3%83%88_2026-03-10.md)

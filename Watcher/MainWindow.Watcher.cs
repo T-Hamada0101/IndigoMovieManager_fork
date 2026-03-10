@@ -38,6 +38,8 @@ namespace IndigoMovieManager
         // 欠損サムネ救済は重い全件確認になるため、DB+タブ単位で最小間隔を設ける。
         private static readonly TimeSpan MissingThumbnailRescueMinInterval = TimeSpan.FromSeconds(60);
         // 救済候補はメモリへ抱え、キューの空き枠分だけ段階投入する。
+        // Notification.Wpf の内部Windowを無限増殖させないよう、監視通知は1個を使い回す。
+        private static readonly NotificationManager _watchNotificationManager = new();
         private const int MissingThumbnailRescueTargetActiveCount = 32;
         private const int MissingThumbnailRescueMaxEnqueuePerRun = 32;
         private static readonly TimeSpan MissingThumbnailRescueBufferRetention =
@@ -602,8 +604,6 @@ namespace IndigoMovieManager
 
             var title = "フォルダ監視中";
             var Message = "";
-            NotificationManager notificationManager = new();
-
             // ----- [1] 既存ファイル(サムネイル)の全量キャッシュ -----
             // スキャン中に都度DB検索したり全走査すると遅いため、予め HashSet(ハッシュテーブル) を作ってメモリに乗せておく。
             // DB上のパスではなく、出力フォルダにある「サムネイル画像(.jpg)のファイル名本体」を取得する。
@@ -683,7 +683,7 @@ namespace IndigoMovieManager
                 // Win10側の通知（トースト）領域へプログレスを出す
                 if (!_hasShownFolderMonitoringNotice)
                 {
-                    notificationManager.Show(
+                    _watchNotificationManager.Show(
                         title,
                         $"{checkFolder} 監視実施中…",
                         NotificationType.Notification,
@@ -799,7 +799,7 @@ namespace IndigoMovieManager
                         && !_hasShownEverythingModeNotice
                     )
                     {
-                        notificationManager.Show(
+                        _watchNotificationManager.Show(
                             "インデックス連携",
                             $"{scanStrategyResult.ProviderDisplayName} で高速スキャンを実行中です。",
                             NotificationType.Notification,
@@ -815,7 +815,7 @@ namespace IndigoMovieManager
                         && !_hasShownEverythingFallbackNotice
                     )
                     {
-                        notificationManager.Show(
+                        _watchNotificationManager.Show(
                             "インデックス連携",
                             $"{scanStrategyResult.ProviderDisplayName} を利用できないため通常監視で継続します。({strategyDetailMessage})",
                             NotificationType.Information,
@@ -949,7 +949,7 @@ namespace IndigoMovieManager
                             Message = checkFolder;
                             if (!_hasShownFolderMonitoringNotice)
                             {
-                                notificationManager.Show(
+                                _watchNotificationManager.Show(
                                     title,
                                     $"{Message}に更新あり。",
                                     NotificationType.Notification,
@@ -1733,10 +1733,13 @@ namespace IndigoMovieManager
 
             DataRow targetRow = await Task.Run(() =>
             {
-                string escapedMoviePath = moviePath.Replace("'", "''");
                 DataTable dt = GetData(
                     snapshotDbFullPath,
-                    $"select * from movie where lower(movie_path) = lower('{escapedMoviePath}') order by movie_id desc limit 1"
+                    "select * from movie where movie_path = @movie_path order by movie_id desc limit 1",
+                    new Dictionary<string, object>
+                    {
+                        ["@movie_path"] = moviePath,
+                    }
                 );
                 return dt?.Rows.Count > 0 ? dt.Rows[0] : null;
             });

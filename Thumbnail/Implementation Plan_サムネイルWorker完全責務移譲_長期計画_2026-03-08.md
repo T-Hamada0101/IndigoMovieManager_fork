@@ -258,6 +258,9 @@
 - `MainWindow.xaml.cs` の `GetThumbnailQueueMaxParallelism()` などは、直接 `ThumbnailThreadPresetResolver` を叩かず `ThumbnailWorkerSettingsResolver` 経由へ変更した。
 - in-process fallback も `ThumbnailWorkerExecutionEnvironment` を通して `IMM_THUMB_GPU_DECODE` `IMM_THUMB_SLOW_LANE_MIN_GB` `IMM_THUMB_PROCESS_PRIORITY` `IMM_THUMB_FFMPEG_PRIORITY` を Worker と同じ値へ寄せる。
 - `ThumbnailCreationService` に残っていた `autogen retry`、`ffmpeg1pass skip`、`forced repair`、`recovery onepass fallback` の判定は `ThumbnailExecutionPolicy` へ切り出し済み。
+- 2026-03-10 追記:
+  - `ThumbnailCreateFailedException` を導入し、Worker / UI から Queue 層へ失敗 result の補助情報を伝達できるようにした。
+  - `FailureDb.ExtraJson` では queue 観測に加えて、`FailureStage`、`PolicyDecision`、`PlaceholderAction`、`PlaceholderKind`、`FinalizerAction` を追跡できる。
 - `BuildThumbnailEngineOrder()` も engine 実体ではなく engine id ベースの順序解決へ変更し、`ThumbnailExecutionPolicy.BuildEngineOrderIds()` を正規経路にした。
 - `ThumbnailEngineCatalog` を新設し、engine id と engine 実体の対応、重複除去つき順序生成を service 外へ移した。
 - `ThumbnailEngineExecutionCoordinator` を新設し、`ExecuteEngineOrderAsync` 相当の engine 実行ループ、autogen retry、near-black 再失敗化、known invalid input による onepass skip を service 外へ移した。
@@ -353,6 +356,33 @@ Phase 2 の残課題:
 - `ThumbnailJobContext` を受け取る executor 入力をさらに整理し、coordinator 間 DTO を減らす
 - fallback 自体を縮退機能へ落とし、本線を external worker に一本化する
 - policy 変更時の回帰確認を service 経由テストだけでなく、snapshot / role 単位の統合テストへ広げる
+
+2026-03-10 追記:
+- 実機追跡の結果、難動画が多い時の停滞は「worker 全体停止」より「`Processing` の先取り lease 過多」が主因と判明した。
+- `thumbnail-health-*.json` は更新され続けていた一方、QueueDB の古い `Processing` 行は `LeaseUntilUtc` / `UpdatedAtUtc` が進まず、未着手 lease を含んでいた。
+- これを受けて `ThumbnailWorkerSettingsResolver` と `ThumbnailQueueProcessor` で `LeaseBatchSize` を「現在の実行枠数」までに抑える修正を反映済み。
+- 追跡用に `scripts/trace_thumbnail_process_tree.ps1` と `scripts/trace_thumbnail_runtime.py` を追加し、process / health / control / QueueDB の同時観測手段を確保した。
+- 別AIエージェント側で `FailureDb` 土台実装と `AutogenRepairPlaygroundTests` からの DB 記録は完了した。
+- 本体側の次段は `FailureDb` の本番 insert 接続と `サムネ失敗` タブの専用DB表示切替へ進む。
+- 次段は `Processing` 1状態の粗さを解消するため、`Leased` / `Running` 分離と `HangSuspected` 導入を優先する。
+
+### Phase 2.5 Queue 実行状態の分離と停滞回復
+- QueueDB の `Processing` を「lease 済み未着手」と「実行中」に分ける。
+- `Running` に遷移した時だけ heartbeat と実行時間監視を行う。
+- 一定時間 `Running` が進まないジョブは `HangSuspected` として扱い、通常の再試行失敗とは分離する。
+- 難動画で停滞したジョブを通常投入と切り離し、回復レーンまたは手動確認へ寄せる。
+
+完了条件:
+- QueueDB 上で `Leased` と `Running` を区別できる。
+- `Processing` 残留の内訳を UI / ログ / 調査スクリプトから読める。
+- `HangSuspected` は `TransientDecodeFailure` や `Unknown` へ埋もれず、別の回復経路を選べる。
+
+2026-03-11 進捗メモ:
+- `QueueDbService` 状態追加と `ThumbnailQueueProcessor` の遷移整理は、`StartedAtUtc` 導入と `MarkLeaseAsRunning(...)` 追加まで反映済み。
+- `HangSuspected` は `ThumbnailFailureKind` と `ThumbnailQueueProcessor.ResolveFailureKind(...)` へ反映済み。
+- 初回 `HangSuspected` は recovery レーンへ戻し、recovery 再発は `Failed` へ落とす状態遷移も反映済み。
+- Coordinator / MainWindow / ProgressViewer には `queued / leased / running / hang` の要約表示を追加済み。
+- `scripts/trace_thumbnail_runtime.py` も `Processing` 前提をやめ、`queued / leased / running / hang` を時系列で採取できる状態になった。
 
 ### Phase 3 progress 契約の明確化
 - progress snapshot のスキーマを明文化する。
@@ -477,6 +507,9 @@ Phase 2 の残課題:
 - `Version`
 - `SessionCompletedCount`
 - `SessionTotalCount`
+- `LeasedCount`
+- `RunningCount`
+- `HangSuspectedCount`
 - `CurrentParallelism`
 - `ConfiguredParallelism`
 - `EnqueueLogs`
@@ -582,8 +615,42 @@ Phase 2 の残課題:
   - `dotnet test Tests\IndigoMovieManager_fork.Tests\IndigoMovieManager_fork.Tests.csproj -c Debug -p:Platform=x64`
   - `255 pass / 7 skip / 0 fail`
 
+## 22.1 2026-03-11 workthree 優先順位表受領メモ
+- workthree 側で、失敗 9 件の優先順位表が作成された。
+- 本線側は「探索」ではなく「受け皿整備と反映判断」を担当するため、次の順で受領する。
+
+受領順:
+- `P1`
+  - `near-black` 5件グループ
+  - `画像1枚あり顔.mkv`
+  - `画像1枚ありページ.mkv`
+- `P2`
+  - `ライブ配信真空エラー2_ghq5_temp.mp4`
+  - `OTD-093-2-4K.mp4`
+  - `ラ・ラ・ランド 1/2, 2/2`
+- `P3`
+  - `【ライブ配信】神回...`
+  - `映像なし_scale_2x_prob-3...mkv`
+  - `_steph_myers_...mp4`
+
+本線側の扱い:
+- `P1` は補助分類と回復条件の一般化候補として優先受領する
+- `near-black` 群は `TransientDecodeFailure` の派生観測として保持し、必要なら補助属性化する
+- `画像1枚あり*` は `ShortClipStillLike` と `ManualCaptureRequired` の境界確認対象とする
+- `P2` は `PhysicalCorruption / ContainerMetadataBroken / TransientDecodeFailure` の再仕分け候補として扱う
+- `P3` は本番導入見送りを含む除外判断も成果として受ける
+
 ## 21. 関連ドキュメント
 - `Thumbnail/Implementation Plan_サムネイルDLL化_Windowsプライオリティ明確化_2026-03-08.md`
 - `Thumbnail/ManualCheck_サムネイルWorker実機確認チェックリスト_2026-03-08.md`
 - `Thumbnail/仕様書_サムネイル並列方式再設計_2026-03-08.md`
+- `Thumbnail/Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`
+- `Thumbnail/調査結果_サムネイルProcessing残留とlease先取り過多_2026-03-10.md`
+- `Thumbnail/連絡用doc_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md`
+- `Thumbnail/Implementation Plan_サムネ失敗専用DB先行実装とautogen試験ハーネスDB記録_2026-03-10.md`
 - `Docs/アプリ全体図_大まか構成_2026-03-08.md`
+
+### 15.1 workthree 受領計画への接続
+- `workthree` からの救済条件受領は、次の計画書を入口にする。
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
+- 本線側では、`FailureDb.ExtraJson` 標準キー、`FailureKind` 判定、導入位置切り分けをこの計画に従って処理する。

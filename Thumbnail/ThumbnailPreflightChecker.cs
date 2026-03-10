@@ -21,7 +21,8 @@ namespace IndigoMovieManager.Thumbnail
                     ThumbnailResultFactory.CreateFailed(
                         request.SaveThumbFileName,
                         request.DurationSec,
-                        "manual target thumbnail does not exist"
+                        "manual target thumbnail does not exist",
+                        failureStage: "preflight-manual-target-missing"
                     ),
                     "precheck",
                     "",
@@ -45,7 +46,9 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailPreflightCheckResult.Complete(
                     ThumbnailResultFactory.CreateSuccess(
                         request.SaveThumbFileName,
-                        request.DurationSec
+                        request.DurationSec,
+                        failureStage: "preflight-missing-movie",
+                        policyDecision: "missing-movie-fixed-image"
                     ),
                     "missing-movie",
                     "",
@@ -90,7 +93,11 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailPreflightCheckResult.Complete(
                     ThumbnailResultFactory.CreateSuccess(
                         request.SaveThumbFileName,
-                        request.DurationSec
+                        request.DurationSec,
+                        failureStage: "preflight-drm",
+                        policyDecision: "drm-precheck-placeholder",
+                        placeholderAction: "created",
+                        placeholderKind: FailurePlaceholderKind.DrmSuspected.ToString()
                     ),
                     "placeholder-drm-precheck",
                     "",
@@ -113,7 +120,11 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailPreflightCheckResult.Complete(
                     ThumbnailResultFactory.CreateSuccess(
                         request.SaveThumbFileName,
-                        request.DurationSec
+                        request.DurationSec,
+                        failureStage: "preflight-drm",
+                        policyDecision: "drm-precheck-fixed-image",
+                        placeholderAction: "fixed-image-fallback",
+                        placeholderKind: FailurePlaceholderKind.DrmSuspected.ToString()
                     ),
                     "fixed-drm-precheck",
                     "",
@@ -130,7 +141,11 @@ namespace IndigoMovieManager.Thumbnail
                 ThumbnailResultFactory.CreateFailed(
                     request.SaveThumbFileName,
                     request.DurationSec,
-                    error
+                    error,
+                    failureStage: "preflight-drm",
+                    policyDecision: "drm-precheck-placeholder-failed",
+                    placeholderAction: "failed",
+                    placeholderKind: FailurePlaceholderKind.DrmSuspected.ToString()
                 ),
                 "drm-precheck",
                 "",
@@ -162,7 +177,11 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailPreflightCheckResult.Complete(
                     ThumbnailResultFactory.CreateSuccess(
                         request.SaveThumbFileName,
-                        request.DurationSec
+                        request.DurationSec,
+                        failureStage: "preflight-unsupported",
+                        policyDecision: "unsupported-precheck-placeholder",
+                        placeholderAction: "created",
+                        placeholderKind: FailurePlaceholderKind.FlashVideo.ToString()
                     ),
                     "placeholder-unsupported-precheck",
                     "",
@@ -185,7 +204,11 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailPreflightCheckResult.Complete(
                     ThumbnailResultFactory.CreateSuccess(
                         request.SaveThumbFileName,
-                        request.DurationSec
+                        request.DurationSec,
+                        failureStage: "preflight-unsupported",
+                        policyDecision: "unsupported-precheck-fixed-image",
+                        placeholderAction: "fixed-image-fallback",
+                        placeholderKind: FailurePlaceholderKind.FlashVideo.ToString()
                     ),
                     "fixed-unsupported-precheck",
                     "",
@@ -203,7 +226,11 @@ namespace IndigoMovieManager.Thumbnail
                 ThumbnailResultFactory.CreateFailed(
                     request.SaveThumbFileName,
                     request.DurationSec,
-                    error
+                    error,
+                    failureStage: "preflight-unsupported",
+                    policyDecision: "unsupported-precheck-placeholder-failed",
+                    placeholderAction: "failed",
+                    placeholderKind: FailurePlaceholderKind.FlashVideo.ToString()
                 ),
                 "unsupported-precheck",
                 "",

@@ -35,9 +35,13 @@ namespace IndigoMovieManager_fork.Tests
                     QueuedNormalCount = 3,
                     QueuedSlowCount = 2,
                     QueuedRecoveryCount = 1,
+                    LeasedNormalCount = 1,
+                    LeasedSlowCount = 0,
+                    LeasedRecoveryCount = 1,
                     RunningNormalCount = 2,
                     RunningSlowCount = 1,
                     RunningRecoveryCount = 1,
+                    HangSuspectedCount = 2,
                     DemandNormalCount = 5,
                     DemandSlowCount = 3,
                     DemandRecoveryCount = 2,
@@ -89,7 +93,9 @@ namespace IndigoMovieManager_fork.Tests
                 Assert.That(snapshot.OperationMode, Is.EqualTo(ThumbnailCoordinatorOperationMode.NormalFirst));
                 Assert.That(snapshot.GpuDecodeEnabled, Is.True);
                 Assert.That(snapshot.QueuedSlowCount, Is.EqualTo(2));
+                Assert.That(snapshot.LeasedNormalCount, Is.EqualTo(1));
                 Assert.That(snapshot.RunningRecoveryCount, Is.EqualTo(1));
+                Assert.That(snapshot.HangSuspectedCount, Is.EqualTo(2));
                 Assert.That(snapshot.WeightedSlowDemand, Is.EqualTo(7));
                 Assert.That(snapshot.SlowSlotMaximum, Is.EqualTo(4));
                 Assert.That(snapshot.DecisionCategory, Is.EqualTo(ThumbnailCoordinatorDecisionCategory.DemandBiased));

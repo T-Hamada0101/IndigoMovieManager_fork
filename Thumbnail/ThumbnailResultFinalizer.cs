@@ -15,21 +15,24 @@ namespace IndigoMovieManager.Thumbnail
                 throw new ArgumentNullException(nameof(request));
             }
 
-            ThumbnailFailureFinalizer.WriteErrorMarkerIfNeeded(
+            string writeAction = ThumbnailFailureFinalizer.WriteErrorMarkerIfNeeded(
                 request.IsManual,
                 request.Result,
                 request.TabInfo,
                 request.MovieFullPath,
                 request.AttemptCount
             );
+            request.Result.FinalizerAction = writeAction;
+            request.Result.FinalizerDetail = "";
 
             // 再試行中や成功時は固定化マーカーを残さず、再スキャンで拾える状態を保つ。
             if (request.Result?.IsSuccess == true || request.AttemptCount + 1 < 5)
             {
-                ThumbnailFailureFinalizer.DeleteErrorMarkerIfExists(
+                string deleteAction = ThumbnailFailureFinalizer.DeleteErrorMarkerIfExists(
                     request.TabInfo,
                     request.MovieFullPath
                 );
+                request.Result.FinalizerAction = deleteAction;
             }
 
             if (
@@ -38,6 +41,11 @@ namespace IndigoMovieManager.Thumbnail
                 && request.Result.DurationSec.Value > 0
             )
             {
+                WriteCacheUpdateDebugLog(
+                    request.MovieFullPath,
+                    "result-finalizer",
+                    request.Result.DurationSec
+                );
                 request.OnCacheDuration?.Invoke(request.Result.DurationSec);
             }
 
@@ -60,6 +68,27 @@ namespace IndigoMovieManager.Thumbnail
                 request.Result
             );
             return request.Result;
+        }
+
+        private static void WriteCacheUpdateDebugLog(
+            string movieFullPath,
+            string phase,
+            double? durationSec
+        )
+        {
+            string ext = Path.GetExtension(movieFullPath ?? "");
+            if (
+                !string.Equals(ext, ".avi", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(ext, ".divx", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return;
+            }
+
+            ThumbnailRuntimeLog.Write(
+                "thumbinfo-cache",
+                $"phase={phase} movie='{movieFullPath}' duration_sec={durationSec:0.###}"
+            );
         }
     }
 

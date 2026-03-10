@@ -132,11 +132,32 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     public sealed class ThumbnailCreateResult
     {
-        public string SaveThumbFileName { get; init; } = "";
-        public double? DurationSec { get; init; }
-        public bool IsSuccess { get; init; }
-        public string ErrorMessage { get; init; } = "";
-        public ThumbnailPreviewFrame PreviewFrame { get; init; }
+        public string SaveThumbFileName { get; set; } = "";
+        public double? DurationSec { get; set; }
+        public bool IsSuccess { get; set; }
+        public string ErrorMessage { get; set; } = "";
+        public string EngineAttempted { get; set; } = "";
+        public ThumbnailPreviewFrame PreviewFrame { get; set; }
+        public string FailureStage { get; set; } = "";
+        public string PolicyDecision { get; set; } = "";
+        public string PlaceholderAction { get; set; } = "";
+        public string PlaceholderKind { get; set; } = "";
+        public string FinalizerAction { get; set; } = "";
+        public string FinalizerDetail { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Queue層へ失敗結果の補助情報を落とすため、結果本体を抱えて投げる専用例外。
+    /// </summary>
+    public sealed class ThumbnailCreateFailedException : InvalidOperationException
+    {
+        public ThumbnailCreateFailedException(string message, ThumbnailCreateResult result)
+            : base(message)
+        {
+            Result = result;
+        }
+
+        public ThumbnailCreateResult Result { get; }
     }
 
     /// <summary>

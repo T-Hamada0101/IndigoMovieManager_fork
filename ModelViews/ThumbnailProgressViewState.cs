@@ -12,6 +12,7 @@ namespace IndigoMovieManager.ModelViews
         private string createdTotalText = "0";
         private string dbPendingText = "0 / 0";
         private string threadText = "0 / 0 / 0";
+        private string queueStateText = "0 / 0 / 0";
         private string controlStateText = "待機中";
         private string laneGuideText =
             "ゆっくり=巨大動画 / 失敗再処理=再実行 / 通常=小さい順";
@@ -44,6 +45,12 @@ namespace IndigoMovieManager.ModelViews
         {
             get => threadText;
             private set => SetField(ref threadText, value);
+        }
+
+        public string QueueStateText
+        {
+            get => queueStateText;
+            private set => SetField(ref queueStateText, value);
         }
 
         public string ControlStateText
@@ -127,6 +134,8 @@ namespace IndigoMovieManager.ModelViews
             CreatedTotalText = $"{Math.Max(0, runtimeSnapshot?.SessionCreatedThumbnailCount ?? 0)}";
             DbPendingText = $"{Math.Max(0, dbPendingCount)} / {Math.Max(0, dbTotalCount)}";
             ThreadText = $"{activeWorkerCount} / {configuredParallelism} / {Math.Max(0, logicalCoreCount)}";
+            QueueStateText =
+                $"{Math.Max(0, runtimeSnapshot?.LeasedCount ?? 0)} / {Math.Max(0, runtimeSnapshot?.RunningCount ?? 0)} / {Math.Max(0, runtimeSnapshot?.HangSuspectedCount ?? 0)}";
             ControlStateText = ResolveControlStateText(runtimeSnapshot, activeWorkerCount);
             LaneGuideText = "ゆっくり=巨大動画 / 失敗再処理=再実行 / 通常=小さい順";
 
@@ -332,6 +341,7 @@ namespace IndigoMovieManager.ModelViews
             panel.PreviewImagePath = worker.PreviewImagePath ?? "";
             panel.PreviewCacheKey = worker.PreviewCacheKey ?? "";
             panel.PreviewRevision = worker.PreviewRevision;
+            panel.PriorityText = worker.IsTopPriority ? "最優先" : "";
             panel.IsActive = worker.IsActive;
         }
 
@@ -346,6 +356,7 @@ namespace IndigoMovieManager.ModelViews
             panel.PreviewImagePath = "";
             panel.PreviewCacheKey = "";
             panel.PreviewRevision = 0;
+            panel.PriorityText = "";
             panel.IsActive = false;
         }
 
@@ -459,6 +470,7 @@ namespace IndigoMovieManager.ModelViews
         private string previewImagePath = "";
         private string previewCacheKey = "";
         private long previewRevision;
+        private string priorityText = "";
         private bool isActive;
 
         public ThumbnailProgressWorkerPanelViewState(long workerId)
@@ -496,6 +508,12 @@ namespace IndigoMovieManager.ModelViews
         {
             get => previewRevision;
             set => SetField(ref previewRevision, value);
+        }
+
+        public string PriorityText
+        {
+            get => priorityText;
+            set => SetField(ref priorityText, value ?? "");
         }
 
         public bool IsActive

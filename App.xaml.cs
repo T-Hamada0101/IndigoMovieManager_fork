@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
+using System.Text;
 using System.Windows;
 
 namespace IndigoMovieManager
@@ -11,6 +12,7 @@ namespace IndigoMovieManager
     public partial class App : Application
     {
         private static readonly object FileNotFoundLogLock = new();
+        private const string MovieInfoProbeArgument = "--movieinfo-probe";
 
         public App()
         {
@@ -92,6 +94,99 @@ namespace IndigoMovieManager
             {
                 // ログ出力失敗で本体動作を止めない。
             }
+        }
+#endif
+
+        protected override void OnStartup(StartupEventArgs e)
+        {
+#if DEBUG
+            if (TryRunMovieInfoProbeMode(e))
+            {
+                return;
+            }
+#endif
+            base.OnStartup(e);
+        }
+
+#if DEBUG
+        private bool TryRunMovieInfoProbeMode(StartupEventArgs e)
+        {
+            string targetPath = ResolveMovieInfoProbeTargetPath(e.Args);
+            if (string.IsNullOrWhiteSpace(targetPath))
+            {
+                return false;
+            }
+
+            // 専用モードではメイン画面を起動せず、比較結果だけ採って終了する。
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+            if (!File.Exists(targetPath))
+            {
+                string missingMessage = $"probe target not found: '{targetPath}'";
+                DebugRuntimeLog.Write("movieinfo-probe", missingMessage);
+                MessageBox.Show(
+                    missingMessage,
+                    "MovieInfo Probe",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning
+                );
+                Shutdown(2);
+                return true;
+            }
+
+            MovieInfoMetadataProbeSet probe = MovieInfo.ProbeMetadataSources(targetPath);
+            string message = BuildMovieInfoProbeMessage(probe);
+            DebugRuntimeLog.Write("movieinfo-probe", "startup probe completed.");
+            MessageBox.Show(
+                message,
+                "MovieInfo Probe",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+            Shutdown(0);
+            return true;
+        }
+
+        private static string ResolveMovieInfoProbeTargetPath(string[] args)
+        {
+            if (args == null || args.Length == 0)
+            {
+                return "";
+            }
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (!string.Equals(args[i], MovieInfoProbeArgument, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (i + 1 >= args.Length)
+                {
+                    return "";
+                }
+
+                return args[i + 1] ?? "";
+            }
+
+            return "";
+        }
+
+        private static string BuildMovieInfoProbeMessage(MovieInfoMetadataProbeSet probe)
+        {
+            StringBuilder sb = new();
+            sb.AppendLine("MovieInfo 3系統比較");
+            sb.AppendLine(probe.MoviePath);
+            sb.AppendLine();
+
+            foreach (string line in probe.ToDebugLines())
+            {
+                sb.AppendLine(line);
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("debug-runtime.log にも出力済み");
+            return sb.ToString().TrimEnd();
         }
 #endif
 

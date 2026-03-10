@@ -25,6 +25,9 @@
 ## 実行環境ルール
 - PowerShellはUTF-16変換を防ぐため7.x.xを使用する
 - ネット検索はコンテキスト書き換えや汚染を避けるため、必ずサンドボックス内でのみ行う
+- AIエージェントは必要に応じて `C:\python\work` の Python 作業環境を利用してよい
+- Python作業環境を使う場合は、`C:\python\Open-Initialize-PythonWork.cmd` で初期化し、通常作業は `C:\python\Open-PythonWork.cmd` を利用する
+- Python関連コマンドを直接実行する場合も、原則として `C:\python\work\.venv` の仮想環境を前提にする
 
 ## スキル
 - 必要に応じて `.agent\skills` を参照する

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using IndigoMovieManager.Thumbnail.FailureDb;
 using IndigoMovieManager.Thumbnail.Ipc;
 using IndigoMovieManager.Thumbnail.QueueDb;
 using IndigoMovieManager.Thumbnail.QueuePipeline;
@@ -32,7 +34,6 @@ namespace IndigoMovieManager.Thumbnail
         private const int RecoveryLaneReservedMinParallelism = 2;
         private const int RecoveryLaneConcurrency = 1;
         private const int SlowLaneConcurrency = 1;
-        private const int RegularLaneBufferedLeaseCount = 4;
         private static readonly ProcessPriorityClass DefaultThumbnailWorkerPriorityClass =
             ProcessPriorityClass.BelowNormal;
 
@@ -205,6 +206,9 @@ namespace IndigoMovieManager.Thumbnail
                         await Task.Delay(safePollIntervalMs, cts).ConfigureAwait(false);
                         continue;
                     }
+                    ThumbnailFailureDebugDbService failureDbService = new(
+                        queueDbService.MainDbFullPath
+                    );
 
                     // 【STEP 1: 処理対象の取得（リース）】
                     // DBから未処理のジョブを取得し、「自分が処理する」という印をつける
@@ -553,6 +557,19 @@ namespace IndigoMovieManager.Thumbnail
 
                                     try
                                     {
+                                        int runningMarked = queueDbService.MarkLeaseAsRunning(
+                                            leasedItem.QueueId,
+                                            ownerInstanceId,
+                                            DateTime.UtcNow
+                                        );
+                                        if (runningMarked < 1)
+                                        {
+                                            safeLog(
+                                                $"consumer start skipped: queue_id={leasedItem.QueueId} owner={ownerInstanceId}"
+                                            );
+                                            return;
+                                        }
+
                                         // ハング1件で全補充が止まらないよう、各ワーカー完了ごとに次リースを回せる形で実行する。
                                         await ExecuteWithLeaseHeartbeatAsync(
                                                 queueDbService,
@@ -593,18 +610,22 @@ namespace IndigoMovieManager.Thumbnail
                                                 leasedItem,
                                                 ownerInstanceId,
                                                 ex,
-                                                safeLog
+                                                safeLog,
+                                                failureDbService,
+                                                workerRole
                                             );
                                             throw;
                                         }
 
-                                        HandleFailedItem(
-                                            queueDbService,
-                                            leasedItem,
-                                            ownerInstanceId,
-                                            ex,
-                                            safeLog
-                                        );
+                                            HandleFailedItem(
+                                                queueDbService,
+                                                leasedItem,
+                                                ownerInstanceId,
+                                                ex,
+                                                safeLog,
+                                                failureDbService,
+                                                workerRole
+                                            );
                                         if (!IsMainDbScopeChangedException(ex))
                                         {
                                             _ = Interlocked.Increment(ref failedCount);
@@ -621,7 +642,9 @@ namespace IndigoMovieManager.Thumbnail
                                             leasedItem,
                                             ownerInstanceId,
                                             ex,
-                                            safeLog
+                                            safeLog,
+                                            failureDbService,
+                                            workerRole
                                         );
                                         if (!IsMainDbScopeChangedException(ex))
                                         {
@@ -1408,7 +1431,9 @@ namespace IndigoMovieManager.Thumbnail
             QueueDbLeaseItem leasedItem,
             string ownerInstanceId,
             Exception ex,
-            Action<string> log
+            Action<string> log,
+            ThumbnailFailureDebugDbService failureDbService = null,
+            ThumbnailQueueWorkerRole workerRole = ThumbnailQueueWorkerRole.All
         )
         {
             if (IsMainDbScopeChangedException(ex))
@@ -1433,27 +1458,65 @@ namespace IndigoMovieManager.Thumbnail
                         $"consumer deferred: category=db-scope-changed queue_id={leasedItem.QueueId} next={ThumbnailQueueStatus.Pending}"
                     );
                 }
+                TryInsertFailureRecord(
+                    failureDbService,
+                    leasedItem,
+                    ownerInstanceId,
+                    ex,
+                    ThumbnailQueueStatus.Pending,
+                    incrementedAttemptCount: leasedItem.AttemptCount,
+                    workerRole,
+                    reason: "db-scope-changed"
+                );
                 return;
             }
 
+            ThumbnailFailureKind failureKind = ResolveFailureKind(leasedItem, ex);
             bool exceeded = leasedItem.AttemptCount + 1 >= DefaultMaxAttemptCount;
             bool missingFile =
                 string.IsNullOrWhiteSpace(leasedItem.MoviePath)
                 || !Path.Exists(leasedItem.MoviePath);
-            bool retryable = !exceeded && !missingFile;
-            ThumbnailQueueStatus nextStatus = retryable
-                ? ThumbnailQueueStatus.Pending
-                : ThumbnailQueueStatus.Failed;
+            bool shouldPromoteHangToRecovery =
+                failureKind == ThumbnailFailureKind.HangSuspected
+                && !leasedItem.IsRescueRequest
+                && !exceeded
+                && !missingFile;
+            bool retryable = !exceeded && !missingFile && !leasedItem.IsRescueRequest;
+            ThumbnailQueueStatus nextStatus =
+                shouldPromoteHangToRecovery || retryable
+                    ? ThumbnailQueueStatus.Pending
+                    : ThumbnailQueueStatus.Failed;
             long failedTotal = ThumbnailQueueMetrics.RecordFailed();
 
-            int updated = queueDbService.UpdateStatus(
-                leasedItem.QueueId,
-                ownerInstanceId,
-                nextStatus,
-                DateTime.UtcNow,
-                ex.Message,
-                incrementAttemptCount: retryable
-            );
+            int updated;
+            string failureReason;
+            int attemptCountAfter;
+            if (shouldPromoteHangToRecovery)
+            {
+                updated = queueDbService.ForceRetryMovieToPending(
+                    leasedItem.MoviePath,
+                    leasedItem.TabIndex,
+                    DateTime.UtcNow,
+                    promoteToRecovery: true
+                );
+                leasedItem.IsRescueRequest = true;
+                leasedItem.AttemptCount = Math.Max(leasedItem.AttemptCount, 2);
+                failureReason = "hang-recovery-scheduled";
+                attemptCountAfter = leasedItem.AttemptCount;
+            }
+            else
+            {
+                updated = queueDbService.UpdateStatus(
+                    leasedItem.QueueId,
+                    ownerInstanceId,
+                    nextStatus,
+                    DateTime.UtcNow,
+                    ex.Message,
+                    incrementAttemptCount: retryable
+                );
+                failureReason = retryable ? "retry-scheduled" : "final-failed";
+                attemptCountAfter = leasedItem.AttemptCount + (retryable ? 1 : 0);
+            }
 
             if (updated < 1)
             {
@@ -1467,7 +1530,7 @@ namespace IndigoMovieManager.Thumbnail
             {
                 log?.Invoke(
                     $"consumer failed: category=error queue_id={leasedItem.QueueId} next={nextStatus} "
-                        + $"retryable={retryable} failed_total={failedTotal}"
+                        + $"retryable={retryable} hang_recovery={shouldPromoteHangToRecovery} failed_total={failedTotal}"
                 );
             }
 
@@ -1475,9 +1538,20 @@ namespace IndigoMovieManager.Thumbnail
             {
                 log?.Invoke(
                     $"repair failed: queue_id={leasedItem.QueueId} next={nextStatus} retryable={retryable} "
-                        + $"attempt={leasedItem.AttemptCount + (retryable ? 1 : 0)} movie='{leasedItem.MoviePath}' message={ex.Message}"
+                        + $"attempt={attemptCountAfter} movie='{leasedItem.MoviePath}' message={ex.Message}"
                 );
             }
+
+            TryInsertFailureRecord(
+                failureDbService,
+                leasedItem,
+                ownerInstanceId,
+                ex,
+                nextStatus,
+                attemptCountAfter,
+                workerRole,
+                failureReason
+            );
         }
 
         // 停止要求で中断したジョブは失敗扱いにせず、AttemptCountを増やさずPendingへ戻す。
@@ -1486,7 +1560,9 @@ namespace IndigoMovieManager.Thumbnail
             QueueDbLeaseItem leasedItem,
             string ownerInstanceId,
             OperationCanceledException ex,
-            Action<string> log
+            Action<string> log,
+            ThumbnailFailureDebugDbService failureDbService = null,
+            ThumbnailQueueWorkerRole workerRole = ThumbnailQueueWorkerRole.All
         )
         {
             int restored = queueDbService.UpdateStatus(
@@ -1516,11 +1592,536 @@ namespace IndigoMovieManager.Thumbnail
                     $"repair canceled: queue_id={leasedItem.QueueId} next={ThumbnailQueueStatus.Pending} attempt={leasedItem.AttemptCount} movie='{leasedItem.MoviePath}'"
                 );
             }
+
+            TryInsertFailureRecord(
+                failureDbService,
+                leasedItem,
+                ownerInstanceId,
+                ex,
+                ThumbnailQueueStatus.Pending,
+                leasedItem.AttemptCount,
+                workerRole,
+                reason: "canceled"
+            );
         }
 
         private static bool IsMainDbScopeChangedException(Exception ex)
         {
             return ex is ThumbnailMainDbScopeChangedException;
+        }
+
+        // Queue側の一次分類で失敗履歴へ落とす。後でEngine正式分類へ置き換えやすいよう、列は埋め切る。
+        private static void TryInsertFailureRecord(
+            ThumbnailFailureDebugDbService failureDbService,
+            QueueDbLeaseItem leasedItem,
+            string ownerInstanceId,
+            Exception ex,
+            ThumbnailQueueStatus nextStatus,
+            int incrementedAttemptCount,
+            ThumbnailQueueWorkerRole workerRole,
+            string reason
+        )
+        {
+            if (failureDbService == null || leasedItem == null || ex == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _ = failureDbService.InsertFailureRecord(
+                    new ThumbnailFailureRecord
+                    {
+                        MoviePath = leasedItem.MoviePath,
+                        PanelType = ResolvePanelType(leasedItem.TabIndex),
+                        MovieSizeBytes = leasedItem.MovieSizeBytes,
+                        Duration = null,
+                        Reason = reason ?? "",
+                        FailureKind = ResolveFailureKind(leasedItem, ex),
+                        AttemptCount = Math.Max(0, incrementedAttemptCount),
+                        OccurredAtUtc = DateTime.UtcNow,
+                        UpdatedAtUtc = DateTime.UtcNow,
+                        TabIndex = leasedItem.TabIndex,
+                        OwnerInstanceId = ownerInstanceId ?? "",
+                        WorkerRole = workerRole.ToString(),
+                        EngineId = "",
+                        QueueStatus = nextStatus.ToString(),
+                        LeaseUntilUtc = leasedItem.LeaseUntilUtc == DateTime.MinValue
+                            ? ""
+                            : leasedItem.LeaseUntilUtc.ToUniversalTime()
+                                .ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                        StartedAtUtc = leasedItem.StartedAtUtc.HasValue
+                            ? leasedItem.StartedAtUtc.Value.ToUniversalTime()
+                                .ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                            : "",
+                        LastError = ex.Message ?? "",
+                        ExtraJson = BuildFailureExtraJson(
+                            leasedItem,
+                            ex,
+                            nextStatus,
+                            incrementedAttemptCount,
+                            reason
+                        ),
+                    }
+                );
+            }
+            catch
+            {
+                // 失敗履歴DBへの書き込み失敗で本体キュー遷移は止めない。
+            }
+        }
+
+        private static ThumbnailFailureKind ResolveFailureKind(
+            QueueDbLeaseItem leasedItem,
+            Exception ex
+        )
+        {
+            if (leasedItem == null)
+            {
+                return ThumbnailFailureKind.Unknown;
+            }
+
+            string message = ResolveFailureMessage(ex);
+            string lower = message.ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(leasedItem.MoviePath) || !Path.Exists(leasedItem.MoviePath))
+            {
+                return ThumbnailFailureKind.FileMissing;
+            }
+
+            if (ex is TimeoutException || lower.Contains("timeout"))
+            {
+                return ThumbnailFailureKind.HangSuspected;
+            }
+
+            if (lower.Contains("access denied") || lower.Contains("being used"))
+            {
+                return ThumbnailFailureKind.FileLocked;
+            }
+
+            if (
+                lower.Contains("shortclipstilllike")
+            )
+            {
+                return ThumbnailFailureKind.ShortClipStillLike;
+            }
+
+            if (
+                lower.Contains("no frames decoded")
+                || lower.Contains("generic error occurred in gdi+")
+                || lower.Contains("near-black thumbnail")
+            )
+            {
+                return ThumbnailFailureKind.TransientDecodeFailure;
+            }
+
+            if (lower.Contains("moov") || lower.Contains("index") || lower.Contains("stream info"))
+            {
+                return ThumbnailFailureKind.IndexCorruption;
+            }
+
+            if (lower.Contains("video stream") || lower.Contains("no video"))
+            {
+                return ThumbnailFailureKind.NoVideoStream;
+            }
+
+            if (
+                lower.Contains("invalid data")
+                || lower.Contains("after eof")
+                || lower.Contains("eof")
+                || lower.Contains("end of file")
+            )
+            {
+                return ThumbnailFailureKind.PhysicalCorruption;
+            }
+
+            return ThumbnailFailureKind.Unknown;
+        }
+
+        private static string ResolveFailureMessage(Exception ex)
+        {
+            if (ex is ThumbnailCreateFailedException failedEx)
+            {
+                return failedEx.Result?.ErrorMessage ?? ex.Message ?? "";
+            }
+
+            return ex?.Message ?? "";
+        }
+
+        private static ThumbnailCreateResult TryGetFailedResult(Exception ex)
+        {
+            return (ex as ThumbnailCreateFailedException)?.Result;
+        }
+
+        private static string BuildFailureExtraJson(
+            QueueDbLeaseItem leasedItem,
+            Exception ex,
+            ThumbnailQueueStatus nextStatus,
+            int attemptCountAfterTransition,
+            string reason
+        )
+        {
+            if (leasedItem == null || ex == null)
+            {
+                return "{}";
+            }
+
+            ThumbnailCreateResult failedResult = TryGetFailedResult(ex);
+            string preflightBranch = ResolvePreflightBranch(failedResult);
+            string resultSignature = ResolveResultSignature(ex, failedResult);
+            string attemptedEngineId = ResolveAttemptedEngineId(failedResult);
+            string recoveryRoute = ResolveRecoveryRoute(reason, nextStatus, leasedItem);
+            string seekStrategy = ResolveSeekStrategy(leasedItem);
+            int? seekSec = ResolveSeekSec(leasedItem);
+            bool repairAttempted = ResolveRepairAttempted(failedResult);
+            string decisionBasis = ResolveDecisionBasis(failedResult);
+            return JsonSerializer.Serialize(
+                new
+                {
+                    leasedItem.QueueId,
+                    leasedItem.MainDbFullPath,
+                    leasedItem.IsRescueRequest,
+                    leasedItem.MoviePathKey,
+                    leasedItem.ThumbPanelPos,
+                    leasedItem.ThumbTimePos,
+                    leasedItem.MovieSizeBytes,
+                    leasedItem.AttemptCount,
+                    AttemptCountAfter = Math.Max(0, attemptCountAfterTransition),
+                    NextStatus = nextStatus.ToString(),
+                    Reason = reason ?? "",
+                    FailureKindSource = "queue",
+                    WasRunning = leasedItem.StartedAtUtc.HasValue,
+                    MovieExists = SafePathExists(leasedItem.MoviePath),
+                    LeaseUntilUtc = FormatUtc(leasedItem.LeaseUntilUtc),
+                    StartedAtUtc = FormatUtc(leasedItem.StartedAtUtc),
+                    ExceptionType = ResolveExceptionType(ex),
+                    ExceptionMessage = ex.Message ?? "",
+                    ResultErrorMessage = failedResult?.ErrorMessage ?? "",
+                    ResultFailureStage = failedResult?.FailureStage ?? "",
+                    ResultPolicyDecision = failedResult?.PolicyDecision ?? "",
+                    ResultPlaceholderAction = failedResult?.PlaceholderAction ?? "",
+                    ResultPlaceholderKind = failedResult?.PlaceholderKind ?? "",
+                    ResultFinalizerAction = failedResult?.FinalizerAction ?? "",
+                    ResultFinalizerDetail = failedResult?.FinalizerDetail ?? "",
+                    MaterialDurationSec = failedResult?.DurationSec,
+                    EngineAttempted = attemptedEngineId,
+                    EngineSucceeded = failedResult?.IsSuccess == true,
+                    SeekStrategy = seekStrategy,
+                    SeekSec = seekSec,
+                    RepairAttempted = repairAttempted,
+                    RepairSucceeded = false,
+                    PreflightBranch = preflightBranch,
+                    ResultSignature = resultSignature,
+                    ReproConfirmed = false,
+                    RecoveryRoute = recoveryRoute,
+                    DecisionBasis = decisionBasis,
+                    failure_kind_source = "queue",
+                    material_duration_sec = failedResult?.DurationSec,
+                    thumb_sec = seekSec,
+                    engine_attempted = attemptedEngineId,
+                    engine_succeeded = failedResult?.IsSuccess == true,
+                    seek_strategy = seekStrategy,
+                    seek_sec = seekSec,
+                    repair_attempted = repairAttempted,
+                    repair_succeeded = false,
+                    preflight_branch = preflightBranch,
+                    result_signature = resultSignature,
+                    repro_confirmed = false,
+                    recovery_route = recoveryRoute,
+                    decision_basis = decisionBasis,
+                }
+            );
+        }
+
+        private static string ResolveAttemptedEngineId(ThumbnailCreateResult failedResult)
+        {
+            if (!string.IsNullOrWhiteSpace(failedResult?.EngineAttempted))
+            {
+                return failedResult.EngineAttempted;
+            }
+
+            string policy = (failedResult?.PolicyDecision ?? "").ToLowerInvariant();
+            string stage = (failedResult?.FailureStage ?? "").ToLowerInvariant();
+            string combined = policy + "|" + stage;
+            if (combined.Contains("ffmpeg1pass") || combined.Contains("one-pass"))
+            {
+                return "ffmpeg1pass";
+            }
+
+            if (combined.Contains("autogen"))
+            {
+                return "autogen";
+            }
+
+            return "";
+        }
+
+        private static string ResolveSeekStrategy(QueueDbLeaseItem leasedItem)
+        {
+            if (leasedItem == null)
+            {
+                return "unknown";
+            }
+
+            if (leasedItem.ThumbPanelPos > 0 || leasedItem.ThumbTimePos > 0)
+            {
+                return "manual";
+            }
+
+            return "original";
+        }
+
+        private static int? ResolveSeekSec(QueueDbLeaseItem leasedItem)
+        {
+            if (leasedItem == null)
+            {
+                return null;
+            }
+
+            if (leasedItem.ThumbTimePos > 0)
+            {
+                return leasedItem.ThumbTimePos;
+            }
+
+            return 0;
+        }
+
+        // workthree から戻る失敗シグネチャ比較用に、例外文字列を粗く正規化する。
+        private static string ResolveResultSignature(Exception ex, ThumbnailCreateResult failedResult)
+        {
+            string text = $"{failedResult?.ErrorMessage} {ex?.Message}".Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return "unknown";
+            }
+
+            if (text.Contains("shortclipstilllike"))
+            {
+                return "short-clip-still-like";
+            }
+
+            if (text.Contains("near-black"))
+            {
+                return "near-black";
+            }
+
+            if (text.Contains("no frames decoded"))
+            {
+                return "no-frames-decoded";
+            }
+
+            if (
+                text.Contains("timeout")
+                || text.Contains("timed out")
+                || text.Contains("hang")
+            )
+            {
+                return "timeout";
+            }
+
+            if (text.Contains("invalid data"))
+            {
+                return "invalid-data";
+            }
+
+            if (
+                text.Contains("end of file")
+                || text.Contains("after eof")
+                || text.Contains("eof")
+            )
+            {
+                return "eof";
+            }
+
+            if (text.Contains("access denied") || text.Contains("in use"))
+            {
+                return "file-locked";
+            }
+
+            if (text.Contains("not found") || text.Contains("could not find"))
+            {
+                return "file-missing";
+            }
+
+            if (text.Contains("stream info") || text.Contains("index") || text.Contains("moov"))
+            {
+                return "index-corruption";
+            }
+
+            if (text.Contains("video stream") || text.Contains("no video"))
+            {
+                return "no-video-stream";
+            }
+
+            if (text.Contains("unsupported"))
+            {
+                return "unsupported-codec";
+            }
+
+            if (text.Contains("drm"))
+            {
+                return "drm";
+            }
+
+            if (text.Contains("flash") || text.Contains("swf"))
+            {
+                return "flash";
+            }
+
+            return "unknown";
+        }
+
+        // Queue 側の遷移理由を、回復経路ラベルとして比較しやすくする。
+        private static string ResolveRecoveryRoute(
+            string reason,
+            ThumbnailQueueStatus nextStatus,
+            QueueDbLeaseItem leasedItem
+        )
+        {
+            string loweredReason = (reason ?? "").Trim().ToLowerInvariant();
+            if (loweredReason == "hang-recovery-scheduled")
+            {
+                return "hang-recovery";
+            }
+
+            if (loweredReason == "retry-scheduled")
+            {
+                return "retry";
+            }
+
+            if (nextStatus == ThumbnailQueueStatus.Failed)
+            {
+                return "final-failed";
+            }
+
+            if (nextStatus == ThumbnailQueueStatus.Pending && leasedItem?.IsRescueRequest == true)
+            {
+                return "recovery-retry";
+            }
+
+            if (nextStatus == ThumbnailQueueStatus.Pending)
+            {
+                return "retry";
+            }
+
+            return "";
+        }
+
+        // policy と stage を 1 行で比較できる形へ畳む。
+        private static string ResolveDecisionBasis(ThumbnailCreateResult failedResult)
+        {
+            if (failedResult == null)
+            {
+                return "";
+            }
+
+            string stage = failedResult.FailureStage ?? "";
+            string policy = failedResult.PolicyDecision ?? "";
+            if (string.IsNullOrWhiteSpace(stage))
+            {
+                return policy;
+            }
+
+            if (string.IsNullOrWhiteSpace(policy))
+            {
+                return stage;
+            }
+
+            return $"{stage}:{policy}";
+        }
+
+        // 現時点では stage / policy から repair 実行痕跡だけを粗く拾う。
+        private static bool ResolveRepairAttempted(ThumbnailCreateResult failedResult)
+        {
+            string text =
+                $"{failedResult?.FailureStage} {failedResult?.PolicyDecision} {failedResult?.FinalizerDetail}".ToLowerInvariant();
+            return text.Contains("repair") || text.Contains("repaired");
+        }
+
+        // 事前判定や placeholder 系の分岐を、比較用の短い枝名に寄せる。
+        private static string ResolvePreflightBranch(ThumbnailCreateResult failedResult)
+        {
+            if (failedResult == null)
+            {
+                return "";
+            }
+
+            string placeholderKind = (failedResult.PlaceholderKind ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(placeholderKind))
+            {
+                string normalized = placeholderKind.ToLowerInvariant();
+                return normalized == "unsupportedcodec" ? "unsupported-codec" : normalized;
+            }
+
+            string text =
+                $"{failedResult.FailureStage} {failedResult.PolicyDecision} {failedResult.FinalizerDetail}".ToLowerInvariant();
+            if (text.Contains("drm"))
+            {
+                return "drm";
+            }
+
+            if (text.Contains("flash") || text.Contains("swf"))
+            {
+                return "flash";
+            }
+
+            if (text.Contains("unsupported"))
+            {
+                return "unsupported-codec";
+            }
+
+            return "none";
+        }
+
+        private static bool SafePathExists(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            try
+            {
+                return Path.Exists(path);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string FormatUtc(DateTime utc)
+        {
+            return utc == DateTime.MinValue
+                ? ""
+                : utc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+        }
+
+        private static string FormatUtc(DateTime? utc)
+        {
+            return utc.HasValue ? FormatUtc(utc.Value) : "";
+        }
+
+        private static string ResolveExceptionType(Exception ex)
+        {
+            if (ex == null)
+            {
+                return "";
+            }
+
+            return ex.GetType().FullName ?? ex.GetType().Name ?? "";
+        }
+
+        private static string ResolvePanelType(int tabIndex)
+        {
+            return tabIndex switch
+            {
+                0 => "small",
+                1 => "big",
+                2 => "grid",
+                3 => "list",
+                4 => "big10",
+                _ => "unknown",
+            };
         }
 
         private static void ReportProgressSnapshot(
@@ -1728,27 +2329,18 @@ namespace IndigoMovieManager.Thumbnail
             return ThumbnailParallelController.Clamp(resolved);
         }
 
-        // リース取得件数は、通常系4件 + ゆっくり1件 + 再試行1件を先読みできる数を既定にする。
+        // リース取得件数は「今すぐ実行できる枠数」を上限にする。
+        // 難動画で未着手 lease を抱え込むと Processing 残留が増えるため、
+        // 先読みバッファよりも滞留抑制を優先する。
         private static int ResolveLeaseBatchSize(int configuredLeaseBatchSize, int currentParallelism)
         {
+            int safeParallelism = Math.Max(1, currentParallelism);
             if (configuredLeaseBatchSize > 0)
             {
-                return configuredLeaseBatchSize;
+                return Math.Max(1, Math.Min(configuredLeaseBatchSize, safeParallelism));
             }
 
-            int safeParallelism = Math.Max(1, currentParallelism);
-            int reservedLaneCount = 0;
-            if (safeParallelism >= RecoveryLaneReservedMinParallelism)
-            {
-                reservedLaneCount++;
-            }
-            if (safeParallelism >= SlowLaneThrottleMinParallelism)
-            {
-                reservedLaneCount++;
-            }
-
-            int bufferedLeaseCount = RegularLaneBufferedLeaseCount + reservedLaneCount;
-            return Math.Max(safeParallelism, bufferedLeaseCount);
+            return safeParallelism;
         }
 
         // RecoveryレーンやSlowレーンを有効化した場合、通常系へ割り当てる並列枠を減らす。

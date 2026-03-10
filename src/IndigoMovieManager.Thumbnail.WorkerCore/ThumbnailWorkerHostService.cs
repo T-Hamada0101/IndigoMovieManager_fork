@@ -116,7 +116,13 @@ namespace IndigoMovieManager.Thumbnail
                     currentParallel: 0,
                     configuredParallel: Math.Max(0, resolvedSettings.MaxParallelism)
                 );
-                PublishProgress(progressRuntime, progressPublisher);
+                PublishProgress(
+                    progressRuntime,
+                    progressPublisher,
+                    queueDbService,
+                    options.OwnerInstanceId,
+                    resolvedSettings.SlowLaneMinGb
+                );
                 using CancellationTokenSource healthHeartbeatCts =
                     CancellationTokenSource.CreateLinkedTokenSource(cts);
                 Task healthHeartbeatTask = RunHealthHeartbeatAsync(
@@ -139,6 +145,9 @@ namespace IndigoMovieManager.Thumbnail
                                     runtimeLog,
                                     progressRuntime,
                                     progressPublisher,
+                                    queueDbService,
+                                    options.OwnerInstanceId,
+                                    resolvedSettings.SlowLaneMinGb,
                                     token
                                 ),
                             maxParallelism: Math.Max(1, resolvedSettings.MaxParallelism),
@@ -165,17 +174,35 @@ namespace IndigoMovieManager.Thumbnail
                                     currentParallel,
                                     configuredParallel
                                 );
-                                PublishProgress(progressRuntime, progressPublisher);
+                                PublishProgress(
+                                    progressRuntime,
+                                    progressPublisher,
+                                    queueDbService,
+                                    options.OwnerInstanceId,
+                                    resolvedSettings.SlowLaneMinGb
+                                );
                             },
                             onJobStarted: queueObj =>
                             {
                                 progressRuntime.MarkJobStarted(queueObj);
-                                PublishProgress(progressRuntime, progressPublisher);
+                                PublishProgress(
+                                    progressRuntime,
+                                    progressPublisher,
+                                    queueDbService,
+                                    options.OwnerInstanceId,
+                                    resolvedSettings.SlowLaneMinGb
+                                );
                             },
                             onJobCompleted: queueObj =>
                             {
                                 progressRuntime.MarkJobCompleted(queueObj);
-                                PublishProgress(progressRuntime, progressPublisher);
+                                PublishProgress(
+                                    progressRuntime,
+                                    progressPublisher,
+                                    queueDbService,
+                                    options.OwnerInstanceId,
+                                    resolvedSettings.SlowLaneMinGb
+                                );
                             },
                             progressPresenter: NoOpThumbnailQueueProgressPresenter.Instance,
                             adminTelemetryClient: CreateAdminTelemetryClient(),
@@ -256,6 +283,9 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailWorkerRuntimeLog runtimeLog,
             ThumbnailProgressRuntime progressRuntime,
             ThumbnailProgressExternalSnapshotPublisher progressPublisher,
+            QueueDbService queueDbService,
+            string ownerInstanceId,
+            int slowLaneMinGb,
             CancellationToken cts
         )
         {
@@ -279,7 +309,13 @@ namespace IndigoMovieManager.Thumbnail
                         previewCacheKey: "",
                         previewRevision: DateTime.UtcNow.Ticks
                     );
-                    PublishProgress(progressRuntime, progressPublisher);
+                    PublishProgress(
+                        progressRuntime,
+                        progressPublisher,
+                        queueDbService,
+                        ownerInstanceId,
+                        slowLaneMinGb
+                    );
                 }
 
                 runtimeLog.Write(
@@ -292,9 +328,15 @@ namespace IndigoMovieManager.Thumbnail
             string message =
                 $"thumbnail create failed: role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' reason='{result.ErrorMessage}'";
             progressRuntime.MarkJobFailed(queueObj);
-            PublishProgress(progressRuntime, progressPublisher);
+            PublishProgress(
+                progressRuntime,
+                progressPublisher,
+                queueDbService,
+                ownerInstanceId,
+                slowLaneMinGb
+            );
             runtimeLog.Write("thumbnail", message);
-            throw new InvalidOperationException(message);
+            throw new ThumbnailCreateFailedException(message, result);
         }
 
         private static IAdminTelemetryClient CreateAdminTelemetryClient()
@@ -381,12 +423,30 @@ namespace IndigoMovieManager.Thumbnail
         }
         private static void PublishProgress(
             ThumbnailProgressRuntime progressRuntime,
-            ThumbnailProgressExternalSnapshotPublisher progressPublisher
+            ThumbnailProgressExternalSnapshotPublisher progressPublisher,
+            QueueDbService queueDbService,
+            string ownerInstanceId,
+            int slowLaneMinGb
         )
         {
             if (progressRuntime == null || progressPublisher == null)
             {
                 return;
+            }
+
+            if (queueDbService != null && !string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                long slowLaneMinMovieSizeBytes = Math.Max(1, slowLaneMinGb) * 1024L * 1024L * 1024L;
+                QueueDbDemandSnapshot demandSnapshot = queueDbService.GetDemandSnapshot(
+                    [ownerInstanceId],
+                    slowLaneMinMovieSizeBytes,
+                    DateTime.UtcNow
+                );
+                progressRuntime.UpdateQueueObservation(
+                    demandSnapshot.LeasedTotalCount,
+                    demandSnapshot.RunningTotalCount,
+                    demandSnapshot.HangSuspectedCount
+                );
             }
 
             progressPublisher.Publish(progressRuntime.CreateSnapshot());

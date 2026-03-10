@@ -9,7 +9,12 @@ namespace IndigoMovieManager.Thumbnail
         public static ThumbnailCreateResult CreateSuccess(
             string saveThumbFileName,
             double? durationSec,
-            ThumbnailPreviewFrame previewFrame = null
+            ThumbnailPreviewFrame previewFrame = null,
+            string engineAttempted = "",
+            string failureStage = "",
+            string policyDecision = "",
+            string placeholderAction = "",
+            string placeholderKind = ""
         )
         {
             return new ThumbnailCreateResult
@@ -17,7 +22,12 @@ namespace IndigoMovieManager.Thumbnail
                 SaveThumbFileName = saveThumbFileName,
                 DurationSec = durationSec,
                 IsSuccess = true,
+                EngineAttempted = engineAttempted ?? "",
                 PreviewFrame = previewFrame,
+                FailureStage = failureStage ?? "",
+                PolicyDecision = policyDecision ?? "",
+                PlaceholderAction = placeholderAction ?? "",
+                PlaceholderKind = placeholderKind ?? "",
             };
         }
 
@@ -25,7 +35,12 @@ namespace IndigoMovieManager.Thumbnail
             string saveThumbFileName,
             double? durationSec,
             string errorMessage,
-            ThumbnailPreviewFrame previewFrame = null
+            ThumbnailPreviewFrame previewFrame = null,
+            string engineAttempted = "",
+            string failureStage = "",
+            string policyDecision = "",
+            string placeholderAction = "",
+            string placeholderKind = ""
         )
         {
             return new ThumbnailCreateResult
@@ -34,7 +49,12 @@ namespace IndigoMovieManager.Thumbnail
                 DurationSec = durationSec,
                 IsSuccess = false,
                 ErrorMessage = errorMessage ?? "",
+                EngineAttempted = engineAttempted ?? "",
                 PreviewFrame = previewFrame,
+                FailureStage = failureStage ?? "",
+                PolicyDecision = policyDecision ?? "",
+                PlaceholderAction = placeholderAction ?? "",
+                PlaceholderKind = placeholderKind ?? "",
             };
         }
     }

@@ -16,6 +16,7 @@ namespace IndigoMovieManager.Thumbnail
         private const string AutogenRetryDelayMsEnvName = "IMM_THUMB_AUTOGEN_RETRY_DELAY_MS";
         private const int DefaultAutogenRetryCount = 4;
         private const int DefaultAutogenRetryDelayMs = 300;
+        private const double InitialLongClipOnePassFallbackThresholdSec = 300d;
         private static readonly HashSet<string> IndexRepairTargetExtensions = new(
             [
                 ".mp4",
@@ -278,14 +279,50 @@ namespace IndigoMovieManager.Thumbnail
             bool isRecoveryLane,
             bool isSuccess,
             string processEngineId,
+            double? durationSec,
             IReadOnlyList<string> engineErrorMessages
         )
         {
+            bool shouldTryInitialLongClipFallback =
+                !isRecoveryLane
+                && ShouldTryInitialLongClipOnePassFallback(durationSec, engineErrorMessages);
+
             return !isManual
-                && isRecoveryLane
                 && !isSuccess
                 && string.Equals(processEngineId, "autogen", StringComparison.OrdinalIgnoreCase)
+                && (isRecoveryLane || shouldTryInitialLongClipFallback)
+                && !ShouldSkipFfmpegOnePassByKnownInvalidInput(engineErrorMessages)
                 && ShouldTryRecoveryOnePassFallback(engineErrorMessages);
+        }
+
+        private static bool ShouldTryInitialLongClipOnePassFallback(
+            double? durationSec,
+            IReadOnlyList<string> engineErrorMessages
+        )
+        {
+            if (!durationSec.HasValue || durationSec.Value < InitialLongClipOnePassFallbackThresholdSec)
+            {
+                return false;
+            }
+
+            if (engineErrorMessages == null || engineErrorMessages.Count < 1)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < engineErrorMessages.Count; i++)
+            {
+                string message = engineErrorMessages[i] ?? "";
+                if (
+                    message.IndexOf("[autogen]", StringComparison.OrdinalIgnoreCase) >= 0
+                    && message.IndexOf("no frames decoded", StringComparison.OrdinalIgnoreCase) >= 0
+                )
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static bool ShouldTryOriginalOnePassAfterRepairFailure(

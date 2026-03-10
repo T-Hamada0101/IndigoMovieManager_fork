@@ -219,7 +219,12 @@ namespace IndigoMovieManager
             CoordinatorQueueText.Text = latestCoordinatorControl == null
                 ? "-"
                 : $"{latestCoordinatorControl.QueuedNormalCount}/{latestCoordinatorControl.QueuedSlowCount}/{latestCoordinatorControl.QueuedRecoveryCount}"
+                    + $" / {latestCoordinatorControl.LeasedNormalCount}/{latestCoordinatorControl.LeasedSlowCount}/{latestCoordinatorControl.LeasedRecoveryCount}"
                     + $" / {latestCoordinatorControl.RunningNormalCount}/{latestCoordinatorControl.RunningSlowCount}/{latestCoordinatorControl.RunningRecoveryCount}";
+            if (latestCoordinatorControl != null)
+            {
+                CoordinatorQueueText.Text += $" / {latestCoordinatorControl.HangSuspectedCount}";
+            }
             CoordinatorDemandText.Text = latestCoordinatorControl == null
                 ? "-"
                 : $"{latestCoordinatorControl.DemandNormalCount}/{latestCoordinatorControl.DemandSlowCount}/{latestCoordinatorControl.DemandRecoveryCount}";

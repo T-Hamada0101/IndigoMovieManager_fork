@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -10,6 +11,8 @@ namespace IndigoMovieManager.Thumbnail
     public static class ThumbnailWorkerSettingsStore
     {
         private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
+        private const int SaveRetryCount = 3;
+        private static readonly TimeSpan SaveRetryDelay = TimeSpan.FromMilliseconds(40);
 
         public static ThumbnailWorkerSettingsSaveResult SaveSnapshot(
             ThumbnailWorkerSettingsSnapshot snapshot
@@ -62,9 +65,7 @@ namespace IndigoMovieManager.Thumbnail
             if (shouldWrite)
             {
                 string json = JsonSerializer.Serialize(persistedSnapshot, JsonOptions);
-                string tempFilePath = snapshotFilePath + ".tmp";
-                File.WriteAllText(tempFilePath, json, new UTF8Encoding(false));
-                File.Move(tempFilePath, snapshotFilePath, true);
+                SaveSnapshotFile(snapshotFilePath, json, versionToken);
             }
 
             return new ThumbnailWorkerSettingsSaveResult
@@ -174,6 +175,89 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return builder.Length > 0 ? builder.ToString() : "db";
+        }
+
+        // UI と Coordinator が同じ snapshot を更新しても、競合で即死しないように吸収する。
+        private static void SaveSnapshotFile(
+            string snapshotFilePath,
+            string json,
+            string versionToken
+        )
+        {
+            Exception lastException = null;
+            for (int attempt = 0; attempt < SaveRetryCount; attempt++)
+            {
+                string tempFilePath = BuildTempFilePath(snapshotFilePath);
+                try
+                {
+                    File.WriteAllText(tempFilePath, json, new UTF8Encoding(false));
+                    File.Move(tempFilePath, snapshotFilePath, true);
+                    return;
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    lastException = ex;
+                    if (TryAcceptExistingSnapshot(snapshotFilePath, versionToken))
+                    {
+                        return;
+                    }
+                }
+                finally
+                {
+                    TryDelete(tempFilePath);
+                }
+
+                if (attempt + 1 < SaveRetryCount)
+                {
+                    Thread.Sleep(SaveRetryDelay);
+                }
+            }
+
+            throw lastException ?? new IOException("worker settings snapshot save failed.");
+        }
+
+        private static string BuildTempFilePath(string snapshotFilePath)
+        {
+            string directoryPath = Path.GetDirectoryName(snapshotFilePath) ?? ResolveSnapshotDirectoryPath();
+            string fileName = Path.GetFileName(snapshotFilePath);
+            return Path.Combine(
+                directoryPath,
+                $"{fileName}.{Environment.ProcessId}.{Environment.CurrentManagedThreadId}.{Guid.NewGuid():N}.tmp"
+            );
+        }
+
+        // 競合相手が同じ内容を書き終えていれば、その結果を成功扱いに寄せる。
+        private static bool TryAcceptExistingSnapshot(string snapshotFilePath, string versionToken)
+        {
+            try
+            {
+                if (!File.Exists(snapshotFilePath))
+                {
+                    return false;
+                }
+
+                ThumbnailWorkerSettingsSnapshot existing = LoadSnapshot(snapshotFilePath);
+                return existing != null
+                    && string.Equals(existing.VersionToken, versionToken, StringComparison.Ordinal);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void TryDelete(string path)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+            }
         }
     }
 }

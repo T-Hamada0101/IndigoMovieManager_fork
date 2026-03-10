@@ -23,6 +23,7 @@ namespace IndigoMovieManager_fork.Tests
 
             ThumbnailProgressRuntime normalRuntime = new();
             normalRuntime.UpdateSessionProgress(3, 10, 2, 6);
+            normalRuntime.UpdateQueueObservation(leased: 1, running: 2, hangSuspected: 0);
             normalRuntime.MarkJobStarted(
                 new QueueObj
                 {
@@ -36,6 +37,7 @@ namespace IndigoMovieManager_fork.Tests
 
             ThumbnailProgressRuntime idleRuntime = new();
             idleRuntime.UpdateSessionProgress(1, 2, 1, 1);
+            idleRuntime.UpdateQueueObservation(leased: 0, running: 1, hangSuspected: 1);
             idleRuntime.MarkJobStarted(
                 new QueueObj
                 {
@@ -69,6 +71,9 @@ namespace IndigoMovieManager_fork.Tests
                 Assert.That(merged.SchemaVersion, Is.EqualTo(1));
                 Assert.That(merged.SessionCompletedCount, Is.EqualTo(4));
                 Assert.That(merged.SessionTotalCount, Is.EqualTo(12));
+                Assert.That(merged.LeasedCount, Is.EqualTo(1));
+                Assert.That(merged.RunningCount, Is.EqualTo(3));
+                Assert.That(merged.HangSuspectedCount, Is.EqualTo(1));
                 Assert.That(merged.CurrentParallelism, Is.EqualTo(3));
                 Assert.That(merged.ConfiguredParallelism, Is.EqualTo(7));
                 Assert.That(merged.EnqueueLogs.Count, Is.EqualTo(1));

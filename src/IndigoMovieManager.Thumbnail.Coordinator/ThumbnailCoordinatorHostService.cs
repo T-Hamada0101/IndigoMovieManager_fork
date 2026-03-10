@@ -193,9 +193,13 @@ namespace IndigoMovieManager.Thumbnail
                     QueuedNormalCount = executionPlan.DemandSnapshot.QueuedNormalCount,
                     QueuedSlowCount = executionPlan.DemandSnapshot.QueuedSlowCount,
                     QueuedRecoveryCount = executionPlan.DemandSnapshot.QueuedRecoveryCount,
+                    LeasedNormalCount = executionPlan.DemandSnapshot.LeasedNormalCount,
+                    LeasedSlowCount = executionPlan.DemandSnapshot.LeasedSlowCount,
+                    LeasedRecoveryCount = executionPlan.DemandSnapshot.LeasedRecoveryCount,
                     RunningNormalCount = executionPlan.DemandSnapshot.RunningNormalCount,
                     RunningSlowCount = executionPlan.DemandSnapshot.RunningSlowCount,
                     RunningRecoveryCount = executionPlan.DemandSnapshot.RunningRecoveryCount,
+                    HangSuspectedCount = executionPlan.DemandSnapshot.HangSuspectedCount,
                     DemandNormalCount = executionPlan.SlotDecision.NormalDemand,
                     DemandSlowCount = executionPlan.SlotDecision.SlowDemand,
                     DemandRecoveryCount = executionPlan.SlotDecision.RecoveryDemand,
@@ -380,7 +384,9 @@ namespace IndigoMovieManager.Thumbnail
             QueueDbDemandSnapshot demandSnapshot = executionPlan?.DemandSnapshot ?? new();
             string queueSummary =
                 $"q={demandSnapshot.QueuedNormalCount}/{demandSnapshot.QueuedSlowCount}/{demandSnapshot.QueuedRecoveryCount}"
+                + $" lease={demandSnapshot.LeasedNormalCount}/{demandSnapshot.LeasedSlowCount}/{demandSnapshot.LeasedRecoveryCount}"
                 + $" run={demandSnapshot.RunningNormalCount}/{demandSnapshot.RunningSlowCount}/{demandSnapshot.RunningRecoveryCount}"
+                + $" hang={demandSnapshot.HangSuspectedCount}"
                 + $" demand={executionPlan?.SlotDecision?.NormalDemand ?? 0}/{executionPlan?.SlotDecision?.SlowDemand ?? 0}/{executionPlan?.SlotDecision?.RecoveryDemand ?? 0}"
                 + $" weight={executionPlan?.SlotDecision?.WeightedNormalDemand ?? 0}/{executionPlan?.SlotDecision?.WeightedSlowDemand ?? 0}"
                 + $" slot={executionPlan?.FastSlotCount ?? 0}/{executionPlan?.SlowSlotCount ?? 0}"

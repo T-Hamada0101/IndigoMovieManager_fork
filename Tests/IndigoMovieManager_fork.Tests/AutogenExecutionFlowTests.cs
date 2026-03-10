@@ -1469,6 +1469,114 @@ public class AutogenExecutionFlowTests
     }
 
     [Test]
+    public async Task CreateThumbAsync_初回でも長尺NoFramesDecoded時はOnePass救済する()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyMp4File(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "No frames decoded"
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmedia failed"
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateSuccess(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "opencv failed"
+                        )
+                    )
+            );
+            RecordingThumbnailLogger logger = new();
+            var service = ThumbnailCreationServiceFactory.Create(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                new FixedVideoMetadataProvider(2872.529, "png"),
+                logger,
+                new RecordingVideoIndexRepairService(
+                    _ => new VideoIndexProbeResult(),
+                    (_, __) => new VideoIndexRepairResult()
+                )
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            string? oldAutogenRetry = Environment.GetEnvironmentVariable(AutogenRetryEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, "off");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj { MovieId = 84, Tabindex = 0, MovieFullPath = moviePath },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(autogen.CreateCallCount, Is.EqualTo(1));
+                Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(1));
+                Assert.That(
+                    logger.DebugMessages.Any(x =>
+                        x.Contains("engine fallback: category=fallback from=autogen, to=ffmpeg1pass")
+                        && x.Contains("recovery-no-frames-decoded")
+                    ),
+                    Is.True
+                );
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, oldAutogenRetry);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
     public async Task CreateThumbAsync_RecoveryOnePass失敗時は追加修復せずそのまま失敗を返す()
     {
         string tempRoot = CreateTempRoot();
@@ -2115,5 +2223,29 @@ public class AutogenExecutionFlowTests
         public void LogWarning(string category, string message) { }
 
         public void LogError(string category, string message) { }
+    }
+
+    private sealed class FixedVideoMetadataProvider : IVideoMetadataProvider
+    {
+        private readonly double durationSec;
+        private readonly string videoCodec;
+
+        public FixedVideoMetadataProvider(double durationSec, string videoCodec)
+        {
+            this.durationSec = durationSec;
+            this.videoCodec = videoCodec;
+        }
+
+        public bool TryGetVideoCodec(string moviePath, out string codec)
+        {
+            codec = videoCodec;
+            return !string.IsNullOrWhiteSpace(codec);
+        }
+
+        public bool TryGetDurationSec(string moviePath, out double durationSec)
+        {
+            durationSec = this.durationSec;
+            return durationSec > 0;
+        }
     }
 }

@@ -71,6 +71,19 @@ namespace IndigoMovieManager.DB
         /// <param name="sql">実行するSELECT文</param>
         public static DataTable GetData(string dbFullPath, string sql)
         {
+            return GetData(dbFullPath, sql, null);
+        }
+
+        /// <summary>
+        /// SELECT文をパラメータ付きで実行し、結果をDataTableとして返す。
+        /// 絵文字や引用符を含むパスも、文字列連結せず安全に検索する。
+        /// </summary>
+        public static DataTable GetData(
+            string dbFullPath,
+            string sql,
+            IReadOnlyDictionary<string, object> parameters
+        )
+        {
             try
             {
                 DataTable dt = new();
@@ -80,6 +93,13 @@ namespace IndigoMovieManager.DB
 
                     using SQLiteCommand cmd = connection.CreateCommand();
                     cmd.CommandText = sql;
+                    if (parameters != null)
+                    {
+                        foreach (var entry in parameters)
+                        {
+                            cmd.Parameters.Add(new SQLiteParameter(entry.Key, entry.Value ?? DBNull.Value));
+                        }
+                    }
 
                     SQLiteDataAdapter da = new(cmd);
 
@@ -524,8 +544,27 @@ namespace IndigoMovieManager.DB
             bool exists = false;
             try
             {
+                if (string.IsNullOrWhiteSpace(dbFullPath) || !File.Exists(dbFullPath))
+                {
+                    DebugRuntimeLog.Write(
+                        "db",
+                        $"skip system upsert: invalid db path. attr='{attr}' path='{dbFullPath}'"
+                    );
+                    return;
+                }
+
                 using SQLiteConnection connection = new($"Data Source={dbFullPath}");
                 connection.Open();
+
+                // systemテーブルが無いDBへは書かずに戻し、誤ったファイル汚染を防ぐ。
+                if (!TableExists(connection, "system"))
+                {
+                    DebugRuntimeLog.Write(
+                        "db",
+                        $"skip system upsert: system table missing. attr='{attr}' path='{dbFullPath}'"
+                    );
+                    return;
+                }
 
                 using SQLiteCommand cmd = connection.CreateCommand();
                 cmd.CommandText = "select 1 from system where attr = @attr limit 1";

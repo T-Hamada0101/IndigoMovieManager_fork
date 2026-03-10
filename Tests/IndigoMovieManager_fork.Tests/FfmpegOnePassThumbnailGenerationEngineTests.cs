@@ -189,6 +189,54 @@ public sealed class FfmpegOnePassThumbnailGenerationEngineTests
     }
 
     [Test]
+    public void ShouldUseShortClipSeekFallback_1秒以下かつ5パネル以下だけtrueを返す()
+    {
+        Assert.That(
+            FfmpegOnePassThumbnailGenerationEngine.ShouldUseShortClipSeekFallback(0.069, 1),
+            Is.True
+        );
+        Assert.That(
+            FfmpegOnePassThumbnailGenerationEngine.ShouldUseShortClipSeekFallback(0.98, 5),
+            Is.True
+        );
+        Assert.That(
+            FfmpegOnePassThumbnailGenerationEngine.ShouldUseShortClipSeekFallback(1.2, 1),
+            Is.False
+        );
+        Assert.That(
+            FfmpegOnePassThumbnailGenerationEngine.ShouldUseShortClipSeekFallback(0.5, 10),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void BuildShortClipSeekCandidates_短尺候補を重複なく返し元開始秒は除外する()
+    {
+        IReadOnlyList<double> actual =
+            FfmpegOnePassThumbnailGenerationEngine.BuildShortClipSeekCandidates(0.069, 0d);
+
+        Assert.That(actual, Does.Contain(0.001d));
+        Assert.That(actual, Does.Contain(0.005d));
+        Assert.That(actual, Does.Contain(0.01d));
+        Assert.That(actual, Does.Contain(0.016d));
+        Assert.That(actual, Does.Contain(0.033d));
+        Assert.That(actual, Does.Contain(0.05d));
+        Assert.That(actual, Does.Contain(0.069d * 0.5d).Or.Contain(0.034d));
+        Assert.That(actual, Does.Not.Contain(0d));
+        Assert.That(actual.Distinct().Count(), Is.EqualTo(actual.Count));
+    }
+
+    [Test]
+    public void BuildShortClipSeekCandidates_動画長超過候補は除外する()
+    {
+        IReadOnlyList<double> actual =
+            FfmpegOnePassThumbnailGenerationEngine.BuildShortClipSeekCandidates(0.033, 0.01d);
+
+        Assert.That(actual.All(x => x < 0.033d), Is.True);
+        Assert.That(actual, Does.Not.Contain(0.01d));
+    }
+
+    [Test]
     public void ResolveProcessTimeout_未指定時はタイムアウトなしを返す()
     {
         TimeSpan actual = FfmpegOnePassThumbnailGenerationEngine.ResolveProcessTimeout(

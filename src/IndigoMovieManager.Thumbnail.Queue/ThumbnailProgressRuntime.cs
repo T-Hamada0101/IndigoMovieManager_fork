@@ -26,6 +26,9 @@ namespace IndigoMovieManager.Thumbnail
         private int sessionCompletedCount;
         private int sessionTotalCount;
         private int sessionCreatedThumbnailCount;
+        private int leasedCount;
+        private int runningCount;
+        private int hangSuspectedCount;
         private int currentParallelism;
         private int configuredParallelism;
         private long stateVersion;
@@ -42,6 +45,9 @@ namespace IndigoMovieManager.Thumbnail
                     || sessionCompletedCount != 0
                     || sessionTotalCount != 0
                     || sessionCreatedThumbnailCount != 0
+                    || leasedCount != 0
+                    || runningCount != 0
+                    || hangSuspectedCount != 0
                     || currentParallelism != 0
                     || configuredParallelism != 0;
 
@@ -53,6 +59,9 @@ namespace IndigoMovieManager.Thumbnail
                 sessionCreatedThumbnailCount = string.IsNullOrWhiteSpace(persistentMainDbFullPath)
                     ? 0
                     : ThumbnailCreatedCountStore.Load(persistentMainDbFullPath);
+                leasedCount = 0;
+                runningCount = 0;
+                hangSuspectedCount = 0;
                 currentParallelism = 0;
                 configuredParallelism = 0;
                 if (hasAnyState)
@@ -87,7 +96,7 @@ namespace IndigoMovieManager.Thumbnail
             }
         }
 
-        // キュー投入ログは「動画名のみ」を最新N件で保持する。
+        // キュー投入ログは最新N件を保持し、最優先投入は見分けられるようにする。
         public void RecordEnqueue(QueueObj queueObj)
         {
             string movieName = Path.GetFileName(queueObj?.MovieFullPath ?? "");
@@ -96,9 +105,11 @@ namespace IndigoMovieManager.Thumbnail
                 return;
             }
 
+            string logText = queueObj?.IsRescueRequest == true ? $"最優先: {movieName}" : movieName;
+
             lock (stateLock)
             {
-                enqueueLogs.Enqueue(movieName);
+                enqueueLogs.Enqueue(logText);
                 while (enqueueLogs.Count > MaxEnqueueLogCount)
                 {
                     _ = enqueueLogs.Dequeue();
@@ -140,6 +151,30 @@ namespace IndigoMovieManager.Thumbnail
             }
         }
 
+        // QueueDB 観測値を進捗スナップショットへ載せ、UI 側で leased/running/hang を見えるようにする。
+        public void UpdateQueueObservation(int leased, int running, int hangSuspected)
+        {
+            lock (stateLock)
+            {
+                int nextLeased = Math.Max(0, leased);
+                int nextRunning = Math.Max(0, running);
+                int nextHangSuspected = Math.Max(0, hangSuspected);
+                if (
+                    leasedCount == nextLeased
+                    && runningCount == nextRunning
+                    && hangSuspectedCount == nextHangSuspected
+                )
+                {
+                    return;
+                }
+
+                leasedCount = nextLeased;
+                runningCount = nextRunning;
+                hangSuspectedCount = nextHangSuspected;
+                MarkStateDirty();
+            }
+        }
+
         // ジョブ開始時に右サイド表示の作業パネルを追加/更新する。
         public void MarkJobStarted(QueueObj queueObj)
         {
@@ -154,6 +189,10 @@ namespace IndigoMovieManager.Thumbnail
                 WorkerState worker = AcquireWorkerForJob(key, queueObj);
                 string nextMoviePath = queueObj.MovieFullPath ?? "";
                 string nextDisplayMovieName = ToDisplayMovieName(queueObj.MovieFullPath);
+                bool isDifferentJob =
+                    worker.MovieId != queueObj.MovieId
+                    || worker.TabIndex != queueObj.Tabindex
+                    || !string.Equals(worker.MoviePath, nextMoviePath, StringComparison.OrdinalIgnoreCase);
                 bool isChanged = false;
 
                 if (!string.Equals(worker.MoviePath, nextMoviePath, StringComparison.OrdinalIgnoreCase))
@@ -180,6 +219,12 @@ namespace IndigoMovieManager.Thumbnail
                     isChanged = true;
                 }
 
+                if (worker.IsTopPriority != queueObj.IsRescueRequest)
+                {
+                    worker.IsTopPriority = queueObj.IsRescueRequest;
+                    isChanged = true;
+                }
+
                 if (!worker.IsActive)
                 {
                     worker.IsActive = true;
@@ -190,6 +235,31 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     worker.CompletedAtUtc = DateTime.MinValue;
                     isChanged = true;
+                }
+
+                // 再利用パネルへ別ジョブを載せる時は、古いプレビューを引き継がない。
+                if (isDifferentJob)
+                {
+                    if (!string.IsNullOrWhiteSpace(worker.PreviewImagePath))
+                    {
+                        worker.PreviewImagePath = "";
+                        isChanged = true;
+                    }
+                    if (!string.IsNullOrWhiteSpace(worker.PreviewCacheKey))
+                    {
+                        worker.PreviewCacheKey = "";
+                        isChanged = true;
+                    }
+                    if (worker.PreviewRevision != 0)
+                    {
+                        worker.PreviewRevision = 0;
+                        isChanged = true;
+                    }
+                    if (!string.IsNullOrWhiteSpace(worker.LastAppliedPreviewJobKey))
+                    {
+                        worker.LastAppliedPreviewJobKey = "";
+                        isChanged = true;
+                    }
                 }
 
                 if (!string.Equals(worker.State, ThumbnailProgressSnapshotState.Started, StringComparison.Ordinal))
@@ -236,6 +306,7 @@ namespace IndigoMovieManager.Thumbnail
                 worker.MovieId = queueObj.MovieId;
                 worker.TabIndex = queueObj.Tabindex;
                 worker.DisplayMovieName = ToDisplayMovieName(queueObj.MovieFullPath);
+                worker.IsTopPriority = queueObj.IsRescueRequest;
                 worker.PreviewImagePath = previewImagePath;
                 if (!string.IsNullOrWhiteSpace(previewCacheKey) && previewRevision > 0)
                 {
@@ -307,6 +378,7 @@ namespace IndigoMovieManager.Thumbnail
                 worker.MovieId = queueObj.MovieId;
                 worker.TabIndex = queueObj.Tabindex;
                 worker.DisplayMovieName = ToDisplayMovieName(queueObj.MovieFullPath);
+                worker.IsTopPriority = queueObj.IsRescueRequest;
                 worker.IsActive = false;
                 worker.CompletedAtUtc = DateTime.UtcNow;
                 worker.State = ThumbnailProgressSnapshotState.Failed;
@@ -356,6 +428,7 @@ namespace IndigoMovieManager.Thumbnail
                                 PreviewImagePath = x.PreviewImagePath,
                                 PreviewCacheKey = x.PreviewCacheKey,
                                 PreviewRevision = x.PreviewRevision,
+                                IsTopPriority = x.IsTopPriority,
                                 IsActive = x.IsActive,
                                 UpdatedAtUtc = x.UpdatedAtUtc,
                             }
@@ -371,6 +444,9 @@ namespace IndigoMovieManager.Thumbnail
                     SessionCompletedCount = sessionCompletedCount,
                     SessionTotalCount = sessionTotalCount,
                     SessionCreatedThumbnailCount = sessionCreatedThumbnailCount,
+                    LeasedCount = leasedCount,
+                    RunningCount = runningCount,
+                    HangSuspectedCount = hangSuspectedCount,
                     CurrentParallelism = currentParallelism,
                     ConfiguredParallelism = configuredParallelism,
                     EnqueueLogs = logSnapshot,
@@ -600,6 +676,7 @@ namespace IndigoMovieManager.Thumbnail
             public string PreviewCacheKey { get; set; } = "";
             public long PreviewRevision { get; set; }
             public string LastAppliedPreviewJobKey { get; set; } = "";
+            public bool IsTopPriority { get; set; }
             public bool IsActive { get; set; } = true;
             public DateTime CompletedAtUtc { get; set; } = DateTime.MinValue;
             public string State { get; set; } = ThumbnailProgressSnapshotState.Started;
@@ -614,6 +691,9 @@ namespace IndigoMovieManager.Thumbnail
         public int SessionCompletedCount { get; init; }
         public int SessionTotalCount { get; init; }
         public int SessionCreatedThumbnailCount { get; init; }
+        public int LeasedCount { get; init; }
+        public int RunningCount { get; init; }
+        public int HangSuspectedCount { get; init; }
         public int CurrentParallelism { get; init; }
         public int ConfiguredParallelism { get; init; }
         public IReadOnlyList<string> EnqueueLogs { get; init; } = [];
@@ -636,6 +716,7 @@ namespace IndigoMovieManager.Thumbnail
         public string PreviewImagePath { get; init; } = "";
         public string PreviewCacheKey { get; init; } = "";
         public long PreviewRevision { get; init; }
+        public bool IsTopPriority { get; init; }
         public bool IsActive { get; init; } = true;
         public DateTime UpdatedAtUtc { get; init; }
     }

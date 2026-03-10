@@ -25,14 +25,16 @@ namespace IndigoMovieManager.Converter
             string filePath = value as string;
             if (string.IsNullOrWhiteSpace(filePath))
             {
-                return Binding.DoNothing;
+                // 仮想化で使い回された行に前回画像が残らないよう、空時は明示的に解除する。
+                return null;
             }
 
             try
             {
                 if (!Path.Exists(filePath))
                 {
-                    return Binding.DoNothing;
+                    // ファイル未作成や差し替え直後でも、古い ImageSource を残さない。
+                    return null;
                 }
 
                 ConvertOptions options = ParseOptions(parameter);
@@ -54,7 +56,7 @@ namespace IndigoMovieManager.Converter
                 BitmapSource bitmap = LoadBitmapNoLock(fullPath, options.DecodePixelHeight);
                 if (bitmap is null)
                 {
-                    return Binding.DoNothing;
+                    return null;
                 }
 
                 BitmapSource result = options.UseGray ? ConvertToGray(bitmap) : bitmap;
@@ -64,7 +66,7 @@ namespace IndigoMovieManager.Converter
             }
             catch (Exception)
             {
-                return Binding.DoNothing;
+                return null;
             }
         }
 

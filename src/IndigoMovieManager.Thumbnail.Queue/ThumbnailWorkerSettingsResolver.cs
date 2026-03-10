@@ -85,9 +85,11 @@ namespace IndigoMovieManager.Thumbnail
                 PollIntervalMs = Math.Max(100, pollIntervalMs),
                 BatchCooldownMs = Math.Max(0, batchCooldownMs),
                 LeaseMinutes = Math.Max(1, snapshot.LeaseMinutes),
+                // 先取り lease が大きいと難動画で Processing が膨らみやすい。
+                // ここでは「実際に今走らせる枠数」までに抑え、未着手ジョブの先取りを避ける。
                 LeaseBatchSize = workerRole == ThumbnailQueueWorkerRole.Idle
                     ? 1
-                    : Math.Max(4, resolvedParallelism),
+                    : Math.Max(1, resolvedParallelism),
                 SlowLaneMinGb = Math.Max(1, snapshot.SlowLaneMinGb),
                 ResizeThumb = snapshot.ResizeThumb,
                 GpuDecodeEnabled = snapshot.GpuDecodeEnabled,

@@ -291,14 +291,14 @@
                                             SelectionChanged="List_SelectionChanged"
                                             SelectionMode="Extended"
                                             VirtualizingPanel.IsVirtualizing="True"
-                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                            VirtualizingPanel.VirtualizationMode="Standard">
                                             <ListView.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <vwp:VirtualizingWrapPanel
                                                         Orientation="Horizontal"
                                                         StretchItems="True"
                                                         VirtualizingPanel.IsVirtualizing="True"
-                                                        VirtualizingPanel.VirtualizationMode="Recycling" />
+                                                        VirtualizingPanel.VirtualizationMode="Standard" />
                                                 </ItemsPanelTemplate>
                                             </ListView.ItemsPanel>
 
@@ -320,12 +320,12 @@
                                                         Orientation="Vertical"
                                                         ScrollViewer.IsDeferredScrollingEnabled="true"
                                                         VirtualizingPanel.IsVirtualizing="True"
-                                                        VirtualizingPanel.VirtualizationMode="Recycling">
+                                                        VirtualizingPanel.VirtualizationMode="Standard">
                                                         <VirtualizingStackPanel
                                                             Orientation="Horizontal"
                                                             ScrollViewer.IsDeferredScrollingEnabled="true"
                                                             VirtualizingPanel.IsVirtualizing="True"
-                                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                                            VirtualizingPanel.VirtualizationMode="Standard">
                                                             <Label
                                                                 Width="360"
                                                                 Height="Auto"
@@ -362,7 +362,7 @@
                                                             VirtualizingPanel.IsContainerVirtualizable="True"
                                                             VirtualizingPanel.IsVirtualizing="True"
                                                             VirtualizingPanel.ScrollUnit="Pixel"
-                                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                                            VirtualizingPanel.VirtualizationMode="Standard">
 
                                                             <ItemsControl.ItemTemplate>
                                                                 <DataTemplate>
@@ -379,7 +379,7 @@
                                                                         MaxHeight="110"
                                                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                                         VirtualizingPanel.IsVirtualizing="True"
-                                                                        VirtualizingPanel.VirtualizationMode="Recycling" />
+                                                                        VirtualizingPanel.VirtualizationMode="Standard" />
                                                                 </ItemsPanelTemplate>
                                                             </ItemsControl.ItemsPanel>
 
@@ -404,7 +404,7 @@
                                             SelectionMode="Extended"
                                             VirtualizingPanel.IsVirtualizing="True"
                                             VirtualizingPanel.ScrollUnit="Pixel"
-                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                            VirtualizingPanel.VirtualizationMode="Standard">
                                             <ListView.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <vwp:VirtualizingWrapPanel
@@ -412,7 +412,7 @@
                                                         StretchItems="True"
                                                         VirtualizingPanel.IsVirtualizing="True"
                                                         VirtualizingPanel.ScrollUnit="Pixel"
-                                                        VirtualizingPanel.VirtualizationMode="Recycling" />
+                                                        VirtualizingPanel.VirtualizationMode="Standard" />
                                                 </ItemsPanelTemplate>
                                             </ListView.ItemsPanel>
 
@@ -432,12 +432,12 @@
                                                         Orientation="Horizontal"
                                                         ScrollViewer.IsDeferredScrollingEnabled="true"
                                                         VirtualizingPanel.IsVirtualizing="True"
-                                                        VirtualizingPanel.VirtualizationMode="Recycling">
+                                                        VirtualizingPanel.VirtualizationMode="Standard">
                                                         <VirtualizingStackPanel
                                                             Orientation="Vertical"
                                                             VirtualizingPanel.IsVirtualizing="True"
                                                             VirtualizingPanel.ScrollUnit="Pixel"
-                                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                                            VirtualizingPanel.VirtualizationMode="Standard">
 
                                                             <view:BigTitleControl DataContext="{Binding}" />
 
@@ -487,7 +487,7 @@
                                             SelectionChanged="List_SelectionChanged"
                                             SelectionMode="Extended"
                                             VirtualizingPanel.IsVirtualizing="True"
-                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                            VirtualizingPanel.VirtualizationMode="Standard">
                                             <ListView.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <vwp:VirtualizingWrapPanel
@@ -513,7 +513,7 @@
                                                         Orientation="Vertical"
                                                         ScrollViewer.IsDeferredScrollingEnabled="true"
                                                         VirtualizingPanel.IsVirtualizing="True"
-                                                        VirtualizingPanel.VirtualizationMode="Recycling">
+                                                        VirtualizingPanel.VirtualizationMode="Standard">
 
                                                         <Label
                                                             Width="160"
@@ -746,7 +746,7 @@
                                             SelectionMode="Extended"
                                             VirtualizingPanel.IsVirtualizing="True"
                                             VirtualizingPanel.ScrollUnit="Pixel"
-                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                            VirtualizingPanel.VirtualizationMode="Standard">
                                             <ListView.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <vwp:VirtualizingWrapPanel
@@ -754,7 +754,7 @@
                                                         StretchItems="True"
                                                         VirtualizingPanel.IsVirtualizing="True"
                                                         VirtualizingPanel.ScrollUnit="Pixel"
-                                                        VirtualizingPanel.VirtualizationMode="Recycling" />
+                                                        VirtualizingPanel.VirtualizationMode="Standard" />
                                                 </ItemsPanelTemplate>
                                             </ListView.ItemsPanel>
 
@@ -775,12 +775,12 @@
                                                         ScrollViewer.IsDeferredScrollingEnabled="true"
                                                         VirtualizingPanel.IsVirtualizing="True"
                                                         VirtualizingPanel.ScrollUnit="Pixel"
-                                                        VirtualizingPanel.VirtualizationMode="Recycling">
+                                                        VirtualizingPanel.VirtualizationMode="Standard">
                                                         <VirtualizingStackPanel
                                                             Orientation="Vertical"
                                                             VirtualizingPanel.IsVirtualizing="True"
                                                             VirtualizingPanel.ScrollUnit="Pixel"
-                                                            VirtualizingPanel.VirtualizationMode="Recycling">
+                                                            VirtualizingPanel.VirtualizationMode="Standard">
 
                                                             <view:BigTitleControl DataContext="{Binding}" />
                                                             <Label
@@ -820,20 +820,57 @@
                                         x:Name="TabThumbnailFailed"
                                         Background="DarkRed"
                                         Header="サムネ失敗">
-                                        <DataGrid
-                                            x:Name="ThumbnailFailedDataGrid"
-                                            AutoGenerateColumns="False"
-                                            CanUserAddRows="False"
-                                            CanUserDeleteRows="False"
-                                            EnableColumnVirtualization="True"
-                                            EnableRowVirtualization="True"
-                                            HeadersVisibility="Column"
-                                            IsReadOnly="True"
-                                            ItemsSource="{Binding ThumbnailFailedRecs, UpdateSourceTrigger=PropertyChanged}"
-                                            SelectionMode="Extended"
-                                            VirtualizingPanel.IsVirtualizing="True"
-                                            VirtualizingPanel.VirtualizationMode="Recycling">
-                                            <DataGrid.Columns>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+
+                                            <StackPanel
+                                                Grid.Row="0"
+                                                Margin="6"
+                                                Orientation="Horizontal">
+                                                <TextBlock
+                                                    Margin="0,0,6,0"
+                                                    VerticalAlignment="Center"
+                                                    Text="ResultSig" />
+                                                <TextBox
+                                                    x:Name="ThumbnailFailedResultSignatureFilterTextBox"
+                                                    Width="180"
+                                                    Margin="0,0,12,0"
+                                                    TextChanged="ThumbnailFailedResultSignatureFilterTextBox_TextChanged"
+                                                    ToolTip="result_signature の部分一致で絞り込み" />
+                                                <TextBlock
+                                                    Margin="0,0,6,0"
+                                                    VerticalAlignment="Center"
+                                                    Text="RecoveryRoute" />
+                                                <TextBox
+                                                    x:Name="ThumbnailFailedRecoveryRouteFilterTextBox"
+                                                    Width="180"
+                                                    Margin="0,0,12,0"
+                                                    TextChanged="ThumbnailFailedRecoveryRouteFilterTextBox_TextChanged"
+                                                    ToolTip="recovery_route の部分一致で絞り込み" />
+                                                <Button
+                                                    Width="80"
+                                                    Click="ClearThumbnailFailedFilterButton_Click"
+                                                    Content="クリア" />
+                                            </StackPanel>
+
+                                            <DataGrid
+                                                Grid.Row="1"
+                                                x:Name="ThumbnailFailedDataGrid"
+                                                AutoGenerateColumns="False"
+                                                CanUserAddRows="False"
+                                                CanUserDeleteRows="False"
+                                                EnableColumnVirtualization="True"
+                                                EnableRowVirtualization="True"
+                                                HeadersVisibility="Column"
+                                                IsReadOnly="True"
+                                                ItemsSource="{Binding ThumbnailFailedRecs, UpdateSourceTrigger=PropertyChanged}"
+                                                SelectionMode="Extended"
+                                                VirtualizingPanel.IsVirtualizing="True"
+                                                VirtualizingPanel.VirtualizationMode="Recycling">
+                                                <DataGrid.Columns>
                                                 <DataGridTextColumn Width="90" Binding="{Binding QueueId}" Header="QueueId" />
                                                 <DataGridTextColumn Width="120" Binding="{Binding MainDbPathHash}" Header="MainDbPathHash" />
                                                 <DataGridTextColumn Width="320" Binding="{Binding MoviePath}" Header="MoviePath" />
@@ -842,15 +879,42 @@
                                                 <DataGridTextColumn Width="110" Binding="{Binding MovieSizeBytes}" Header="MovieSizeBytes" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding ThumbPanelPos}" Header="ThumbPanelPos" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding ThumbTimePos}" Header="ThumbTimePos" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding PanelType}" Header="PanelType" />
                                                 <DataGridTextColumn Width="80" Binding="{Binding Status}" Header="Status" />
+                                                <DataGridTextColumn Width="140" Binding="{Binding FailureKind}" Header="FailureKind" />
+                                                <DataGridTextColumn Width="140" Binding="{Binding Reason}" Header="Reason" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding AttemptCount}" Header="AttemptCount" />
                                                 <DataGridTextColumn Width="320" Binding="{Binding LastError}" Header="LastError" />
                                                 <DataGridTextColumn Width="140" Binding="{Binding OwnerInstanceId}" Header="OwnerInstanceId" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding WorkerRole}" Header="WorkerRole" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding EngineId}" Header="EngineId" />
+                                                <DataGridTextColumn Width="130" Binding="{Binding FailureKindSource}" Header="KindSource" />
+                                                <DataGridTextColumn Width="110" Binding="{Binding EngineAttempted}" Header="EngineTry" />
+                                                <DataGridCheckBoxColumn Width="90" Binding="{Binding EngineSucceeded}" Header="EngineOk" />
+                                                <DataGridTextColumn Width="120" Binding="{Binding SeekStrategy}" Header="SeekStrategy" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding SeekSec}" Header="SeekSec" />
+                                                <DataGridCheckBoxColumn Width="90" Binding="{Binding RepairAttempted}" Header="RepairTry" />
+                                                <DataGridCheckBoxColumn Width="90" Binding="{Binding RepairSucceeded}" Header="RepairOk" />
+                                                <DataGridTextColumn Width="130" Binding="{Binding PreflightBranch}" Header="Preflight" />
+                                                <DataGridTextColumn Width="140" Binding="{Binding ResultSignature}" Header="ResultSig" />
+                                                <DataGridTextColumn Width="130" Binding="{Binding RecoveryRoute}" Header="RecoveryRoute" />
+                                                <DataGridCheckBoxColumn Width="90" Binding="{Binding WasRunning}" Header="WasRunning" />
+                                                <DataGridTextColumn Width="110" Binding="{Binding AttemptCountAfter}" Header="AttemptAfter" />
+                                                <DataGridCheckBoxColumn Width="90" Binding="{Binding MovieExists}" Header="MovieExists" />
                                                 <DataGridTextColumn Width="220" Binding="{Binding LeaseUntilUtc}" Header="LeaseUntilUtc" />
+                                                <DataGridTextColumn Width="220" Binding="{Binding StartedAtUtc}" Header="StartedAtUtc" />
+                                                <DataGridTextColumn Width="180" Binding="{Binding ResultFailureStage}" Header="ResultStage" />
+                                                <DataGridTextColumn Width="220" Binding="{Binding ResultPolicyDecision}" Header="PolicyDecision" />
+                                                <DataGridTextColumn Width="240" Binding="{Binding DecisionBasis}" Header="DecisionBasis" />
+                                                <DataGridTextColumn Width="140" Binding="{Binding ResultPlaceholderAction}" Header="PlaceholderAction" />
+                                                <DataGridTextColumn Width="150" Binding="{Binding ResultPlaceholderKind}" Header="PlaceholderKind" />
+                                                <DataGridTextColumn Width="140" Binding="{Binding ResultFinalizerAction}" Header="FinalizerAction" />
+                                                <DataGridTextColumn Width="200" Binding="{Binding ResultFinalizerDetail}" Header="FinalizerDetail" />
                                                 <DataGridTextColumn Width="220" Binding="{Binding CreatedAtUtc}" Header="CreatedAtUtc" />
                                                 <DataGridTextColumn Width="220" Binding="{Binding UpdatedAtUtc}" Header="UpdatedAtUtc" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Grid>
                                     </TabItem>
 
                                 </TabControl>
@@ -969,6 +1033,10 @@
                                     <DockPanel Margin="0,0,0,4">
                                         <TextBlock Width="160" Text="稼働中 / 設定上限 / 論理コア" />
                                         <TextBlock Text="{Binding ThumbnailProgress.ThreadText}" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,4">
+                                        <TextBlock Width="160" Text="leased / running / hang" />
+                                        <TextBlock Text="{Binding ThumbnailProgress.QueueStateText}" />
                                     </DockPanel>
                                     <DockPanel Margin="0,0,0,4">
                                         <TextBlock Width="160" Text="現在制御" />

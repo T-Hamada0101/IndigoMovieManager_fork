@@ -1,6 +1,7 @@
 using System.Data.SQLite;
 using System.Globalization;
 using System.IO;
+using System.Text.Json;
 
 namespace IndigoMovieManager.Thumbnail.QueueDb
 {
@@ -51,6 +52,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public int AttemptCount { get; set; }
         public string OwnerInstanceId { get; set; } = "";
         public DateTime LeaseUntilUtc { get; set; }
+        public DateTime? StartedAtUtc { get; set; }
     }
 
     // 失敗一覧表示用に、QueueDBの生情報を保持する。
@@ -70,6 +72,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public string LastError { get; set; } = "";
         public string OwnerInstanceId { get; set; } = "";
         public string LeaseUntilUtc { get; set; } = "";
+        public string StartedAtUtc { get; set; } = "";
         public string CreatedAtUtc { get; set; } = "";
         public string UpdatedAtUtc { get; set; } = "";
     }
@@ -80,11 +83,16 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         public int QueuedNormalCount { get; init; }
         public int QueuedSlowCount { get; init; }
         public int QueuedRecoveryCount { get; init; }
+        public int LeasedNormalCount { get; init; }
+        public int LeasedSlowCount { get; init; }
+        public int LeasedRecoveryCount { get; init; }
         public int RunningNormalCount { get; init; }
         public int RunningSlowCount { get; init; }
         public int RunningRecoveryCount { get; init; }
+        public int HangSuspectedCount { get; init; }
 
         public int QueuedTotalCount => QueuedNormalCount + QueuedSlowCount + QueuedRecoveryCount;
+        public int LeasedTotalCount => LeasedNormalCount + LeasedSlowCount + LeasedRecoveryCount;
         public int RunningTotalCount =>
             RunningNormalCount + RunningSlowCount + RunningRecoveryCount;
     }
@@ -102,6 +110,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
     {
         private const string UtcDateFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
         private const int GuaranteedRecoveryAttemptCount = 2;
+        private static readonly TimeSpan WorkerHealthStaleGrace = TimeSpan.FromSeconds(20);
         private readonly object initializeLock = new();
         private readonly string mainDbFullPath;
         private readonly string queueDbFullPath;
@@ -194,6 +203,7 @@ INSERT INTO ThumbnailQueue (
     LastError,
     OwnerInstanceId,
     LeaseUntilUtc,
+    StartedAtUtc,
     CreatedAtUtc,
     UpdatedAtUtc
 ) VALUES (
@@ -207,6 +217,7 @@ INSERT INTO ThumbnailQueue (
     @IsRescueRequest,
     @Status,
     0,
+    '',
     '',
     '',
     '',
@@ -233,6 +244,7 @@ DO UPDATE SET
     END,
     OwnerInstanceId = '',
     LeaseUntilUtc = '',
+    StartedAtUtc = '',
     UpdatedAtUtc = @NowUtc
 WHERE ThumbnailQueue.Status <> @Processing;";
             upsertCommand.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
@@ -365,6 +377,9 @@ WHERE ThumbnailQueue.Status <> @Processing;";
                 return [];
             }
 
+            // 期限切れだけでなく、worker 健康状態が死んでいる Processing も先に戻す。
+            _ = ResetStaleProcessingToPending(utcNow, preferredTabIndex);
+
             string nowText = ToUtcText(utcNow);
             string leaseUntilText = ToUtcText(utcNow.Add(leaseDuration));
             List<QueueDbLeaseItem> leasedItems = [];
@@ -479,6 +494,8 @@ LIMIT @TakeCount;";
 
                 if (leasedItems.Count > 0)
                 {
+                    // lease 取得直後はまだ未着手なので StartedAtUtc を空にしておく。
+                    // 実際に engine 実行へ入る直前で Running として開始時刻を入れる。
                     using SQLiteCommand leaseCommand = connection.CreateCommand();
                     leaseCommand.CommandText = @"
 UPDATE ThumbnailQueue
@@ -486,6 +503,7 @@ SET
     Status = @Processing,
     OwnerInstanceId = @OwnerInstanceId,
     LeaseUntilUtc = @LeaseUntilUtc,
+    StartedAtUtc = '',
     UpdatedAtUtc = @NowUtc
 WHERE QueueId = @QueueId
   AND MainDbPathHash = @MainDbPathHash;";
@@ -736,7 +754,10 @@ WHERE MainDbPathHash = @MainDbPathHash
 
             string ownedRunningCondition = safeOwners.Count < 1
                 ? "0 = 1"
-                : $"Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc >= @NowUtc AND ({string.Join(" OR ", ownerConditions)})";
+                : $"Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc >= @NowUtc AND StartedAtUtc <> '' AND ({string.Join(" OR ", ownerConditions)})";
+            string ownedLeasedCondition = safeOwners.Count < 1
+                ? "0 = 1"
+                : $"Status = @Processing AND LeaseUntilUtc <> '' AND LeaseUntilUtc >= @NowUtc AND StartedAtUtc = '' AND ({string.Join(" OR ", ownerConditions)})";
 
             command.CommandText =
                 $@"
@@ -756,6 +777,20 @@ SELECT
              AND AttemptCount > 0
         THEN 1 ELSE 0 END), 0),
     COALESCE(SUM(CASE
+        WHEN ({ownedLeasedCondition})
+             AND AttemptCount = 0
+             AND MovieSizeBytes < @SlowLaneMinMovieSizeBytes
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN ({ownedLeasedCondition})
+             AND AttemptCount = 0
+             AND MovieSizeBytes >= @SlowLaneMinMovieSizeBytes
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN ({ownedLeasedCondition})
+             AND AttemptCount > 0
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
         WHEN ({ownedRunningCondition})
              AND AttemptCount = 0
              AND MovieSizeBytes < @SlowLaneMinMovieSizeBytes
@@ -769,11 +804,22 @@ SELECT
         WHEN ({ownedRunningCondition})
              AND AttemptCount > 0
         THEN 1 ELSE 0 END), 0)
+    ,
+    COALESCE(SUM(CASE
+        WHEN Status <> @Done
+             AND LastError <> ''
+             AND (
+                LastError LIKE '%timeout%'
+                OR LastError LIKE '%timed out%'
+                OR LastError LIKE '%hang%'
+             )
+        THEN 1 ELSE 0 END), 0)
 FROM ThumbnailQueue
 WHERE MainDbPathHash = @MainDbPathHash;";
             command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
             command.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
             command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+            command.Parameters.AddWithValue("@Done", (int)ThumbnailQueueStatus.Done);
             command.Parameters.AddWithValue("@NowUtc", nowText);
             command.Parameters.AddWithValue(
                 "@SlowLaneMinMovieSizeBytes",
@@ -791,9 +837,13 @@ WHERE MainDbPathHash = @MainDbPathHash;";
                 QueuedNormalCount = reader.IsDBNull(0) ? 0 : reader.GetInt32(0),
                 QueuedSlowCount = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
                 QueuedRecoveryCount = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
-                RunningNormalCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
-                RunningSlowCount = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
-                RunningRecoveryCount = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                LeasedNormalCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                LeasedSlowCount = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                LeasedRecoveryCount = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                RunningNormalCount = reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
+                RunningSlowCount = reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
+                RunningRecoveryCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+                HangSuspectedCount = reader.IsDBNull(9) ? 0 : reader.GetInt32(9),
             };
         }
 
@@ -823,6 +873,7 @@ SET
     LastError = @LastError,
     OwnerInstanceId = '',
     LeaseUntilUtc = '',
+    StartedAtUtc = '',
     UpdatedAtUtc = @NowUtc
 WHERE QueueId = @QueueId
   AND MainDbPathHash = @MainDbPathHash
@@ -831,6 +882,35 @@ WHERE QueueId = @QueueId
             command.Parameters.AddWithValue("@Status", (int)status);
             command.Parameters.AddWithValue("@IncrementAttempt", incrementAttemptCount ? 1 : 0);
             command.Parameters.AddWithValue("@LastError", lastError ?? "");
+            command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
+            command.Parameters.AddWithValue("@QueueId", queueId);
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+            command.Parameters.AddWithValue("@OwnerInstanceId", ownerInstanceId);
+            return command.ExecuteNonQuery();
+        }
+
+        // 実際に engine 実行へ入る直前で lease を Running として確定する。
+        public int MarkLeaseAsRunning(long queueId, string ownerInstanceId, DateTime utcNow)
+        {
+            EnsureInitialized();
+            if (string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                throw new ArgumentException("ownerInstanceId is required.", nameof(ownerInstanceId));
+            }
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE ThumbnailQueue
+SET
+    StartedAtUtc = CASE WHEN StartedAtUtc = '' THEN @StartedAtUtc ELSE StartedAtUtc END,
+    UpdatedAtUtc = @NowUtc
+WHERE QueueId = @QueueId
+  AND MainDbPathHash = @MainDbPathHash
+  AND Status = @Processing
+  AND OwnerInstanceId = @OwnerInstanceId;";
+            command.Parameters.AddWithValue("@StartedAtUtc", ToUtcText(utcNow));
             command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
             command.Parameters.AddWithValue("@QueueId", queueId);
             command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
@@ -858,6 +938,7 @@ SET
 WHERE QueueId = @QueueId
   AND MainDbPathHash = @MainDbPathHash
   AND Status = @Processing
+  AND StartedAtUtc <> ''
   AND OwnerInstanceId = @OwnerInstanceId;";
             command.Parameters.AddWithValue("@LeaseUntilUtc", ToUtcText(leaseUntilUtc));
             command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
@@ -886,6 +967,7 @@ SET
     LastError = '',
     OwnerInstanceId = '',
     LeaseUntilUtc = '',
+    StartedAtUtc = '',
     UpdatedAtUtc = @NowUtc
 WHERE MainDbPathHash = @MainDbPathHash
   AND Status = @Failed;";
@@ -897,6 +979,65 @@ WHERE MainDbPathHash = @MainDbPathHash
             );
             command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
             command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            return command.ExecuteNonQuery();
+        }
+
+        // 全件再作成や通常ポーリングの前に、stale な Processing を Pending へ戻す。
+        // lease 期限切れだけでなく、owner worker が停止・異常終了している行も回収する。
+        public int ResetStaleProcessingToPending(DateTime utcNow, int? tabIndex = null)
+        {
+            EnsureInitialized();
+
+            using SQLiteConnection connection = OpenConnection();
+            return ResetStaleProcessingToPending(connection, utcNow, tabIndex);
+        }
+
+        // 単一動画の強制再試行。
+        // 現在の状態が Processing でも lease を外し、Pending + rescue に戻して最優先化する。
+        public int ForceRetryMovieToPending(
+            string moviePath,
+            int tabIndex,
+            DateTime utcNow,
+            bool promoteToRecovery = true
+        )
+        {
+            EnsureInitialized();
+
+            string moviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath ?? "");
+            if (string.IsNullOrWhiteSpace(moviePathKey))
+            {
+                return 0;
+            }
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+UPDATE ThumbnailQueue
+SET
+    Status = @Pending,
+    AttemptCount = CASE
+        WHEN @PromoteToRecovery = 1 AND AttemptCount < @GuaranteedRecoveryAttemptCount
+            THEN @GuaranteedRecoveryAttemptCount
+        ELSE AttemptCount
+    END,
+    IsRescueRequest = 1,
+    OwnerInstanceId = '',
+    LeaseUntilUtc = '',
+    StartedAtUtc = '',
+    UpdatedAtUtc = @NowUtc
+WHERE MainDbPathHash = @MainDbPathHash
+  AND MoviePathKey = @MoviePathKey
+  AND TabIndex = @TabIndex;";
+            command.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
+            command.Parameters.AddWithValue(
+                "@GuaranteedRecoveryAttemptCount",
+                GuaranteedRecoveryAttemptCount
+            );
+            command.Parameters.AddWithValue("@PromoteToRecovery", promoteToRecovery ? 1 : 0);
+            command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue("@MoviePathKey", moviePathKey);
+            command.Parameters.AddWithValue("@TabIndex", tabIndex);
             return command.ExecuteNonQuery();
         }
 
@@ -945,6 +1086,7 @@ SELECT
     LastError,
     OwnerInstanceId,
     LeaseUntilUtc,
+    StartedAtUtc,
     CreatedAtUtc,
     UpdatedAtUtc
 FROM ThumbnailQueue
@@ -980,8 +1122,9 @@ ORDER BY UpdatedAtUtc DESC, QueueId DESC;";
                     LastError = reader.IsDBNull(11) ? "" : reader.GetString(11),
                     OwnerInstanceId = reader.IsDBNull(12) ? "" : reader.GetString(12),
                     LeaseUntilUtc = reader.IsDBNull(13) ? "" : reader.GetString(13),
-                    CreatedAtUtc = reader.IsDBNull(14) ? "" : reader.GetString(14),
-                    UpdatedAtUtc = reader.IsDBNull(15) ? "" : reader.GetString(15),
+                    StartedAtUtc = reader.IsDBNull(14) ? "" : reader.GetString(14),
+                    CreatedAtUtc = reader.IsDBNull(15) ? "" : reader.GetString(15),
+                    UpdatedAtUtc = reader.IsDBNull(16) ? "" : reader.GetString(16),
                 };
                 items.Add(item);
             }
@@ -1027,6 +1170,170 @@ WHERE MainDbPathHash = @MainDbPathHash
         private SQLiteConnection CreateConnection()
         {
             return new SQLiteConnection($"Data Source={queueDbFullPath}");
+        }
+
+        // lease期限切れ、または owner worker の health が死んだ Processing を Pending に戻す。
+        private int ResetStaleProcessingToPending(
+            SQLiteConnection connection,
+            DateTime utcNow,
+            int? tabIndex
+        )
+        {
+            List<long> queueIdsToRestore = [];
+
+            using (SQLiteCommand selectCommand = connection.CreateCommand())
+            {
+                selectCommand.CommandText = @"
+SELECT
+    QueueId,
+    OwnerInstanceId,
+    LeaseUntilUtc,
+    StartedAtUtc
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash
+  AND Status = @Processing
+  AND (@TabIndex < 0 OR TabIndex = @TabIndex);";
+                selectCommand.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+                selectCommand.Parameters.AddWithValue(
+                    "@Processing",
+                    (int)ThumbnailQueueStatus.Processing
+                );
+                selectCommand.Parameters.AddWithValue("@TabIndex", tabIndex ?? -1);
+
+                using SQLiteDataReader reader = selectCommand.ExecuteReader();
+                while (reader.Read())
+                {
+                    long queueId = reader.GetInt64(0);
+                    string owner = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                    string leaseUntilUtcText = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                    string startedAtUtcText = reader.IsDBNull(3) ? "" : reader.GetString(3);
+
+                    bool expired = TryParseUtcText(leaseUntilUtcText, out DateTime leaseUntilUtc)
+                        && leaseUntilUtc < utcNow;
+                    bool deadOwner = IsOwnerWorkerUnavailable(owner, utcNow);
+                    bool staleLeased = string.IsNullOrWhiteSpace(startedAtUtcText)
+                        && !string.IsNullOrWhiteSpace(owner)
+                        && deadOwner;
+                    if (expired || deadOwner || staleLeased)
+                    {
+                        queueIdsToRestore.Add(queueId);
+                    }
+                }
+            }
+
+            if (queueIdsToRestore.Count < 1)
+            {
+                return 0;
+            }
+
+            int affectedTotal = 0;
+            using SQLiteCommand updateCommand = connection.CreateCommand();
+            updateCommand.CommandText = @"
+UPDATE ThumbnailQueue
+SET
+    Status = @Pending,
+    OwnerInstanceId = '',
+    LeaseUntilUtc = '',
+    StartedAtUtc = '',
+    UpdatedAtUtc = @NowUtc
+WHERE QueueId = @QueueId
+  AND MainDbPathHash = @MainDbPathHash
+  AND Status = @Processing;";
+            updateCommand.Parameters.AddWithValue("@Pending", (int)ThumbnailQueueStatus.Pending);
+            updateCommand.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
+            updateCommand.Parameters.AddWithValue("@QueueId", 0L);
+            updateCommand.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            updateCommand.Parameters.AddWithValue(
+                "@Processing",
+                (int)ThumbnailQueueStatus.Processing
+            );
+            SQLiteParameter queueIdParameter = updateCommand.Parameters["@QueueId"];
+            foreach (long queueId in queueIdsToRestore)
+            {
+                queueIdParameter.Value = queueId;
+                affectedTotal += updateCommand.ExecuteNonQuery();
+            }
+
+            return affectedTotal;
+        }
+
+        // health snapshot が停止系、または heartbeat 断絶なら worker 不在とみなす。
+        private bool IsOwnerWorkerUnavailable(string ownerInstanceId, DateTime utcNow)
+        {
+            if (string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                return false;
+            }
+
+            if (!TryLoadWorkerHealthSnapshot(ownerInstanceId, out ThumbnailWorkerHealthSnapshot snapshot))
+            {
+                return false;
+            }
+
+            if (
+                snapshot.UpdatedAtUtc > DateTime.MinValue
+                && utcNow - snapshot.UpdatedAtUtc > WorkerHealthStaleGrace
+            )
+            {
+                return true;
+            }
+
+            string state = (snapshot.State ?? "").Trim().ToLowerInvariant();
+            return state == ThumbnailWorkerHealthState.Stopped
+                || state == ThumbnailWorkerHealthState.Exited
+                || state == ThumbnailWorkerHealthState.StartFailed
+                || state == ThumbnailWorkerHealthState.Missing;
+        }
+
+        // owner 固有の health ファイルを直接読み、stale でも判定できるようにする。
+        private static bool TryLoadWorkerHealthSnapshot(
+            string ownerInstanceId,
+            out ThumbnailWorkerHealthSnapshot snapshot
+        )
+        {
+            snapshot = null;
+            if (string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                return false;
+            }
+
+            string directoryPath = ThumbnailProgressExternalSnapshotStore.ResolveSnapshotDirectoryPath();
+            string safeOwner = ThumbnailProgressExternalSnapshotStore.ToSafeOwnerFileName(
+                ownerInstanceId
+            );
+            string snapshotPath = Path.Combine(directoryPath, $"thumbnail-health-{safeOwner}.json");
+            if (!File.Exists(snapshotPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                using FileStream stream = new(
+                    snapshotPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete
+                );
+                snapshot = JsonSerializer.Deserialize<ThumbnailWorkerHealthSnapshot>(stream);
+                return snapshot != null;
+            }
+            catch
+            {
+                snapshot = null;
+                return false;
+            }
+        }
+
+        private static bool TryParseUtcText(string text, out DateTime utcDateTime)
+        {
+            return DateTime.TryParseExact(
+                text ?? "",
+                UtcDateFormat,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out utcDateTime
+            );
         }
 
         private static string ToUtcText(DateTime dateTime)

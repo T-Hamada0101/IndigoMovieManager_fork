@@ -81,6 +81,7 @@ namespace IndigoMovieManager
         private const int ThumbnailQueuePersistBatchWindowMs = 150;
         private const int ThumbnailProgressUiIntervalMs = 1000;
         private const int ThumbnailProgressSnapshotFallbackIntervalMs = 4000;
+        private const int VisibleErrorThumbnailRescueIntervalMs = 4000;
         private static readonly TimeSpan ThumbnailExternalProgressMaxAge = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan ThumbnailExternalHealthMaxAge = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan ThumbnailExternalControlMaxAge = TimeSpan.FromSeconds(15);
@@ -159,10 +160,12 @@ namespace IndigoMovieManager
         //private DateTime _lastInputTime = DateTime.MinValue;  //インクリメントサーチで使用。一旦オミット。
         private readonly TimeSpan _timeInputInterval = TimeSpan.FromSeconds(0.5);
         private const int ThumbnailLightweightPresetSlowLaneMinGb = 50;
+        private bool _suppressTabSelectionChanged;
 
         //結局、タイマー方式で動画とマニュアルサムネイルのスライダーを同期させた
         private readonly DispatcherTimer timer;
         private readonly DispatcherTimer _thumbnailProgressUiTimer;
+        private readonly DispatcherTimer _visibleErrorThumbnailRescueTimer;
         private int _thumbnailProgressUiTickAccumulatedMs;
         // 進捗スナップショット更新要求はここで集約し、UI反映の連打を抑える。
         private int _thumbnailProgressSnapshotRefreshQueued;
@@ -172,6 +175,7 @@ namespace IndigoMovieManager
         private int _thumbnailProgressLastAppliedDbTotalCount = -1;
         private int _thumbnailProgressLastAppliedLogicalCoreCount = -1;
         private bool isDragging = false;
+        private bool _visibleErrorThumbnailRescueRunning;
 
         private PerformanceCounter _cpuUsageCounter;
         private bool _cpuCounterInitialized;
@@ -745,6 +749,9 @@ namespace IndigoMovieManager
 
             InitializeComponent();
 
+            // 初回描画前に前回タブへ寄せ、表示後に切り替わって見えるのを防ぐ。
+            ApplyStartupTabSelectionBeforeRender();
+
             // アセンブリのファイルバージョンを取得
             var version = Assembly
                 .GetExecutingAssembly()
@@ -827,6 +834,11 @@ namespace IndigoMovieManager
                 Interval = TimeSpan.FromMilliseconds(ThumbnailProgressUiIntervalMs),
             };
             _thumbnailProgressUiTimer.Tick += ThumbnailProgressUiTimer_Tick;
+            _visibleErrorThumbnailRescueTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(VisibleErrorThumbnailRescueIntervalMs),
+            };
+            _visibleErrorThumbnailRescueTimer.Tick += VisibleErrorThumbnailRescueTimer_Tick;
 
             //ボリュームと再生速度のスライダー初期値をセット
             uxVideoPlayer.Volume = (double)uxVolumeSlider.Value;
@@ -837,6 +849,24 @@ namespace IndigoMovieManager
             PlayerController.Visibility = Visibility.Collapsed;
             uxVideoPlayer.Visibility = Visibility.Collapsed;
             #endregion
+        }
+
+        /// <summary>
+        /// 起動前に先読みした skin を使い、初回描画前にタブだけ先に合わせる。
+        /// </summary>
+        private void ApplyStartupTabSelectionBeforeRender()
+        {
+            string startupSkin = NormalizeSkinName(MainVM?.DbInfo?.Skin);
+            _suppressTabSelectionChanged = true;
+            try
+            {
+                SwitchTab(startupSkin);
+                MainVM.DbInfo.CurrentTabIndex = Tabs.SelectedIndex;
+            }
+            finally
+            {
+                _suppressTabSelectionChanged = false;
+            }
         }
 
         /// <summary>
@@ -1283,10 +1313,42 @@ namespace IndigoMovieManager
         {
             if (_thumbnailProgressUiTimer.IsEnabled)
             {
+                if (!_visibleErrorThumbnailRescueTimer.IsEnabled)
+                {
+                    _visibleErrorThumbnailRescueTimer.Start();
+                }
                 return;
             }
 
             _thumbnailProgressUiTimer.Start();
+            _visibleErrorThumbnailRescueTimer.Start();
+        }
+
+        // 現在タブの見えている error サムネだけを軽く再確認する。
+        private async void VisibleErrorThumbnailRescueTimer_Tick(object sender, EventArgs e)
+        {
+            if (_visibleErrorThumbnailRescueRunning)
+            {
+                return;
+            }
+
+            _visibleErrorThumbnailRescueRunning = true;
+            try
+            {
+                await RescueVisibleErrorThumbnailsForCurrentTabAsync()
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail",
+                    $"visible error rescue tick failed: {ex.Message}"
+                );
+            }
+            finally
+            {
+                _visibleErrorThumbnailRescueRunning = false;
+            }
         }
 
         // 外側の運転席は接続点だけ先に固定し、exe が乗ったら自動で追従する。
@@ -1576,7 +1638,12 @@ namespace IndigoMovieManager
             );
             string queueText =
                 $" / q={snapshot.QueuedNormalCount}/{snapshot.QueuedSlowCount}/{snapshot.QueuedRecoveryCount}"
+                + $" / lease={snapshot.LeasedNormalCount}/{snapshot.LeasedSlowCount}/{snapshot.LeasedRecoveryCount}"
                 + $" / run={snapshot.RunningNormalCount}/{snapshot.RunningSlowCount}/{snapshot.RunningRecoveryCount}";
+            if (snapshot.HangSuspectedCount > 0)
+            {
+                queueText += $" / hang={snapshot.HangSuspectedCount}";
+            }
             string decisionText =
                 $" / cat={ThumbnailCoordinatorDecisionCategoryResolver.ToDisplayText(snapshot.DecisionCategory)}"
                 + $" / need={snapshot.DemandNormalCount}/{snapshot.DemandSlowCount}/{snapshot.DemandRecoveryCount}"
@@ -2678,9 +2745,13 @@ namespace IndigoMovieManager
         /// </summary>
         private void UpdateSort()
         {
-            if (!string.IsNullOrEmpty(MainVM.DbInfo.Sort))
+            if (
+                !string.IsNullOrEmpty(MainVM.DbInfo.Sort)
+                && !string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)
+            )
             {
-                UpsertSystemTable(Properties.Settings.Default.LastDoc, "sort", MainVM.DbInfo.Sort);
+                // 最後に開いたファイルではなく、今アクティブなDBへだけ保存する。
+                UpsertSystemTable(MainVM.DbInfo.DBFullPath, "sort", MainVM.DbInfo.Sort);
             }
         }
 
@@ -2689,7 +2760,7 @@ namespace IndigoMovieManager
         /// </summary>
         private void UpdateSkin()
         {
-            if (string.IsNullOrEmpty(Properties.Settings.Default.LastDoc))
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
                 return;
             }
@@ -2707,7 +2778,8 @@ namespace IndigoMovieManager
             };
 
             MainVM.DbInfo.Skin = tabName;
-            UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", tabName);
+            // タブ状態も現在開いているDBへ保存し、LastDoc の取り違えを避ける。
+            UpsertSystemTable(MainVM.DbInfo.DBFullPath, "skin", tabName);
         }
 
         /// <summary>
@@ -3684,6 +3756,11 @@ namespace IndigoMovieManager
         {
             if (sender as TabControl != null && e.OriginalSource is TabControl)
             {
+                if (_suppressTabSelectionChanged)
+                {
+                    return;
+                }
+
                 var tabControl = sender as TabControl;
                 int index = tabControl.SelectedIndex;
                 if (index == -1)
@@ -3712,60 +3789,18 @@ namespace IndigoMovieManager
                 if (!filterList.Any())
                     return;
 
-                // サムネイルプロパティ名配列
-                string[] thumbProps =
-                [
-                    nameof(MovieRecords.ThumbPathSmall),
-                    nameof(MovieRecords.ThumbPathBig),
-                    nameof(MovieRecords.ThumbPathGrid),
-                    nameof(MovieRecords.ThumbPathList),
-                    nameof(MovieRecords.ThumbPathBig10),
-                ];
-
-                // 対応するリストコントロール
+                // 対応するリストコントロールへ現在フィルターを反映する。
                 object[] listControls = [SmallList, BigList, GridList, ListDataGrid, BigList10];
-
-                // ItemsSourceを設定
                 if (index >= 0 && index < listControls.Length)
                 {
                     if (listControls[index] is ItemsControl itemsControl)
                     {
                         itemsControl.ItemsSource = filterList;
-                    }
-
-                    // サムネイルパスのプロパティを取得
-                    var thumbProp = typeof(MovieRecords).GetProperty(thumbProps[index]);
-
-                    // 検索結果(filterList)から"error"を含むものだけ抽出
-                    var query = filterList
-                        .Where(x =>
-                            thumbProp
-                                ?.GetValue(x)
-                                ?.ToString()
-                                ?.Contains("error", StringComparison.CurrentCultureIgnoreCase)
-                            == true
-                        )
-                        .ToArray();
-
-                    SelectFirstItem();
-
-                    if (query.Length > 0)
-                    {
-                        await Task.Delay(1000);
-
-                        foreach (var item in query)
-                        {
-                            QueueObj tempObj = new()
-                            {
-                                MovieId = item.Movie_Id,
-                                MovieFullPath = item.Movie_Path,
-                                Hash = item.Hash,
-                                Tabindex = index,
-                            };
-                            _ = TryEnqueueThumbnailJob(tempObj);
-                        }
+                        SelectFirstItem();
                     }
                 }
+
+                await RescueVisibleErrorThumbnailsForCurrentTabAsync();
 
                 // 詳細サムネイル（ThumbDetail）が error の場合も追加
                 MovieRecords mv = GetSelectedItemByTabIndex();
@@ -3785,6 +3820,167 @@ namespace IndigoMovieManager
 
                 viewExtDetail.DataContext = mv;
                 viewExtDetail.Visibility = Visibility.Visible;
+            }
+        }
+
+        /// <summary>
+        /// 現在タブで実際に見えている error サムネだけを再投入する。
+        /// </summary>
+        private async Task RescueVisibleErrorThumbnailsForCurrentTabAsync()
+        {
+            if (Tabs == null || Tabs.SelectedIndex < 0 || ReferenceEquals(Tabs.SelectedItem, TabThumbnailFailed))
+            {
+                return;
+            }
+
+            if (!filterList.Any())
+            {
+                return;
+            }
+
+            int tabIndex = Tabs.SelectedIndex;
+            ItemsControl itemsControl = GetItemsControlByTabIndex(tabIndex);
+            if (itemsControl == null)
+            {
+                return;
+            }
+
+            string thumbPropertyName = GetThumbPropertyNameByTabIndex(tabIndex);
+            if (string.IsNullOrWhiteSpace(thumbPropertyName))
+            {
+                return;
+            }
+
+            var thumbProp = typeof(MovieRecords).GetProperty(thumbPropertyName);
+            if (thumbProp == null)
+            {
+                return;
+            }
+
+            MovieRecords[] query = GetVisibleMovieRecords(itemsControl)
+                .Where(x =>
+                    thumbProp
+                        ?.GetValue(x)
+                        ?.ToString()
+                        ?.Contains("error", StringComparison.CurrentCultureIgnoreCase) == true
+                )
+                .ToArray();
+
+            if (query.Length < 1)
+            {
+                return;
+            }
+
+            await Task.Delay(1000);
+
+            foreach (var item in query)
+            {
+                QueueObj tempObj = new()
+                {
+                    MovieId = item.Movie_Id,
+                    MovieFullPath = item.Movie_Path,
+                    Hash = item.Hash,
+                    Tabindex = tabIndex,
+                };
+                _ = TryEnqueueThumbnailJob(tempObj);
+            }
+        }
+
+        // タブ番号から一覧コントロールを返す。
+        private ItemsControl GetItemsControlByTabIndex(int tabIndex)
+        {
+            return tabIndex switch
+            {
+                0 => SmallList,
+                1 => BigList,
+                2 => GridList,
+                3 => ListDataGrid,
+                4 => BigList10,
+                _ => null,
+            };
+        }
+
+        // タブ番号から対応するサムネパスのプロパティ名を返す。
+        private static string GetThumbPropertyNameByTabIndex(int tabIndex)
+        {
+            return tabIndex switch
+            {
+                0 => nameof(MovieRecords.ThumbPathSmall),
+                1 => nameof(MovieRecords.ThumbPathBig),
+                2 => nameof(MovieRecords.ThumbPathGrid),
+                3 => nameof(MovieRecords.ThumbPathList),
+                4 => nameof(MovieRecords.ThumbPathBig10),
+                _ => "",
+            };
+        }
+
+        /// <summary>
+        /// 仮想化リストで「今画面に出ている」動画だけを返す。
+        /// 生成済みかつ可視のコンテナだけを見ることで、タブ全件走査を避ける。
+        /// </summary>
+        private static IEnumerable<MovieRecords> GetVisibleMovieRecords(ItemsControl itemsControl)
+        {
+            if (itemsControl?.Items == null || itemsControl.Items.Count < 1)
+            {
+                return [];
+            }
+
+            Rect viewportRect = new(0, 0, itemsControl.ActualWidth, itemsControl.ActualHeight);
+            if (viewportRect.Width <= 0 || viewportRect.Height <= 0)
+            {
+                return [];
+            }
+
+            List<MovieRecords> visibleItems = [];
+            foreach (object item in itemsControl.Items)
+            {
+                if (item is not MovieRecords movieRecord)
+                {
+                    continue;
+                }
+
+                DependencyObject container = itemsControl.ItemContainerGenerator.ContainerFromItem(item);
+                if (container is not FrameworkElement element)
+                {
+                    continue;
+                }
+
+                if (!element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+                {
+                    continue;
+                }
+
+                // 生成済みでもビューポート外に退避している要素は除外する。
+                if (!IsElementIntersectingViewport(element, itemsControl, viewportRect))
+                {
+                    continue;
+                }
+
+                visibleItems.Add(movieRecord);
+            }
+
+            return visibleItems;
+        }
+
+        /// <summary>
+        /// 要素の表示矩形が現在の ItemsControl ビューポートに交差しているかを返す。
+        /// IsVisible だけでは先読み済みコンテナまで拾うため、座標で絞る。
+        /// </summary>
+        private static bool IsElementIntersectingViewport(
+            FrameworkElement element,
+            Visual ancestor,
+            Rect viewportRect
+        )
+        {
+            try
+            {
+                Rect elementRect = element.TransformToAncestor(ancestor)
+                    .TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+                return elementRect.IntersectsWith(viewportRect);
+            }
+            catch
+            {
+                return false;
             }
         }
 

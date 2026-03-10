@@ -67,7 +67,8 @@ namespace IndigoMovieManager.Thumbnail.Swf
                             ThumbnailResultFactory.CreateSuccess(
                                 request.SaveThumbFileName,
                                 request.DurationSec,
-                                previewFrame
+                                previewFrame,
+                                failureStage: "swf-route"
                             ),
                             processEngineId,
                             "swf",
@@ -84,7 +85,8 @@ namespace IndigoMovieManager.Thumbnail.Swf
                         ThumbnailResultFactory.CreateFailed(
                             request.SaveThumbFileName,
                             request.DurationSec,
-                            outputFailure
+                            outputFailure,
+                            failureStage: "swf-finalize"
                         ),
                         "swf-ffmpeg-finalize",
                         "swf",
@@ -132,7 +134,11 @@ namespace IndigoMovieManager.Thumbnail.Swf
                     return SwfThumbnailRouteResult.Complete(
                         ThumbnailResultFactory.CreateSuccess(
                             request.SaveThumbFileName,
-                            request.DurationSec
+                            request.DurationSec,
+                            failureStage: "swf-route",
+                            policyDecision: "swf-placeholder",
+                            placeholderAction: "created",
+                            placeholderKind: FailurePlaceholderKind.FlashVideo.ToString()
                         ),
                         "swf-placeholder",
                         "swf",
@@ -149,7 +155,11 @@ namespace IndigoMovieManager.Thumbnail.Swf
                     ThumbnailResultFactory.CreateFailed(
                         request.SaveThumbFileName,
                         request.DurationSec,
-                        swfError
+                        swfError,
+                        failureStage: "swf-route",
+                        policyDecision: "swf-placeholder-failed",
+                        placeholderAction: "failed",
+                        placeholderKind: FailurePlaceholderKind.FlashVideo.ToString()
                     ),
                     "swf-failed",
                     "swf",

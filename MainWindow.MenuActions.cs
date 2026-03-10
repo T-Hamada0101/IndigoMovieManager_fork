@@ -767,14 +767,47 @@ namespace IndigoMovieManager
                                     return;
                                 }
 
+                                int recreateTabIndex = Tabs.SelectedIndex;
+                                string currentDbName = MainVM?.DbInfo?.DBName ?? "";
+                                string currentThumbFolder = ResolveWorkerThumbFolder(
+                                    currentDbName,
+                                    MainVM?.DbInfo?.ThumbFolder ?? ""
+                                );
+                                QueueDbService queueDbService = ResolveCurrentQueueDbService();
+                                if (queueDbService != null)
+                                {
+                                    int resetStaleCount = queueDbService.ResetStaleProcessingToPending(
+                                        DateTime.UtcNow,
+                                        recreateTabIndex
+                                    );
+                                    if (resetStaleCount > 0)
+                                    {
+                                        DebugRuntimeLog.Write(
+                                            "queue-ops",
+                                            $"recreate reset stale processing: tab={recreateTabIndex} count={resetStaleCount}"
+                                        );
+                                    }
+                                }
+                                TabInfo recreateTabInfo = new(
+                                    recreateTabIndex,
+                                    currentDbName,
+                                    currentThumbFolder
+                                );
+
                                 foreach (var rec in MainVM.MovieRecs)
                                 {
+                                    // 明示再作成では古い失敗固定マーカーを先に外し、再実行を妨げない。
+                                    TryDeleteThumbnailErrorMarker(
+                                        recreateTabInfo.OutPath,
+                                        rec.Movie_Path
+                                    );
+
                                     QueueObj tempObj = new()
                                     {
                                         MovieId = rec.Movie_Id,
                                         MovieFullPath = rec.Movie_Path,
                                         Hash = rec.Hash,
-                                        Tabindex = Tabs.SelectedIndex,
+                                        Tabindex = recreateTabIndex,
                                     };
                                     _ = TryEnqueueThumbnailJob(tempObj);
                                 }
@@ -794,6 +827,40 @@ namespace IndigoMovieManager
                         }
                     }
                 }
+            }
+        }
+
+        // 明示再作成では stale な失敗固定マーカーを先に外し、通常再実行を妨げない。
+        private void TryDeleteThumbnailErrorMarker(string outPath, string movieFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(outPath) || string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return;
+            }
+
+            try
+            {
+                string errorMarkerPath = ThumbnailPathResolver.BuildErrorMarkerPath(
+                    outPath,
+                    movieFullPath
+                );
+                if (!Path.Exists(errorMarkerPath))
+                {
+                    return;
+                }
+
+                File.Delete(errorMarkerPath);
+                DebugRuntimeLog.Write(
+                    "thumbnail",
+                    $"error marker deleted by full recreate: '{errorMarkerPath}'"
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail",
+                    $"error marker delete failed by full recreate: movie='{movieFullPath}', err='{ex.Message}'"
+                );
             }
         }
 

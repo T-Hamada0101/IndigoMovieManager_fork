@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
     <TargetFramework>net8.0-windows</TargetFramework>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -29,5 +30,8 @@
   <ItemGroup>
     <!-- 純粋ロジックの文言整形は source link で直接テストし、本体WPF出力ロックの影響を受けないようにする -->
     <Compile Include="..\..\Watcher\FileIndexDetailFormatter.cs" Link="Watcher\FileIndexDetailFormatter.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

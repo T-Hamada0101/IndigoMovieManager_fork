@@ -189,6 +189,9 @@ namespace IndigoMovieManager.Thumbnail
                 SessionCompletedCount = safeSnapshot.SessionCompletedCount,
                 SessionTotalCount = safeSnapshot.SessionTotalCount,
                 SessionCreatedThumbnailCount = safeSnapshot.SessionCreatedThumbnailCount,
+                LeasedCount = safeSnapshot.LeasedCount,
+                RunningCount = safeSnapshot.RunningCount,
+                HangSuspectedCount = safeSnapshot.HangSuspectedCount,
                 CurrentParallelism = safeSnapshot.CurrentParallelism,
                 ConfiguredParallelism = safeSnapshot.ConfiguredParallelism,
                 EnqueueLogs = safeSnapshot.EnqueueLogs ?? [],
@@ -249,6 +252,9 @@ namespace IndigoMovieManager.Thumbnail
                 0,
                 safeLocalSnapshot.SessionCreatedThumbnailCount
             );
+            int leasedCount = Math.Max(0, safeLocalSnapshot.LeasedCount);
+            int runningCount = Math.Max(0, safeLocalSnapshot.RunningCount);
+            int hangSuspectedCount = Math.Max(0, safeLocalSnapshot.HangSuspectedCount);
             int currentParallelism = 0;
             int configuredParallelism = 0;
             List<ThumbnailProgressWorkerSnapshot> mergedWorkers = [];
@@ -267,6 +273,9 @@ namespace IndigoMovieManager.Thumbnail
                     sessionCreatedThumbnailCount,
                     Math.Max(0, snapshot.SessionCreatedThumbnailCount)
                 );
+                leasedCount += Math.Max(0, snapshot.LeasedCount);
+                runningCount += Math.Max(0, snapshot.RunningCount);
+                hangSuspectedCount += Math.Max(0, snapshot.HangSuspectedCount);
                 currentParallelism += Math.Max(0, snapshot.CurrentParallelism);
                 configuredParallelism += Math.Max(0, snapshot.ConfiguredParallelism);
                 mergedWorkers.AddRange(snapshot.ActiveWorkers ?? []);
@@ -285,6 +294,9 @@ namespace IndigoMovieManager.Thumbnail
                 SessionCompletedCount = sessionCompletedCount,
                 SessionTotalCount = Math.Max(sessionCompletedCount, sessionTotalCount),
                 SessionCreatedThumbnailCount = sessionCreatedThumbnailCount,
+                LeasedCount = leasedCount,
+                RunningCount = runningCount,
+                HangSuspectedCount = hangSuspectedCount,
                 CurrentParallelism = currentParallelism,
                 ConfiguredParallelism = configuredParallelism,
                 EnqueueLogs = safeLocalSnapshot.EnqueueLogs ?? [],

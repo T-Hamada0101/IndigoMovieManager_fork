@@ -8,6 +8,24 @@ namespace IndigoMovieManager_fork.Tests;
 public sealed class FfmpegAutoGenThumbnailGenerationEngineTests
 {
     [Test]
+    public void BuildHeaderFallbackCandidateSeconds_短尺では末尾へ丸めて重複除去する()
+    {
+        List<double> actual =
+            FfmpegAutoGenThumbnailGenerationEngine.BuildHeaderFallbackCandidateSeconds(0.069);
+
+        Assert.That(actual, Is.EqualTo(new[] { 0d, 0.068d }));
+    }
+
+    [Test]
+    public void BuildHeaderFallbackCandidateSeconds_通常尺では既定候補をそのまま返す()
+    {
+        List<double> actual =
+            FfmpegAutoGenThumbnailGenerationEngine.BuildHeaderFallbackCandidateSeconds(3.2);
+
+        Assert.That(actual, Is.EqualTo(new[] { 0d, 0.1d, 0.25d, 0.5d, 1d, 2d }));
+    }
+
+    [Test]
     public void ResolveCaptureSeconds_1秒未満で全パネル0秒の時は実時間へ均等化する()
     {
         ThumbInfo thumbInfo = new();

@@ -1,6 +1,10 @@
 using IndigoMovieManager.ModelViews;
+using IndigoMovieManager.Thumbnail.FailureDb;
 using IndigoMovieManager.Thumbnail.QueueDb;
+using System.ComponentModel;
+using System.Text.Json;
 using System.Threading;
+using System.Windows.Data;
 using System.Windows.Threading;
 
 namespace IndigoMovieManager
@@ -15,6 +19,8 @@ namespace IndigoMovieManager
         private int _thumbnailFailedRefreshRevision;
         private int _thumbnailFailedAppliedRevision = -1;
         private long _thumbnailFailedLastRefreshTickMs = -1;
+        private string _thumbnailFailedResultSignatureFilter = "";
+        private string _thumbnailFailedRecoveryRouteFilter = "";
 
         // 失敗一覧の更新を必要状態にする。必要時だけ再読込を予約する。
         private void MarkThumbnailFailedListDirty(bool incrementRevision = false, string reason = "")
@@ -132,7 +138,7 @@ namespace IndigoMovieManager
             }
         }
 
-        // QueueDBから失敗一覧を取得し、最新要求と一致する場合だけUIへ反映する。
+        // 失敗専用DBから失敗一覧を取得し、最新要求と一致する場合だけUIへ反映する。
         private async Task RefreshThumbnailFailedListCoreAsync()
         {
             if (MainVM?.ThumbnailFailedRecs == null)
@@ -143,13 +149,14 @@ namespace IndigoMovieManager
             string requestedMainDbPath = MainVM?.DbInfo?.DBFullPath ?? "";
             int requestedRevision = Volatile.Read(ref _thumbnailFailedRefreshRevision);
 
-            List<QueueDbFailedItem> failedItems = [];
-            QueueDbService queueDbService = ResolveCurrentQueueDbService();
-            if (!string.IsNullOrWhiteSpace(requestedMainDbPath) && queueDbService != null)
+            List<ThumbnailFailureRecord> failureRecords = [];
+            if (!string.IsNullOrWhiteSpace(requestedMainDbPath))
             {
                 try
                 {
-                    failedItems = await Task.Run(() => queueDbService.GetFailedItems());
+                    failureRecords = await Task.Run(() =>
+                        new ThumbnailFailureDebugDbService(requestedMainDbPath).GetFailureRecords()
+                    );
                 }
                 catch (Exception ex)
                 {
@@ -180,10 +187,12 @@ namespace IndigoMovieManager
             }
 
             MainVM.ThumbnailFailedRecs.Clear();
-            foreach (QueueDbFailedItem failedItem in failedItems)
+            foreach (ThumbnailFailureRecord failureRecord in failureRecords)
             {
-                MainVM.ThumbnailFailedRecs.Add(ToThumbnailFailedRecordViewModel(failedItem));
+                MainVM.ThumbnailFailedRecs.Add(ToThumbnailFailedRecordViewModel(failureRecord));
             }
+
+            ApplyThumbnailFailedListFilter();
 
             _ = Interlocked.Exchange(ref _thumbnailFailedListDirty, 0);
             _ = Interlocked.Exchange(ref _thumbnailFailedAppliedRevision, requestedRevision);
@@ -191,13 +200,13 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "thumbnail-failed",
-                $"failed list applied: count={failedItems.Count} revision={requestedRevision} applied={Interlocked.CompareExchange(ref _thumbnailFailedAppliedRevision, 0, 0)}"
+                $"failed list applied: count={failureRecords.Count} revision={requestedRevision} source=FailureDb applied={Interlocked.CompareExchange(ref _thumbnailFailedAppliedRevision, 0, 0)}"
             );
         }
 
-        // QueueDBの生情報を、表示専用ViewModelへ詰め替える。
+        // FailureDbの生情報を、表示専用ViewModelへ詰め替える。
         private static ThumbnailFailedRecordViewModel ToThumbnailFailedRecordViewModel(
-            QueueDbFailedItem item
+            ThumbnailFailureRecord item
         )
         {
             if (item == null)
@@ -207,22 +216,490 @@ namespace IndigoMovieManager
 
             return new ThumbnailFailedRecordViewModel
             {
-                QueueId = item.QueueId,
+                QueueId = TryReadQueueId(item.ExtraJson, item.RecordId),
                 MainDbPathHash = item.MainDbPathHash ?? "",
                 MoviePath = item.MoviePath ?? "",
                 MoviePathKey = item.MoviePathKey ?? "",
-                TabIndex = item.TabIndex,
+                TabIndex = item.TabIndex ?? -1,
                 MovieSizeBytes = item.MovieSizeBytes,
-                ThumbPanelPos = item.ThumbPanelPos,
-                ThumbTimePos = item.ThumbTimePos,
-                Status = item.Status.ToString(),
+                ThumbPanelPos = TryReadNullableIntAny(
+                    item.ExtraJson,
+                    "ThumbPanelPos",
+                    "thumb_panel_pos"
+                ),
+                ThumbTimePos = TryReadNullableIntAny(
+                    item.ExtraJson,
+                    "ThumbTimePos",
+                    "thumb_time_pos"
+                ),
+                PanelType = item.PanelType ?? "",
+                Status = item.QueueStatus ?? "",
+                FailureKind = item.FailureKind.ToString(),
+                Reason = item.Reason ?? "",
                 AttemptCount = item.AttemptCount,
                 LastError = item.LastError ?? "",
                 OwnerInstanceId = item.OwnerInstanceId ?? "",
+                WorkerRole = item.WorkerRole ?? "",
+                EngineId = item.EngineId ?? "",
                 LeaseUntilUtc = item.LeaseUntilUtc ?? "",
-                CreatedAtUtc = item.CreatedAtUtc ?? "",
-                UpdatedAtUtc = item.UpdatedAtUtc ?? "",
+                StartedAtUtc = item.StartedAtUtc ?? "",
+                FailureKindSource = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "FailureKindSource",
+                    "failure_kind_source"
+                ),
+                MaterialDurationSec = TryReadNullableDoubleAny(
+                    item.ExtraJson,
+                    "MaterialDurationSec",
+                    "material_duration_sec"
+                ),
+                EngineAttempted = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "EngineAttempted",
+                    "engine_attempted"
+                ),
+                EngineSucceeded = TryReadJsonBoolAny(
+                    item.ExtraJson,
+                    "EngineSucceeded",
+                    "engine_succeeded"
+                ),
+                SeekStrategy = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "SeekStrategy",
+                    "seek_strategy"
+                ),
+                SeekSec = TryReadNullableDoubleAny(
+                    item.ExtraJson,
+                    "SeekSec",
+                    "seek_sec",
+                    "ThumbSec"
+                ),
+                RepairAttempted = TryReadJsonBoolAny(
+                    item.ExtraJson,
+                    "RepairAttempted",
+                    "repair_attempted"
+                ),
+                RepairSucceeded = TryReadJsonBoolAny(
+                    item.ExtraJson,
+                    "RepairSucceeded",
+                    "repair_succeeded"
+                ),
+                PreflightBranch = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "PreflightBranch",
+                    "preflight_branch"
+                ),
+                ResultSignature = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "ResultSignature",
+                    "result_signature"
+                ),
+                ReproConfirmed = TryReadJsonBoolAny(
+                    item.ExtraJson,
+                    "ReproConfirmed",
+                    "repro_confirmed"
+                ),
+                RecoveryRoute = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "RecoveryRoute",
+                    "recovery_route"
+                ),
+                DecisionBasis = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "DecisionBasis",
+                    "decision_basis"
+                ),
+                WasRunning = TryReadJsonBoolAny(item.ExtraJson, "WasRunning", "was_running"),
+                AttemptCountAfter = TryReadNullableIntAny(
+                    item.ExtraJson,
+                    "AttemptCountAfter",
+                    "attempt_count_after"
+                ),
+                MovieExists = TryReadJsonBoolAny(item.ExtraJson, "MovieExists", "movie_exists"),
+                ResultFailureStage = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "ResultFailureStage",
+                    "result_failure_stage"
+                ),
+                ResultPolicyDecision = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "ResultPolicyDecision",
+                    "result_policy_decision"
+                ),
+                ResultPlaceholderAction = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "ResultPlaceholderAction",
+                    "result_placeholder_action"
+                ),
+                ResultPlaceholderKind = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "ResultPlaceholderKind",
+                    "result_placeholder_kind"
+                ),
+                ResultFinalizerAction = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "ResultFinalizerAction",
+                    "result_finalizer_action"
+                ),
+                ResultFinalizerDetail = TryReadJsonStringAny(
+                    item.ExtraJson,
+                    "ResultFinalizerDetail",
+                    "result_finalizer_detail"
+                ),
+                CreatedAtUtc = item.OccurredAtUtc == DateTime.MinValue
+                    ? ""
+                    : item.OccurredAtUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                UpdatedAtUtc = item.UpdatedAtUtc == DateTime.MinValue
+                    ? ""
+                    : item.UpdatedAtUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
             };
+        }
+
+        // FailureDbの補助JSONからQueueIdを戻し、無ければRecordIdで代用する。
+        private static long TryReadQueueId(string extraJson, long fallbackRecordId)
+        {
+            if (
+                TryReadJsonInt64(extraJson, "QueueId", out long queueId)
+                || TryReadJsonInt64(extraJson, "queueId", out queueId)
+            )
+            {
+                return queueId;
+            }
+
+            return fallbackRecordId;
+        }
+
+        // 数値補助列はJSONから復元する。無ければ空表示にする。
+        private static int? TryReadNullableInt(string extraJson, string propertyName)
+        {
+            return TryReadJsonInt32(extraJson, propertyName, out int value) ? value : null;
+        }
+
+        private static int? TryReadNullableIntAny(string extraJson, params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames)
+            {
+                int? value = TryReadNullableInt(extraJson, propertyName);
+                if (value.HasValue)
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryReadJsonInt32(string extraJson, string propertyName, out int value)
+        {
+            value = 0;
+            if (!TryReadJsonInt64(extraJson, propertyName, out long parsed))
+            {
+                return false;
+            }
+
+            if (parsed < int.MinValue || parsed > int.MaxValue)
+            {
+                return false;
+            }
+
+            value = (int)parsed;
+            return true;
+        }
+
+        private static bool TryReadJsonInt64(string extraJson, string propertyName, out long value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(extraJson) || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(extraJson);
+                if (
+                    !document.RootElement.TryGetProperty(propertyName, out JsonElement property)
+                    || property.ValueKind == JsonValueKind.Null
+                )
+                {
+                    return false;
+                }
+
+                if (property.ValueKind == JsonValueKind.Number)
+                {
+                    return property.TryGetInt64(out value);
+                }
+
+                if (property.ValueKind == JsonValueKind.String)
+                {
+                    return long.TryParse(property.GetString(), out value);
+                }
+            }
+            catch
+            {
+                // 調査用JSONの破損では一覧表示自体を止めない。
+            }
+
+            return false;
+        }
+
+        private static string TryReadJsonString(string extraJson, string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(extraJson) || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return "";
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(extraJson);
+                if (
+                    !document.RootElement.TryGetProperty(propertyName, out JsonElement property)
+                    || property.ValueKind == JsonValueKind.Null
+                )
+                {
+                    return "";
+                }
+
+                return property.ValueKind switch
+                {
+                    JsonValueKind.String => property.GetString() ?? "",
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    JsonValueKind.Number => property.GetRawText(),
+                    _ => property.GetRawText(),
+                };
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static bool TryReadJsonBool(string extraJson, string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(extraJson) || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(extraJson);
+                if (
+                    !document.RootElement.TryGetProperty(propertyName, out JsonElement property)
+                    || property.ValueKind == JsonValueKind.Null
+                )
+                {
+                    return false;
+                }
+
+                if (property.ValueKind == JsonValueKind.True)
+                {
+                    return true;
+                }
+
+                if (property.ValueKind == JsonValueKind.False)
+                {
+                    return false;
+                }
+
+                if (property.ValueKind == JsonValueKind.String)
+                {
+                    return bool.TryParse(property.GetString(), out bool parsed) && parsed;
+                }
+            }
+            catch
+            {
+                // 調査用JSONの破損では一覧表示自体を止めない。
+            }
+
+            return false;
+        }
+
+        private static string TryReadJsonStringAny(string extraJson, params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames)
+            {
+                string value = TryReadJsonString(extraJson, propertyName);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return "";
+        }
+
+        // 失敗タブ専用の絞り込み条件をCollectionViewへ反映する。
+        private void ApplyThumbnailFailedListFilter()
+        {
+            if (MainVM?.ThumbnailFailedRecs == null)
+            {
+                return;
+            }
+
+            ICollectionView view = CollectionViewSource.GetDefaultView(MainVM.ThumbnailFailedRecs);
+            if (view == null)
+            {
+                return;
+            }
+
+            bool hasFilter =
+                !string.IsNullOrWhiteSpace(_thumbnailFailedResultSignatureFilter)
+                || !string.IsNullOrWhiteSpace(_thumbnailFailedRecoveryRouteFilter);
+            view.Filter = hasFilter ? FilterThumbnailFailedRecord : null;
+            view.Refresh();
+        }
+
+        private bool FilterThumbnailFailedRecord(object item)
+        {
+            return item is ThumbnailFailedRecordViewModel record
+                && IsThumbnailFailedRecordMatched(
+                    record,
+                    _thumbnailFailedResultSignatureFilter,
+                    _thumbnailFailedRecoveryRouteFilter
+                );
+        }
+
+        // result_signature と recovery_route の部分一致だけで候補を絞る。
+        private static bool IsThumbnailFailedRecordMatched(
+            ThumbnailFailedRecordViewModel item,
+            string resultSignatureFilter,
+            string recoveryRouteFilter
+        )
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            if (
+                !ContainsFilter(item.ResultSignature, resultSignatureFilter)
+                || !ContainsFilter(item.RecoveryRoute, recoveryRouteFilter)
+            )
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool ContainsFilter(string actualValue, string filterValue)
+        {
+            if (string.IsNullOrWhiteSpace(filterValue))
+            {
+                return true;
+            }
+
+            return (actualValue ?? "").Contains(
+                filterValue.Trim(),
+                StringComparison.OrdinalIgnoreCase
+            );
+        }
+
+        private void ThumbnailFailedResultSignatureFilterTextBox_TextChanged(
+            object sender,
+            System.Windows.Controls.TextChangedEventArgs e
+        )
+        {
+            _thumbnailFailedResultSignatureFilter =
+                ThumbnailFailedResultSignatureFilterTextBox?.Text?.Trim() ?? "";
+            ApplyThumbnailFailedListFilter();
+        }
+
+        private void ThumbnailFailedRecoveryRouteFilterTextBox_TextChanged(
+            object sender,
+            System.Windows.Controls.TextChangedEventArgs e
+        )
+        {
+            _thumbnailFailedRecoveryRouteFilter =
+                ThumbnailFailedRecoveryRouteFilterTextBox?.Text?.Trim() ?? "";
+            ApplyThumbnailFailedListFilter();
+        }
+
+        private void ClearThumbnailFailedFilterButton_Click(
+            object sender,
+            System.Windows.RoutedEventArgs e
+        )
+        {
+            _thumbnailFailedResultSignatureFilter = "";
+            _thumbnailFailedRecoveryRouteFilter = "";
+
+            if (ThumbnailFailedResultSignatureFilterTextBox != null)
+            {
+                ThumbnailFailedResultSignatureFilterTextBox.Text = "";
+            }
+
+            if (ThumbnailFailedRecoveryRouteFilterTextBox != null)
+            {
+                ThumbnailFailedRecoveryRouteFilterTextBox.Text = "";
+            }
+
+            ApplyThumbnailFailedListFilter();
+        }
+
+        private static bool TryReadJsonBoolAny(string extraJson, params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames)
+            {
+                if (TryReadJsonBool(extraJson, propertyName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static double? TryReadNullableDoubleAny(string extraJson, params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames)
+            {
+                if (TryReadJsonDouble(extraJson, propertyName, out double value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryReadJsonDouble(string extraJson, string propertyName, out double value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(extraJson) || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(extraJson);
+                if (
+                    !document.RootElement.TryGetProperty(propertyName, out JsonElement property)
+                    || property.ValueKind == JsonValueKind.Null
+                )
+                {
+                    return false;
+                }
+
+                if (property.ValueKind == JsonValueKind.Number)
+                {
+                    return property.TryGetDouble(out value);
+                }
+
+                if (property.ValueKind == JsonValueKind.String)
+                {
+                    return double.TryParse(property.GetString(), out value);
+                }
+            }
+            catch
+            {
+                // 調査用JSONの破損では一覧表示自体を止めない。
+            }
+
+            return false;
         }
     }
 }

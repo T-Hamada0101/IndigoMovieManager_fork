@@ -45,6 +45,10 @@
                 <TextBlock Width="150" Text="稼働中 / 設定上限 / 論理コア" />
                 <TextBlock Text="{Binding Progress.ThreadText}" />
             </DockPanel>
+            <DockPanel Margin="0,0,0,4">
+                <TextBlock Width="150" Text="leased / running / hang" />
+                <TextBlock Text="{Binding Progress.QueueStateText}" />
+            </DockPanel>
             <DockPanel Margin="0,0,0,8">
                 <TextBlock Width="150" Text="現在制御" />
                 <TextBlock Text="{Binding Progress.ControlStateText}" />
@@ -66,7 +70,7 @@
                   <TextBlock x:Name="CoordinatorSlotText" Text="-" />
               </DockPanel>
               <DockPanel Margin="0,0,0,4">
-                  <TextBlock Width="150" Text="queued / running" />
+                  <TextBlock Width="150" Text="queued / leased / running / hang" />
                   <TextBlock x:Name="CoordinatorQueueText" Text="-" />
               </DockPanel>
               <DockPanel Margin="0,0,0,4">
@@ -211,6 +215,19 @@
                                         <TextBlock FontSize="10" Text="{Binding StatusText, Mode=OneWay}" />
                                     </Border>
                                 </DockPanel>
+                                <Border Margin="0,0,0,4" Padding="6,1" Background="#FFD95F02" CornerRadius="3">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PriorityText, Mode=OneWay}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock FontSize="10" Foreground="White" Text="{Binding PriorityText, Mode=OneWay}" />
+                                </Border>
                                 <TextBlock Margin="0,2,0,6" Text="{Binding MovieName, Mode=OneWay}" TextTrimming="CharacterEllipsis" ToolTip="{Binding MovieName, Mode=OneWay}" />
                                 <Border BorderBrush="#44333333" BorderThickness="1">
                                     <Image Height="72" Stretch="Uniform" Source="{Binding PreviewImagePath, Converter={StaticResource noLockImageConverter}, ConverterParameter=72}" />

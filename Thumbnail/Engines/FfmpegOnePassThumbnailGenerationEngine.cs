@@ -18,6 +18,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
         private const string FfmpegTimeoutSecEnvName = "IMM_THUMB_FFMPEG_TIMEOUT_SEC";
         private const string FfmpegPriorityEnvName = "IMM_THUMB_FFMPEG_PRIORITY";
         private const int DefaultJpegQuality = 5;
+        private const double ShortClipSeekFallbackMaxDurationSec = 1.0d;
         private static readonly ProcessPriorityClass DefaultFfmpegPriorityClass =
             ProcessPriorityClass.Idle;
 
@@ -86,7 +87,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
             string ffmpegExePath = ResolveFfmpegExecutablePath();
             double startSec = Math.Max(0, context.ThumbInfo.ThumbSec[0]);
+            double actualStartSec = startSec;
             double intervalSec = ResolveFrameIntervalSec(context.ThumbInfo.ThumbSec, durationSec, panelCount);
+            List<double> actualCaptureSeconds = BuildExpectedCaptureSeconds(
+                actualStartSec,
+                intervalSec,
+                panelCount,
+                durationSec
+            );
             int jpegQuality = ResolveJpegQuality();
             string scaleFlags = ResolveScaleFlags();
             bool useTolerantInput = ShouldUseTolerantInput(context.MovieFullPath);
@@ -123,41 +131,85 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 scaleFlags
             );
 
-            ProcessStartInfo psi = new()
+            (bool ok, string err) = await TryCreateTileImageAsync(
+                ffmpegExePath,
+                context.MovieFullPath,
+                startText,
+                vf,
+                ffmpegOutputPath,
+                jpegQuality,
+                useTolerantInput,
+                ffmpegTimeout,
+                cts
+            );
+            if (
+                (!ok || !Path.Exists(ffmpegOutputPath))
+                && ShouldUseShortClipSeekFallback(durationSec, panelCount)
+            )
             {
-                FileName = ffmpegExePath,
-                UseShellExecute = false,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("-y");
-            psi.ArgumentList.Add("-hide_banner");
-            psi.ArgumentList.Add("-loglevel");
-            psi.ArgumentList.Add("error");
-            if (!useTolerantInput)
-            {
-                AddHwAccelArguments(psi);
-            }
-            psi.ArgumentList.Add("-an");
-            psi.ArgumentList.Add("-sn");
-            psi.ArgumentList.Add("-dn");
-            AddInputArguments(psi, context.MovieFullPath, startText, useTolerantInput);
-            psi.ArgumentList.Add("-frames:v");
-            psi.ArgumentList.Add("1");
-            // 失敗率低減を優先し、厳格判定で弾かれやすい非標準YUV系も許容して処理継続しやすくする。
-            psi.ArgumentList.Add("-strict");
-            psi.ArgumentList.Add("unofficial");
-            // 失敗率低減を優先し、出力ピクセル形式は互換性の高い yuv420p に固定する。
-            psi.ArgumentList.Add("-pix_fmt");
-            psi.ArgumentList.Add("yuv420p");
-            psi.ArgumentList.Add("-q:v");
-            psi.ArgumentList.Add(jpegQuality.ToString(CultureInfo.InvariantCulture));
-            psi.ArgumentList.Add("-vf");
-            psi.ArgumentList.Add(vf);
-            psi.ArgumentList.Add(ffmpegOutputPath);
+                IReadOnlyList<double> shortClipSeekCandidates = BuildShortClipSeekCandidates(
+                    durationSec,
+                    startSec
+                );
+                ThumbnailRuntimeLog.Write(
+                    "ffmpeg1pass-shortclip-seek",
+                    $"fallback requested: movie='{context.MovieFullPath}' duration_sec={durationSec.Value.ToString("0.###", CultureInfo.InvariantCulture)} "
+                        + $"panel_count={panelCount} original_start_sec={startSec.ToString("0.###", CultureInfo.InvariantCulture)} "
+                        + $"candidates=[{string.Join(",", shortClipSeekCandidates.Select(x => x.ToString("0.###", CultureInfo.InvariantCulture)))}] err='{err}'"
+                );
+                foreach (double fallbackStartSec in shortClipSeekCandidates)
+                {
+                    string fallbackStartText = fallbackStartSec.ToString(
+                        "0.###",
+                        CultureInfo.InvariantCulture
+                    );
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-shortclip-seek",
+                        $"fallback try: movie='{context.MovieFullPath}' start_sec={fallbackStartText}"
+                    );
+                    TryDeleteFile(ffmpegOutputPath);
+                    (ok, err) = await TryCreateTileImageAsync(
+                        ffmpegExePath,
+                        context.MovieFullPath,
+                        fallbackStartText,
+                        vf,
+                        ffmpegOutputPath,
+                        jpegQuality,
+                        useTolerantInput,
+                        ffmpegTimeout,
+                        cts
+                    );
+                    if (ok && Path.Exists(ffmpegOutputPath))
+                    {
+                        actualStartSec = fallbackStartSec;
+                        actualCaptureSeconds = BuildExpectedCaptureSeconds(
+                            actualStartSec,
+                            intervalSec,
+                            panelCount,
+                            durationSec
+                        );
+                        ThumbnailRuntimeLog.Write(
+                            "ffmpeg1pass-shortclip-seek",
+                            $"fallback hit: movie='{context.MovieFullPath}' start_sec={fallbackStartText} output='{ffmpegOutputPath}'"
+                        );
+                        break;
+                    }
 
-            (bool ok, string err) = await RunProcessAsync(psi, ffmpegTimeout, cts);
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-shortclip-seek",
+                        $"fallback miss: movie='{context.MovieFullPath}' start_sec={fallbackStartText} err='{err}'"
+                    );
+                }
+
+                if (!ok || !Path.Exists(ffmpegOutputPath))
+                {
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-shortclip-seek",
+                        $"fallback exhausted: movie='{context.MovieFullPath}' err='{err}'"
+                    );
+                }
+            }
+
             if (!ok || !Path.Exists(ffmpegOutputPath))
             {
                 return ThumbnailResultFactory.CreateFailed(
@@ -175,6 +227,10 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     cols,
                     rows,
                     candidatePanelCount,
+                    sampleIntervalSec,
+                    actualStartSec,
+                    durationSec,
+                    out actualCaptureSeconds,
                     out string composeError
                 )
             )
@@ -192,9 +248,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 TryDeleteFile(ffmpegOutputPath);
             }
 
+            ThumbInfo saveThumbInfo = ThumbnailImageUtility.RebuildThumbInfoWithCaptureSeconds(
+                context.ThumbInfo,
+                actualCaptureSeconds
+            );
+            TryDeleteFile(context.SaveThumbFileName);
             using FileStream dest = new(context.SaveThumbFileName, FileMode.Append, FileAccess.Write);
-            dest.Write(context.ThumbInfo.SecBuffer);
-            dest.Write(context.ThumbInfo.InfoBuffer);
+            dest.Write(saveThumbInfo.SecBuffer);
+            dest.Write(saveThumbInfo.InfoBuffer);
             return ThumbnailResultFactory.CreateSuccess(context.SaveThumbFileName, durationSec);
         }
 
@@ -411,6 +472,92 @@ namespace IndigoMovieManager.Thumbnail.Engines
             return Math.Min(20d, Math.Max(4d, durationSec.Value * 0.25d));
         }
 
+        // 短尺で開始秒の作り方だけが外れている時は、先頭付近の候補を浅く舐めて回復を狙う。
+        internal static bool ShouldUseShortClipSeekFallback(double? durationSec, int panelCount)
+        {
+            return durationSec.HasValue
+                && durationSec.Value > 0
+                && durationSec.Value <= ShortClipSeekFallbackMaxDurationSec
+                && panelCount > 0
+                && panelCount <= 5;
+        }
+
+        internal static IReadOnlyList<double> BuildShortClipSeekCandidates(
+            double? durationSec,
+            double originalStartSec
+        )
+        {
+            if (!durationSec.HasValue || durationSec.Value <= 0)
+            {
+                return [];
+            }
+
+            List<double> rawCandidates =
+            [
+                0d,
+                0.001d,
+                0.005d,
+                0.01d,
+                0.016d,
+                0.033d,
+                0.05d,
+                0.069d,
+                0.1d,
+                0.25d,
+                0.5d,
+                durationSec.Value * 0.1d,
+                durationSec.Value * 0.25d,
+                durationSec.Value * 0.5d,
+                Math.Max(0d, durationSec.Value - 0.01d),
+            ];
+
+            SortedDictionary<string, double> normalized = new(StringComparer.Ordinal);
+            foreach (double rawCandidate in rawCandidates)
+            {
+                double? clamped = ClampShortClipSeekCandidate(rawCandidate, durationSec.Value);
+                if (!clamped.HasValue)
+                {
+                    continue;
+                }
+
+                if (Math.Abs(clamped.Value - originalStartSec) < 0.0005d)
+                {
+                    continue;
+                }
+
+                string key = clamped.Value.ToString("0.###", CultureInfo.InvariantCulture);
+                normalized[key] = clamped.Value;
+            }
+
+            return normalized.Values.ToList();
+        }
+
+        private static double? ClampShortClipSeekCandidate(double candidate, double durationSec)
+        {
+            if (candidate < 0)
+            {
+                return null;
+            }
+
+            if (candidate == 0)
+            {
+                return 0;
+            }
+
+            double maxSeek = Math.Max(0, durationSec - 0.001d);
+            if (maxSeek <= 0)
+            {
+                return 0;
+            }
+
+            if (candidate > maxSeek)
+            {
+                return null;
+            }
+
+            return candidate;
+        }
+
         // 救済優先モードでは入力側の寛容オプションを付け、-ss を入力後へ回して実フレーム取得を優先する。
         internal static void AddInputArguments(
             ProcessStartInfo psi,
@@ -535,10 +682,15 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int cols,
             int rows,
             int candidatePanelCount,
+            double intervalSec,
+            double startSec,
+            double? durationSec,
+            out List<double> actualCaptureSeconds,
             out string error
         )
         {
             error = "";
+            actualCaptureSeconds = [];
             if (!Path.Exists(candidateTilePath))
             {
                 error = "candidate tile image is missing";
@@ -591,6 +743,13 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     nonBlackPanels,
                     desiredPanelCount
                 );
+                actualCaptureSeconds = BuildSelectedCaptureSeconds(
+                    startSec,
+                    intervalSec,
+                    candidatePanelCount,
+                    selectedIndices,
+                    durationSec
+                );
 
                 using Bitmap canvas = new(
                     panelWidth * cols,
@@ -634,6 +793,69 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     panel.Dispose();
                 }
             }
+        }
+
+        // ffmpeg1pass が実際に拾った想定秒列を、保存メタにも反映できる形へ並べる。
+        private static List<double> BuildExpectedCaptureSeconds(
+            double startSec,
+            double intervalSec,
+            int panelCount,
+            double? durationSec
+        )
+        {
+            List<double> captureSeconds = [];
+            if (panelCount < 1)
+            {
+                return captureSeconds;
+            }
+
+            double safeInterval = intervalSec > 0 ? intervalSec : 1d;
+            double maxSec =
+                durationSec.HasValue && durationSec.Value > 0
+                    ? Math.Max(0d, durationSec.Value - 0.001d)
+                    : double.MaxValue;
+            for (int i = 0; i < panelCount; i++)
+            {
+                double sec = startSec + (safeInterval * i);
+                captureSeconds.Add(Math.Max(0d, Math.Min(sec, maxSec)));
+            }
+
+            return captureSeconds;
+        }
+
+        // 候補タイルから選ばれた index を、実秒列へ引き戻して保存メタを合わせる。
+        private static List<double> BuildSelectedCaptureSeconds(
+            double startSec,
+            double intervalSec,
+            int candidatePanelCount,
+            IReadOnlyList<int> selectedIndices,
+            double? durationSec
+        )
+        {
+            List<double> candidateSeconds = BuildExpectedCaptureSeconds(
+                startSec,
+                intervalSec,
+                candidatePanelCount,
+                durationSec
+            );
+            List<double> selectedSeconds = [];
+            if (selectedIndices == null || selectedIndices.Count < 1)
+            {
+                return selectedSeconds;
+            }
+
+            for (int i = 0; i < selectedIndices.Count; i++)
+            {
+                int selectedIndex = selectedIndices[i];
+                if (selectedIndex < 0 || selectedIndex >= candidateSeconds.Count)
+                {
+                    continue;
+                }
+
+                selectedSeconds.Add(candidateSeconds[selectedIndex]);
+            }
+
+            return selectedSeconds;
         }
 
         private static void AddDistributedIndices(
@@ -874,6 +1096,52 @@ namespace IndigoMovieManager.Thumbnail.Engines
             {
                 return (false, ex.Message);
             }
+        }
+
+        private static async Task<(bool ok, string err)> TryCreateTileImageAsync(
+            string ffmpegExePath,
+            string movieFullPath,
+            string startText,
+            string vf,
+            string outputPath,
+            int jpegQuality,
+            bool useTolerantInput,
+            TimeSpan ffmpegTimeout,
+            CancellationToken cts
+        )
+        {
+            ProcessStartInfo psi = new()
+            {
+                FileName = ffmpegExePath,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-y");
+            psi.ArgumentList.Add("-hide_banner");
+            psi.ArgumentList.Add("-loglevel");
+            psi.ArgumentList.Add("error");
+            if (!useTolerantInput)
+            {
+                AddHwAccelArguments(psi);
+            }
+            psi.ArgumentList.Add("-an");
+            psi.ArgumentList.Add("-sn");
+            psi.ArgumentList.Add("-dn");
+            AddInputArguments(psi, movieFullPath, startText, useTolerantInput);
+            psi.ArgumentList.Add("-frames:v");
+            psi.ArgumentList.Add("1");
+            psi.ArgumentList.Add("-strict");
+            psi.ArgumentList.Add("unofficial");
+            psi.ArgumentList.Add("-pix_fmt");
+            psi.ArgumentList.Add("yuv420p");
+            psi.ArgumentList.Add("-q:v");
+            psi.ArgumentList.Add(jpegQuality.ToString(CultureInfo.InvariantCulture));
+            psi.ArgumentList.Add("-vf");
+            psi.ArgumentList.Add(vf);
+            psi.ArgumentList.Add(outputPath);
+            return await RunProcessAsync(psi, ffmpegTimeout, cts).ConfigureAwait(false);
         }
 
         private static async Task<string> SafeReadProcessErrorAsync(Task<string> stderrTask)

@@ -37,6 +37,7 @@ namespace IndigoMovieManager.Thumbnail
             CachedMovieMeta cacheMeta = cacheLookup.Meta;
             string hash = cacheMeta.Hash;
             double? durationSec = cacheMeta.DurationSec;
+            WriteCacheDurationDebugLog(movieFullPath, "cache-read", durationSec, queueObj);
             if (queueObj != null && string.IsNullOrWhiteSpace(queueObj.Hash))
             {
                 // 以降の経路でも再利用できるよう、確定済みハッシュを QueueObj へ戻す。
@@ -113,6 +114,31 @@ namespace IndigoMovieManager.Thumbnail
             {
                 // 一時ファイル削除失敗は後続処理を優先する。
             }
+        }
+
+        private static void WriteCacheDurationDebugLog(
+            string moviePath,
+            string phase,
+            double? durationSec,
+            QueueObj queueObj
+        )
+        {
+            string ext = Path.GetExtension(moviePath ?? "");
+            if (
+                !string.Equals(ext, ".avi", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(ext, ".divx", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return;
+            }
+
+            string queueTimeText = queueObj?.ThumbTimePos?.ToString() ?? "";
+            string queuePanelText = queueObj?.ThumbPanelPos?.ToString() ?? "";
+            ThumbnailRuntimeLog.Write(
+                "thumbinfo-cache",
+                $"phase={phase} movie='{moviePath}' duration_sec={durationSec:0.###} "
+                    + $"queue_panel={queuePanelText} queue_time={queueTimeText}"
+            );
         }
     }
 }

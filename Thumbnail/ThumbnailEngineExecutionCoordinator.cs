@@ -89,7 +89,8 @@ namespace IndigoMovieManager.Thumbnail
                     runtimeResult = ThumbnailResultFactory.CreateFailed(
                         saveThumbFileName,
                         durationSec,
-                        $"ffmpeg1pass skipped: {skipReason}"
+                        $"ffmpeg1pass skipped: {skipReason}",
+                        engineAttempted: candidate.EngineId
                     );
                     runtimeEngineErrorMessages.Add($"[ffmpeg1pass] skipped: {skipReason}");
                     break;
@@ -118,7 +119,8 @@ namespace IndigoMovieManager.Thumbnail
                         runtimeResult = ThumbnailResultFactory.CreateFailed(
                             saveThumbFileName,
                             durationSec,
-                            ex.Message
+                            ex.Message,
+                            engineAttempted: candidate.EngineId
                         );
                     }
 
@@ -127,9 +129,12 @@ namespace IndigoMovieManager.Thumbnail
                         runtimeResult = ThumbnailResultFactory.CreateFailed(
                             saveThumbFileName,
                             durationSec,
-                            "thumbnail engine returned null result"
+                            "thumbnail engine returned null result",
+                            engineAttempted: candidate.EngineId
                         );
                     }
+
+                    runtimeResult.EngineAttempted = candidate.EngineId;
 
                     bool isTransientAutogenFailure =
                         isAutogenCandidate
@@ -196,7 +201,8 @@ namespace IndigoMovieManager.Thumbnail
                         runtimeResult = ThumbnailResultFactory.CreateFailed(
                             saveThumbFileName,
                             durationSec,
-                            "Autogen produced a near-black thumbnail"
+                            "Autogen produced a near-black thumbnail",
+                            engineAttempted: candidate.EngineId
                         );
                         ThumbnailRuntimeLog.Write(
                             "thumbnail",
@@ -224,7 +230,8 @@ namespace IndigoMovieManager.Thumbnail
                 runtimeResult = ThumbnailResultFactory.CreateFailed(
                     saveThumbFileName,
                     durationSec,
-                    "thumbnail engine was not executed"
+                    "thumbnail engine was not executed",
+                    engineAttempted: runtimeProcessEngineId
                 );
             }
 
@@ -257,6 +264,7 @@ namespace IndigoMovieManager.Thumbnail
                     request.IsRecoveryLane,
                     result.IsSuccess,
                     processEngineId,
+                    request.DurationSec,
                     engineErrorMessages
                 );
             if (shouldTryRecoveryOnePassFallback)
@@ -271,6 +279,9 @@ namespace IndigoMovieManager.Thumbnail
                     .ConfigureAwait(false);
                 if (onePassResult?.IsSuccess == true)
                 {
+                    onePassResult.FailureStage = "postprocess-recovery-onepass";
+                    onePassResult.PolicyDecision = "recovery-no-frames-decoded";
+                    onePassResult.EngineAttempted = ffmpegOnePassEngine.EngineId;
                     result = onePassResult;
                     processEngineId = ffmpegOnePassEngine.EngineId;
                 }
@@ -307,6 +318,9 @@ namespace IndigoMovieManager.Thumbnail
                     .ConfigureAwait(false);
                 if (originalOnePassResult?.IsSuccess == true)
                 {
+                    originalOnePassResult.FailureStage = "postprocess-original-onepass";
+                    originalOnePassResult.PolicyDecision = "repair-output-failed-use-original";
+                    originalOnePassResult.EngineAttempted = ffmpegOnePassEngine.EngineId;
                     result = originalOnePassResult;
                     processEngineId = ffmpegOnePassEngine.EngineId;
                     context = request.OriginalMovieContext;
@@ -340,6 +354,10 @@ namespace IndigoMovieManager.Thumbnail
                         ThumbnailExecutionPolicy.ResolveFailurePlaceholderSkipReason(
                             request.IsIndexRepairTargetMovie
                         );
+                    result.FailureStage = "postprocess-placeholder";
+                    result.PolicyDecision = skipReason;
+                    result.PlaceholderAction = "skipped";
+                    result.PlaceholderKind = "";
 
                     ThumbnailRuntimeLog.Write(
                         "thumbnail",
@@ -375,8 +393,20 @@ namespace IndigoMovieManager.Thumbnail
                         );
                         result = ThumbnailResultFactory.CreateSuccess(
                             request.SaveThumbFileName,
-                            request.DurationSec
+                            request.DurationSec,
+                            engineAttempted: processEngineId,
+                            failureStage: "postprocess-placeholder",
+                            policyDecision: "placeholder-created",
+                            placeholderAction: "created",
+                            placeholderKind: placeholderKind.ToString()
                         );
+                    }
+                    else
+                    {
+                        result.FailureStage = "postprocess-placeholder";
+                        result.PolicyDecision = "placeholder-create-failed";
+                        result.PlaceholderAction = "failed";
+                        result.PlaceholderKind = placeholderKind.ToString();
                     }
                 }
             }

@@ -178,6 +178,7 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             thumbInfo.NewThumbInfo();
+            WriteAutoThumbInfoDebugLog(tabInfo, durationSec, divideSec, maxCaptureSec, thumbInfo);
             return thumbInfo;
         }
 
@@ -334,6 +335,71 @@ namespace IndigoMovieManager.Thumbnail
                 Debug.WriteLine($"thumb save failed: path='{saveThumbFileName}', err={ex.Message}");
                 return false;
             }
+        }
+
+        // 救済経路で実際に使った秒列へ合わせて、保存用の ThumbInfo を組み直す。
+        public static ThumbInfo RebuildThumbInfoWithCaptureSeconds(
+            ThumbInfo source,
+            IReadOnlyList<double> captureSeconds
+        )
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            ThumbInfo rebuilt = new()
+            {
+                ThumbCounts = source.ThumbCounts,
+                ThumbWidth = source.ThumbWidth,
+                ThumbHeight = source.ThumbHeight,
+                ThumbColumns = source.ThumbColumns,
+                ThumbRows = source.ThumbRows,
+            };
+
+            int desiredCount = Math.Max(1, source.ThumbCounts);
+            List<int> normalizedSeconds = [];
+            if (captureSeconds != null)
+            {
+                for (int i = 0; i < captureSeconds.Count; i++)
+                {
+                    double sec = captureSeconds[i];
+                    if (double.IsNaN(sec) || double.IsInfinity(sec))
+                    {
+                        continue;
+                    }
+
+                    normalizedSeconds.Add(Math.Max(0, (int)Math.Floor(sec)));
+                }
+            }
+
+            if (normalizedSeconds.Count < 1 && source.ThumbSec != null)
+            {
+                normalizedSeconds.AddRange(source.ThumbSec);
+            }
+
+            if (normalizedSeconds.Count < 1)
+            {
+                normalizedSeconds.Add(0);
+            }
+
+            while (normalizedSeconds.Count < desiredCount)
+            {
+                normalizedSeconds.Add(normalizedSeconds[normalizedSeconds.Count - 1]);
+            }
+
+            if (normalizedSeconds.Count > desiredCount)
+            {
+                normalizedSeconds.RemoveRange(desiredCount, normalizedSeconds.Count - desiredCount);
+            }
+
+            foreach (int sec in normalizedSeconds)
+            {
+                rebuilt.Add(sec);
+            }
+
+            rebuilt.NewThumbInfo();
+            return rebuilt;
         }
 
         // JPEG保存時の一時エラーを吸収しつつ、壊れた中間ファイルを残さない。
@@ -498,6 +564,33 @@ namespace IndigoMovieManager.Thumbnail
             {
                 // 一時ファイル削除失敗は後続処理を優先する。
             }
+        }
+
+        // AVI系の自動秒割りがどう決まったかを残し、外部持ち込み値との切り分けに使う。
+        private static void WriteAutoThumbInfoDebugLog(
+            TabInfo tabInfo,
+            double? durationSec,
+            int divideSec,
+            int maxCaptureSec,
+            ThumbInfo thumbInfo
+        )
+        {
+            if (tabInfo == null || !ShouldWriteAutoThumbInfoDebugLog())
+            {
+                return;
+            }
+
+            string thumbSecText =
+                thumbInfo?.ThumbSec == null ? "" : string.Join(",", thumbInfo.ThumbSec);
+            ThumbnailRuntimeLog.Write(
+                "thumbinfo-auto",
+                $"tab={tabInfo.Width}x{tabInfo.Height} rows={tabInfo.Rows} cols={tabInfo.Columns} duration_sec={durationSec:0.###} divide_sec={divideSec} max_capture_sec={maxCaptureSec} thumb_sec=[{thumbSecText}]"
+            );
+        }
+
+        private static bool ShouldWriteAutoThumbInfoDebugLog()
+        {
+            return true;
         }
     }
 }
