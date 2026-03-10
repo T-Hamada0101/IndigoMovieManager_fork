@@ -1,14 +1,31 @@
 param(
-    [string]$UpstreamBuildDir = "C:\Users\na6ce\source\repos\IndigoMovieManager\bin\x64\Debug\net8.0-windows",
-    [string]$DbPath = "C:\Users\na6ce\source\repos\IndigoMovieManager\bench\upstream_current_bench.wb",
-    [string]$InputFolder = "D:\BentchItem_HDD",
-    [string]$ThumbFolder = "C:\Users\na6ce\source\repos\IndigoMovieManager\bench_output\upstream_current_bench\Thumb",
-    [string]$BookmarkFolder = "C:\Users\na6ce\source\repos\IndigoMovieManager\bench_output\upstream_current_bench\Bookmark",
+    [string]$UpstreamBuildDir = "",
+    [string]$DbPath = "",
+    [string]$InputFolder = "",
+    [string]$ThumbFolder = "",
+    [string]$BookmarkFolder = "",
     [switch]$Recreate,
     [switch]$ResetArtifacts
 )
 
 $ErrorActionPreference = "Stop"
+
+# 既定値はスクリプト相対とプレースホルダ前提に寄せ、ローカル固有パスを持たない。
+if ([string]::IsNullOrWhiteSpace($UpstreamBuildDir)) {
+    $UpstreamBuildDir = "<upstream-build-dir>"
+}
+if ([string]::IsNullOrWhiteSpace($DbPath)) {
+    $DbPath = Join-Path $PSScriptRoot "..\..\bench\upstream_current_bench.wb"
+}
+if ([string]::IsNullOrWhiteSpace($InputFolder)) {
+    $InputFolder = "<input-video-root>"
+}
+if ([string]::IsNullOrWhiteSpace($ThumbFolder)) {
+    $ThumbFolder = Join-Path $PSScriptRoot "..\..\bench_output\upstream_current_bench\Thumb"
+}
+if ([string]::IsNullOrWhiteSpace($BookmarkFolder)) {
+    $BookmarkFolder = Join-Path $PSScriptRoot "..\..\bench_output\upstream_current_bench\Bookmark"
+}
 
 # ベンチ前提を毎回そろえるため、入力・出力・依存DLLを先に検証する。
 if (-not (Test-Path -LiteralPath $InputFolder -PathType Container)) {

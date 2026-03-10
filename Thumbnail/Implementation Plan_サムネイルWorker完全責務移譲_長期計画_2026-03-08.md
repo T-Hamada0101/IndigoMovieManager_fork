@@ -652,5 +652,5 @@ Phase 2 の残課題:
 
 ### 15.1 workthree 受領計画への接続
 - `workthree` からの救済条件受領は、次の計画書を入口にする。
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
+- `Thumbnail/Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
 - 本線側では、`FailureDb.ExtraJson` 標準キー、`FailureKind` 判定、導入位置切り分けをこの計画に従って処理する。

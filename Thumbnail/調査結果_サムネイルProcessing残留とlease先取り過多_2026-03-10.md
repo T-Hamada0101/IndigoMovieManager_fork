@@ -6,7 +6,7 @@
 
 対象DB:
 
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\1111.wb`
+- `<main-db-path>`
 
 ## 結論
 
@@ -123,8 +123,8 @@ owner 内訳:
 
 出力ログ例:
 
-- `C:\Users\na6ce\AppData\Local\IndigoMovieManager_fork\logs\thumbnail-process-trace-*.log`
-- `C:\Users\na6ce\AppData\Local\IndigoMovieManager_fork\logs\thumbnail-runtime-trace-*.log`
+- `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/thumbnail-process-trace-*.log`
+- `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/thumbnail-runtime-trace-*.log`
 
 ## 2026-03-10 追記: owner dead の即時回収
 

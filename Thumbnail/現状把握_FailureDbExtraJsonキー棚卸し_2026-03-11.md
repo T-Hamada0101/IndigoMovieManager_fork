@@ -9,14 +9,14 @@
 
 ## 2. 現在の書き込み元
 ### 2.1 Queue 本体
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\src\IndigoMovieManager.Thumbnail.Queue\ThumbnailQueueProcessor.cs`
+- `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs`
 - `BuildFailureExtraJson(...)`
 
 ### 2.2 autogen playground
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\AutogenRepairPlaygroundTests.cs`
+- `Tests/IndigoMovieManager_fork.Tests/AutogenRepairPlaygroundTests.cs`
 
 ### 2.3 ffmpeg 短尺 playground
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\FfmpegShortClipRecoveryPlaygroundTests.cs`
+- `Tests/IndigoMovieManager_fork.Tests/FfmpegShortClipRecoveryPlaygroundTests.cs`
 
 ## 3. 現在入っているキー
 ### 3.1 Queue 本体
@@ -147,6 +147,6 @@
 - これにより、workthree から戻る受領 JSON は既存保存形式を壊さずに比較可能になった。
 
 ## 9. 関連
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
+- `Thumbnail/Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
+- `Thumbnail/連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`

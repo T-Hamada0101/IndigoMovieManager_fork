@@ -8,39 +8,39 @@
 ## 前提
 
 - 対象実行ファイル  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_worktrees\709a137-baseline\bin\x64\Debug\net8.0-windows\IndigoMovieManager.exe`
+  `<fork-repo-root>/bench_worktrees/709a137-baseline/bin/x64/Debug/net8.0-windows/IndigoMovieManager.exe`
 - 入力フォルダ  
   `D:\BentchItem_HDD`
 - ベンチDB  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench\709a137_hdd_bench.wb`
+  `<fork-repo-root>/bench/709a137_hdd_bench.wb`
 - サムネ出力  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\709a137_hdd\Thumb`
+  `<fork-repo-root>/bench_output/709a137_hdd/Thumb`
 - ブックマーク出力  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\709a137_hdd\Bookmark`
+  `<fork-repo-root>/bench_output/709a137_hdd/Bookmark`
 - ログ  
-  `C:\Users\na6ce\AppData\Local\IndigoMovieManager_bench_709a137\logs\bench-runtime.log`
+  `%LOCALAPPDATA%/IndigoMovieManager_bench_709a137/logs/bench-runtime.log`
 
 ## 手順
 
 1. ベンチDBと既存成果物を掃除して再作成する。
 
 ```powershell
-pwsh -File "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Test\prepare_709a137_bench_db.ps1" -Recreate -ResetArtifacts
+pwsh -File "<fork-repo-root>\\Thumbnail\\Test\\prepare_709a137_bench_db.ps1" -Recreate -ResetArtifacts
 ```
 
 2. 環境変数でベンチDBを差し込み、709a137版を起動する。
 
 ```powershell
 Start-Process `
-    -FilePath "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_worktrees\709a137-baseline\bin\x64\Debug\net8.0-windows\IndigoMovieManager.exe" `
-    -WorkingDirectory "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_worktrees\709a137-baseline\bin\x64\Debug\net8.0-windows" `
-    -Environment @{ IMM_BENCH_DB_PATH = "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench\709a137_hdd_bench.wb" }
+    -FilePath "<fork-repo-root>\\bench_worktrees\\709a137-baseline\\bin\\x64\\Debug\\net8.0-windows\\IndigoMovieManager.exe" `
+    -WorkingDirectory "<fork-repo-root>\\bench_worktrees\\709a137-baseline\\bin\\x64\\Debug\\net8.0-windows" `
+    -Environment @{ IMM_BENCH_DB_PATH = "<fork-repo-root>\\bench\\709a137_hdd_bench.wb" }
 ```
 
 3. ログ末尾を監視し、`scan_end` と `thumb_end` の進み方を確認する。
 
 ```powershell
-Get-Content -Path "C:\Users\na6ce\AppData\Local\IndigoMovieManager_bench_709a137\logs\bench-runtime.log" -Encoding UTF8 -Wait
+Get-Content -Path "$env:LOCALAPPDATA\\IndigoMovieManager_bench_709a137\\logs\\bench-runtime.log" -Encoding UTF8 -Wait
 ```
 
 ## 観測ポイント

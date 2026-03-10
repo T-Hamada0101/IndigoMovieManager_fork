@@ -18,24 +18,24 @@
 2. `Thumbnail\Test\prepare_upstream_current_bench_db.ps1` を実行して、ベンチ用 `.wb` と出力先を用意する。
 
 ```powershell
-pwsh -File "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Test\prepare_upstream_current_bench_db.ps1" -Recreate -ResetArtifacts
+pwsh -File "<fork-repo-root>\\Thumbnail\\Test\\prepare_upstream_current_bench_db.ps1" -Recreate -ResetArtifacts
 ```
 
 既定値は以下。
-- DB: `C:\Users\na6ce\source\repos\IndigoMovieManager\bench\upstream_current_bench.wb`
+- DB: `<upstream-repo-root>/bench/upstream_current_bench.wb`
 - 入力: `D:\BentchItem_HDD`
-- サムネ出力: `C:\Users\na6ce\source\repos\IndigoMovieManager\bench_output\upstream_current_bench\Thumb`
-- ブックマーク出力: `C:\Users\na6ce\source\repos\IndigoMovieManager\bench_output\upstream_current_bench\Bookmark`
+- サムネ出力: `<upstream-repo-root>/bench_output/upstream_current_bench/Thumb`
+- ブックマーク出力: `<upstream-repo-root>/bench_output/upstream_current_bench/Bookmark`
 
 ## 実行手順
 1. 上流EXEを起動する。
 
 ```powershell
-Start-Process -FilePath "C:\Users\na6ce\source\repos\IndigoMovieManager\bin\x64\Debug\net8.0-windows\IndigoMovieManager.exe" -WorkingDirectory "C:\Users\na6ce\source\repos\IndigoMovieManager\bin\x64\Debug\net8.0-windows"
+Start-Process -FilePath "<upstream-repo-root>\\bin\\x64\\Debug\\net8.0-windows\\IndigoMovieManager.exe" -WorkingDirectory "<upstream-repo-root>\\bin\\x64\\Debug\\net8.0-windows"
 ```
 
 2. アプリで `開く` を押し、以下を開く。
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\bench\upstream_current_bench.wb`
+- `<upstream-repo-root>/bench/upstream_current_bench.wb`
 
 3. 初回走査が終わるまで待つ。
 - `open_datafile_end` が DB読込の完了
@@ -56,7 +56,7 @@ Start-Process -FilePath "C:\Users\na6ce\source\repos\IndigoMovieManager\bin\x64\
 - ベンチログ:
   - `%LOCALAPPDATA%\IndigoMovieManager_bench_upstream_current\logs\bench-runtime.log`
 - 生成サムネ:
-  - `C:\Users\na6ce\source\repos\IndigoMovieManager\bench_output\upstream_current_bench\Thumb`
+  - `<upstream-repo-root>/bench_output/upstream_current_bench/Thumb`
 
 ## 見るポイント
 - `open_datafile_end elapsed_ms=...`

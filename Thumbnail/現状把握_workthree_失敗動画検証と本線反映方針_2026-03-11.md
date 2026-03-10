@@ -9,7 +9,7 @@
 
 ## 2. 現状
 - 本線側には、`SWF` 事前判定、`FailureDb`、短尺 `ffmpeg1pass` 救済、長尺 `autogen no-frames` 救済の一部が入っている。
-- それでも `E:\_サムネイル作成困難動画` の一括試行では未救済動画が残っている。
+- それでも `<difficult-video-root>` の一括試行では未救済動画が残っている。
 - 2026-03-11 時点の一括試行結果は以下。
   - 対象: 48件
   - 成功: 39件
@@ -63,13 +63,13 @@
 - `画像1枚あり顔.mkv`、`画像1枚ありページ.mkv`、`ライブ配信真空エラー2_ghq5_temp.mp4` など未救済ケースの掘り下げ。
 
 ## 8. 関連資料
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\サムネイルが作成できない動画対策.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\設計整理_FailureDbExtraJson先行反映範囲_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\DifficultVideoBatchPlaygroundTests.cs`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\AutogenRepairPlaygroundTests.cs`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\FfmpegShortClipRecoveryPlaygroundTests.cs`
+- `Thumbnail/サムネイルが作成できない動画対策.md`
+- `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
+- `Thumbnail/連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `Thumbnail/設計整理_FailureDbExtraJson先行反映範囲_2026-03-11.md`
+- `Tests/IndigoMovieManager_fork.Tests/DifficultVideoBatchPlaygroundTests.cs`
+- `Tests/IndigoMovieManager_fork.Tests/AutogenRepairPlaygroundTests.cs`
+- `Tests/IndigoMovieManager_fork.Tests/FfmpegShortClipRecoveryPlaygroundTests.cs`
 
 ## 9. 備考
 - `workthree` は検証専用ラインであり、ここで確定した一般条件だけを本線へ戻す。

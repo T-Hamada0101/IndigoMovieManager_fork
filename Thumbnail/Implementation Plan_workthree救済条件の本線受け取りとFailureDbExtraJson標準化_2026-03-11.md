@@ -104,10 +104,10 @@
 5. 必要なら失敗タブ表示と観測スクリプトを追随更新する
 
 ## 9. 関連資料
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\Fixtures\workthree_failuredb_minimal.json`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\現状把握_workthree受領後の計画書流し先整理_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_サムネイルWorker完全責務移譲_長期計画_2026-03-08.md`
+- `Tests/IndigoMovieManager_fork.Tests/Fixtures/workthree_failuredb_minimal.json`
+- `Thumbnail/現状把握_workthree受領後の計画書流し先整理_2026-03-11.md`
+- `Thumbnail/現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
+- `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
+- `Thumbnail/連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `Thumbnail/Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`
+- `Thumbnail/Implementation Plan_サムネイルWorker完全責務移譲_長期計画_2026-03-08.md`

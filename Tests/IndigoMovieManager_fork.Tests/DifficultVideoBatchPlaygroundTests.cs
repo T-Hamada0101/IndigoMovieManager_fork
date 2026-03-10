@@ -13,7 +13,8 @@ public sealed class DifficultVideoBatchPlaygroundTests
         StringComparer.OrdinalIgnoreCase
     );
 
-    private const string DefaultRootPath = @"E:\_サムネイル作成困難動画";
+    // 実動画フォルダ依存のため、既定ルートは持たず環境変数からだけ受け取る。
+    private const string DefaultRootPath = "";
     private const string RootPathEnvName = "IMM_TEST_DIFFICULT_VIDEO_ROOT";
 
     [Test]

@@ -9,9 +9,9 @@
 ## 前提
 
 - 対象アプリ  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\IndigoMovieManager_fork.exe`
+  `<fork-repo-root>/bin/x64/Debug/net8.0-windows/IndigoMovieManager_fork.exe`
 - ソリューション  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\IndigoMovieManager_fork.sln`
+  `<fork-repo-root>/IndigoMovieManager_fork.sln`
 - ビルドコマンド  
   `C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe`
 - PowerShell は 7.x を使う。
@@ -22,22 +22,22 @@
 ## 保存先の標準
 
 - ベンチDB  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench\current_fork_hdd_bench.wb`
+  `<fork-repo-root>/bench/current_fork_hdd_bench.wb`
 - サムネ出力  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\current_fork_hdd\Thumb`
+  `<fork-repo-root>/bench_output/current_fork_hdd/Thumb`
 - ブックマーク出力  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\current_fork_hdd\Bookmark`
+  `<fork-repo-root>/bench_output/current_fork_hdd/Bookmark`
 - 本体ログ  
-  `C:\Users\na6ce\AppData\Local\IndigoMovieManager_fork\logs\debug-runtime.log`
+  `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/debug-runtime.log`
 - Workerログ  
-  `C:\Users\na6ce\AppData\Local\IndigoMovieManager_fork\logs\thumbnail-worker-*.log`
+  `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/thumbnail-worker-*.log`
 
 ## このベンチの位置づけ
 
 - これは `run_thumbnail_engine_bench.ps1` 系の「エンジン比較」ではない。
 - これは GUI本体の `OpenDatafile`、`CheckFolderAsync`、Worker処理、出力jpg件数を観測する「実機ベンチ」。
 - 結果保存先の基準ドキュメントはこれ。  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Docs\現行フォーク実機ベンチ結果_HDD_2026-03-08.md`
+  `Docs/現行フォーク実機ベンチ結果_HDD_2026-03-08.md`
 
 ## 実行前の注意
 
@@ -56,7 +56,7 @@ pwsh -NoLogo -NoProfile -Command "Get-Process IndigoMovieManager_fork,IndigoMovi
 ### 2. ベンチ用の最小差分を一時適用する
 
 - 対象  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\MainWindow.xaml.cs`
+  `MainWindow.xaml.cs`
 - 差し込み位置  
   `MainWindow_ContentRendered`
 - 目的  
@@ -82,7 +82,7 @@ else if (Properties.Settings.Default.AutoOpen)
 ## 3. ビルドする
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command "& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\IndigoMovieManager_fork.sln' /t:Build /p:Configuration=Debug /p:Platform=x64 /m"
+pwsh -NoLogo -NoProfile -Command "& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' '<fork-repo-root>\\IndigoMovieManager_fork.sln' /t:Build /p:Configuration=Debug /p:Platform=x64 /m"
 ```
 
 ## 4. DB準備用の一時DLLを置く
@@ -92,19 +92,19 @@ pwsh -NoLogo -NoProfile -Command "& 'C:\Program Files\Microsoft Visual Studio\18
 - これは DB 準備専用の暫定対応であり、ベンチ後は削除する。
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command "Copy-Item 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\IndigoMovieManager_fork.dll' 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\IndigoMovieManager.dll' -Force"
+pwsh -NoLogo -NoProfile -Command "Copy-Item '<fork-repo-root>\\bin\\x64\\Debug\\net8.0-windows\\IndigoMovieManager_fork.dll' '<fork-repo-root>\\bin\\x64\\Debug\\net8.0-windows\\IndigoMovieManager.dll' -Force"
 ```
 
 ## 5. ベンチDBと出力先をクリーン作成する
 
 ```powershell
-pwsh -NoLogo -NoProfile -File "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Test\prepare_upstream_current_bench_db.ps1" -UpstreamBuildDir "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows" -DbPath "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench\current_fork_hdd_bench.wb" -InputFolder "D:\BentchItem_HDD" -ThumbFolder "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\current_fork_hdd\Thumb" -BookmarkFolder "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\current_fork_hdd\Bookmark" -Recreate -ResetArtifacts
+pwsh -NoLogo -NoProfile -File "<fork-repo-root>\\Thumbnail\\Test\\prepare_upstream_current_bench_db.ps1" -UpstreamBuildDir "<fork-repo-root>\\bin\\x64\\Debug\\net8.0-windows" -DbPath "<fork-repo-root>\\bench\\current_fork_hdd_bench.wb" -InputFolder "<input-video-root>" -ThumbFolder "<fork-repo-root>\\bench_output\\current_fork_hdd\\Thumb" -BookmarkFolder "<fork-repo-root>\\bench_output\\current_fork_hdd\\Bookmark" -Recreate -ResetArtifacts
 ```
 
 ## 6. 環境変数付きで本体を起動する
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command "Start-Process -FilePath 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\IndigoMovieManager_fork.exe' -WorkingDirectory 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows' -Environment @{ IMM_BENCH_DB_PATH = 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench\current_fork_hdd_bench.wb' }"
+pwsh -NoLogo -NoProfile -Command "Start-Process -FilePath '<fork-repo-root>\\bin\\x64\\Debug\\net8.0-windows\\IndigoMovieManager_fork.exe' -WorkingDirectory '<fork-repo-root>\\bin\\x64\\Debug\\net8.0-windows' -Environment @{ IMM_BENCH_DB_PATH = '<fork-repo-root>\\bench\\current_fork_hdd_bench.wb' }"
 ```
 
 - 起動後は `db override` が本体ログへ出ることを確認する。
@@ -112,14 +112,14 @@ pwsh -NoLogo -NoProfile -Command "Start-Process -FilePath 'C:\Users\na6ce\source
 ## 7. 観測ポイント
 
 - 本体ログで見る。  
-  `C:\Users\na6ce\AppData\Local\IndigoMovieManager_fork\logs\debug-runtime.log`
+  `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/debug-runtime.log`
 - まず確認する行
   - `db override`
   - `OpenDatafile`
   - `CheckFolderAsync`
   - `watch-check scan end`
 - Workerログで見る。  
-  `C:\Users\na6ce\AppData\Local\IndigoMovieManager_fork\logs\thumbnail-worker-*.log`
+  `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/thumbnail-worker-*.log`
 - 追加で数えるもの
   - `movie` テーブル件数
   - `movie_name + hash` 一意件数
@@ -147,7 +147,7 @@ pwsh -NoLogo -NoProfile -Command "Get-Process IndigoMovieManager_fork,IndigoMovi
 ### 9-2. 一時DLL削除
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command "if (Test-Path 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\IndigoMovieManager.dll') { Remove-Item 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\IndigoMovieManager.dll' -Force }"
+pwsh -NoLogo -NoProfile -Command "if (Test-Path '<fork-repo-root>\\bin\\x64\\Debug\\net8.0-windows\\IndigoMovieManager.dll') { Remove-Item '<fork-repo-root>\\bin\\x64\\Debug\\net8.0-windows\\IndigoMovieManager.dll' -Force }"
 ```
 
 ### 9-3. `MainWindow.xaml.cs` を通常状態へ戻す
@@ -158,7 +158,7 @@ pwsh -NoLogo -NoProfile -Command "if (Test-Path 'C:\Users\na6ce\source\repos\Ind
 ### 9-4. ビルドして通常状態を確認する
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command "& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' 'C:\Users\na6ce\source\repos\IndigoMovieManager_fork\IndigoMovieManager_fork.sln' /t:Build /p:Configuration=Debug /p:Platform=x64 /m"
+pwsh -NoLogo -NoProfile -Command "& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' '<fork-repo-root>\\IndigoMovieManager_fork.sln' /t:Build /p:Configuration=Debug /p:Platform=x64 /m"
 ```
 
 ### 9-5. 本体が通常優先度で起動することを確認する
@@ -182,9 +182,9 @@ pwsh -NoLogo -NoProfile -Command "& 'C:\Program Files\Microsoft Visual Studio\18
 ## 今回の確定結果
 
 - 保存済みの結果  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Docs\現行フォーク実機ベンチ結果_HDD_2026-03-08.md`
+  `Docs/現行フォーク実機ベンチ結果_HDD_2026-03-08.md`
 - 同日に保存済みのエンジン比較結果  
-  `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Docs\現行フォークベンチ結果_HDD_2026-03-08.md`
+  `Docs/現行フォークベンチ結果_HDD_2026-03-08.md`
 
 ## 次回AIへの指示
 

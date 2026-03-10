@@ -15,9 +15,11 @@ public sealed class AutogenRepairPlaygroundTests
         [".mp4", ".m4v", ".3gp", ".3g2", ".mov", ".avi", ".divx", ".mkv", ".flv", ".f4v", ".wmv", ".asf", ".mts", ".m2ts"],
         StringComparer.OrdinalIgnoreCase
     );
-    private const string DefaultMoviePath = @"E:\_サムネイル作成困難動画\画像1枚あり顔.mkv";
+    // 実動画依存のため、既定パスは持たず環境変数からだけ受け取る。
+    private const string DefaultMoviePath = "";
     private const string MoviePathEnvName = "IMM_TEST_AUTOGEN_MOVIE_PATH";
-    private const string DefaultSeekMoviePath = @"E:\_サムネイル作成困難動画\作成1ショットOK\35967.mp4";
+    // 実動画依存のため、既定パスは持たず環境変数からだけ受け取る。
+    private const string DefaultSeekMoviePath = "";
     private const string SeekMoviePathEnvName = "IMM_TEST_AUTOGEN_SEEK_MOVIE_PATH";
     private const string SeekSecEnvName = "IMM_TEST_AUTOGEN_SEEK_SEC";
 

@@ -1,15 +1,32 @@
 param(
-    [string]$SchemaBuildDir = "C:\Users\na6ce\source\repos\IndigoMovieManager\bin\x64\Debug\net8.0-windows",
-    [string]$DbPath = "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench\709a137_hdd_bench.wb",
-    [string]$InputFolder = "D:\BentchItem_HDD",
-    [string]$ThumbFolder = "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\709a137_hdd\Thumb",
-    [string]$BookmarkFolder = "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\bench_output\709a137_hdd\Bookmark",
+    [string]$SchemaBuildDir = "",
+    [string]$DbPath = "",
+    [string]$InputFolder = "",
+    [string]$ThumbFolder = "",
+    [string]$BookmarkFolder = "",
     [switch]$Recreate,
     [switch]$ResetArtifacts
 )
 
 $ErrorActionPreference = "Stop"
-$helper = "C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Test\prepare_upstream_current_bench_db.ps1"
+$helper = Join-Path $PSScriptRoot "prepare_upstream_current_bench_db.ps1"
+
+# 既定値はスクリプト相対とプレースホルダ前提に寄せ、ローカル固有パスを持たない。
+if ([string]::IsNullOrWhiteSpace($SchemaBuildDir)) {
+    $SchemaBuildDir = "<schema-build-dir>"
+}
+if ([string]::IsNullOrWhiteSpace($DbPath)) {
+    $DbPath = Join-Path $PSScriptRoot "..\..\bench\709a137_hdd_bench.wb"
+}
+if ([string]::IsNullOrWhiteSpace($InputFolder)) {
+    $InputFolder = "<input-video-root>"
+}
+if ([string]::IsNullOrWhiteSpace($ThumbFolder)) {
+    $ThumbFolder = Join-Path $PSScriptRoot "..\..\bench_output\709a137_hdd\Thumb"
+}
+if ([string]::IsNullOrWhiteSpace($BookmarkFolder)) {
+    $BookmarkFolder = Join-Path $PSScriptRoot "..\..\bench_output\709a137_hdd\Bookmark"
+}
 
 if ($ResetArtifacts) {
     $logPath = Join-Path $env:LOCALAPPDATA "IndigoMovieManager_bench_709a137\logs\bench-runtime.log"

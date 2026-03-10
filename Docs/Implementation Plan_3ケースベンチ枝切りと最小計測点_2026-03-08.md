@@ -13,18 +13,18 @@
 ## 3. 推奨ディレクトリ構成
 
 ### 3.1 フォーク初期原型
-- 元リポジトリ: `C:\Users\na6ce\source\repos\IndigoMovieManager_fork`
-- 作業先候補: `C:\Users\na6ce\source\repos\IndigoMovieManager_fork_bench_709a137`
+- 元リポジトリ: `<fork-repo-root>`
+- 作業先候補: `<fork-bench-709a137-root>`
 - ブランチ名: `codex/bench/709a137-baseline`
 
 ### 3.2 本家現行
-- 元リポジトリ: `C:\Users\na6ce\source\repos\IndigoMovieManager`
-- 作業先候補: `C:\Users\na6ce\source\repos\IndigoMovieManager_bench_upstream`
+- 元リポジトリ: `<upstream-repo-root>`
+- 作業先候補: `<upstream-bench-root>`
 - ブランチ名: `codex/bench/upstream-current-baseline`
 
 ### 3.3 フォーク現行（第2段階）
-- 元リポジトリ: `C:\Users\na6ce\source\repos\IndigoMovieManager_fork`
-- 作業先候補: `C:\Users\na6ce\source\repos\IndigoMovieManager_fork_bench_current`
+- 元リポジトリ: `<fork-repo-root>`
+- 作業先候補: `<fork-bench-current-root>`
 - ブランチ名: `codex/bench/fork-current`
 - 備考: 実装が落ち着くまでは切らない
 
@@ -34,25 +34,25 @@
 PowerShell例:
 
 ```powershell
-cd C:\Users\na6ce\source\repos\IndigoMovieManager_fork
-git -c safe.directory='C:/Users/na6ce/source/repos/IndigoMovieManager_fork' switch --detach 709a137
-git -c safe.directory='C:/Users/na6ce/source/repos/IndigoMovieManager_fork' switch -c codex/bench/709a137-baseline
+cd <fork-repo-root>
+git -c safe.directory='<fork-repo-root>' switch --detach 709a137
+git -c safe.directory='<fork-repo-root>' switch -c codex/bench/709a137-baseline
 ```
 
 別ディレクトリでやるなら、先にコピーまたは worktree を用意する。
 
 ### 4.2 本家現行
 ```powershell
-cd C:\Users\na6ce\source\repos\IndigoMovieManager
+cd <upstream-repo-root>
 git switch master
 git switch -c codex/bench/upstream-current-baseline
 ```
 
 ### 4.3 フォーク現行（第2段階）
 ```powershell
-cd C:\Users\na6ce\source\repos\IndigoMovieManager_fork
-git -c safe.directory='C:/Users/na6ce/source/repos/IndigoMovieManager_fork' switch master
-git -c safe.directory='C:/Users/na6ce/source/repos/IndigoMovieManager_fork' switch -c codex/bench/fork-current
+cd <fork-repo-root>
+git -c safe.directory='<fork-repo-root>' switch master
+git -c safe.directory='<fork-repo-root>' switch -c codex/bench/fork-current
 ```
 
 実装が一段落してから実施する。

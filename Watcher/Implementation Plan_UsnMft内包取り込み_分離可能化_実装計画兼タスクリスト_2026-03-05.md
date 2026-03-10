@@ -105,4 +105,4 @@
 - テスト:
   - `dotnet test ... --filter "UsnMftProviderTests|FileIndexProviderAbDiffTests|FileIndexReasonTableTests"` は成功（11 passed / 1 skipped / 0 failed）。
   - `pwsh -NoProfile -File .\scripts\run_fileindex_ab_ci.ps1 -Configuration Debug -Platform x64` は成功（内包版既定で完走）。
-  - `pwsh -NoProfile -File .\scripts\run_fileindex_ab_ci.ps1 -Configuration Debug -Platform x64 -UseExternalUsnMft -MyLabRoot C:\Users\na6ce\source\repos\MyLab` は成功（外部版切替でも完走）。
+  - `pwsh -NoProfile -File .\scripts\run_fileindex_ab_ci.ps1 -Configuration Debug -Platform x64 -UseExternalUsnMft -MyLabRoot <mylab-root>` は成功（外部版切替でも完走）。

@@ -9,7 +9,7 @@
 - Debug ビルド済みの `IndigoMovieManager_fork.exe` を用意する。
 - 対象 MainDB を 1 つ決める。
 - 難動画サンプルを用意する。
-  - 推奨: `E:\_サムネイル作成困難動画`
+  - 推奨: `<difficult-video-root>`
 - 必要なら `thumbnail-progress-viewer` を起動できる状態にする。
 - `FailureDb` の保存先を確認しておく。
   - `%LOCALAPPDATA%\IndigoMovieManager_fork\thumbnail-failure-db\*.failure-debug.imm`

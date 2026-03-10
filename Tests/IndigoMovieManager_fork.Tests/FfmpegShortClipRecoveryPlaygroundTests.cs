@@ -18,7 +18,8 @@ public sealed class FfmpegShortClipRecoveryPlaygroundTests
         StringComparer.OrdinalIgnoreCase
     );
 
-    private const string DefaultMoviePath = @"E:\_サムネイル作成困難動画\画像1枚ありページ.mkv";
+    // 実動画依存のため、既定パスは持たず環境変数からだけ受け取る。
+    private const string DefaultMoviePath = "";
     private const string MoviePathEnvName = "IMM_TEST_FFMPEG_SHORT_MOVIE_PATH";
 
     [Test]

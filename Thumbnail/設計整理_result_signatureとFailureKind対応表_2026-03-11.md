@@ -61,6 +61,6 @@
 - 既存 `LastError` や `ResultErrorMessage` を捨てること
 
 ## 7. 関連
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\現状把握_FailureDbExtraJsonキー棚卸し_2026-03-11.md`
+- `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
+- `Thumbnail/Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
+- `Thumbnail/現状把握_FailureDbExtraJsonキー棚卸し_2026-03-11.md`

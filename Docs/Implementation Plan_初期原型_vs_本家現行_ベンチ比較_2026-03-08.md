@@ -31,7 +31,7 @@
   - 「最初期からどれだけ進化したか」を測る
 
 ### 3.2 Case B: 本家現行
-- 対象: `C:\Users\na6ce\source\repos\IndigoMovieManager` の現行HEAD
+- 対象: `<upstream-repo-root>` の現行HEAD
 - 性格:
   - Queue系、ThumbnailCreationService、分離済みサムネイル処理あり
   - ただし現時点ではフォークほどの大改造ではない
@@ -39,7 +39,7 @@
   - 「今の本家がどこまで進んでいるか」を測る
 
 ### 3.3 Case C: 現行フォーク（第2段階）
-- 対象: `C:\Users\na6ce\source\repos\IndigoMovieManager_fork` の現行HEAD
+- 対象: `<fork-repo-root>` の現行HEAD
 - 状態:
   - 現在は実装中のため、ベースラインには使わない
 - 用途:
@@ -96,7 +96,7 @@
 - 必要なら最小限の計測ログだけ足す。
 
 ### Step 2: 本家現行を固定する
-- `C:\Users\na6ce\source\repos\IndigoMovieManager` 側で現行HEADを固定する。
+- `<upstream-repo-root>` 側で現行HEADを固定する。
 - 推奨名: `codex/bench/upstream-current-baseline`
 - 本家側に計測ログが足りない場合だけ、ローカル用の計測枝を作る。
 

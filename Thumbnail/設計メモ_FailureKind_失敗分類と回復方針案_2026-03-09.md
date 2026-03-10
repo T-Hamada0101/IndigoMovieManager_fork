@@ -67,7 +67,7 @@
 
 ## 5.1 2026-03-10 実動画観測メモ: `No frames decoded`
 
-`E:\_サムネイル作成困難動画` の 17 動画を `AutogenRepairPlaygroundTests` で一括確認した結果、失敗の主流は `No frames decoded` だった。
+`<difficult-video-root>` の 17 動画を `AutogenRepairPlaygroundTests` で一括確認した結果、失敗の主流は `No frames decoded` だった。
 
 観測結果の要点:
 - 全 17 本中 4 本は全試行失敗、1 本は repair 系のみ成功だった。
