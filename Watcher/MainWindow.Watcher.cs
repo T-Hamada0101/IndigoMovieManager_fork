@@ -278,8 +278,21 @@ namespace IndigoMovieManager
                             return;
                         }
 
+                        string snapshotDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+                        string snapshotDbName = MainVM?.DbInfo?.DBName ?? "";
+                        string snapshotThumbFolder = MainVM?.DbInfo?.ThumbFolder ?? "";
+                        int snapshotTabIndex = MainVM?.DbInfo?.CurrentTabIndex ?? 0;
+                        if (string.IsNullOrWhiteSpace(snapshotDbFullPath))
+                        {
+                            DebugRuntimeLog.Write(
+                                "watch",
+                                $"skip created event because db is not ready: '{e.FullPath}'"
+                            );
+                            return;
+                        }
+
                         // ----- [2] 基礎情報の取得とDB登録 -----
-                        // OpenCV等を通じて尺やサイズを拾い、MovieCoreMapperなどを経由する前提の部分
+                        // OpenCV等を通じて尺やサイズを拾い、既存DB行があればそれを再利用する。
                         MovieInfo mvi;
                         try
                         {
@@ -293,21 +306,54 @@ namespace IndigoMovieManager
                             );
                             return;
                         }
-                        await InsertMovieToMainDbAsync(MainVM.DbInfo.DBFullPath, mvi);
+                        bool existsInDb = TryGetLatestMovieSnapshotByPath(
+                            snapshotDbFullPath,
+                            mvi.MoviePath,
+                            out MovieDbSnapshot existingMovieSnapshot
+                        );
+                        long movieIdForQueue = existsInDb ? existingMovieSnapshot.MovieId : mvi.MovieId;
+                        string hashForQueue = existsInDb
+                            ? (string.IsNullOrWhiteSpace(existingMovieSnapshot.Hash)
+                                ? mvi.Hash
+                                : existingMovieSnapshot.Hash)
+                            : mvi.Hash;
+
+                        if (!existsInDb)
+                        {
+                            await InsertMovieToMainDbAsync(snapshotDbFullPath, mvi);
+                        }
 
                         // [MVVM向けの課題] ここで直接ViewDataの更新メソッドを叩いている
                         await TryAppendMovieToViewByPathAsync(
-                            MainVM.DbInfo.DBFullPath,
+                            snapshotDbFullPath,
                             mvi.MoviePath
                         );
+
+                        // 起動直後などに既存動画へCreatedが遅れて飛んでも、失敗固定マーカーがあれば再投入しない。
+                        if (
+                            ShouldSkipThumbnailEnqueueBecauseMarkerExistsForTab(
+                                snapshotTabIndex,
+                                snapshotDbName,
+                                snapshotThumbFolder,
+                                mvi.MoviePath,
+                                hashForQueue
+                            )
+                        )
+                        {
+                            DebugRuntimeLog.Write(
+                                "watch",
+                                $"skip enqueue by marker on created event: tab={snapshotTabIndex}, exists_in_db={existsInDb}, movie='{mvi.MoviePath}'"
+                            );
+                            return;
+                        }
 
                         // ----- [3] サムネイル作成キューへ非同期投入 -----
                         QueueObj newFileForThumb = new()
                         {
-                            MovieId = mvi.MovieId,
+                            MovieId = movieIdForQueue,
                             MovieFullPath = mvi.MoviePath,
-                            Hash = mvi.Hash,
-                            Tabindex = MainVM.DbInfo.CurrentTabIndex,
+                            Hash = hashForQueue,
+                            Tabindex = snapshotTabIndex,
                         };
                         _ = TryEnqueueThumbnailJob(newFileForThumb);
                     }
@@ -2002,6 +2048,52 @@ namespace IndigoMovieManager
             return result;
         }
 
+        // Createdイベントの単発処理でも既存DB行を1件だけ見て、二重登録を避ける。
+        private static bool TryGetLatestMovieSnapshotByPath(
+            string snapshotDbFullPath,
+            string moviePath,
+            out MovieDbSnapshot snapshot
+        )
+        {
+            snapshot = default;
+            if (
+                string.IsNullOrWhiteSpace(snapshotDbFullPath)
+                || string.IsNullOrWhiteSpace(moviePath)
+            )
+            {
+                return false;
+            }
+
+            try
+            {
+                DataTable dt = GetData(
+                    snapshotDbFullPath,
+                    "select movie_id, hash from movie where movie_path = @movie_path order by movie_id desc limit 1",
+                    new Dictionary<string, object>
+                    {
+                        ["@movie_path"] = moviePath,
+                    }
+                );
+                if (dt?.Rows.Count > 0)
+                {
+                    DataRow row = dt.Rows[0];
+                    long.TryParse(row["movie_id"]?.ToString(), out long movieId);
+                    string hash = row["hash"]?.ToString() ?? "";
+                    snapshot = new MovieDbSnapshot(movieId, hash);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"TryGetLatestMovieSnapshotByPath failed: {ex.GetType().Name}"
+                );
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// 出力済みのサムネイル達を探索し、ハッシュを削ぎ落とした「名前（Body）」だけの最強セットを練り上げる！Everythingの爆速力を借り、ダメなら己の足（Directory走査）で稼ぐ！👟💨
         /// </summary>
@@ -2709,6 +2801,34 @@ namespace IndigoMovieManager
                 movieFullPath
             );
             return Path.Exists(errorMarkerPath);
+        }
+
+        // tab情報から実際の出力先を解決し、Createdイベントでも同じmarker判定を使う。
+        internal static bool ShouldSkipThumbnailEnqueueBecauseMarkerExistsForTab(
+            int tabIndex,
+            string dbName,
+            string thumbFolder,
+            string movieFullPath,
+            string hash
+        )
+        {
+            if (string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return false;
+            }
+
+            string resolvedThumbFolder = ResolveWorkerThumbFolder(dbName, thumbFolder);
+            if (string.IsNullOrWhiteSpace(resolvedThumbFolder))
+            {
+                return false;
+            }
+
+            TabInfo tbi = new(tabIndex, dbName, resolvedThumbFolder);
+            return ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+                tbi.OutPath,
+                movieFullPath,
+                hash
+            );
         }
 
         // 救済用の事前スキャンでは、列挙済みファイル名セットに対して同じ判定をかける。

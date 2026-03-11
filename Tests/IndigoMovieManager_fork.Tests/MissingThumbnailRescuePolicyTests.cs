@@ -192,6 +192,41 @@ public sealed class MissingThumbnailRescuePolicyTests
         Assert.That(result, Is.True);
     }
 
+    [Test]
+    public void ShouldSkipThumbnailEnqueueBecauseMarkerExistsForTab_タブ出力先のERRORマーカーを見つける()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"imm-marker-tab-{Guid.NewGuid():N}");
+        string outPath = Path.Combine(tempRoot, "160x120x1x1");
+        Directory.CreateDirectory(outPath);
+
+        try
+        {
+            string moviePath = @"E:\movies\sample.mp4";
+            string errorMarkerPath = ThumbnailPathResolver.BuildErrorMarkerPath(
+                outPath,
+                moviePath
+            );
+            File.WriteAllBytes(errorMarkerPath, []);
+
+            bool result = MainWindow.ShouldSkipThumbnailEnqueueBecauseMarkerExistsForTab(
+                tabIndex: 2,
+                dbName: "test-db",
+                thumbFolder: tempRoot,
+                movieFullPath: moviePath,
+                hash: "hash1234"
+            );
+
+            Assert.That(result, Is.True);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static string DequeueMoviePath(MethodInfo tryDequeue, object state)
     {
         object?[] args = [null];

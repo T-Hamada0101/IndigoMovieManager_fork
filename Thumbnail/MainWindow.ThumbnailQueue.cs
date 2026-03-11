@@ -295,8 +295,11 @@ namespace IndigoMovieManager
 
             try
             {
-                string thumbFolder = MainVM?.DbInfo?.ThumbFolder ?? "";
                 string dbName = MainVM?.DbInfo?.DBName ?? "";
+                string thumbFolder = ResolveWorkerThumbFolder(
+                    dbName,
+                    MainVM?.DbInfo?.ThumbFolder ?? ""
+                );
                 if (string.IsNullOrWhiteSpace(thumbFolder))
                 {
                     return;
