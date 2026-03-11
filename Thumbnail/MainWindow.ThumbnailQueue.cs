@@ -63,6 +63,22 @@ namespace IndigoMovieManager
                 + demandSnapshot.RunningTotalCount;
         }
 
+        // 今の実行系統を短い識別子で返し、watch/rescue ログと突き合わせやすくする。
+        private string ResolveThumbnailQueueExecutionModeForLog()
+        {
+            if (ShouldUseThumbnailCoordinatorMode())
+            {
+                return "coordinator";
+            }
+
+            if (_thumbnailWorkerProcessManager.IsWorkerAvailable())
+            {
+                return "external-worker";
+            }
+
+            return "in-process";
+        }
+
         // サムネイルジョブのユニークキーを生成する。
 
         private static string GetThumbnailJobKey(QueueObj queueObj)

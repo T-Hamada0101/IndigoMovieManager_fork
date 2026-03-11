@@ -1,4 +1,6 @@
 using IndigoMovieManager;
+using IndigoMovieManager.Thumbnail;
+using System.Reflection;
 
 namespace IndigoMovieManager_fork.Tests;
 
@@ -73,5 +75,89 @@ public sealed class MissingThumbnailRescuePolicyTests
         );
 
         Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public void TakeMissingThumbnailRescueFlushBatch_Quota低下時も未投入分を残す()
+    {
+        List<QueueObj> batch =
+        [
+            CreateQueueObj("a.mp4"),
+            CreateQueueObj("b.mp4"),
+            CreateQueueObj("c.mp4"),
+        ];
+
+        List<QueueObj> flushBatch = MainWindow.TakeMissingThumbnailRescueFlushBatch(
+            batch,
+            maxFlushCount: 1
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(flushBatch.Select(x => x.MovieFullPath), Is.EqualTo(new[] { "a.mp4" }));
+            Assert.That(batch.Select(x => x.MovieFullPath), Is.EqualTo(new[] { "b.mp4", "c.mp4" }));
+        });
+    }
+
+    [Test]
+    public void MissingThumbnailRescueBufferState_RequeueToFrontで未投入分を先頭へ戻す()
+    {
+        Type? stateType = typeof(MainWindow).GetNestedType(
+            "MissingThumbnailRescueBufferState",
+            BindingFlags.NonPublic
+        );
+        Assert.That(stateType, Is.Not.Null);
+
+        object? state = Activator.CreateInstance(stateType!, nonPublic: true);
+        Assert.That(state, Is.Not.Null);
+
+        MethodInfo? replaceCandidates = stateType!.GetMethod(
+            "ReplaceCandidates",
+            BindingFlags.Instance | BindingFlags.Public
+        );
+        MethodInfo? requeueToFront = stateType.GetMethod(
+            "RequeueToFront",
+            BindingFlags.Instance | BindingFlags.Public
+        );
+        MethodInfo? tryDequeue = stateType.GetMethod(
+            "TryDequeue",
+            BindingFlags.Instance | BindingFlags.Public
+        );
+        Assert.That(replaceCandidates, Is.Not.Null);
+        Assert.That(requeueToFront, Is.Not.Null);
+        Assert.That(tryDequeue, Is.Not.Null);
+
+        replaceCandidates!.Invoke(
+            state,
+            [new List<QueueObj> { CreateQueueObj("c.mp4"), CreateQueueObj("d.mp4") }, DateTime.UtcNow]
+        );
+        requeueToFront!.Invoke(state, [new List<QueueObj> { CreateQueueObj("a.mp4"), CreateQueueObj("b.mp4") }]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(DequeueMoviePath(tryDequeue!, state), Is.EqualTo("a.mp4"));
+            Assert.That(DequeueMoviePath(tryDequeue!, state), Is.EqualTo("b.mp4"));
+            Assert.That(DequeueMoviePath(tryDequeue!, state), Is.EqualTo("c.mp4"));
+            Assert.That(DequeueMoviePath(tryDequeue!, state), Is.EqualTo("d.mp4"));
+        });
+    }
+
+    private static string DequeueMoviePath(MethodInfo tryDequeue, object state)
+    {
+        object?[] args = [null];
+        bool dequeued = (bool)(tryDequeue.Invoke(state, args) ?? false);
+        Assert.That(dequeued, Is.True);
+        Assert.That(args[0], Is.TypeOf<QueueObj>());
+        return ((QueueObj)args[0]!).MovieFullPath;
+    }
+
+    private static QueueObj CreateQueueObj(string movieFullPath)
+    {
+        return new QueueObj
+        {
+            MovieFullPath = movieFullPath,
+            Hash = "hash",
+            Tabindex = 0,
+        };
     }
 }

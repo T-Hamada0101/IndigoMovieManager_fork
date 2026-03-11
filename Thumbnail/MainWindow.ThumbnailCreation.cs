@@ -74,6 +74,12 @@ namespace IndigoMovieManager
                 return;
             }
 
+            string executionMode = ResolveThumbnailQueueExecutionModeForLog();
+            DebugRuntimeLog.Write(
+                "thumbnail-worker",
+                $"thumbnail background ensure: mode={executionMode} db='{MainVM?.DbInfo?.DBFullPath ?? ""}'"
+            );
+
             if (ShouldUseThumbnailCoordinatorMode())
             {
                 EnsureThumbnailCoordinatorSupervisorRunning();

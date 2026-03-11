@@ -1351,7 +1351,7 @@ namespace IndigoMovieManager
                 {
                     DebugRuntimeLog.Write(
                         "watch-check",
-                        $"missing-thumb rescue skipped: queue busy active={activeCount} threshold={EverythingWatchPollBusyThreshold}"
+                        $"missing-thumb rescue skipped: queue busy mode={ResolveThumbnailQueueExecutionModeForLog()} active={activeCount} threshold={EverythingWatchPollBusyThreshold}"
                     );
                     return;
                 }
@@ -1395,7 +1395,10 @@ namespace IndigoMovieManager
                 {
                     DebugRuntimeLog.WriteAlways(
                         "watch-check",
-                        $"missing-thumb rescue: mode={mode} tab={snapshotTabIndex} rebuilt={result.RebuiltBuffer} "
+                        $"missing-thumb rescue: mode={mode} tab={snapshotTabIndex} queue_mode={result.QueueExecutionMode} "
+                            + $"active={result.ActiveCountAtStart} quota={result.EnqueueQuotaAtStart} "
+                            + $"buffered_before={result.BufferedCountBeforeDrain} "
+                            + $"rebuilt={result.RebuiltBuffer} "
                             + $"prepared={result.PreparedCount} enqueued={result.EnqueuedCount} buffered={result.BufferedCount} "
                             + $"skipped_missing_movie={result.SkippedMissingMovieCount} "
                             + $"skipped_existing_thumb={result.SkippedExistingThumbCount}"
@@ -2543,11 +2546,15 @@ namespace IndigoMovieManager
             {
                 activeCount = 0;
             }
+            result.ActiveCountAtStart = activeCount;
+            result.QueueExecutionMode = ResolveThumbnailQueueExecutionModeForLog();
             int enqueueQuota = ResolveMissingThumbnailRescueEnqueueQuota(
                 activeCount,
                 MissingThumbnailRescueTargetActiveCount,
                 MissingThumbnailRescueMaxEnqueuePerRun
             );
+            result.EnqueueQuotaAtStart = enqueueQuota;
+            result.BufferedCountBeforeDrain = state.BufferedCount;
             if (enqueueQuota > 0)
             {
                 result.EnqueuedCount = DrainMissingThumbnailRescueBuffer(
@@ -2710,7 +2717,7 @@ namespace IndigoMovieManager
 
             int enqueuedCount = 0;
             List<QueueObj> batch = [];
-            while (state.TryDequeue(out QueueObj candidate))
+            while (true)
             {
                 if (!TryGetCurrentQueueActiveCount(out int activeCount))
                 {
@@ -2722,18 +2729,27 @@ namespace IndigoMovieManager
                     MissingThumbnailRescueTargetActiveCount,
                     MissingThumbnailRescueMaxEnqueuePerRun
                 );
-                if (currentQuota < 1 || enqueuedCount >= currentQuota)
+                int remainingQuota = currentQuota - enqueuedCount;
+                if (remainingQuota < 1)
+                {
+                    break;
+                }
+
+                // quota が落ちても候補を失わないよう、まず先読みしてから消費する。
+                if (!state.TryPeek(out QueueObj candidate))
                 {
                     break;
                 }
 
                 if (candidate == null || string.IsNullOrWhiteSpace(candidate.MovieFullPath))
                 {
+                    _ = state.TryDequeue(out _);
                     continue;
                 }
 
                 if (!Path.Exists(candidate.MovieFullPath))
                 {
+                    _ = state.TryDequeue(out _);
                     skippedMissingMovieCount++;
                     continue;
                 }
@@ -2741,6 +2757,7 @@ namespace IndigoMovieManager
                 string fileBody = Path.GetFileNameWithoutExtension(candidate.MovieFullPath);
                 if (string.IsNullOrWhiteSpace(fileBody))
                 {
+                    _ = state.TryDequeue(out _);
                     continue;
                 }
 
@@ -2750,6 +2767,7 @@ namespace IndigoMovieManager
                 );
                 if (Path.Exists(expectedThumbPath))
                 {
+                    _ = state.TryDequeue(out _);
                     skippedExistingThumbCount++;
                     continue;
                 }
@@ -2763,13 +2781,14 @@ namespace IndigoMovieManager
                         Tabindex = state.TabIndex,
                     }
                 );
+                _ = state.TryDequeue(out _);
 
                 if (
                     batch.Count >= FolderScanEnqueueBatchSize
-                    || enqueuedCount + batch.Count >= currentQuota
+                    || batch.Count >= remainingQuota
                 )
                 {
-                    enqueuedCount += FlushPendingQueueItems(batch, "RescueMissingThumbnails");
+                    enqueuedCount += FlushMissingThumbnailRescueBatch(batch, remainingQuota);
                 }
             }
 
@@ -2785,17 +2804,53 @@ namespace IndigoMovieManager
                     MissingThumbnailRescueTargetActiveCount,
                     MissingThumbnailRescueMaxEnqueuePerRun
                 );
-                if (enqueuedCount < currentQuota)
+                int remainingQuota = currentQuota - enqueuedCount;
+                if (remainingQuota > 0)
                 {
-                    enqueuedCount += FlushPendingQueueItems(batch, "RescueMissingThumbnails");
+                    enqueuedCount += FlushMissingThumbnailRescueBatch(batch, remainingQuota);
                 }
-                else
+
+                if (batch.Count > 0)
                 {
+                    // 今回流せなかった分は先頭へ戻し、次回の空き枠でそのまま再開する。
+                    state.RequeueToFront(batch);
                     batch.Clear();
                 }
             }
 
             return enqueuedCount;
+        }
+
+        // quota が途中で減っても、今回流せる分だけ切り出して残りは batch へ残す。
+        private int FlushMissingThumbnailRescueBatch(List<QueueObj> batch, int maxFlushCount)
+        {
+            List<QueueObj> flushBatch = TakeMissingThumbnailRescueFlushBatch(
+                batch,
+                maxFlushCount
+            );
+            if (flushBatch.Count < 1)
+            {
+                return 0;
+            }
+
+            return FlushPendingQueueItems(flushBatch, "RescueMissingThumbnails");
+        }
+
+        // 先頭側から今回分だけを抜き出し、未投入分は batch 側へ残しておく。
+        internal static List<QueueObj> TakeMissingThumbnailRescueFlushBatch(
+            List<QueueObj> batch,
+            int maxFlushCount
+        )
+        {
+            if (batch == null || batch.Count < 1 || maxFlushCount < 1)
+            {
+                return [];
+            }
+
+            int takeCount = Math.Min(batch.Count, maxFlushCount);
+            List<QueueObj> flushBatch = batch.Take(takeCount).ToList();
+            batch.RemoveRange(0, takeCount);
+            return flushBatch;
         }
 
         // 欠損救済の1回分結果を呼び出し元へ返す軽量DTO。
@@ -2804,8 +2859,12 @@ namespace IndigoMovieManager
             public int PreparedCount { get; set; }
             public int EnqueuedCount { get; set; }
             public int BufferedCount { get; set; }
+            public int BufferedCountBeforeDrain { get; set; }
             public int SkippedMissingMovieCount { get; set; }
             public int SkippedExistingThumbCount { get; set; }
+            public int ActiveCountAtStart { get; set; }
+            public int EnqueueQuotaAtStart { get; set; }
+            public string QueueExecutionMode { get; set; } = "";
             public bool RebuiltBuffer { get; set; }
         }
 
@@ -2848,6 +2907,48 @@ namespace IndigoMovieManager
 
                 candidate = null;
                 return false;
+            }
+
+            public bool TryPeek(out QueueObj candidate)
+            {
+                if (_candidates.Count > 0)
+                {
+                    candidate = _candidates.Peek();
+                    return true;
+                }
+
+                candidate = null;
+                return false;
+            }
+
+            public void RequeueToFront(IEnumerable<QueueObj> candidates)
+            {
+                if (candidates == null)
+                {
+                    return;
+                }
+
+                List<QueueObj> prepend = candidates.Where(x => x != null).ToList();
+                if (prepend.Count < 1)
+                {
+                    return;
+                }
+
+                Queue<QueueObj> rebuilt = new();
+                foreach (QueueObj candidate in prepend)
+                {
+                    rebuilt.Enqueue(candidate);
+                }
+
+                while (_candidates.Count > 0)
+                {
+                    rebuilt.Enqueue(_candidates.Dequeue());
+                }
+
+                while (rebuilt.Count > 0)
+                {
+                    _candidates.Enqueue(rebuilt.Dequeue());
+                }
             }
         }
     }
