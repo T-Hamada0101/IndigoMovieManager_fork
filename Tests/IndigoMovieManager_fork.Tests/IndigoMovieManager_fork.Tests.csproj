@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\IndigoMovieManager.Thumbnail.Engine\IndigoMovieManager.Thumbnail.Engine.csproj" />
     <ProjectReference Include="..\..\src\IndigoMovieManager.Thumbnail.Coordinator\IndigoMovieManager.Thumbnail.Coordinator.csproj" />
     <ProjectReference Include="..\..\src\IndigoMovieManager.Thumbnail.Queue\IndigoMovieManager.Thumbnail.Queue.csproj" />
+    <ProjectReference Include="..\..\src\IndigoMovieManager.Thumbnail.Worker\IndigoMovieManager.Thumbnail.Worker.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- 純粋ロジックの文言整形は source link で直接テストし、本体WPF出力ロックの影響を受けないようにする -->

@@ -22,7 +22,11 @@ namespace IndigoMovieManager.Thumbnail
                     return RunDropUi(new DropToolStartupContext());
                 }
 
-                if (TryResolveDropStartupContext(args, out DropToolStartupContext startupContext))
+                // 本来のworker起動引数がある時は、drop-manifest が混在していてもworker本線を優先する。
+                if (
+                    WorkerStartupModeResolver.ShouldRunDropUi(args)
+                    && TryResolveDropStartupContext(args, out DropToolStartupContext startupContext)
+                )
                 {
                     return RunDropUi(startupContext);
                 }
