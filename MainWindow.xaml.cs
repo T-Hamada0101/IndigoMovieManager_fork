@@ -87,8 +87,6 @@ namespace IndigoMovieManager
         private static readonly TimeSpan ThumbnailExternalControlMaxAge = TimeSpan.FromSeconds(15);
         private Stack<string> recentFiles = new();
 
-        private IEnumerable<MovieRecords> filterList = [];
-
         /// <summary>
         /// ワーカー達が容赦なく投げ込んでくるジョブを受け止めるチャネル！Persister（単一Reader）が一人で捌き切ってDB化する最強の盾！盾🛡️
         /// </summary>
@@ -2827,11 +2825,10 @@ namespace IndigoMovieManager
         }
 
         /// <summary>
-        /// 表示中のリストだけを強制アップデートし、詳細情報のDataContextも最新に合わせ直す！✨
+        /// 一覧はコレクション更新通知に任せ、ここでは詳細ペイン同期だけを行う。
         /// </summary>
         private void Refresh()
         {
-            RefreshItemsControlByTabIndex(Tabs?.SelectedIndex ?? -1);
             UpdateExtDetailFromCurrentSelection();
         }
 
@@ -3003,142 +3000,13 @@ namespace IndigoMovieManager
 #if DEBUG
             sw.Restart();
 #endif
-            //まずは絞り込み。MainVMにはオープン時のDBからのデータと、監視で追加されたデータが入っている(最新状態)
-            //一旦フィルタリストを最新化する。ここを通ったあとの各タブのデータソースは、このフィルターされたリストとなる（はず）
-            filterList = new ObservableCollection<MovieRecords>(MainVM.MovieRecs);
-
-            if (!string.IsNullOrEmpty(MainVM.DbInfo.SearchKeyword))
-            {
-                var searchText = MainVM.DbInfo.SearchKeyword.Trim();
-
-                // クォーテーションで囲まれている場合は、そのまま完全一致検索
-                if (
-                    (searchText.Length >= 2)
-                    && (
-                        (searchText.StartsWith('"') && searchText.EndsWith('"'))
-                        || (searchText.StartsWith('\'') && searchText.EndsWith('\''))
-                    )
-                )
-                {
-                    var exact = searchText[1..^1];
-                    filterList = filterList.Where(item =>
-                        (item.Movie_Name ?? "").Contains(
-                            exact,
-                            StringComparison.CurrentCultureIgnoreCase
-                        )
-                        || (item.Movie_Path ?? "").Contains(
-                            exact,
-                            StringComparison.CurrentCultureIgnoreCase
-                        )
-                        || (item.Tags ?? "").Contains(
-                            exact,
-                            StringComparison.CurrentCultureIgnoreCase
-                        )
-                        || (item.Comment1 ?? "").Contains(
-                            exact,
-                            StringComparison.CurrentCultureIgnoreCase
-                        )
-                        || (item.Comment2 ?? "").Contains(
-                            exact,
-                            StringComparison.CurrentCultureIgnoreCase
-                        )
-                        || (item.Comment3 ?? "").Contains(
-                            exact,
-                            StringComparison.CurrentCultureIgnoreCase
-                        )
-                    );
-                    MainVM.DbInfo.SearchCount = filterList.Count();
-                }
-                // { ... } 形式の特別処理
-                else if (searchText.StartsWith('{') && searchText.EndsWith('}'))
-                {
-                    var inner = searchText[1..^1].Trim();
-
-                    // notag 特別処理
-                    if (inner.Equals("notag", StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        filterList = filterList.Where(x => string.IsNullOrEmpty(x.Tags));
-                        MainVM.DbInfo.SearchCount = filterList.Count();
-                    }
-                    // dup 特別処理
-                    else if (inner.Equals("dup", StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        // Hashが重複しているものを抽出
-                        var dupHashes = filterList
-                            .GroupBy(x => x.Hash)
-                            .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
-                            .Select(g => g.Key)
-                            .ToHashSet();
-
-                        filterList = filterList.Where(x => dupHashes.Contains(x.Hash));
-                        MainVM.DbInfo.SearchCount = filterList.Count();
-                    }
-                }
-                else
-                {
-                    // " | " でORグループ分割
-                    var orGroups = searchText.Split([" | "], StringSplitOptions.RemoveEmptyEntries);
-
-                    filterList = filterList.Where(item =>
-                    {
-                        // 各ORグループのいずれかにマッチすればOK
-                        return orGroups.Any(group =>
-                        {
-                            // AND条件（半角スペース区切り）
-                            var andTerms = group.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-                            // 各AND条件をすべて満たすか
-                            return andTerms.All(term =>
-                            {
-                                // 検索対象フィールド
-                                var fields = new[]
-                                {
-                                    item.Movie_Name ?? "",
-                                    item.Movie_Path ?? "",
-                                    item.Tags ?? "",
-                                    item.Comment1 ?? "",
-                                    item.Comment2 ?? "",
-                                    item.Comment3 ?? "",
-                                };
-
-                                if (term.StartsWith('-'))
-                                {
-                                    // NOT条件（除外）
-                                    var keyword = term[1..];
-                                    return fields.All(f =>
-                                        !f.Contains(
-                                            keyword,
-                                            StringComparison.CurrentCultureIgnoreCase
-                                        )
-                                    );
-                                }
-                                else
-                                {
-                                    // AND条件
-                                    return fields.Any(f =>
-                                        f.Contains(term, StringComparison.CurrentCultureIgnoreCase)
-                                    );
-                                }
-                            });
-                        });
-                    });
-                    MainVM.DbInfo.SearchCount = filterList.Count();
-                }
-            }
-            else
-            {
-                //検索キーワードが入ってないときは、生データの件数を表示する。
-                MainVM.DbInfo.SearchCount = MainVM.MovieRecs.Count;
-            }
+            RebuildFilteredMovieRecs(id);
 
             if (MainVM.DbInfo.SearchCount == 0)
             {
                 viewExtDetail.Visibility = Visibility.Collapsed;
             }
 
-            SetSortData(id);
-
-            ApplyFilterListToTabIndex(Tabs?.SelectedIndex ?? -1);
             Refresh();
 #if DEBUG
             sw.Stop();
@@ -3148,94 +3016,25 @@ namespace IndigoMovieManager
         }
 
         /// <summary>
-        /// 絞り込み済みのリスト(filterList)に対して、指定されたソートの魔法だけをサクッとかけるぜ！🪄
+        /// MainVM 側の絞り込みと並び替えを使って、表示用コレクションだけを作り直す。
         /// </summary>
-        private void SetSortData(string id)
+        private void RebuildFilteredMovieRecs(string sortId)
         {
-            //ベタ書きの方が分かりやすいっちゃぁ分かりやすいよなぁ。ほんのちょっと早い。
-            var query = filterList; // from x in filterList select x;
-            switch (id)
-            {
-                case "0":
-                    query = from x in filterList orderby x.Last_Date descending select x;
-                    break;
-                case "1":
-                    query = from x in filterList orderby x.Last_Date select x;
-                    break;
-                case "2":
-                    query = from x in filterList orderby x.File_Date descending select x;
-                    break;
-                case "3":
-                    query = from x in filterList orderby x.File_Date select x;
-                    break;
-                case "6":
-                    query = from x in filterList orderby x.Score descending select x;
-                    break;
-                case "7":
-                    query = from x in filterList orderby x.Score select x;
-                    break;
-                case "8":
-                    query = from x in filterList orderby x.View_Count descending select x;
-                    break;
-                case "9":
-                    query = from x in filterList orderby x.View_Count select x;
-                    break;
-                case "10":
-                    query = from x in filterList orderby x.Kana select x;
-                    break;
-                case "11":
-                    query = from x in filterList orderby x.Kana descending select x;
-                    break;
-                case "12":
-                    query = from x in filterList orderby x.Movie_Name select x;
-                    break;
-                case "13":
-                    query = from x in filterList orderby x.Movie_Name descending select x;
-                    break;
-                case "14":
-                    query = from x in filterList orderby x.Movie_Path select x;
-                    break;
-                case "15":
-                    query = from x in filterList orderby x.Movie_Path descending select x;
-                    break;
-                case "16":
-                    query = from x in filterList orderby x.Movie_Size descending select x;
-                    break;
-                case "17":
-                    query = from x in filterList orderby x.Movie_Size select x;
-                    break;
-                case "18":
-                    query = from x in filterList orderby x.Regist_Date descending select x;
-                    break;
-                case "19":
-                    query = from x in filterList orderby x.Regist_Date select x;
-                    break;
-                case "20":
-                    query = from x in filterList orderby x.Movie_Length descending select x;
-                    break;
-                case "21":
-                    query = from x in filterList orderby x.Movie_Length select x;
-                    break;
-                case "22":
-                    query = from x in filterList orderby x.Comment1 select x;
-                    break;
-                case "23":
-                    query = from x in filterList orderby x.Comment1 descending select x;
-                    break;
-                case "24":
-                    query = from x in filterList orderby x.Comment2 select x;
-                    break;
-                case "25":
-                    query = from x in filterList orderby x.Comment2 descending select x;
-                    break;
-                case "26":
-                    query = from x in filterList orderby x.Comment3 select x;
-                    break;
-                case "27":
-                    query = from x in filterList orderby x.Comment3 descending select x;
-                    break;
-            }
-            filterList = query;
+            MovieRecords[] filtered = [.. MainVM.FilterMovies(MainVM.MovieRecs, MainVM.DbInfo.SearchKeyword)];
+            MainVM.DbInfo.SearchCount = filtered.Length;
+
+            MovieRecords[] sorted = [.. MainVM.SortMovies(filtered, sortId)];
+            MainVM.ReplaceFilteredMovieRecs(sorted);
+        }
+
+        /// <summary>
+        /// 現在表示中の結果集合だけを並べ替え直し、余計な再検索を避ける。
+        /// </summary>
+        private void SortFilteredMovieRecs(string sortId)
+        {
+            MovieRecords[] sorted = [.. MainVM.SortMovies(MainVM.FilteredMovieRecs, sortId)];
+            MainVM.ReplaceFilteredMovieRecs(sorted);
+            MainVM.DbInfo.SearchCount = MainVM.FilteredMovieRecs.Count;
         }
 
         /// <summary>
@@ -3252,8 +3051,7 @@ namespace IndigoMovieManager
             //ここ以降がソート処理（のはず）
             try
             {
-                SetSortData(id);
-                ApplyFilterListToTabIndex(Tabs?.SelectedIndex ?? -1);
+                SortFilteredMovieRecs(id);
                 Refresh();
 #if DEBUG
                 sw.Stop();
@@ -3679,14 +3477,11 @@ namespace IndigoMovieManager
                 // タブを切り替えた時点で保存して、次回起動時の復元を確実にする。
                 UpdateSkin();
 
-                if (!filterList.Any())
+                if (MainVM.FilteredMovieRecs.Count == 0)
                 {
                     viewExtDetail.Visibility = Visibility.Collapsed;
                     return;
                 }
-
-                // 対応するリストコントロールへ現在フィルターを反映する。
-                ApplyFilterListToTabIndex(index);
 
                 await RescueVisibleErrorThumbnailsForCurrentTabAsync();
 
@@ -3723,7 +3518,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!filterList.Any())
+            if (MainVM.FilteredMovieRecs.Count == 0)
             {
                 return;
             }
@@ -3788,30 +3583,6 @@ namespace IndigoMovieManager
                 4 => BigList10,
                 _ => null,
             };
-        }
-
-        // 今表示中の一覧だけに最新のフィルター結果を反映し、非表示タブは切替時に追従させる。
-        private void ApplyFilterListToTabIndex(int tabIndex)
-        {
-            ItemsControl itemsControl = GetItemsControlByTabIndex(tabIndex);
-            if (itemsControl == null)
-            {
-                return;
-            }
-
-            itemsControl.ItemsSource = filterList;
-        }
-
-        // 強制更新も表示中タブだけに絞って、非表示ビューの無駄な再描画を避ける。
-        private void RefreshItemsControlByTabIndex(int tabIndex)
-        {
-            ItemsControl itemsControl = GetItemsControlByTabIndex(tabIndex);
-            if (itemsControl == null)
-            {
-                return;
-            }
-
-            itemsControl.Items.Refresh();
         }
 
         // 現在の選択状態に応じて詳細ペインを出し分ける。無選択なら開かない。
