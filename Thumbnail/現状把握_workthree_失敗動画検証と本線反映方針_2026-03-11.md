@@ -9,13 +9,13 @@
 
 ## 2. 現状
 - 本線側には、`SWF` 事前判定、`FailureDb`、短尺 `ffmpeg1pass` 救済、長尺 `autogen no-frames` 救済の一部が入っている。
-- それでも `<difficult-video-root>` の一括試行では未救済動画が残っている。
-- 2026-03-11 時点の一括試行結果は以下。
-  - 対象: 48件
-  - 成功: 39件
-  - 失敗: 9件
-  - 主な失敗理由: `Autogen produced a near-black thumbnail` 5件、`No frames decoded` 4件
-- `35967.mp4` は代表例として、`ffmpeg.exe` では中間位置 1200 秒で1枚抜ける一方、`autogen` は同条件でも `No frames decoded` になることを確認済み。
+- それでも `E:\_サムネイル作成困難動画` の一括試行では未救済動画が残っている。
+- 2026-03-11 時点の最新一括試行結果は以下。
+  - 対象: 25件
+  - 成功: 10件
+  - 失敗: 15件
+  - 主な失敗理由: `No frames decoded` 13件、`Autogen produced a near-black thumbnail` 2件
+- 代表長尺 no-frames 事例では、`ffmpeg.exe` の中間位置 1枚抜きと `autogen` の差が出るケースを確認済み。
 
 ## 3. このラインでやること
 - 失敗動画を実動画で再現し、`autogen` / `ffmpeg1pass` / repair のどこで救えるかを切り分ける。
@@ -33,7 +33,6 @@
 - 条件がファイル名依存ではなく、動画特性または実行結果で説明できること。
 - 追加した救済で既存成功ケースを壊さない回帰テストがあること。
 - 可能なら `FailureKind` と対策文書へ反映し、運用側が追えること。
-
 
 ## 6. 本線へ戻す時に必ず欲しい判断材料
 - 動画ごとの失敗理由
@@ -57,19 +56,70 @@
 - 特定動画専用の回避策に落ちていないか。
 - 既存成功ケースへの副作用が小さい導入位置はどこか。
 - `FailureDb`、`HangSuspected`、失敗タブ、観測スクリプト、計画書のどこへ反映が必要か。
+
 ## 7. 直近の重点対象
-- `Autogen produced a near-black thumbnail` の救済条件整理。
-- `No frames decoded` だが `ffmpeg.exe` では取得できる長尺動画の一般救済。
-- `画像1枚あり顔.mkv`、`画像1枚ありページ.mkv`、`ライブ配信真空エラー2_ghq5_temp.mp4` など未救済ケースの掘り下げ。
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` を前提に、超短尺 `No frames decoded` 群を先に整理する。
+- その後で、真の `Autogen produced a near-black thumbnail` 2件の救済条件整理を行う。
+- `No frames decoded` 13件の中で、一般化価値が高い個体を優先して切る。
+- `35967.mp4` や `インデックス破壊-093-2-4K.mp4` など、既存知見がある no-frames 代表を先に追う。
+- `画像1枚あり顔.mkv` と `画像1枚ありページ.mkv` は、short + repair + fallback の再現率確認対象として維持する。
+
+## 7.2 EOFドレイン取り込みの位置づけ
+- `f3fd039` の主対象は、超短尺動画で
+  - `send_packet` は通る
+  - `receive_frame` が `EAGAIN`
+  - そのまま `EOF`
+  - `No frames decoded`
+になる群である。
+- したがって、`画像1枚あり顔.mkv` / `画像1枚ありページ.mkv` の整理には直接効く可能性が高い。
+- 一方で、true near-black 2件は現時点で `Autogen produced a near-black thumbnail` が安定しているため、`EOFドレイン` を取り込んでも主論点は
+  - 黒判定しきい値
+  - 代表フレーム選定
+  - `ffmpeg1pass` 逃がし条件
+のまま変わらない見込みである。
+- つまり `EOFドレイン` は near-black の解決策ではなく、「near-black 調査の母集団をきれいにする前処理」として扱う。
+
+## 7.3 成功パターン集からの参照点
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\調査結果_難読動画成功パターン集_2026-03-11.md` のうち、`workthree` で直接効くのは次の3点。
+- `P-03`
+  - 超短尺・1フレーム動画は `EOF` 後 drain で救える
+  - `画像1枚あり顔.mkv` / `画像1枚ありページ.mkv` の整理に直結する
+- `P-04`
+  - true near-black は「本当に黒い」のではなく、backward seek 後の古い暗フレーム混入が原因になり得る
+  - `P1B-01` / `P1B-02` は、`EOFドレイン` 後も near-black が残るならこの論点で掘る
+- `P-05`
+  - 長尺 low-bitrate / partial file 群は `autogen` 本線の改善だけでなく、repair / onepass の責務として分ける
+  - `35967型` と `インデックス破壊-093-2-4K.mp4` の切り分け時に参照する
+
+## 7.1 `35967.mp4 型` の暫定判定基準
+- 主条件
+  - `autogen` / `service` 側は `No frames decoded`
+  - `ffmpeg.exe` の中間1枚抜きは成功
+  - 長尺動画である
+- 補助条件
+  - duration に対して推定 bitrate が極端に低くない
+  - これは「明らかにスカスカな破損動画」を除外するための補助情報として使う
+- 運用上の注意
+  - bitrate だけで判定しない
+  - `インデックス破壊-093-2-4K.mp4` のように bitrate が十分高くても `ffmpeg` 中間1枚抜きに失敗する個体は別群
+  - したがって、主条件は必ず `ffmpeg midpoint success` を含める
 
 ## 8. 関連資料
-- `Thumbnail/サムネイルが作成できない動画対策.md`
-- `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
-- `Thumbnail/連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
-- `Thumbnail/設計整理_FailureDbExtraJson先行反映範囲_2026-03-11.md`
-- `Tests/IndigoMovieManager_fork.Tests/DifficultVideoBatchPlaygroundTests.cs`
-- `Tests/IndigoMovieManager_fork.Tests/AutogenRepairPlaygroundTests.cs`
-- `Tests/IndigoMovieManager_fork.Tests/FfmpegShortClipRecoveryPlaygroundTests.cs`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_全動画再試行ベースライン_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\連絡用doc_workthree_35967型判定基準と本線反映候補_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\連絡用doc_workthree_画像1枚あり顔_極小seek成功条件_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\Implementation Plan_workthree_35967型救済条件の本線反映_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_優先順自動実行_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\優先順位表_workthree_失敗15件の検証順_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\サムネイルが作成できない動画対策.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\調査結果_難読動画成功パターン集_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\設計整理_FailureDbExtraJson先行反映範囲_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\DifficultVideoBatchPlaygroundTests.cs`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\AutogenRepairPlaygroundTests.cs`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\FfmpegShortClipRecoveryPlaygroundTests.cs`
 
 ## 9. 備考
 - `workthree` は検証専用ラインであり、ここで確定した一般条件だけを本線へ戻す。

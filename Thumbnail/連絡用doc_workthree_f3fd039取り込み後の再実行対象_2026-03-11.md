@@ -1,0 +1,36 @@
+# 連絡用doc workthree f3fd039取り込み後の再実行対象 2026-03-11
+
+## 結論
+- `f3fd039` は `workthree` へ取り込み候補。
+- 対象4ファイルは現時点の `workthree` では未変更で、取り込み衝突は低い。
+- 取り込み後は、true near-black から先に見るのではなく、short no-frames 群を先に再実行する。
+
+## 先に再実行する対象
+1. `画像1枚あり顔.mkv`
+2. `画像1枚ありページ.mkv`
+
+## 次に再実行する対象
+3. `NearBlackBatchPlaygroundTests`
+4. `TrueNearBlackPairTests`
+
+## 理由
+- `f3fd039` の主対象は
+  - 超短尺
+  - `No frames decoded`
+  - `EAGAIN -> EOF`
+  の取りこぼし対策である。
+- したがって、先に short no-frames 群を流して母集団を整理する方が正しい。
+- true near-black 2件は、取り込み後も near-black が残るかを確認する位置づけ。
+
+## 取り込み時の確認点
+- runtime log に
+  - `send flush packet`
+  - 直後の `seek hit`
+  が出るか
+- `画像1枚あり顔.mkv` / `画像1枚ありページ.mkv` が `No frames decoded` から脱するか
+- その後の true near-black 2件が、まだ `Autogen produced a near-black thumbnail` に残るか
+
+## 参照
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\作業メモ_workthree_f3fd039取り込み後のnear_black再実行順_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_true_near_black_2件固定_2026-03-11.md`

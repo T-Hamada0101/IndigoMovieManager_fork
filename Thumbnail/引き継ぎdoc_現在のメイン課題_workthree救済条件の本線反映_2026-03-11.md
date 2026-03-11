@@ -87,6 +87,8 @@
 - `Thumbnail/Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`
 - `Thumbnail/Implementation Plan_サムネイルWorker完全責務移譲_長期計画_2026-03-08.md`
 - `C:/Users/na6ce/source/repos/IndigoMovieManager_fork_workthree/Thumbnail/連絡用doc_workthree_本線向け短文化_35967型と顔型_2026-03-11.md`
+- `Thumbnail/連絡用doc_サムネイルスレッド再構築計画向け_別ツリー成果要約_2026-03-11.md`
+- `Thumbnail/優先順位表_サムネイルスレッド再構築計画向け_難読動画論点_2026-03-11.md`
 
 ## 10. 一言要約
 - 今の本線課題は、`workthree` の成功条件を受けて、`FailureDb` と `FailureKind` を軸に最小実装へ戻すこと。
