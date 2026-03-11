@@ -134,6 +134,36 @@
 - 「長尺なのに `autogen` では 1 枚も取れないが、`ffmpeg` 系では回復余地がある」群を救う。
 - `ShortClipStillLike` と違い、極短尺専用の補助分類は増やさず、長尺側は `TransientDecodeFailure` の派生回復条件で扱う。
 
+## 5.3 2026-03-11 workthree 短文化受領: `35967型` と `顔型`
+
+workthree 側から、本線へ先に戻す候補が 2 系統に絞られた。
+
+- `35967.mp4 型`
+  - `autogen / service` は `No frames decoded`
+  - 長尺
+  - `ffmpeg midpoint` は成功
+  - 本線導入位置は `retry policy`
+  - 差し込み位置は `ThumbnailEngineExecutionCoordinator.ApplyPostExecutionFallbacksAsync(...)`
+  - 誤適用を避ける代表は `インデックス破壊-093-2-4K.mp4`
+
+- `画像1枚あり顔.mkv 型`
+  - `autogen / service` は `No frames decoded`
+  - 超短尺
+  - 極小 seek `0.001 / 0.01` だけ成功
+  - 本線導入位置は `ffmpeg1pass` の短尺 fallback
+  - 差し込み位置は `FfmpegOnePassThumbnailGenerationEngine`
+  - 誤適用を避ける代表は `画像1枚ありページ.mkv`
+
+今回まだ入れないもの:
+- bitrate 閾値の決め打ち
+- `FailureKind` 新設
+- `画像1枚ありページ.mkv` の救済条件
+
+設計上の扱い:
+- `35967型` は既存の `TransientDecodeFailure` の回復条件強化として扱う。
+- `顔型` は既存の `ShortClipStillLike` 観測ラインを維持したまま、`ffmpeg1pass` 側の短尺 fallback 条件として扱う。
+- どちらも動画名ベタ判定ではなく、`No frames decoded`、尺、seek 成功条件、engine 成否差で一般化する。
+
 ## 6. 最小DTO案
 ```csharp
 internal enum FailureKind

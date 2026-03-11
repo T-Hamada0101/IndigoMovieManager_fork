@@ -103,6 +103,20 @@
 4. 最小実装と回帰テストへ落とす
 5. 必要なら失敗タブ表示と観測スクリプトを追随更新する
 
+## 8.1 2026-03-11 受領済みの具体候補
+- `35967型`
+  - 入れ先: `retry policy`
+  - 差し込み位置: `ThumbnailEngineExecutionCoordinator.ApplyPostExecutionFallbacksAsync(...)`
+  - 条件: 長尺、`autogen / service` は `No frames decoded`、`ffmpeg midpoint` は成功
+- `顔型`
+  - 入れ先: `ffmpeg1pass` の短尺 fallback
+  - 差し込み位置: `FfmpegOnePassThumbnailGenerationEngine`
+  - 条件: 超短尺、`autogen / service` は `No frames decoded`、極小 seek `0.001 / 0.01` だけ成功
+- 今回見送るもの
+  - bitrate 閾値の決め打ち
+  - `FailureKind` 新設
+  - `画像1枚ありページ.mkv` の救済条件
+
 ## 9. 関連資料
 - `Tests/IndigoMovieManager_fork.Tests/Fixtures/workthree_failuredb_minimal.json`
 - `Thumbnail/現状把握_workthree受領後の計画書流し先整理_2026-03-11.md`
@@ -111,3 +125,4 @@
 - `Thumbnail/連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
 - `Thumbnail/Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`
 - `Thumbnail/Implementation Plan_サムネイルWorker完全責務移譲_長期計画_2026-03-08.md`
+- `C:/Users/na6ce/source/repos/IndigoMovieManager_fork_workthree/Thumbnail/連絡用doc_workthree_本線向け短文化_35967型と顔型_2026-03-11.md`
