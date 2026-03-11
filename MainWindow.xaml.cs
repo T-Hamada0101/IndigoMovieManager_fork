@@ -47,6 +47,8 @@ namespace IndigoMovieManager
 
         private Task _thumbCheckTask;
         private CancellationTokenSource _thumbCheckCts = new();
+        private int filterAndSortRequestRevision;
+        private int appliedMovieDataRevision;
 
         [GeneratedRegex(@"^\r\n+")]
         private static partial Regex MyRegex();
@@ -2969,50 +2971,111 @@ namespace IndigoMovieManager
         /// </summary>
         public void FilterAndSort(string id, bool IsGetNew = false)
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                _ = Dispatcher.InvokeAsync(() => FilterAndSort(id, IsGetNew));
+                return;
+            }
+
+            int requestRevision = Interlocked.Increment(ref filterAndSortRequestRevision);
+            _ = FilterAndSortAsync(id, IsGetNew, requestRevision);
+        }
+
+        /// <summary>
+        /// 重いDB読込はUIスレッド外へ逃がしつつ、最後に要求された条件だけを画面へ反映する。
+        /// </summary>
+        private async Task FilterAndSortAsync(string id, bool IsGetNew, int requestRevision)
+        {
 #if DEBUG
             // Stopwatchクラス生成
             var sw = new Stopwatch();
             TimeSpan ts;
 #endif
-            //データが取れてない、あるいは強制的に取る場合は、まずDB見に行く。
-            if (movieData == null || IsGetNew)
+            try
             {
+                //データが取れてない、あるいは強制的に取る場合は、まずDB見に行く。
+                if (movieData == null || IsGetNew)
+                {
 #if DEBUG
-                sw.Start();
+                    sw.Start();
 #endif
-                movieData = GetData(
-                    MainVM.DbInfo.DBFullPath,
-                    $"SELECT * FROM movie order by {GetSortWordForSQL(id)}"
-                );
-                if (movieData == null)
+                    string dbFullPath = MainVM.DbInfo.DBFullPath;
+                    string sortWord = GetSortWordForSQL(id);
+                    DataTable loadedMovieData = await Task.Run(() =>
+                        GetData(dbFullPath, $"SELECT * FROM movie order by {sortWord}")
+                    );
+                    if (loadedMovieData == null)
+                    {
+                        return;
+                    }
+
+                    if (requestRevision < Volatile.Read(ref appliedMovieDataRevision))
+                    {
+                        return;
+                    }
+
+                    movieData = loadedMovieData;
+                    Volatile.Write(ref appliedMovieDataRevision, requestRevision);
+#if DEBUG
+                    sw.Stop();
+                    ts = sw.Elapsed;
+                    Debug.WriteLine($"レコード取得経過時間：{ts.Milliseconds} ミリ秒");
+#endif
+                    // DataTable から ViewModel 反映までは UI 側で順序を保つ。
+                    _ = SetRecordsToSource();
+
+                    // 途中で別条件の要求が入っていたら、最新条件でだけ再構築する。
+                    if (requestRevision != Volatile.Read(ref filterAndSortRequestRevision))
+                    {
+                        ApplyCurrentFilterState();
+                        return;
+                    }
+                }
+#if DEBUG
+                sw.Restart();
+#endif
+                if (requestRevision != Volatile.Read(ref filterAndSortRequestRevision))
                 {
                     return;
                 }
+
+                RebuildFilteredMovieRecs(id);
+
+                if (MainVM.DbInfo.SearchCount == 0)
+                {
+                    viewExtDetail.Visibility = Visibility.Collapsed;
+                }
+
+                Refresh();
 #if DEBUG
                 sw.Stop();
                 ts = sw.Elapsed;
-                Debug.WriteLine($"レコード取得経過時間：{ts.Milliseconds} ミリ秒");
+                Debug.WriteLine($"絞り込み経過時間 FilterAndSort：{ts.Milliseconds} ミリ秒");
 #endif
-                //データ詰める。
-                _ = SetRecordsToSource();
             }
+            catch (Exception err)
+            {
+                MessageBox.Show(
+                    err.Message,
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error
+                );
+            }
+        }
 
-#if DEBUG
-            sw.Restart();
-#endif
-            RebuildFilteredMovieRecs(id);
-
+        /// <summary>
+        /// 直近のDB内容に対して、現在の検索条件とソート条件だけを改めて当て直す。
+        /// </summary>
+        private void ApplyCurrentFilterState()
+        {
+            RebuildFilteredMovieRecs(MainVM.DbInfo.Sort);
             if (MainVM.DbInfo.SearchCount == 0)
             {
                 viewExtDetail.Visibility = Visibility.Collapsed;
             }
 
             Refresh();
-#if DEBUG
-            sw.Stop();
-            ts = sw.Elapsed;
-            Debug.WriteLine($"絞り込み経過時間 FilterAndSort：{ts.Milliseconds} ミリ秒");
-#endif
         }
 
         /// <summary>
