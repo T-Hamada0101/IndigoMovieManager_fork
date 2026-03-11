@@ -4,7 +4,7 @@ using System.Threading;
 namespace IndigoMovieManager.Thumbnail
 {
     // 動画サイズからレーン種別を決める共通分類器。
-    internal static class ThumbnailLaneClassifier
+    public static class ThumbnailLaneClassifier
     {
         private const string SlowLaneEnvName = "IMM_THUMB_SLOW_LANE_MIN_GB";
         private const string SettingsTypeName = "IndigoMovieManager.Properties.Settings";
@@ -18,7 +18,7 @@ namespace IndigoMovieManager.Thumbnail
         private static long lastSettingsReadUtcTicks;
         private static int cachedSlowLaneMinGb = DefaultSlowLaneMinGb;
 
-        internal static ThumbnailExecutionLane ResolveLane(long movieSizeBytes)
+        public static ThumbnailExecutionLane ResolveLane(long movieSizeBytes)
         {
             long sizeBytes = movieSizeBytes < 0 ? 0 : movieSizeBytes;
             long slowLaneMinBytes = ResolveSlowLaneMinBytes();
@@ -30,13 +30,13 @@ namespace IndigoMovieManager.Thumbnail
             return ThumbnailExecutionLane.Normal;
         }
 
-        internal static long ResolveSlowLaneMinBytes()
+        public static long ResolveSlowLaneMinBytes()
         {
             RefreshCachedSettingsIfNeeded();
             return Math.Max(1, cachedSlowLaneMinGb) * OneGbBytes;
         }
 
-        internal static int ResolveRank(ThumbnailExecutionLane lane)
+        public static int ResolveRank(ThumbnailExecutionLane lane)
         {
             return lane switch
             {
@@ -199,7 +199,7 @@ namespace IndigoMovieManager.Thumbnail
         }
     }
 
-    internal enum ThumbnailExecutionLane
+    public enum ThumbnailExecutionLane
     {
         Priority = 0,
         Normal = 1,

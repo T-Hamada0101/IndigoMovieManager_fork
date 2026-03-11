@@ -330,6 +330,8 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     context.MovieFullPath,
                     durationSec
                 );
+                bool preferClosestNonBlackThenLatestBright =
+                    ShouldPreferClosestNonBlackThenLatestBright(durationSec, cols * rows);
                 if (enableInvestigationLog)
                 {
                     ThumbnailRuntimeLog.Write(
@@ -369,6 +371,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                             targetWidth,
                             targetHeight,
                             enableSeekDebugLog,
+                            preferClosestNonBlackThenLatestBright,
                             cts,
                             ref observedDemuxImmediateEof,
                             out Bitmap capturedBitmap
@@ -415,6 +418,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                     targetWidth,
                                     targetHeight,
                                     enableSeekDebugLog,
+                                    preferClosestNonBlackThenLatestBright,
                                     cts,
                                     ref observedDemuxImmediateEof,
                                     out Bitmap shortClipBitmap
@@ -460,6 +464,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         targetWidth,
                         targetHeight,
                         enableSeekDebugLog,
+                        preferClosestNonBlackThenLatestBright,
                         cts,
                         ref observedDemuxImmediateEof,
                         out double headerFallbackSec
@@ -601,6 +606,22 @@ namespace IndigoMovieManager.Thumbnail.Engines
             return durationSec.Value.ToString("0.###", CultureInfo.InvariantCulture);
         }
 
+        internal enum DecodedFrameSelectionDecision
+        {
+            Ignore,
+            KeepAsLatestBrightFallback,
+            AcceptImmediately,
+        }
+
+        // 短尺・少パネルだけは、近傍の見えるコマを優先しつつ最後の救済を許可する。
+        internal static bool ShouldPreferClosestNonBlackThenLatestBright(
+            double? durationSec,
+            int panelCount
+        )
+        {
+            return ShouldUseShortClipFirstFrameSeekFallback(durationSec, panelCount);
+        }
+
         // backward seek 直後に古い keyframe を拾うことがあるため、要求秒より十分手前のコマは採用しない。
         internal static bool ShouldAcceptDecodedFrameAtRequestedSecond(
             double requestedSec,
@@ -619,6 +640,38 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
             double leadToleranceSec = Math.Min(0.1d, Math.Max(0.02d, requestedSec * 0.1d));
             return decodedPtsSec >= requestedSec - leadToleranceSec;
+        }
+
+        // 通常は従来どおり即採用し、短尺救済だけ黒回避と latest bright fallback を許可する。
+        internal static DecodedFrameSelectionDecision ResolveDecodedFrameSelectionDecision(
+            double requestedSec,
+            double decodedPtsSec,
+            bool isMostlyBlack,
+            bool preferClosestNonBlackThenLatestBright
+        )
+        {
+            bool isRequestedCompatible = ShouldAcceptDecodedFrameAtRequestedSecond(
+                requestedSec,
+                decodedPtsSec
+            );
+            if (!preferClosestNonBlackThenLatestBright)
+            {
+                return isRequestedCompatible
+                    ? DecodedFrameSelectionDecision.AcceptImmediately
+                    : DecodedFrameSelectionDecision.Ignore;
+            }
+
+            if (isRequestedCompatible && !isMostlyBlack)
+            {
+                return DecodedFrameSelectionDecision.AcceptImmediately;
+            }
+
+            if (!isMostlyBlack)
+            {
+                return DecodedFrameSelectionDecision.KeepAsLatestBrightFallback;
+            }
+
+            return DecodedFrameSelectionDecision.Ignore;
         }
 
         // autogen入口で最終的に使うThumbSecとcapture秒を残し、混入地点を切り分ける。
@@ -665,12 +718,15 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int targetWidth,
             int targetHeight,
             bool enableSeekDebugLog,
+            bool preferClosestNonBlackThenLatestBright,
             CancellationToken cts,
             ref bool observedDemuxImmediateEof,
             out Bitmap capturedBitmap
         )
         {
             capturedBitmap = null;
+            Bitmap latestBrightFallbackBitmap = null;
+            double latestBrightFallbackPtsSec = -1d;
 
             double timeBaseSec = ffmpeg.av_q2d(pStream->time_base);
             long streamTs = (long)(sec / timeBaseSec);
@@ -805,6 +861,9 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                         targetWidth,
                                         targetHeight,
                                         enableSeekDebugLog,
+                                        preferClosestNonBlackThenLatestBright,
+                                        ref latestBrightFallbackBitmap,
+                                        ref latestBrightFallbackPtsSec,
                                         ref streamEnded,
                                         ref frameCaptured,
                                         ref receiveFrameCount,
@@ -824,6 +883,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                                 if (capturedBitmap != null)
                                 {
+                                    latestBrightFallbackBitmap?.Dispose();
                                     return true;
                                 }
 
@@ -864,6 +924,9 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                     targetWidth,
                                     targetHeight,
                                     enableSeekDebugLog,
+                                    preferClosestNonBlackThenLatestBright,
+                                    ref latestBrightFallbackBitmap,
+                                    ref latestBrightFallbackPtsSec,
                                     ref streamEnded,
                                     ref frameCaptured,
                                     ref receiveFrameCount,
@@ -916,6 +979,9 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                 targetWidth,
                                 targetHeight,
                                 enableSeekDebugLog,
+                                preferClosestNonBlackThenLatestBright,
+                                ref latestBrightFallbackBitmap,
+                                ref latestBrightFallbackPtsSec,
                                 ref streamEnded,
                                 ref frameCaptured,
                                 ref receiveFrameCount,
@@ -931,9 +997,25 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                         if (capturedBitmap != null)
                         {
+                            latestBrightFallbackBitmap?.Dispose();
                             return true;
                         }
                     }
+                }
+
+                if (
+                    TryPromoteLatestBrightFallback(
+                        movieFullPath,
+                        sec,
+                        enableSeekDebugLog,
+                        ref latestBrightFallbackBitmap,
+                        ref latestBrightFallbackPtsSec,
+                        ref frameCaptured,
+                        out capturedBitmap
+                    )
+                )
+                {
+                    return true;
                 }
 
                 if (enableSeekDebugLog)
@@ -946,6 +1028,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                 if (frameCaptured)
                 {
+                    latestBrightFallbackBitmap?.Dispose();
                     return true;
                 }
 
@@ -983,18 +1066,21 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     );
                 }
 
+                latestBrightFallbackBitmap?.Dispose();
                 return TryCaptureFrameBySequentialReadFromFreshContext(
                     movieFullPath,
                     sec,
                     targetWidth,
                     targetHeight,
                     enableSeekDebugLog,
+                    preferClosestNonBlackThenLatestBright,
                     cts,
                     ref observedDemuxImmediateEof,
                     out capturedBitmap
                 );
             }
 
+            latestBrightFallbackBitmap?.Dispose();
             return false;
         }
 
@@ -1005,12 +1091,15 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int targetWidth,
             int targetHeight,
             bool enableSeekDebugLog,
+            bool preferClosestNonBlackThenLatestBright,
             CancellationToken cts,
             ref bool observedDemuxImmediateEof,
             out Bitmap capturedBitmap
         )
         {
             capturedBitmap = null;
+            Bitmap latestBrightFallbackBitmap = null;
+            double latestBrightFallbackPtsSec = -1d;
 
             AVFormatContext* pFormatContext = null;
             AVCodecContext* pCodecContext = null;
@@ -1186,6 +1275,9 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                 targetWidth,
                                 targetHeight,
                                 enableSeekDebugLog,
+                                preferClosestNonBlackThenLatestBright,
+                                ref latestBrightFallbackBitmap,
+                                ref latestBrightFallbackPtsSec,
                                 ref streamEnded,
                                 ref frameCaptured,
                                 ref receiveFrameCount,
@@ -1237,6 +1329,9 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                 targetWidth,
                                 targetHeight,
                                 enableSeekDebugLog,
+                                preferClosestNonBlackThenLatestBright,
+                                ref latestBrightFallbackBitmap,
+                                ref latestBrightFallbackPtsSec,
                                 ref streamEnded,
                                 ref frameCaptured,
                                 ref receiveFrameCount,
@@ -1264,6 +1359,21 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     return true;
                 }
 
+                if (
+                    TryPromoteLatestBrightFallback(
+                        movieFullPath,
+                        requestedSec,
+                        enableSeekDebugLog,
+                        ref latestBrightFallbackBitmap,
+                        ref latestBrightFallbackPtsSec,
+                        ref frameCaptured,
+                        out capturedBitmap
+                    )
+                )
+                {
+                    return true;
+                }
+
                 if (enableSeekDebugLog)
                 {
                     ThumbnailRuntimeLog.Write(
@@ -1280,6 +1390,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
             finally
             {
+                latestBrightFallbackBitmap?.Dispose();
                 if (pPacket != null)
                 {
                     ffmpeg.av_packet_free(&pPacket);
@@ -1317,6 +1428,9 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int targetWidth,
             int targetHeight,
             bool enableSeekDebugLog,
+            bool preferClosestNonBlackThenLatestBright,
+            ref Bitmap latestBrightFallbackBitmap,
+            ref double latestBrightFallbackPtsSec,
             ref bool streamEnded,
             ref bool frameCaptured,
             ref int receiveFrameCount,
@@ -1335,51 +1449,126 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         pFrame->best_effort_timestamp != ffmpeg.AV_NOPTS_VALUE
                             ? pFrame->best_effort_timestamp * timeBaseSec
                             : -1;
-                    if (
-                        !ShouldAcceptDecodedFrameAtRequestedSecond(
-                            requestedSec,
-                            decodedPtsSec
+
+                    if (!preferClosestNonBlackThenLatestBright)
+                    {
+                        if (
+                            !ShouldAcceptDecodedFrameAtRequestedSecond(
+                                requestedSec,
+                                decodedPtsSec
+                            )
                         )
-                    )
+                        {
+                            if (enableSeekDebugLog)
+                            {
+                                ThumbnailRuntimeLog.Write(
+                                    "autogen-seek",
+                                    $"seek frame skipped: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={decodedPtsSec:0.###} received_frames={receiveFrameCount}"
+                                );
+                            }
+                            ffmpeg.av_frame_unref(pFrame);
+                            continue;
+                        }
+
+                        Bitmap bmp = ConvertFrameToBitmap(
+                            pFrame,
+                            ref pSwsContext,
+                            targetWidth,
+                            targetHeight
+                        );
+                        if (bmp != null)
+                        {
+                            capturedBitmap = bmp;
+                            frameCaptured = true;
+                            if (enableSeekDebugLog)
+                            {
+                                ThumbnailRuntimeLog.Write(
+                                    "autogen-seek",
+                                    $"seek hit: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={decodedPtsSec:0.###} received_frames={receiveFrameCount}"
+                                );
+                            }
+                        }
+                        else if (enableSeekDebugLog)
+                        {
+                            ThumbnailRuntimeLog.Write(
+                                "autogen-seek",
+                                $"seek frame converted null: movie='{movieFullPath}' requested_sec={requestedSec:0.###} received_frames={receiveFrameCount}"
+                            );
+                        }
+                        ffmpeg.av_frame_unref(pFrame);
+                        return true;
+                    }
+
+                    Bitmap candidateBitmap = ConvertFrameToBitmap(
+                        pFrame,
+                        ref pSwsContext,
+                        targetWidth,
+                        targetHeight
+                    );
+                    if (candidateBitmap == null)
                     {
                         if (enableSeekDebugLog)
                         {
                             ThumbnailRuntimeLog.Write(
                                 "autogen-seek",
-                                $"seek frame skipped: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={decodedPtsSec:0.###} received_frames={receiveFrameCount}"
+                                $"seek frame converted null: movie='{movieFullPath}' requested_sec={requestedSec:0.###} received_frames={receiveFrameCount}"
                             );
                         }
                         ffmpeg.av_frame_unref(pFrame);
                         continue;
                     }
 
-                    Bitmap bmp = ConvertFrameToBitmap(
-                        pFrame,
-                        ref pSwsContext,
-                        targetWidth,
-                        targetHeight
-                    );
-                    if (bmp != null)
+                    bool isMostlyBlack =
+                        FfmpegOnePassThumbnailGenerationEngine.IsMostlyBlackPanel(candidateBitmap);
+                    DecodedFrameSelectionDecision selectionDecision =
+                        ResolveDecodedFrameSelectionDecision(
+                            requestedSec,
+                            decodedPtsSec,
+                            isMostlyBlack,
+                            preferClosestNonBlackThenLatestBright
+                        );
+                    ffmpeg.av_frame_unref(pFrame);
+                    if (selectionDecision == DecodedFrameSelectionDecision.AcceptImmediately)
                     {
-                        capturedBitmap = bmp;
+                        capturedBitmap = candidateBitmap;
                         frameCaptured = true;
                         if (enableSeekDebugLog)
                         {
                             ThumbnailRuntimeLog.Write(
                                 "autogen-seek",
-                                $"seek hit: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={decodedPtsSec:0.###} received_frames={receiveFrameCount}"
+                                $"seek hit nonblack: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={decodedPtsSec:0.###} received_frames={receiveFrameCount}"
                             );
                         }
+                        return true;
                     }
-                    else if (enableSeekDebugLog)
+
+                    if (
+                        selectionDecision
+                        == DecodedFrameSelectionDecision.KeepAsLatestBrightFallback
+                    )
+                    {
+                        latestBrightFallbackBitmap?.Dispose();
+                        latestBrightFallbackBitmap = candidateBitmap;
+                        latestBrightFallbackPtsSec = decodedPtsSec;
+                        if (enableSeekDebugLog)
+                        {
+                            ThumbnailRuntimeLog.Write(
+                                "autogen-seek",
+                                $"seek bright fallback updated: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={decodedPtsSec:0.###} received_frames={receiveFrameCount}"
+                            );
+                        }
+                        continue;
+                    }
+
+                    candidateBitmap.Dispose();
+                    if (enableSeekDebugLog)
                     {
                         ThumbnailRuntimeLog.Write(
                             "autogen-seek",
-                            $"seek frame converted null: movie='{movieFullPath}' requested_sec={requestedSec:0.###} received_frames={receiveFrameCount}"
+                            $"seek frame ignored: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={decodedPtsSec:0.###} black={isMostlyBlack} received_frames={receiveFrameCount}"
                         );
                     }
-                    ffmpeg.av_frame_unref(pFrame);
-                    return true;
+                    continue;
                 }
 
                 if (ret == ffmpeg.AVERROR(ffmpeg.EAGAIN))
@@ -1419,6 +1608,37 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
         }
 
+        // 近傍が全滅した時だけ、最後に取れた見えるコマを救済採用する。
+        private static bool TryPromoteLatestBrightFallback(
+            string movieFullPath,
+            double requestedSec,
+            bool enableSeekDebugLog,
+            ref Bitmap latestBrightFallbackBitmap,
+            ref double latestBrightFallbackPtsSec,
+            ref bool frameCaptured,
+            out Bitmap capturedBitmap
+        )
+        {
+            capturedBitmap = null;
+            if (latestBrightFallbackBitmap == null)
+            {
+                return false;
+            }
+
+            capturedBitmap = latestBrightFallbackBitmap;
+            latestBrightFallbackBitmap = null;
+            frameCaptured = true;
+            if (enableSeekDebugLog)
+            {
+                ThumbnailRuntimeLog.Write(
+                    "autogen-seek",
+                    $"seek latest bright fallback hit: movie='{movieFullPath}' requested_sec={requestedSec:0.###} decoded_pts_sec={latestBrightFallbackPtsSec:0.###}"
+                );
+            }
+            latestBrightFallbackPtsSec = -1d;
+            return true;
+        }
+
         // 通常の代表秒が全部外れた時だけ、ヘッダー直後相当の先頭付近を浅く探る。
         private unsafe static Bitmap TryCaptureNearHeaderFallbackFrame(
             string movieFullPath,
@@ -1432,6 +1652,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int targetWidth,
             int targetHeight,
             bool enableSeekDebugLog,
+            bool preferClosestNonBlackThenLatestBright,
             CancellationToken cts,
             ref bool observedDemuxImmediateEof,
             out double capturedSec
@@ -1455,13 +1676,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         sec,
                         pFormatContext,
                         pStream,
-                            pCodecContext,
-                            pPacket,
-                            pFrame,
-                            ref pSwsContext,
-                            targetWidth,
+                        pCodecContext,
+                        pPacket,
+                        pFrame,
+                        ref pSwsContext,
+                        targetWidth,
                         targetHeight,
                         enableSeekDebugLog,
+                        preferClosestNonBlackThenLatestBright,
                         cts,
                         ref observedDemuxImmediateEof,
                         out Bitmap capturedBitmap

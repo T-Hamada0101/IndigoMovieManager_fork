@@ -171,6 +171,95 @@ public sealed class FfmpegAutoGenThumbnailGenerationEngineTests
     }
 
     [Test]
+    public void ShouldPreferClosestNonBlackThenLatestBright_短尺少数パネルだけTrueを返す()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldPreferClosestNonBlackThenLatestBright(
+                0.8,
+                3
+            ),
+            Is.True
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldPreferClosestNonBlackThenLatestBright(
+                1.2,
+                3
+            ),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void ResolveDecodedFrameSelectionDecision_短尺では近傍の非黒コマを即採用する()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ResolveDecodedFrameSelectionDecision(
+                1d,
+                0.95d,
+                isMostlyBlack: false,
+                preferClosestNonBlackThenLatestBright: true
+            ),
+            Is.EqualTo(
+                FfmpegAutoGenThumbnailGenerationEngine.DecodedFrameSelectionDecision.AcceptImmediately
+            )
+        );
+    }
+
+    [Test]
+    public void ResolveDecodedFrameSelectionDecision_短尺で近傍が黒ならlatestBright救済へ回す()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ResolveDecodedFrameSelectionDecision(
+                1d,
+                0d,
+                isMostlyBlack: false,
+                preferClosestNonBlackThenLatestBright: true
+            ),
+            Is.EqualTo(
+                FfmpegAutoGenThumbnailGenerationEngine.DecodedFrameSelectionDecision.KeepAsLatestBrightFallback
+            )
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ResolveDecodedFrameSelectionDecision(
+                1d,
+                0.95d,
+                isMostlyBlack: true,
+                preferClosestNonBlackThenLatestBright: true
+            ),
+            Is.EqualTo(
+                FfmpegAutoGenThumbnailGenerationEngine.DecodedFrameSelectionDecision.Ignore
+            )
+        );
+    }
+
+    [Test]
+    public void ResolveDecodedFrameSelectionDecision_通常時は従来どおり要求秒整合だけで決める()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ResolveDecodedFrameSelectionDecision(
+                1d,
+                0.95d,
+                isMostlyBlack: true,
+                preferClosestNonBlackThenLatestBright: false
+            ),
+            Is.EqualTo(
+                FfmpegAutoGenThumbnailGenerationEngine.DecodedFrameSelectionDecision.AcceptImmediately
+            )
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ResolveDecodedFrameSelectionDecision(
+                1d,
+                0d,
+                isMostlyBlack: false,
+                preferClosestNonBlackThenLatestBright: false
+            ),
+            Is.EqualTo(
+                FfmpegAutoGenThumbnailGenerationEngine.DecodedFrameSelectionDecision.Ignore
+            )
+        );
+    }
+
+    [Test]
     public void ShouldUseRobustProbeOptions_現状は常にTrueを返す()
     {
         Assert.That(

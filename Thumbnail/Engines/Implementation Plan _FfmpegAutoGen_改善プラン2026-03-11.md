@@ -67,6 +67,20 @@
 - 狙い:
   - `完全成功でなくてもサムネイルとして使える` ケースを救う
 
+### 4.4 近傍の非黒優先 + latest bright fallback
+- 更新日:
+  - 2026-03-11
+- 変更概要:
+  - 短尺・少パネル時だけ、`要求秒に整合する非黒フレーム` を最優先にする
+  - 近傍が黒しかない時は、取得済みの `latest bright` を最後の救済候補として採用する
+- 方針:
+  - 通常動画へは広げない
+  - 既存の `短尺` 判定を流用し、回帰面積を増やしすぎない
+  - `暗いけど要求秒に近い` より `見える1枚` を優先したい短尺難読動画だけ対象にする
+- 狙い:
+  - 短尺難読動画で、黒コマ即採用による取りこぼしを減らす
+  - `毎回 latest bright` にはせず、通常動画の代表性は維持する
+
 ## 5. 実装箇所
 - [FfmpegAutoGenThumbnailGenerationEngine.cs](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/Engines/FfmpegAutoGenThumbnailGenerationEngine.cs)
   - デコードループ修正
@@ -108,6 +122,7 @@
 - `EAGAIN` 修正が入っている
 - 短尺動画で、1枚目初回失敗時のみ極小 seek 候補へ切り替わる
 - 1枚でも取得できたケースで `autogen success` になる
+- 短尺・少パネル時だけ、近傍の非黒優先 + latest bright fallback が働く
 - 既存の長尺動画群を不必要に極小 seek へ流さない
 
 ## 10. ひとことで言うと
