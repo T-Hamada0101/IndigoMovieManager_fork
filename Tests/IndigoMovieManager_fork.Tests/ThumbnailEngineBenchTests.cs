@@ -53,7 +53,10 @@ public class ThumbnailEngineBenchTests
         Directory.CreateDirectory(benchRoot);
 
         List<BenchRow> rows = [];
-        var service = new ThumbnailCreationService();
+        var service = new ThumbnailCreationService(
+            NoOpVideoMetadataProvider.Instance,
+            new BenchThumbnailLogger()
+        );
         string oldEngine = Environment.GetEnvironmentVariable(ThumbEngineEnvName) ?? "";
         ProcessPriorityClass? oldPriorityClass = null;
         string priorityApplyError = "";
@@ -529,4 +532,54 @@ public class ThumbnailEngineBenchTests
         string OutputPath,
         string ErrorMessage
     );
+
+    private sealed class BenchThumbnailLogger : IThumbnailLogger
+    {
+        private static readonly object Sync = new();
+
+        public void LogDebug(string category, string message)
+        {
+            Write("debug", category, message);
+        }
+
+        public void LogInfo(string category, string message)
+        {
+            Write("info", category, message);
+        }
+
+        public void LogWarning(string category, string message)
+        {
+            Write("warn", category, message);
+        }
+
+        public void LogError(string category, string message)
+        {
+            Write("error", category, message);
+        }
+
+        private static void Write(string level, string category, string message)
+        {
+            string line = $"[bench-{level}:{category}] {message}";
+            TestContext.Out.WriteLine(line);
+            try
+            {
+                string logDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "IndigoMovieManager_fork",
+                    "logs"
+                );
+                Directory.CreateDirectory(logDir);
+                string logPath = Path.Combine(logDir, "debug-runtime.log");
+                string logLine = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [bench-{category}] {line}";
+                lock (Sync)
+                {
+                    File.AppendAllText(logPath, logLine + Environment.NewLine);
+                }
+            }
+            catch
+            {
+                // ログ補助の失敗でベンチを止めない。
+            }
+        }
+    }
 }

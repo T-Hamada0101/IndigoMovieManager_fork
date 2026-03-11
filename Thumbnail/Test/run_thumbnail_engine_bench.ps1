@@ -9,7 +9,8 @@ param(
     [switch]$Recovery,
     [string]$Configuration = "Debug",
     [string]$Platform = "x64",
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$ExportToMovieFolder
 )
 
 $ErrorActionPreference = "Stop"
@@ -123,6 +124,34 @@ function Resolve-BenchCsvForCurrentRun {
     return $null
 }
 
+function Copy-BenchOutputsToMovieFolder {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Rows,
+        [Parameter(Mandatory = $true)]
+        [string]$MoviePath
+    )
+
+    $movieDir = [System.IO.Path]::GetDirectoryName($MoviePath)
+    if ([string]::IsNullOrWhiteSpace($movieDir) -or -not (Test-Path -LiteralPath $movieDir -PathType Container)) {
+        throw "動画フォルダを特定できません: $MoviePath"
+    }
+
+    $copied = @()
+    foreach ($row in @($Rows)) {
+        $source = [string]$row.output_path
+        if ([string]::IsNullOrWhiteSpace($source) -or -not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            continue
+        }
+
+        $dest = Join-Path $movieDir ([System.IO.Path]::GetFileName($source))
+        Copy-Item -LiteralPath $source -Destination $dest -Force
+        $copied += $dest
+    }
+
+    return $copied
+}
+
 # 実行前の環境変数を退避する。
 $oldInput = [Environment]::GetEnvironmentVariable("IMM_BENCH_INPUT")
 $oldEngines = [Environment]::GetEnvironmentVariable("IMM_BENCH_ENGINES")
@@ -218,6 +247,18 @@ try {
     Write-Host ""
     Write-Host "ベンチ完了: $($csv.FullName)"
     $summary | Format-Table -AutoSize
+
+    if ($ExportToMovieFolder) {
+        $copiedPaths = Copy-BenchOutputsToMovieFolder -Rows $rows -MoviePath $resolvedInputMovie
+        Write-Host ""
+        if ($copiedPaths.Count -gt 0) {
+            Write-Host "動画フォルダへコピーしました:"
+            $copiedPaths | ForEach-Object { Write-Host $_ }
+        }
+        else {
+            Write-Warning "コピー対象の出力画像が見つかりませんでした。"
+        }
+    }
 }
 finally {
     # 実行後は環境変数を元に戻す。

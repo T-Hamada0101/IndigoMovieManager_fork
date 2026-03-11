@@ -56,4 +56,79 @@ public sealed class FfmpegAutoGenThumbnailGenerationEngineTests
 
         Assert.That(actual, Is.EqualTo(new[] { 0d, 1d, 2d }));
     }
+
+    [Test]
+    public void ShouldUseShortClipFirstFrameSeekFallback_短尺少数パネルだけTrueを返す()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldUseShortClipFirstFrameSeekFallback(
+                0.8,
+                3
+            ),
+            Is.True
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldUseShortClipFirstFrameSeekFallback(
+                1.2,
+                3
+            ),
+            Is.False
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldUseShortClipFirstFrameSeekFallback(
+                0.8,
+                6
+            ),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void BuildShortClipFirstFrameSeekCandidates_極小seek候補を重複なく返し元開始秒は除外する()
+    {
+        IReadOnlyList<double> actual =
+            FfmpegAutoGenThumbnailGenerationEngine.BuildShortClipFirstFrameSeekCandidates(
+                0.8,
+                0.01d
+            );
+
+        Assert.That(actual, Does.Contain(0.001d));
+        Assert.That(actual, Does.Not.Contain(0.01d));
+        Assert.That(actual, Does.Contain(0.016d));
+        Assert.That(actual, Does.Contain(0.033d));
+    }
+
+    [Test]
+    public void BuildShortClipFirstFrameSeekCandidates_超短尺では末尾超過候補を除外する()
+    {
+        IReadOnlyList<double> actual =
+            FfmpegAutoGenThumbnailGenerationEngine.BuildShortClipFirstFrameSeekCandidates(
+                0.012,
+                0d
+            );
+
+        Assert.That(actual, Does.Contain(0.001d));
+        Assert.That(actual.All(x => x < 0.012d), Is.True);
+        Assert.That(actual, Does.Not.Contain(0.016d));
+        Assert.That(actual, Does.Not.Contain(0.033d));
+    }
+
+    [Test]
+    public void ShouldWriteSeekDebugLog_短尺は拡張子に関係なくTrueを返す()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldWriteSeekDebugLog(
+                @"E:\temp\shortclip.mkv",
+                0.069
+            ),
+            Is.True
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldWriteSeekDebugLog(
+                @"E:\temp\normalclip.mkv",
+                3.5
+            ),
+            Is.False
+        );
+    }
 }
