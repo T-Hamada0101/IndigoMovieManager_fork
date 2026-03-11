@@ -1556,7 +1556,116 @@ public class AutogenExecutionFlowTests
                 Assert.That(
                     logger.DebugMessages.Any(x =>
                         x.Contains("engine fallback: category=fallback from=autogen, to=ffmpeg1pass")
-                        && x.Contains("recovery-no-frames-decoded")
+                        && x.Contains("initial-longclip-no-frames-decoded")
+                    ),
+                    Is.True
+                );
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, oldAutogenRetry);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CreateThumbAsync_初回DemuxImmediateEof時はOnePass救済する()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyMp4File(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            $"No frames decoded ({FfmpegAutoGenThumbnailGenerationEngine.DemuxImmediateEofErrorDetail})"
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmedia failed"
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateSuccess(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "opencv failed"
+                        )
+                    )
+            );
+            RecordingThumbnailLogger logger = new();
+            var service = ThumbnailCreationServiceFactory.Create(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                new FixedVideoMetadataProvider(5.799, "h264"),
+                logger,
+                new RecordingVideoIndexRepairService(
+                    _ => new VideoIndexProbeResult(),
+                    (_, __) => new VideoIndexRepairResult()
+                )
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            string? oldAutogenRetry = Environment.GetEnvironmentVariable(AutogenRetryEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, "off");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj { MovieId = 184, Tabindex = 0, MovieFullPath = moviePath },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(autogen.CreateCallCount, Is.EqualTo(1));
+                Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(1));
+                Assert.That(result.PolicyDecision, Is.EqualTo("initial-demux-immediate-eof"));
+                Assert.That(
+                    logger.DebugMessages.Any(x =>
+                        x.Contains("engine fallback: category=fallback from=autogen, to=ffmpeg1pass")
+                        && x.Contains("initial-demux-immediate-eof")
                     ),
                     Is.True
                 );

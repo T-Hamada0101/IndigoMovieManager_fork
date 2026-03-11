@@ -269,9 +269,14 @@ namespace IndigoMovieManager.Thumbnail
                 );
             if (shouldTryRecoveryOnePassFallback)
             {
+                string fallbackReason = ThumbnailExecutionPolicy.ResolveRecoveryOnePassFallbackReason(
+                    request.IsRecoveryLane,
+                    request.DurationSec,
+                    engineErrorMessages
+                );
                 ThumbnailRuntimeLog.Write(
                     "thumbnail",
-                    "engine fallback: category=fallback from=autogen, to=ffmpeg1pass, reason='recovery-no-frames-decoded'"
+                    $"engine fallback: category=fallback from=autogen, to=ffmpeg1pass, reason='{fallbackReason}'"
                 );
 
                 ThumbnailCreateResult onePassResult = await ffmpegOnePassEngine
@@ -280,7 +285,7 @@ namespace IndigoMovieManager.Thumbnail
                 if (onePassResult?.IsSuccess == true)
                 {
                     onePassResult.FailureStage = "postprocess-recovery-onepass";
-                    onePassResult.PolicyDecision = "recovery-no-frames-decoded";
+                    onePassResult.PolicyDecision = fallbackReason;
                     onePassResult.EngineAttempted = ffmpegOnePassEngine.EngineId;
                     result = onePassResult;
                     processEngineId = ffmpegOnePassEngine.EngineId;

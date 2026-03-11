@@ -17,6 +17,7 @@ namespace IndigoMovieManager.Thumbnail
         private const int DefaultAutogenRetryCount = 4;
         private const int DefaultAutogenRetryDelayMs = 300;
         private const double InitialLongClipOnePassFallbackThresholdSec = 300d;
+        private const string AutogenDemuxImmediateEofKeyword = "autogen demux immediate eof";
         private static readonly HashSet<string> IndexRepairTargetExtensions = new(
             [
                 ".mp4",
@@ -59,6 +60,11 @@ namespace IndigoMovieManager.Thumbnail
             "invalid data found when processing input",
             "video stream not found",
             "failed to open input",
+        ];
+
+        private static readonly string[] AutogenImmediateEofFallbackKeywords =
+        [
+            AutogenDemuxImmediateEofKeyword,
         ];
 
         public static List<string> BuildEngineOrderIds(
@@ -286,13 +292,42 @@ namespace IndigoMovieManager.Thumbnail
             bool shouldTryInitialLongClipFallback =
                 !isRecoveryLane
                 && ShouldTryInitialLongClipOnePassFallback(durationSec, engineErrorMessages);
+            bool shouldTryInitialDemuxImmediateEofFallback =
+                !isRecoveryLane
+                && ShouldTryInitialDemuxImmediateEofOnePassFallback(engineErrorMessages);
 
             return !isManual
                 && !isSuccess
                 && string.Equals(processEngineId, "autogen", StringComparison.OrdinalIgnoreCase)
-                && (isRecoveryLane || shouldTryInitialLongClipFallback)
+                && (
+                    isRecoveryLane
+                    || shouldTryInitialLongClipFallback
+                    || shouldTryInitialDemuxImmediateEofFallback
+                )
                 && !ShouldSkipFfmpegOnePassByKnownInvalidInput(engineErrorMessages)
                 && ShouldTryRecoveryOnePassFallback(engineErrorMessages);
+        }
+
+        public static string ResolveRecoveryOnePassFallbackReason(
+            bool isRecoveryLane,
+            double? durationSec,
+            IReadOnlyList<string> engineErrorMessages
+        )
+        {
+            if (ShouldTryInitialDemuxImmediateEofOnePassFallback(engineErrorMessages))
+            {
+                return "initial-demux-immediate-eof";
+            }
+
+            if (
+                !isRecoveryLane
+                && ShouldTryInitialLongClipOnePassFallback(durationSec, engineErrorMessages)
+            )
+            {
+                return "initial-longclip-no-frames-decoded";
+            }
+
+            return "recovery-no-frames-decoded";
         }
 
         private static bool ShouldTryInitialLongClipOnePassFallback(
@@ -316,6 +351,30 @@ namespace IndigoMovieManager.Thumbnail
                 if (
                     message.IndexOf("[autogen]", StringComparison.OrdinalIgnoreCase) >= 0
                     && message.IndexOf("no frames decoded", StringComparison.OrdinalIgnoreCase) >= 0
+                )
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ShouldTryInitialDemuxImmediateEofOnePassFallback(
+            IReadOnlyList<string> engineErrorMessages
+        )
+        {
+            if (engineErrorMessages == null || engineErrorMessages.Count < 1)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < engineErrorMessages.Count; i++)
+            {
+                string message = engineErrorMessages[i] ?? "";
+                if (
+                    message.IndexOf("[autogen]", StringComparison.OrdinalIgnoreCase) >= 0
+                    && ContainsAnyKeyword(message, AutogenImmediateEofFallbackKeywords)
                 )
                 {
                     return true;
