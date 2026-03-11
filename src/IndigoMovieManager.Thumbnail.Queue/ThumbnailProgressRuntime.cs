@@ -237,24 +237,9 @@ namespace IndigoMovieManager.Thumbnail
                     isChanged = true;
                 }
 
-                // 再利用パネルへ別ジョブを載せる時は、古いプレビューを引き継がない。
+                // 再利用パネルへ別ジョブを載せても、次サムネ到着までは前回プレビューを保持する。
                 if (isDifferentJob)
                 {
-                    if (!string.IsNullOrWhiteSpace(worker.PreviewImagePath))
-                    {
-                        worker.PreviewImagePath = "";
-                        isChanged = true;
-                    }
-                    if (!string.IsNullOrWhiteSpace(worker.PreviewCacheKey))
-                    {
-                        worker.PreviewCacheKey = "";
-                        isChanged = true;
-                    }
-                    if (worker.PreviewRevision != 0)
-                    {
-                        worker.PreviewRevision = 0;
-                        isChanged = true;
-                    }
                     if (!string.IsNullOrWhiteSpace(worker.LastAppliedPreviewJobKey))
                     {
                         worker.LastAppliedPreviewJobKey = "";

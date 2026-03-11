@@ -340,3 +340,13 @@ workthree 側の直近作業予定:
 - `near-black` 5件を掘るための比較ハーネスを持ち込む
 - `画像1枚あり顔.mkv` と `画像1枚ありページ.mkv` の再現ハーネスを持ち込む
 - その結果を優先順位表へ追記する
+
+## 15. 2026-03-11 本線継続メモ
+- `IndigoMovieManager_fork.csproj` に `**\artifacts\**\*` 除外を追加した。
+  - `src/*/artifacts/msbuild-verify/*` の生成物が本体プロジェクトの既定 item へ混入し、`commonsettingswindow.baml` 重複で WPF ビルドが落ちる問題を防ぐため。
+- `ThumbnailProgressRuntime` の完了パネル再利用時プレビュー保持を復元した。
+  - 次ジョブ開始時に旧 `PreviewImagePath` を消さず、次サムネ到着まで前回画像を見せ続ける。
+  - `LastAppliedPreviewJobKey` だけクリアし、保存済み画像の再上書き抑止は維持する。
+- 確認結果:
+  - `Debug|x64` ソリューションビルド成功
+  - Queue / FailureDb / snapshot / failed tab / progress runtime 系の対象テスト 61 件成功
