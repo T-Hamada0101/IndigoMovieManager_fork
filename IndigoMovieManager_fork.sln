@@ -27,6 +27,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "IndigoMovieManager.Thumbnai
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndigoMovieManager.AdminService", "src\IndigoMovieManager.AdminService\IndigoMovieManager.AdminService.csproj", "{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "IndigoMovieManager.Thumbnail.DropTool", "src\IndigoMovieManager.Thumbnail.DropTool\IndigoMovieManager.Thumbnail.DropTool.csproj", "{E8230E29-5755-42FB-84F8-9A72AE41897F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -157,6 +159,18 @@ Global
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}.Release|Any CPU.Build.0 = Release|x64
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}.Release|x86.ActiveCfg = Release|x64
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC}.Release|x86.Build.0 = Release|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Debug|x64.ActiveCfg = Debug|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Debug|x64.Build.0 = Debug|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Debug|Any CPU.Build.0 = Debug|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Debug|x86.ActiveCfg = Debug|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Debug|x86.Build.0 = Debug|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Release|x64.ActiveCfg = Release|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Release|x64.Build.0 = Release|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Release|Any CPU.ActiveCfg = Release|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Release|Any CPU.Build.0 = Release|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Release|x86.ActiveCfg = Release|x64
+		{E8230E29-5755-42FB-84F8-9A72AE41897F}.Release|x86.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -171,6 +185,7 @@ Global
 		{3BC020B0-7565-48FB-9F74-C90D795BB855} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{B5E6C3BA-8F8D-4A26-A7D9-CC1C65A59F3A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{FF3D02EC-7AE2-4465-A530-A2F8FA26D3EC} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{E8230E29-5755-42FB-84F8-9A72AE41897F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {F5D379F6-5561-418C-9E71-24C2BC8B14AE}

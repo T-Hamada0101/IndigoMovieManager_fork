@@ -1,27 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <AssemblyName>Drop</AssemblyName>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <RootNamespace>IndigoMovieManager</RootNamespace>
+    <RootNamespace>IndigoMovieManager.Thumbnail.DropTool</RootNamespace>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**;artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\IndigoMovieManager.Thumbnail.WorkerCore\IndigoMovieManager.Thumbnail.WorkerCore.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\IndigoMovieManager.Thumbnail.DropTool\DropToolLaunchSupport.cs" Link="Ui\DropToolLaunchSupport.cs" />
-    <Compile Include="..\IndigoMovieManager.Thumbnail.DropTool\DropToolThumbnailServices.cs" Link="Ui\DropToolThumbnailServices.cs" />
-    <Compile Include="..\IndigoMovieManager.Thumbnail.DropTool\DropToolWindow.xaml.cs" Link="Ui\DropToolWindow.xaml.cs" />
-    <Page Include="..\IndigoMovieManager.Thumbnail.DropTool\DropToolWindow.xaml" Link="Ui\DropToolWindow.xaml" />
+    <ProjectReference Include="..\IndigoMovieManager.Thumbnail.Engine\IndigoMovieManager.Thumbnail.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -259,7 +259,7 @@
   </Target>
 
   <Target Name="BuildThumbnailDropTool" AfterTargets="Build">
-    <!-- ドロップ専用の簡易ツールを同梱し、DB無しの単発サムネ生成を別導線で提供する -->
+    <!-- Drop.exe を同梱し、Explorer ドロップを Worker UI へ受け渡す別導線を提供する -->
     <PropertyGroup>
       <ThumbnailDropToolSourceDir>$(MSBuildThisFileDirectory)artifacts\thumbnail-drop-tool-stage\$(Platform)\$(Configuration)\</ThumbnailDropToolSourceDir>
       <ThumbnailDropToolTargetDir>$(OutDir)thumbnail-drop-tool\</ThumbnailDropToolTargetDir>
@@ -268,10 +268,26 @@
       <ThumbnailDropToolNestedOutputDir>$(ThumbnailDropToolSourceDir)thumbnail-drop-tool\</ThumbnailDropToolNestedOutputDir>
       <ThumbnailDropToolNestedTargetDir>$(ThumbnailDropToolTargetDir)thumbnail-drop-tool\</ThumbnailDropToolNestedTargetDir>
     </PropertyGroup>
+    <ItemGroup>
+      <ThumbnailDropToolLegacyFiles
+        Include="
+          $(ThumbnailDropToolSourceDir)IndigoMovieManager.Thumbnail.DropTool.deps.json;
+          $(ThumbnailDropToolSourceDir)IndigoMovieManager.Thumbnail.DropTool.dll;
+          $(ThumbnailDropToolSourceDir)IndigoMovieManager.Thumbnail.DropTool.exe;
+          $(ThumbnailDropToolSourceDir)IndigoMovieManager.Thumbnail.DropTool.pdb;
+          $(ThumbnailDropToolSourceDir)IndigoMovieManager.Thumbnail.DropTool.runtimeconfig.json;
+          $(ThumbnailDropToolTargetDir)IndigoMovieManager.Thumbnail.DropTool.deps.json;
+          $(ThumbnailDropToolTargetDir)IndigoMovieManager.Thumbnail.DropTool.dll;
+          $(ThumbnailDropToolTargetDir)IndigoMovieManager.Thumbnail.DropTool.exe;
+          $(ThumbnailDropToolTargetDir)IndigoMovieManager.Thumbnail.DropTool.pdb;
+          $(ThumbnailDropToolTargetDir)IndigoMovieManager.Thumbnail.DropTool.runtimeconfig.json"
+      />
+    </ItemGroup>
     <Exec
-      Command="pwsh -NoLogo -Command &quot;$target=[IO.Path]::GetFullPath('$(ThumbnailDropToolTargetDir)'); Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'IndigoMovieManager.Thumbnail.DropTool.exe' } | ForEach-Object { $cmd=$_.CommandLine; if([string]::IsNullOrWhiteSpace($cmd)){ return }; if($cmd.IndexOf($target,[System.StringComparison]::OrdinalIgnoreCase) -lt 0){ return }; if($null -eq (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)){ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }&quot;"
+      Command="pwsh -NoLogo -Command &quot;$target=[IO.Path]::GetFullPath('$(ThumbnailDropToolTargetDir)'); Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'Drop.exe' } | ForEach-Object { $cmd=$_.CommandLine; if([string]::IsNullOrWhiteSpace($cmd)){ return }; if($cmd.IndexOf($target,[System.StringComparison]::OrdinalIgnoreCase) -lt 0){ return }; if($null -eq (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)){ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }&quot;"
       IgnoreExitCode="true"
     />
+    <Delete Files="@(ThumbnailDropToolLegacyFiles)" TreatErrorsAsWarnings="true" />
     <MSBuild
       Projects="src\IndigoMovieManager.Thumbnail.DropTool\IndigoMovieManager.Thumbnail.DropTool.csproj"
       Targets="$(ThumbnailDropToolBuildTargets)"
