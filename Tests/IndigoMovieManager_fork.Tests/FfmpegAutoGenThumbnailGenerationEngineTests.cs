@@ -131,4 +131,71 @@ public sealed class FfmpegAutoGenThumbnailGenerationEngineTests
             Is.False
         );
     }
+
+    [Test]
+    public void ShouldAcceptDecodedFrameAtRequestedSecond_要求秒より十分手前のコマは弾く()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldAcceptDecodedFrameAtRequestedSecond(
+                1d,
+                0d
+            ),
+            Is.False
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldAcceptDecodedFrameAtRequestedSecond(
+                1d,
+                0.95d
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
+    public void ShouldAcceptDecodedFrameAtRequestedSecond_ゼロ秒要求や不明PTSは許容する()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldAcceptDecodedFrameAtRequestedSecond(
+                0d,
+                0d
+            ),
+            Is.True
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldAcceptDecodedFrameAtRequestedSecond(
+                0.1d,
+                -1d
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
+    public void ShouldUseRobustProbeOptions_現状は常にTrueを返す()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldUseRobustProbeOptions(
+                @"E:\temp\movie.mp4",
+                5.8
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
+    public void IsAutogenSeekInvestigationMovie_真空エラー動画だけTrueを返す()
+    {
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.IsAutogenSeekInvestigationMovie(
+                @"E:\_サムネイル作成困難動画\真空エラー2_ghq5_temp.mp4"
+            ),
+            Is.True
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.IsAutogenSeekInvestigationMovie(
+                @"E:\temp\normal.mp4"
+            ),
+            Is.False
+        );
+    }
 }

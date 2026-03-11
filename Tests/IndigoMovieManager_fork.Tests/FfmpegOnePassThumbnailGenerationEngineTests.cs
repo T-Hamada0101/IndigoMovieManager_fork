@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Text;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.Engines;
 
@@ -330,6 +331,49 @@ public sealed class FfmpegOnePassThumbnailGenerationEngineTests
         finally
         {
             Environment.SetEnvironmentVariable(envName, original);
+        }
+    }
+
+    [Test]
+    public void AppendThumbInfoMetadata_Jpeg本体を消さず末尾メタを追記する()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string jpgPath = Path.Combine(tempDir, "thumb.jpg");
+
+        try
+        {
+            File.WriteAllBytes(jpgPath, [0xFF, 0xD8, 0xFF, 0xD9]);
+            ThumbInfo thumbInfo = new()
+            {
+                ThumbCounts = 1,
+                ThumbWidth = 160,
+                ThumbHeight = 120,
+                ThumbColumns = 1,
+                ThumbRows = 1,
+            };
+            thumbInfo.Add(1);
+            thumbInfo.NewThumbInfo();
+
+            bool actual = FfmpegOnePassThumbnailGenerationEngine.AppendThumbInfoMetadata(
+                jpgPath,
+                thumbInfo,
+                out string errorMessage
+            );
+
+            Assert.That(actual, Is.True, errorMessage);
+            byte[] written = File.ReadAllBytes(jpgPath);
+            Assert.That(written.Length, Is.GreaterThan(4));
+            Assert.That(written[0], Is.EqualTo(0xFF));
+            Assert.That(written[1], Is.EqualTo(0xD8));
+            Assert.That(Encoding.ASCII.GetString(written), Does.Contain("-MTS"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
         }
     }
 }

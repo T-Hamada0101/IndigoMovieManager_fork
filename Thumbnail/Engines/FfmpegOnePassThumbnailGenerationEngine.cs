@@ -252,10 +252,20 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 context.ThumbInfo,
                 actualCaptureSeconds
             );
-            TryDeleteFile(context.SaveThumbFileName);
-            using FileStream dest = new(context.SaveThumbFileName, FileMode.Append, FileAccess.Write);
-            dest.Write(saveThumbInfo.SecBuffer);
-            dest.Write(saveThumbInfo.InfoBuffer);
+            if (
+                !AppendThumbInfoMetadata(
+                    context.SaveThumbFileName,
+                    saveThumbInfo,
+                    out string appendError
+                )
+            )
+            {
+                return ThumbnailResultFactory.CreateFailed(
+                    context.SaveThumbFileName,
+                    durationSec,
+                    appendError
+                );
+            }
             return ThumbnailResultFactory.CreateSuccess(context.SaveThumbFileName, durationSec);
         }
 
@@ -991,6 +1001,46 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
 
             return DefaultFfmpegPriorityClass;
+        }
+
+        // JPEG本体を残したまま、既存互換の末尾メタだけ追記する。
+        internal static bool AppendThumbInfoMetadata(
+            string saveThumbFileName,
+            ThumbInfo saveThumbInfo,
+            out string errorMessage
+        )
+        {
+            errorMessage = "";
+            if (string.IsNullOrWhiteSpace(saveThumbFileName))
+            {
+                errorMessage = "save path is empty";
+                return false;
+            }
+
+            if (saveThumbInfo?.SecBuffer == null || saveThumbInfo.InfoBuffer == null)
+            {
+                errorMessage = "thumb info buffer is empty";
+                return false;
+            }
+
+            if (!File.Exists(saveThumbFileName))
+            {
+                errorMessage = "thumbnail output not found";
+                return false;
+            }
+
+            try
+            {
+                using FileStream dest = new(saveThumbFileName, FileMode.Append, FileAccess.Write);
+                dest.Write(saveThumbInfo.SecBuffer);
+                dest.Write(saveThumbInfo.InfoBuffer);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"thumb info append failed: {ex.Message}";
+                return false;
+            }
         }
 
         /// <summary>

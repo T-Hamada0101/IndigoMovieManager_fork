@@ -407,22 +407,28 @@ namespace IndigoMovieManager
         /// </summary>
         private void CreateWatcher()
         {
+            if (!TryGetCurrentMainDbPathForBackgroundWork(out string dbFullPath))
+            {
+                DebugRuntimeLog.Write("watch", "watcher create skipped: db is not registered");
+                return;
+            }
+
             Stopwatch sw = Stopwatch.StartNew();
             int watcherCount = 0;
             int skippedByEverythingOnlyCount = 0;
-            DebugRuntimeLog.TaskStart(nameof(CreateWatcher), $"db='{MainVM.DbInfo.DBFullPath}'");
+            DebugRuntimeLog.TaskStart(nameof(CreateWatcher), $"db='{dbFullPath}'");
             IntegrationMode integrationMode = GetEverythingIntegrationMode();
             AvailabilityResult availability = _indexProviderFacade.CheckAvailability(integrationMode);
             string availabilityCategory = FileIndexReasonTable.ToCategory(availability.Reason);
             string availabilityAxis = FileIndexReasonTable.ToLogAxis(availability.Reason);
 
             string sql = $"SELECT * FROM watch where watch = 1";
-            GetWatchTable(MainVM.DbInfo.DBFullPath, sql);
+            GetWatchTable(dbFullPath, sql);
             if (watchData == null)
             {
                 DebugRuntimeLog.Write(
                     "watch",
-                    $"watcher create canceled: watch table load failed. db='{MainVM.DbInfo.DBFullPath}'"
+                    $"watcher create canceled: watch table load failed. db='{dbFullPath}'"
                 );
                 return;
             }
@@ -508,6 +514,15 @@ namespace IndigoMovieManager
         /// </summary>
         private Task QueueCheckFolderAsync(CheckMode mode, string trigger)
         {
+            if (!TryGetCurrentMainDbPathForBackgroundWork(out _))
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"scan request ignored: db is not registered trigger={trigger} mode={mode}"
+                );
+                return Task.CompletedTask;
+            }
+
             lock (_checkFolderRequestSync)
             {
                 if (_hasPendingCheckFolderRequest)
@@ -534,6 +549,19 @@ namespace IndigoMovieManager
             return GetCheckModePriority(incoming) > GetCheckModePriority(current)
                 ? incoming
                 : current;
+        }
+
+        // バックグラウンド監視はDB未接続や未配置なら起動せず、そのまま無視する。
+        private bool TryGetCurrentMainDbPathForBackgroundWork(out string dbFullPath)
+        {
+            dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(dbFullPath) || !Path.Exists(dbFullPath))
+            {
+                dbFullPath = "";
+                return false;
+            }
+
+            return true;
         }
 
         private static int GetCheckModePriority(CheckMode mode)
@@ -582,6 +610,15 @@ namespace IndigoMovieManager
         /// </summary>
         private async Task CheckFolderAsync(CheckMode mode)
         {
+            if (!TryGetCurrentMainDbPathForBackgroundWork(out string currentDbFullPath))
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"scan skipped: db is not registered mode={mode}"
+                );
+                return;
+            }
+
             Stopwatch sw = Stopwatch.StartNew();
             bool FolderCheckflg = false;
             int checkedFolderCount = 0;
@@ -589,7 +626,7 @@ namespace IndigoMovieManager
             string checkExt = Properties.Settings.Default.CheckExt;
 
             // 🔥 開始時のDB情報をスナップショット！途中でDB切り替えが起きても混入しない！🛡️
-            string snapshotDbFullPath = MainVM.DbInfo.DBFullPath;
+            string snapshotDbFullPath = currentDbFullPath;
             string snapshotThumbFolder = MainVM.DbInfo.ThumbFolder;
             string snapshotDbName = MainVM.DbInfo.DBName;
             int snapshotTabIndex = MainVM.DbInfo.CurrentTabIndex;
