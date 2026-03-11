@@ -18,6 +18,16 @@ namespace IndigoMovieManager
             DebugRuntimeLog.TaskStart(nameof(RestartThumbnailTask));
             ClearThumbnailQueue();
 
+            if (!TryGetCurrentMainDbPathForThumbnailBackgroundWork(out _))
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-worker",
+                    "thumbnail task restart skipped: db is not registered"
+                );
+                DebugRuntimeLog.TaskEnd(nameof(RestartThumbnailTask), "status=skipped-db-not-registered");
+                return;
+            }
+
             if (ShouldUseThumbnailCoordinatorMode())
             {
                 RestartThumbnailCoordinatorSupervisor();
@@ -36,6 +46,45 @@ namespace IndigoMovieManager
             DebugRuntimeLog.TaskStart(nameof(CheckThumbAsync), "trigger=RestartThumbnailTask");
             _thumbCheckTask = CheckThumbAsync(_thumbCheckCts.Token);
             DebugRuntimeLog.TaskEnd(nameof(RestartThumbnailTask));
+        }
+
+        // DB未接続や未配置では、worker系バックグラウンドは起動せず静かに待機する。
+        private bool TryGetCurrentMainDbPathForThumbnailBackgroundWork(out string mainDbFullPath)
+        {
+            mainDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(mainDbFullPath) || !Path.Exists(mainDbFullPath))
+            {
+                mainDbFullPath = "";
+                return false;
+            }
+
+            return true;
+        }
+
+        // DBが有効になった時だけ、worker/coordinator/viewer の起動線を開く。
+        private void EnsureThumbnailBackgroundServicesForCurrentDb()
+        {
+            if (!TryGetCurrentMainDbPathForThumbnailBackgroundWork(out _))
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-worker",
+                    "thumbnail background start skipped: db is not registered"
+                );
+                UpdateThumbnailProgressViewerStatusUi();
+                return;
+            }
+
+            if (ShouldUseThumbnailCoordinatorMode())
+            {
+                EnsureThumbnailCoordinatorSupervisorRunning();
+            }
+            else if (_thumbCheckTask == null || _thumbCheckTask.IsCompleted)
+            {
+                DebugRuntimeLog.TaskStart(nameof(CheckThumbAsync), "trigger=EnsureThumbnailBackgroundServicesForCurrentDb");
+                _thumbCheckTask = CheckThumbAsync(_thumbCheckCts.Token);
+            }
+
+            EnsureThumbnailProgressViewerSupervisorRunning();
         }
 
         /// <summary>

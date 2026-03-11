@@ -899,15 +899,8 @@ namespace IndigoMovieManager
                     }
                 }
 
-                // Coordinator がある構成では、worker 本線は外側へ逃がして本体は持たない。
-                if (
-                    !ShouldUseThumbnailCoordinatorMode()
-                    && (_thumbCheckTask == null || _thumbCheckTask.IsCompleted)
-                )
-                {
-                    DebugRuntimeLog.TaskStart(nameof(CheckThumbAsync), "trigger=ContentRendered");
-                    _thumbCheckTask = CheckThumbAsync(_thumbCheckCts.Token);
-                }
+                // DB未接続では worker を起こさず、DB接続後の起動へ回す。
+                EnsureThumbnailBackgroundServicesForCurrentDb();
 
                 // QueueDB Persisterはアプリ生存中は常駐させ、Producer入力を短周期で永続化する。
                 if (
@@ -937,8 +930,6 @@ namespace IndigoMovieManager
                 }
 
                 EnsureThumbnailProgressUiTimerRunning();
-                EnsureThumbnailCoordinatorSupervisorRunning();
-                EnsureThumbnailProgressViewerSupervisorRunning();
                 UpdateThumbnailProgressMetersUi();
                 UpdateThumbnailProgressSnapshotUi();
                 UpdateThumbnailProgressViewerStatusUi();
@@ -2482,6 +2473,7 @@ namespace IndigoMovieManager
             // bookmarkのデータ詰める。あとはブックマーク追加時とブックマーク削除時の対応はイベントで。
             GetBookmarkTable();
 
+            EnsureThumbnailBackgroundServicesForCurrentDb();
             DebugRuntimeLog.TaskStart(nameof(CheckFolderAsync), "mode=Auto trigger=OpenDatafile");
             _ = QueueCheckFolderAsync(CheckMode.Auto, "OpenDatafile"); // 追加ファイルがないかのチェック。
             CreateWatcher(); // 新DBの監視フォルダに対してFileSystemWatcherを作成。
@@ -2789,48 +2781,24 @@ namespace IndigoMovieManager
             {
                 case "DefaultSmall":
                     TabSmall.IsSelected = true;
-                    if (SmallList.Items.Count > 0)
-                    {
-                        SmallList.SelectedIndex = 0;
-                    }
                     break;
                 case "DefaultBig":
                     TabBig.IsSelected = true;
-                    if (BigList.Items.Count > 0)
-                    {
-                        BigList.SelectedIndex = 0;
-                    }
                     break;
                 case "DefaultGrid":
                     TabGrid.IsSelected = true;
-                    if (GridList.Items.Count > 0)
-                    {
-                        GridList.SelectedIndex = 0;
-                    }
                     break;
                 case "DefaultList":
                     TabList.IsSelected = true;
-                    if (ListDataGrid.Items.Count > 0)
-                    {
-                        ListDataGrid.SelectedIndex = 0;
-                    }
                     break;
                 case "DefaultBig10":
                     TabBig10.IsSelected = true;
-                    if (BigList10.Items.Count > 0)
-                    {
-                        BigList10.SelectedIndex = 0;
-                    }
                     break;
                 case "ThumbnailFailed":
                     TabThumbnailFailed.IsSelected = true;
                     break;
                 default:
                     TabSmall.IsSelected = true;
-                    if (SmallList.Items.Count > 0)
-                    {
-                        SmallList.SelectedIndex = 0;
-                    }
                     break;
             }
         }
@@ -2859,75 +2827,12 @@ namespace IndigoMovieManager
         }
 
         /// <summary>
-        /// 今開いてるタブの先頭アイテムにカーソルを合わせる！これが俺のスマートなエスコートだ！😎
-        /// </summary>
-        public void SelectFirstItem()
-        {
-            switch (Tabs.SelectedIndex)
-            {
-                case 0:
-                    TabSmall.IsSelected = true;
-                    if (SmallList.Items.Count > 0)
-                    {
-                        SmallList.SelectedIndex = 0;
-                    }
-                    break;
-                case 1:
-                    TabBig.IsSelected = true;
-                    if (BigList.Items.Count > 0)
-                    {
-                        BigList.SelectedIndex = 0;
-                    }
-                    break;
-                case 2:
-                    TabGrid.IsSelected = true;
-                    if (GridList.Items.Count > 0)
-                    {
-                        GridList.SelectedIndex = 0;
-                    }
-                    break;
-                case 3:
-                    TabList.IsSelected = true;
-                    if (ListDataGrid.Items.Count > 0)
-                    {
-                        ListDataGrid.SelectedIndex = 0;
-                    }
-                    break;
-                case 4:
-                    TabBig10.IsSelected = true;
-                    if (BigList10.Items.Count > 0)
-                    {
-                        BigList10.SelectedIndex = 0;
-                    }
-                    break;
-                default:
-                    TabSmall.IsSelected = true;
-                    if (SmallList.Items.Count > 0)
-                    {
-                        SmallList.SelectedIndex = 0;
-                    }
-                    break;
-            }
-            //viewExtDetail.Visibility = Visibility.Hidden;
-        }
-
-        /// <summary>
-        /// 画面の全リストを強制アップデート！詳細情報のDataContextもガッツリ再設定して最新の顔を見せるぜ！✨
+        /// 表示中のリストだけを強制アップデートし、詳細情報のDataContextも最新に合わせ直す！✨
         /// </summary>
         private void Refresh()
         {
-            SmallList.Items.Refresh();
-            BigList.Items.Refresh();
-            GridList.Items.Refresh();
-            ListDataGrid.Items.Refresh();
-            BigList10.Items.Refresh();
-
-            MovieRecords mv = GetSelectedItemByTabIndex();
-            if (mv == null)
-            {
-                return;
-            }
-            viewExtDetail.DataContext = mv;
+            RefreshItemsControlByTabIndex(Tabs?.SelectedIndex ?? -1);
+            UpdateExtDetailFromCurrentSelection();
         }
 
         /// <summary>
@@ -3230,18 +3135,10 @@ namespace IndigoMovieManager
             {
                 viewExtDetail.Visibility = Visibility.Collapsed;
             }
-            else
-            {
-                viewExtDetail.Visibility = Visibility.Visible;
-            }
 
             SetSortData(id);
 
-            SmallList.ItemsSource = filterList;
-            BigList.ItemsSource = filterList;
-            GridList.ItemsSource = filterList;
-            ListDataGrid.ItemsSource = filterList;
-            BigList10.ItemsSource = filterList;
+            ApplyFilterListToTabIndex(Tabs?.SelectedIndex ?? -1);
             Refresh();
 #if DEBUG
             sw.Stop();
@@ -3356,11 +3253,7 @@ namespace IndigoMovieManager
             try
             {
                 SetSortData(id);
-                SmallList.ItemsSource = filterList;
-                BigList.ItemsSource = filterList;
-                GridList.ItemsSource = filterList;
-                ListDataGrid.ItemsSource = filterList;
-                BigList10.ItemsSource = filterList;
+                ApplyFilterListToTabIndex(Tabs?.SelectedIndex ?? -1);
                 Refresh();
 #if DEBUG
                 sw.Stop();
@@ -3764,6 +3657,7 @@ namespace IndigoMovieManager
                 if (index == -1)
                 {
                     UpdateThumbnailFailedTabSelectionState(false);
+                    viewExtDetail.Visibility = Visibility.Collapsed;
                     return;
                 }
 
@@ -3775,6 +3669,7 @@ namespace IndigoMovieManager
                 if (isThumbnailFailedTabSelected)
                 {
                     RequestThumbnailFailedListRefresh();
+                    viewExtDetail.Visibility = Visibility.Collapsed;
                     return;
                 }
 
@@ -3785,25 +3680,23 @@ namespace IndigoMovieManager
                 UpdateSkin();
 
                 if (!filterList.Any())
+                {
+                    viewExtDetail.Visibility = Visibility.Collapsed;
                     return;
+                }
 
                 // 対応するリストコントロールへ現在フィルターを反映する。
-                object[] listControls = [SmallList, BigList, GridList, ListDataGrid, BigList10];
-                if (index >= 0 && index < listControls.Length)
-                {
-                    if (listControls[index] is ItemsControl itemsControl)
-                    {
-                        itemsControl.ItemsSource = filterList;
-                        SelectFirstItem();
-                    }
-                }
+                ApplyFilterListToTabIndex(index);
 
                 await RescueVisibleErrorThumbnailsForCurrentTabAsync();
 
                 // 詳細サムネイル（ThumbDetail）が error の場合も追加
                 MovieRecords mv = GetSelectedItemByTabIndex();
                 if (mv == null)
+                {
+                    viewExtDetail.Visibility = Visibility.Collapsed;
                     return;
+                }
                 if (mv.ThumbDetail.Contains("error", StringComparison.CurrentCultureIgnoreCase))
                 {
                     QueueObj tempObj = new()
@@ -3816,8 +3709,7 @@ namespace IndigoMovieManager
                     _ = TryEnqueueThumbnailJob(tempObj);
                 }
 
-                viewExtDetail.DataContext = mv;
-                viewExtDetail.Visibility = Visibility.Visible;
+                UpdateExtDetailFromCurrentSelection();
             }
         }
 
@@ -3896,6 +3788,44 @@ namespace IndigoMovieManager
                 4 => BigList10,
                 _ => null,
             };
+        }
+
+        // 今表示中の一覧だけに最新のフィルター結果を反映し、非表示タブは切替時に追従させる。
+        private void ApplyFilterListToTabIndex(int tabIndex)
+        {
+            ItemsControl itemsControl = GetItemsControlByTabIndex(tabIndex);
+            if (itemsControl == null)
+            {
+                return;
+            }
+
+            itemsControl.ItemsSource = filterList;
+        }
+
+        // 強制更新も表示中タブだけに絞って、非表示ビューの無駄な再描画を避ける。
+        private void RefreshItemsControlByTabIndex(int tabIndex)
+        {
+            ItemsControl itemsControl = GetItemsControlByTabIndex(tabIndex);
+            if (itemsControl == null)
+            {
+                return;
+            }
+
+            itemsControl.Items.Refresh();
+        }
+
+        // 現在の選択状態に応じて詳細ペインを出し分ける。無選択なら開かない。
+        private void UpdateExtDetailFromCurrentSelection()
+        {
+            MovieRecords mv = GetSelectedItemByTabIndex();
+            if (mv == null)
+            {
+                viewExtDetail.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            viewExtDetail.DataContext = mv;
+            viewExtDetail.Visibility = Visibility.Visible;
         }
 
         // タブ番号から対応するサムネパスのプロパティ名を返す。
@@ -4101,7 +4031,7 @@ namespace IndigoMovieManager
             }
         }
 
-        // ソートコンボ変更時に並び替えと先頭選択を実行する。
+        // ソートコンボ変更時に並び替えだけを実行する。
         private void ComboSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
@@ -4117,7 +4047,6 @@ namespace IndigoMovieManager
                         var id = senderObj.SelectedValue;
                         //FilterAndSort(id.ToString(), false);    //ソート順変更時。
                         SortData(id.ToString());
-                        SelectFirstItem();
                     }
                 }
             }

@@ -67,7 +67,6 @@ namespace IndigoMovieManager.UserControls
 
                     // 検索処理を実行
                     mainWindow.FilterAndSort(mainWindow.MainVM.DbInfo.Sort, true);
-                    mainWindow.SelectFirstItem();
 
                     // SearchBoxにフォーカスを当てる
                     mainWindow.SearchBox.Focus();
@@ -90,7 +89,6 @@ namespace IndigoMovieManager.UserControls
 
                 // 検索処理を実行
                 ownerWindow.FilterAndSort(ownerWindow.MainVM.DbInfo.Sort, true);
-                ownerWindow.SelectFirstItem();
 
                 // SearchBoxにフォーカスを当てる
                 ownerWindow.SearchBox.Focus();

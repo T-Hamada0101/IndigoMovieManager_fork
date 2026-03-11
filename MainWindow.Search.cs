@@ -151,7 +151,6 @@ namespace IndigoMovieManager
                 if (string.IsNullOrEmpty(text))
                 {
                     FilterAndSort(MainVM.DbInfo.Sort, true);
-                    SelectFirstItem();
                 }
             }
         }
@@ -255,7 +254,6 @@ namespace IndigoMovieManager
 
             // ViewModelの FilterAndSort メソッド等を通じてUI更新を促す
             FilterAndSort(MainVM.DbInfo.Sort, true);
-            SelectFirstItem();
         }
     }
 }
