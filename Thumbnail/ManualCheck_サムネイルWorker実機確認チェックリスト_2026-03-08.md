@@ -6,12 +6,12 @@
 
 ## 2. 前提
 - 実行対象
-  - `<fork-repo-root>/bin/x64/Debug/net8.0-windows/IndigoMovieManager_fork.exe`
+  - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\IndigoMovieManager_fork.exe`
 - ログ
-  - `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/debug-runtime.log`
-  - `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/thumbnail-worker-*.log`
+  - `C:\Users\{username}\AppData\Local\IndigoMovieManager_fork\logs\debug-runtime.log`
+  - `C:\Users\{username}\AppData\Local\IndigoMovieManager_fork\logs\thumbnail-worker-*.log`
 - 進捗Viewer
-  - `<fork-repo-root>/bin/x64/Debug/net8.0-windows/thumbnail-progress-viewer/IndigoMovieManager.Thumbnail.ProgressViewer.exe`
+  - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\bin\x64\Debug\net8.0-windows\thumbnail-progress-viewer\IndigoMovieManager.Thumbnail.ProgressViewer.exe`
 
 ## 3. 起動確認
 ### 3.1 本体起動

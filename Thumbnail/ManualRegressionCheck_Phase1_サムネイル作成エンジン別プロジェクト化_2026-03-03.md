@@ -26,9 +26,9 @@
 - [x] 手順1: 実施済み  
   結果: `成功 4 / 失敗 0 / スキップ 0`
 - [x] 手順2: 実施済み  
-  入力動画: `<fork-repo-root>/logs/manual-regression/20260303_033121/sample_4s.mp4`
+  入力動画: `C:\Users\{username}\source\repos\IndigoMovieManager_fork\logs\manual-regression\20260303_033121\sample_4s.mp4`
   結果: `autogen=success(1/1), ffmediatoolkit=success(1/1)`  
-  ベンチCSV: `%LOCALAPPDATA%/IndigoMovieManager_fork/logs/thumbnail-engine-bench-20260303-033133.csv`
+  ベンチCSV: `C:\Users\{username}\AppData\Local\IndigoMovieManager_fork\logs\thumbnail-engine-bench-20260303-033133.csv`
   出力確認: 2件とも実ファイル存在、命名は `sample_4s.#aa65bfef.jpg`
 - [x] 手順3: 実施済み  
   結果: 起動20秒後もプロセス生存（`AliveAfter20Sec=True`）
