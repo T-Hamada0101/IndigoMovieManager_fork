@@ -2218,9 +2218,7 @@ namespace IndigoMovieManager
                 var queueDbService = ResolveCurrentQueueDbService();
                 if (queueDbService != null)
                 {
-                    int activeCount = queueDbService.GetActiveQueueCount(
-                        thumbnailQueueOwnerInstanceId
-                    );
+                    int activeCount = GetCurrentThumbnailQueueActiveCount(queueDbService);
                     if (activeCount >= EverythingWatchPollBusyThreshold)
                     {
                         delayMs = EverythingWatchPollIntervalBusyMs;

@@ -30,6 +30,39 @@ namespace IndigoMovieManager
         private readonly string thumbnailQueueOwnerInstanceId =
             $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
 
+        // 現在の実行モードに合わせて、UI/監視が見るべきアクティブ件数を返す。
+        // 外部 worker モードでは Pending がすぐ Processing へ移るため、
+        // leased/running も合算しないと「キューが消えた」ように見えてしまう。
+        private int GetCurrentThumbnailQueueActiveCount(QueueDbService queueDbService)
+        {
+            if (queueDbService == null)
+            {
+                return 0;
+            }
+
+            bool usesExternalWorkers =
+                ShouldUseThumbnailCoordinatorMode()
+                || _thumbnailWorkerProcessManager.IsWorkerAvailable();
+            if (!usesExternalWorkers)
+            {
+                return queueDbService.GetActiveQueueCount(thumbnailQueueOwnerInstanceId);
+            }
+
+            long slowLaneMinMovieSizeBytes =
+                Math.Max(1, Properties.Settings.Default.ThumbnailSlowLaneMinGb)
+                * 1024L
+                * 1024L
+                * 1024L;
+            QueueDbDemandSnapshot demandSnapshot = queueDbService.GetDemandSnapshot(
+                [thumbnailNormalWorkerOwnerInstanceId, thumbnailIdleWorkerOwnerInstanceId],
+                slowLaneMinMovieSizeBytes,
+                DateTime.UtcNow
+            );
+            return demandSnapshot.QueuedTotalCount
+                + demandSnapshot.LeasedTotalCount
+                + demandSnapshot.RunningTotalCount;
+        }
+
         // サムネイルジョブのユニークキーを生成する。
 
         private static string GetThumbnailJobKey(QueueObj queueObj)

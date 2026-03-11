@@ -1670,7 +1670,7 @@ namespace IndigoMovieManager
                     return false;
                 }
 
-                activeCount = queueDbService.GetActiveQueueCount(thumbnailQueueOwnerInstanceId);
+                activeCount = GetCurrentThumbnailQueueActiveCount(queueDbService);
                 return true;
             }
             catch (Exception ex)
