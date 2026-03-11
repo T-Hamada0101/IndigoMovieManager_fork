@@ -1,5 +1,6 @@
 using IndigoMovieManager;
 using IndigoMovieManager.Thumbnail;
+using System.IO;
 using System.Reflection;
 
 namespace IndigoMovieManager_fork.Tests;
@@ -140,6 +141,55 @@ public sealed class MissingThumbnailRescuePolicyTests
             Assert.That(DequeueMoviePath(tryDequeue!, state), Is.EqualTo("c.mp4"));
             Assert.That(DequeueMoviePath(tryDequeue!, state), Is.EqualTo("d.mp4"));
         });
+    }
+
+    [Test]
+    public void ShouldSkipThumbnailEnqueueBecauseMarkerExists_ERRORマーカーがあれば再投入しない()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"imm-marker-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            string moviePath = @"E:\movies\sample.mp4";
+            string errorMarkerPath = ThumbnailPathResolver.BuildErrorMarkerPath(
+                tempRoot,
+                moviePath
+            );
+            File.WriteAllBytes(errorMarkerPath, []);
+
+            bool result = MainWindow.ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+                tempRoot,
+                moviePath,
+                "hash1234"
+            );
+
+            Assert.That(result, Is.True);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public void ShouldSkipThumbnailEnqueueBecauseMarkerExists_ファイル名集合でもERRORマーカーを見つける()
+    {
+        HashSet<string> existingFileNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ThumbnailPathResolver.BuildErrorMarkerFileName(@"E:\movies\sample.mp4"),
+        };
+
+        bool result = MainWindow.ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+            existingFileNames,
+            @"E:\movies\sample.mp4",
+            "hash1234"
+        );
+
+        Assert.That(result, Is.True);
     }
 
     private static string DequeueMoviePath(MethodInfo tryDequeue, object state)

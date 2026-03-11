@@ -934,11 +934,14 @@ namespace IndigoMovieManager
                             // DB反映が完了したら、仮表示から正式表示へ役割を切り替える。
                             RemovePendingMoviePlaceholder(pending.MovieFullPath);
 
-                            string saveThumbFileName = Path.Combine(
-                                tbi.OutPath,
-                                $"{pending.FileBody}.#{pending.Movie.Hash}.jpg"
-                            );
-                            if (Path.Exists(saveThumbFileName))
+                            // 正常サムネか最終失敗マーカーがあれば、自動再投入しない。
+                            if (
+                                ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+                                    tbi.OutPath,
+                                    pending.MovieFullPath,
+                                    pending.Movie.Hash
+                                )
+                            )
                             {
                                 // 一旦の負荷切り分けでskip系ログを止める（必要時に戻す）。
                                 // DebugRuntimeLog.Write(
@@ -1177,14 +1180,13 @@ namespace IndigoMovieManager
                         }
 
                         // 結合したサムネイルのファイル名作成（存在チェック用）
-                        var saveThumbFileName = Path.Combine(
-                            tbi.OutPath,
-                            $"{fileBody}.#{currentHash}.jpg"
-                        );
-
-                        // 既にサムネ画像が存在しているなら作成処理はスキップ
+                        // 正常サムネか最終失敗マーカーがあれば、自動再投入しない。
                         Stopwatch thumbExistsStopwatch = Stopwatch.StartNew();
-                        bool thumbExists = Path.Exists(saveThumbFileName);
+                        bool thumbExists = ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+                            tbi.OutPath,
+                            movieFullPath,
+                            currentHash
+                        );
                         thumbExistsStopwatch.Stop();
                         perFileThumbExistsMs = thumbExistsStopwatch.ElapsedMilliseconds;
                         if (thumbExists)
@@ -2623,8 +2625,14 @@ namespace IndigoMovieManager
                     continue;
                 }
 
-                string expectedThumbFileName = $"{fileBody}.#{hash}.jpg";
-                if (existingThumbnailFileNames.Contains(expectedThumbFileName))
+                // 正常サムネか最終失敗マーカーがあるものは、救済候補へ入れない。
+                if (
+                    ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+                        existingThumbnailFileNames,
+                        moviePath,
+                        hash
+                    )
+                )
                 {
                     continue;
                 }
@@ -2672,6 +2680,62 @@ namespace IndigoMovieManager
             }
 
             return result;
+        }
+
+        // 正常サムネ、または最終失敗マーカーが既にあるなら自動再投入を止める。
+        internal static bool ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+            string thumbFolder,
+            string movieFullPath,
+            string hash
+        )
+        {
+            if (string.IsNullOrWhiteSpace(thumbFolder) || string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return false;
+            }
+
+            string expectedThumbPath = ThumbnailPathResolver.BuildThumbnailPath(
+                thumbFolder,
+                movieFullPath,
+                hash
+            );
+            if (Path.Exists(expectedThumbPath))
+            {
+                return true;
+            }
+
+            string errorMarkerPath = ThumbnailPathResolver.BuildErrorMarkerPath(
+                thumbFolder,
+                movieFullPath
+            );
+            return Path.Exists(errorMarkerPath);
+        }
+
+        // 救済用の事前スキャンでは、列挙済みファイル名セットに対して同じ判定をかける。
+        internal static bool ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+            ISet<string> existingThumbnailFileNames,
+            string movieFullPath,
+            string hash
+        )
+        {
+            if (existingThumbnailFileNames == null || string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return false;
+            }
+
+            string expectedThumbFileName = ThumbnailPathResolver.BuildThumbnailFileName(
+                movieFullPath,
+                hash
+            );
+            if (existingThumbnailFileNames.Contains(expectedThumbFileName))
+            {
+                return true;
+            }
+
+            string errorMarkerFileName = ThumbnailPathResolver.BuildErrorMarkerFileName(
+                movieFullPath
+            );
+            return existingThumbnailFileNames.Contains(errorMarkerFileName);
         }
 
         // 候補の再生成ループを避けるため、同一候補はキーで1件に正規化する。
@@ -2761,11 +2825,14 @@ namespace IndigoMovieManager
                     continue;
                 }
 
-                string expectedThumbPath = Path.Combine(
-                    tbi.OutPath,
-                    $"{fileBody}.#{candidate.Hash}.jpg"
-                );
-                if (Path.Exists(expectedThumbPath))
+                // drain直前にも marker を見直し、途中で失敗固定された候補を流さない。
+                if (
+                    ShouldSkipThumbnailEnqueueBecauseMarkerExists(
+                        tbi.OutPath,
+                        candidate.MovieFullPath,
+                        candidate.Hash
+                    )
+                )
                 {
                     _ = state.TryDequeue(out _);
                     skippedExistingThumbCount++;
