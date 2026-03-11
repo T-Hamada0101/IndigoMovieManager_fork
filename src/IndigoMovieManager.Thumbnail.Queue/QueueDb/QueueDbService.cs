@@ -111,11 +111,15 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         private const string UtcDateFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
         private const int GuaranteedRecoveryAttemptCount = 2;
         private static readonly TimeSpan WorkerHealthStaleGrace = TimeSpan.FromSeconds(20);
+        private static readonly TimeSpan StaleProcessingReconcileInterval = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan LeaseStartGraceInterval = TimeSpan.FromSeconds(20);
         private readonly object initializeLock = new();
+        private readonly object staleProcessingReconcileLock = new();
         private readonly string mainDbFullPath;
         private readonly string queueDbFullPath;
         private readonly string mainDbPathHash;
         private bool isInitialized;
+        private DateTime lastStaleProcessingReconcileUtc = DateTime.MinValue;
 
         public QueueDbService(string mainDbFullPath)
         {
@@ -542,6 +546,8 @@ WHERE QueueId = @QueueId
                 throw new ArgumentException("ownerInstanceId is required.", nameof(ownerInstanceId));
             }
 
+            ReconcileStaleProcessingIfNeeded(DateTime.UtcNow);
+
             using SQLiteConnection connection = OpenConnection();
             using SQLiteCommand command = connection.CreateCommand();
             command.CommandText = @"
@@ -568,6 +574,8 @@ WHERE MainDbPathHash = @MainDbPathHash
             {
                 throw new ArgumentException("ownerInstanceId is required.", nameof(ownerInstanceId));
             }
+
+            ReconcileStaleProcessingIfNeeded(DateTime.UtcNow);
 
             using SQLiteConnection connection = OpenConnection();
             using SQLiteCommand command = connection.CreateCommand();
@@ -620,6 +628,8 @@ WHERE MainDbPathHash = @MainDbPathHash
             {
                 return false;
             }
+
+            ReconcileStaleProcessingIfNeeded(DateTime.UtcNow);
 
             using SQLiteConnection connection = OpenConnection();
             using SQLiteCommand command = connection.CreateCommand();
@@ -689,6 +699,8 @@ WHERE MainDbPathHash = @MainDbPathHash
                 return false;
             }
 
+            ReconcileStaleProcessingIfNeeded(DateTime.UtcNow);
+
             using SQLiteConnection connection = OpenConnection();
             using SQLiteCommand command = connection.CreateCommand();
             command.CommandText = @"
@@ -731,6 +743,7 @@ WHERE MainDbPathHash = @MainDbPathHash
             DateTime utcNow)
         {
             EnsureInitialized();
+            ReconcileStaleProcessingIfNeeded(utcNow);
 
             List<string> safeOwners = activeOwnerInstanceIds?
                 .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -1188,7 +1201,8 @@ SELECT
     QueueId,
     OwnerInstanceId,
     LeaseUntilUtc,
-    StartedAtUtc
+    StartedAtUtc,
+    UpdatedAtUtc
 FROM ThumbnailQueue
 WHERE MainDbPathHash = @MainDbPathHash
   AND Status = @Processing
@@ -1207,14 +1221,20 @@ WHERE MainDbPathHash = @MainDbPathHash
                     string owner = reader.IsDBNull(1) ? "" : reader.GetString(1);
                     string leaseUntilUtcText = reader.IsDBNull(2) ? "" : reader.GetString(2);
                     string startedAtUtcText = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                    string updatedAtUtcText = reader.IsDBNull(4) ? "" : reader.GetString(4);
 
                     bool expired = TryParseUtcText(leaseUntilUtcText, out DateTime leaseUntilUtc)
                         && leaseUntilUtc < utcNow;
                     bool deadOwner = IsOwnerWorkerUnavailable(owner, utcNow);
+                    bool leaseStartExpired =
+                        string.IsNullOrWhiteSpace(startedAtUtcText)
+                        && !string.IsNullOrWhiteSpace(owner)
+                        && TryParseUtcText(updatedAtUtcText, out DateTime updatedAtUtc)
+                        && updatedAtUtc.Add(LeaseStartGraceInterval) < utcNow;
                     bool staleLeased = string.IsNullOrWhiteSpace(startedAtUtcText)
                         && !string.IsNullOrWhiteSpace(owner)
                         && deadOwner;
-                    if (expired || deadOwner || staleLeased)
+                    if (expired || deadOwner || staleLeased || leaseStartExpired)
                     {
                         queueIdsToRestore.Add(queueId);
                     }
@@ -1255,6 +1275,32 @@ WHERE QueueId = @QueueId
             }
 
             return affectedTotal;
+        }
+
+        // UI/Coordinator の読取でも、死んだ worker が残した Processing を自然回収する。
+        // 高頻度呼び出しで毎回 full scan しないよう、短い間隔で間引く。
+        private void ReconcileStaleProcessingIfNeeded(DateTime utcNow)
+        {
+            bool shouldRun = false;
+
+            lock (staleProcessingReconcileLock)
+            {
+                if (
+                    lastStaleProcessingReconcileUtc == DateTime.MinValue
+                    || utcNow - lastStaleProcessingReconcileUtc >= StaleProcessingReconcileInterval
+                )
+                {
+                    lastStaleProcessingReconcileUtc = utcNow;
+                    shouldRun = true;
+                }
+            }
+
+            if (!shouldRun)
+            {
+                return;
+            }
+
+            _ = ResetStaleProcessingToPending(utcNow);
         }
 
         // health snapshot が停止系、または heartbeat 断絶なら worker 不在とみなす。

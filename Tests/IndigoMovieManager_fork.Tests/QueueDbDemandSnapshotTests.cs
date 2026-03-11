@@ -1,4 +1,5 @@
 using IndigoMovieManager.Thumbnail.QueueDb;
+using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager.Tests;
 
@@ -214,6 +215,150 @@ public sealed class QueueDbDemandSnapshotTests
             );
 
             Assert.That(snapshot.HangSuspectedCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TryDelete(queueDbPath);
+            TryDelete(mainDbPath);
+        }
+    }
+
+    [Test]
+    public void GetDemandSnapshot_StoppedWorkerOwnedRunning_IsReturnedToQueued()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-demand-stale-running-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string staleOwner = $"stale-owner:{Guid.NewGuid():N}";
+
+        try
+        {
+            string moviePath = Path.Combine(Path.GetTempPath(), $"stale-{Guid.NewGuid():N}.mp4");
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = Guid.NewGuid().ToString("N"),
+                        TabIndex = 1,
+                        MovieSizeBytes = 1024,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                staleOwner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+            _ = queueDbService.MarkLeaseAsRunning(
+                leased[0].QueueId,
+                staleOwner,
+                nowUtc.AddSeconds(1)
+            );
+
+            ThumbnailWorkerHealthStore.Save(
+                new ThumbnailWorkerHealthSnapshot
+                {
+                    MainDbFullPath = mainDbPath,
+                    OwnerInstanceId = staleOwner,
+                    WorkerRole = ThumbnailQueueWorkerRole.Normal.ToString(),
+                    State = ThumbnailWorkerHealthState.Stopped,
+                    ReasonCode = ThumbnailWorkerHealthReasonCode.GracefulStop,
+                    Message = "worker stopped gracefully",
+                    UpdatedAtUtc = nowUtc.AddSeconds(2),
+                    LastHeartbeatUtc = nowUtc.AddSeconds(2),
+                }
+            );
+
+            QueueDbDemandSnapshot snapshot = queueDbService.GetDemandSnapshot(
+                [staleOwner],
+                50L * 1024 * 1024 * 1024,
+                nowUtc.AddSeconds(3)
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.QueuedNormalCount, Is.EqualTo(1));
+                Assert.That(snapshot.RunningNormalCount, Is.EqualTo(0));
+                Assert.That(snapshot.LeasedNormalCount, Is.EqualTo(0));
+            });
+        }
+        finally
+        {
+            TryDelete(queueDbPath);
+            TryDelete(mainDbPath);
+        }
+    }
+
+    [Test]
+    public void GetDemandSnapshot_StartedBlankLeaseOlderThanGrace_IsReturnedToQueued()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-demand-stale-lease-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string owner = $"alive-owner:{Guid.NewGuid():N}";
+
+        try
+        {
+            string moviePath = Path.Combine(Path.GetTempPath(), $"stale-lease-{Guid.NewGuid():N}.mp4");
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = Guid.NewGuid().ToString("N"),
+                        TabIndex = 1,
+                        MovieSizeBytes = 1024,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                owner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+
+            ThumbnailWorkerHealthStore.Save(
+                new ThumbnailWorkerHealthSnapshot
+                {
+                    MainDbFullPath = mainDbPath,
+                    OwnerInstanceId = owner,
+                    WorkerRole = ThumbnailQueueWorkerRole.Normal.ToString(),
+                    State = ThumbnailWorkerHealthState.Running,
+                    ReasonCode = ThumbnailWorkerHealthReasonCode.None,
+                    Message = "worker heartbeat",
+                    UpdatedAtUtc = nowUtc.AddSeconds(5),
+                    LastHeartbeatUtc = nowUtc.AddSeconds(5),
+                    ProcessId = 1234,
+                }
+            );
+
+            QueueDbDemandSnapshot snapshot = queueDbService.GetDemandSnapshot(
+                [owner],
+                50L * 1024 * 1024 * 1024,
+                nowUtc.AddSeconds(25)
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.QueuedNormalCount, Is.EqualTo(1));
+                Assert.That(snapshot.LeasedNormalCount, Is.EqualTo(0));
+                Assert.That(snapshot.RunningNormalCount, Is.EqualTo(0));
+            });
         }
         finally
         {

@@ -350,3 +350,30 @@ workthree 側の直近作業予定:
 - 確認結果:
   - `Debug|x64` ソリューションビルド成功
   - Queue / FailureDb / snapshot / failed tab / progress runtime 系の対象テスト 61 件成功
+
+## 16. 2026-03-11 Running停滞 watchdog メモ
+- `ExecuteWithLeaseHeartbeatAsync(...)` にジョブ単位 watchdog timeout を追加する。
+- 返ってこない `Running` は `TimeoutException` として既存の `HangSuspected` 経路へ流す。
+- lane 別の初期 timeout は固定値で開始する。
+  - normal: 3 分
+  - recovery: 5 分
+  - slow: 10 分
+- まずは難動画の「入ったまま返ってこない」を止めることを優先し、動的閾値化は後段とする。
+
+## 17. 2026-03-11 lease未着手残留 回収メモ
+- `StartedAtUtc=''` のまま残る `Processing` は、worker が生存していても coordinator の需要判定を揺らしうる。
+- `ResetStaleProcessingToPending(...)` に 20 秒 grace を追加し、未着手 lease が一定時間を超えたら `Pending` へ戻す。
+- これにより、recovery 需要の誤検出で `fast=13 / slow=1` と `fast=1 / slow=13` を往復する worker 再起動ループを抑制する。
+- `QueueDbDemandSnapshotTests.GetDemandSnapshot_StartedBlankLeaseOlderThanGrace_IsReturnedToQueued` を追加し、owner 生存中でも回収されることを固定した。
+
+## 18. 2026-03-11 idle/recovery 無言停止 観測ログメモ
+- `ラ・ラ・ランド 2_2` は normal 側では `retry-scheduled` まで進むが、idle/recovery 側で `engine selected: id=autogen` の後に無言停止する。
+- 停止位置を 1 段狭めるため、`ThumbnailQueueProcessor` に以下の観測ログを追加した。
+  - `consumer dispatch begin`
+  - `consumer lane entered`
+  - `consumer running marked`
+  - `consumer processing invoke`
+  - `consumer processing watchdog start`
+  - `consumer processing action begin/returned/completed/canceled/faulted`
+- 目的は `ProcessLeasedItemAsync` 入口から `processingAction` 返却までのどこで止まるかを実機ログだけで切り分けること。
+- 原因が確定したら、この観測ログは整理または削減する。
