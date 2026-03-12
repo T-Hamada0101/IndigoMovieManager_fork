@@ -273,15 +273,32 @@ namespace IndigoMovieManager.Thumbnail
             bool isRecoveryLane,
             bool isIndexRepairTargetMovie,
             bool repairedByProbe,
+            bool initialOnePassAttempted,
+            double? durationSec,
+            string resultErrorMessage,
             IReadOnlyList<string> engineErrorMessages
         )
         {
+            bool shouldForceAfterInitialLongClipFailure =
+                !isRecoveryLane
+                && ShouldTryInitialLongClipRepairAfterOnePassFailure(
+                    initialOnePassAttempted,
+                    durationSec,
+                    resultErrorMessage,
+                    engineErrorMessages
+                );
+
             return !isManual
                 && !isSuccess
-                && isRecoveryLane
                 && isIndexRepairTargetMovie
                 && !repairedByProbe
-                && ShouldForceIndexRepairAfterEngineFailure(engineErrorMessages);
+                && (
+                    (
+                        isRecoveryLane
+                        && ShouldForceIndexRepairAfterEngineFailure(engineErrorMessages)
+                    )
+                    || shouldForceAfterInitialLongClipFailure
+                );
         }
 
         public static bool ShouldTryRecoveryOnePassFallback(
@@ -355,6 +372,54 @@ namespace IndigoMovieManager.Thumbnail
                 if (
                     message.IndexOf("[autogen]", StringComparison.OrdinalIgnoreCase) >= 0
                     && message.IndexOf("no frames decoded", StringComparison.OrdinalIgnoreCase) >= 0
+                )
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ShouldTryInitialLongClipRepairAfterOnePassFailure(
+            bool initialOnePassAttempted,
+            double? durationSec,
+            string resultErrorMessage,
+            IReadOnlyList<string> engineErrorMessages
+        )
+        {
+            if (!initialOnePassAttempted)
+            {
+                return false;
+            }
+
+            if (!ShouldTryInitialLongClipOnePassFallback(durationSec, engineErrorMessages))
+            {
+                return false;
+            }
+
+            if (
+                string.IsNullOrWhiteSpace(resultErrorMessage)
+                || resultErrorMessage.IndexOf(
+                    "no frames decoded",
+                    StringComparison.OrdinalIgnoreCase
+                ) < 0
+            )
+            {
+                return false;
+            }
+
+            if (engineErrorMessages == null || engineErrorMessages.Count < 1)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < engineErrorMessages.Count; i++)
+            {
+                string message = engineErrorMessages[i] ?? "";
+                if (
+                    message.IndexOf("[ffmpeg1pass]", StringComparison.OrdinalIgnoreCase) >= 0
+                    && message.IndexOf("skipped:", StringComparison.OrdinalIgnoreCase) < 0
                 )
                 {
                     return true;

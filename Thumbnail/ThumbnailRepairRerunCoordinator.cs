@@ -29,8 +29,9 @@ namespace IndigoMovieManager.Thumbnail
                 throw new ArgumentNullException(nameof(request));
             }
 
+            QueueObj rerunQueueObj = BuildRecoveryRerunQueueObj(request.QueueObj);
             ThumbnailJobContext repairedContext = ThumbnailJobContextFactory.Create(
-                request.QueueObj,
+                rerunQueueObj,
                 request.TabInfo,
                 request.ThumbInfo,
                 request.WorkingMovieFullPath,
@@ -58,6 +59,29 @@ namespace IndigoMovieManager.Thumbnail
                 repairedExecution.ProcessEngineId,
                 repairedExecution.EngineErrorMessages
             );
+        }
+
+        // forced repair 後の再実行は recovery lane と同じ条件へ寄せる。
+        private static QueueObj BuildRecoveryRerunQueueObj(QueueObj source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new QueueObj
+            {
+                Tabindex = source.Tabindex,
+                MovieId = source.MovieId,
+                MovieFullPath = source.MovieFullPath,
+                MainDbFullPath = source.MainDbFullPath,
+                Hash = source.Hash,
+                MovieSizeBytes = source.MovieSizeBytes,
+                AttemptCount = Math.Max(1, source.AttemptCount),
+                ThumbPanelPos = source.ThumbPanelPos,
+                ThumbTimePos = source.ThumbTimePos,
+                IsRescueRequest = source.IsRescueRequest,
+            };
         }
     }
 

@@ -81,6 +81,7 @@ namespace IndigoMovieManager.Thumbnail
                         SaveThumbFileName = request.SaveThumbFileName,
                         IsResizeThumb = request.IsResizeThumb,
                         IsManual = request.IsManual,
+                        InitialOnePassAttempted = false,
                         DurationSec = request.DurationSec,
                         FileSizeBytes = request.FileSizeBytes,
                         AverageBitrateMbps = request.AverageBitrateMbps,
@@ -119,6 +120,58 @@ namespace IndigoMovieManager.Thumbnail
                     cts
                 )
                 .ConfigureAwait(false);
+
+            if (!repairApply.WasApplied && !postProcess.Result.IsSuccess)
+            {
+                ThumbnailRepairExecutionApplyResult postProcessRepairApply =
+                    await repairExecutionCoordinator
+                        .TryRepairAndRerunAsync(
+                            new ThumbnailRepairExecutionApplyRequest
+                            {
+                                State = repairState,
+                                QueueObj = request.QueueObj,
+                                TabInfo = request.TabInfo,
+                                ThumbInfo = request.ThumbInfo,
+                                MovieFullPath = request.MovieFullPath,
+                                SaveThumbFileName = request.SaveThumbFileName,
+                                IsResizeThumb = request.IsResizeThumb,
+                                IsManual = request.IsManual,
+                                InitialOnePassAttempted = postProcess.RecoveryOnePassAttempted,
+                                DurationSec = request.DurationSec,
+                                FileSizeBytes = request.FileSizeBytes,
+                                AverageBitrateMbps = request.AverageBitrateMbps,
+                                Result = postProcess.Result,
+                                EngineErrorMessages = postProcess.EngineErrorMessages,
+                            },
+                            cts
+                        )
+                        .ConfigureAwait(false);
+
+                if (postProcessRepairApply.WasApplied)
+                {
+                    repairState = postProcessRepairApply.State;
+                    postProcess = await engineExecutionCoordinator
+                        .ApplyPostExecutionFallbacksAsync(
+                            new ThumbnailEnginePostProcessRequest
+                            {
+                                Context = postProcessRepairApply.Context,
+                                OriginalMovieContext = originalMovieContext,
+                                Result = postProcessRepairApply.Result,
+                                ProcessEngineId = postProcessRepairApply.ProcessEngineId,
+                                EngineErrorMessages = postProcessRepairApply.EngineErrorMessages,
+                                IsManual = request.IsManual,
+                                IsRecoveryLane = repairState.IsRecoveryLane,
+                                IsIndexRepairTargetMovie = repairState.IsIndexRepairTargetMovie,
+                                RepairedByProbe = repairState.RepairedByProbe,
+                                MovieFullPath = request.MovieFullPath,
+                                SaveThumbFileName = request.SaveThumbFileName,
+                                DurationSec = request.DurationSec,
+                            },
+                            cts
+                        )
+                        .ConfigureAwait(false);
+                }
+            }
 
             return new ThumbnailExecutionFlowResult(
                 repairState,

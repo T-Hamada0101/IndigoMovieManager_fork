@@ -428,7 +428,13 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
-            return new ThumbnailEnginePostProcessResult(result, processEngineId, engineErrorMessages, context);
+            return new ThumbnailEnginePostProcessResult(
+                result,
+                processEngineId,
+                engineErrorMessages,
+                context,
+                shouldTryRecoveryOnePassFallback
+            );
         }
 
         private static void TryDeleteFileQuietly(string path)
@@ -502,13 +508,15 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailCreateResult result,
             string processEngineId,
             List<string> engineErrorMessages,
-            ThumbnailJobContext context
+            ThumbnailJobContext context,
+            bool recoveryOnePassAttempted
         )
         {
             Result = result;
             ProcessEngineId = processEngineId ?? "";
             EngineErrorMessages = engineErrorMessages ?? [];
             Context = context;
+            RecoveryOnePassAttempted = recoveryOnePassAttempted;
         }
 
         public ThumbnailCreateResult Result { get; }
@@ -518,5 +526,7 @@ namespace IndigoMovieManager.Thumbnail
         public List<string> EngineErrorMessages { get; }
 
         public ThumbnailJobContext Context { get; }
+
+        public bool RecoveryOnePassAttempted { get; }
     }
 }

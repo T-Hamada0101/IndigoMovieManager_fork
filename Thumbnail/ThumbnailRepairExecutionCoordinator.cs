@@ -72,6 +72,9 @@ namespace IndigoMovieManager.Thumbnail
                         IsRecoveryLane = request.State.IsRecoveryLane,
                         IsIndexRepairTargetMovie = request.State.IsIndexRepairTargetMovie,
                         RepairedByProbe = request.State.RepairedByProbe,
+                        InitialOnePassAttempted = request.InitialOnePassAttempted,
+                        DurationSec = request.DurationSec,
+                        ResultErrorMessage = request.Result.ErrorMessage,
                         EngineErrorMessages = request.EngineErrorMessages,
                         MovieFullPath = request.MovieFullPath,
                     },
@@ -177,6 +180,8 @@ namespace IndigoMovieManager.Thumbnail
         public bool IsResizeThumb { get; init; }
 
         public bool IsManual { get; init; }
+
+        public bool InitialOnePassAttempted { get; init; }
 
         public double? DurationSec { get; init; }
 

@@ -90,6 +90,9 @@ namespace IndigoMovieManager.Thumbnail
                     request.IsRecoveryLane,
                     request.IsIndexRepairTargetMovie,
                     request.RepairedByProbe,
+                    request.InitialOnePassAttempted,
+                    request.DurationSec,
+                    request.ResultErrorMessage,
                     request.EngineErrorMessages
                 );
             if (!shouldForceRepairAfterFailure)
@@ -182,6 +185,12 @@ namespace IndigoMovieManager.Thumbnail
         public bool IsIndexRepairTargetMovie { get; init; }
 
         public bool RepairedByProbe { get; init; }
+
+        public bool InitialOnePassAttempted { get; init; }
+
+        public double? DurationSec { get; init; }
+
+        public string ResultErrorMessage { get; init; } = "";
 
         public List<string> EngineErrorMessages { get; init; } = [];
 

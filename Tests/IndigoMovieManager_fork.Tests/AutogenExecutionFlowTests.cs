@@ -1522,6 +1522,10 @@ public class AutogenExecutionFlowTests
                     )
             );
             RecordingThumbnailLogger logger = new();
+            var indexRepairService = new RecordingVideoIndexRepairService(
+                _ => new VideoIndexProbeResult(),
+                (_, __) => new VideoIndexRepairResult()
+            );
             var service = ThumbnailCreationServiceFactory.Create(
                 ffmedia,
                 ffmpeg1pass,
@@ -1529,10 +1533,7 @@ public class AutogenExecutionFlowTests
                 autogen,
                 new FixedVideoMetadataProvider(2872.529, "png"),
                 logger,
-                new RecordingVideoIndexRepairService(
-                    _ => new VideoIndexProbeResult(),
-                    (_, __) => new VideoIndexRepairResult()
-                )
+                indexRepairService
             );
 
             string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
@@ -1553,6 +1554,153 @@ public class AutogenExecutionFlowTests
                 Assert.That(result.IsSuccess, Is.True);
                 Assert.That(autogen.CreateCallCount, Is.EqualTo(1));
                 Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(1));
+                Assert.That(indexRepairService.RepairCallCount, Is.EqualTo(0));
+                Assert.That(
+                    logger.DebugMessages.Any(x =>
+                        x.Contains("engine fallback: category=fallback from=autogen, to=ffmpeg1pass")
+                        && x.Contains("initial-longclip-no-frames-decoded")
+                    ),
+                    Is.True
+                );
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, oldAutogenRetry);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CreateThumbAsync_初回長尺NoFramesDecodedかつOnePass失敗時はRepair後に成功する()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyMp4File(tempRoot);
+            string repairedPath = Path.Combine(tempRoot, "repair-success.mkv");
+            File.WriteAllBytes(repairedPath, [0x10, 0x20, 0x30, 0x40]);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        string.Equals(
+                            ctx.MovieFullPath,
+                            repairedPath,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                            ? ThumbnailResultFactory.CreateSuccess(
+                                ctx.SaveThumbFileName,
+                                ctx.DurationSec
+                            )
+                            : ThumbnailResultFactory.CreateFailed(
+                                ctx.SaveThumbFileName,
+                                ctx.DurationSec,
+                                "No frames decoded"
+                            )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmedia failed"
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        string.Equals(ctx.MovieFullPath, repairedPath, StringComparison.OrdinalIgnoreCase)
+                            ? ThumbnailResultFactory.CreateSuccess(
+                                ctx.SaveThumbFileName,
+                                ctx.DurationSec
+                            )
+                            : ThumbnailResultFactory.CreateFailed(
+                                ctx.SaveThumbFileName,
+                                ctx.DurationSec,
+                                "exit=69, err=Decoding error: Invalid data found when processing input"
+                            )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "opencv failed"
+                        )
+                    )
+            );
+            RecordingThumbnailLogger logger = new();
+            var indexRepairService = new RecordingVideoIndexRepairService(
+                _ => new VideoIndexProbeResult(),
+                (_, __) => new VideoIndexRepairResult
+                {
+                    IsSuccess = true,
+                    InputPath = moviePath,
+                    OutputPath = repairedPath,
+                    UsedTemporaryRemux = true,
+                }
+            );
+            var service = ThumbnailCreationServiceFactory.Create(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                new FixedVideoMetadataProvider(2057.380862, "h264"),
+                logger,
+                indexRepairService
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            string? oldAutogenRetry = Environment.GetEnvironmentVariable(AutogenRetryEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+                Environment.SetEnvironmentVariable(AutogenRetryEnvName, "off");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj
+                    {
+                        MovieId = 905,
+                        Tabindex = 4,
+                        MovieFullPath = moviePath,
+                        AttemptCount = 0,
+                    },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.True);
+                Assert.That(indexRepairService.ProbeCallCount, Is.EqualTo(0));
+                Assert.That(indexRepairService.RepairCallCount, Is.EqualTo(1));
+                Assert.That(autogen.CreateCallCount, Is.EqualTo(1));
+                Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(2));
+                Assert.That(
+                    ffmpeg1pass.CreateMoviePaths.Any(path =>
+                        string.Equals(path, repairedPath, StringComparison.OrdinalIgnoreCase)
+                    ),
+                    Is.True
+                );
                 Assert.That(
                     logger.DebugMessages.Any(x =>
                         x.Contains("engine fallback: category=fallback from=autogen, to=ffmpeg1pass")
