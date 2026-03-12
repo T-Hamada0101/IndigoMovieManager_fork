@@ -3447,7 +3447,9 @@ namespace IndigoMovieManager
                     viewExtDetail.Visibility = Visibility.Collapsed;
                     return;
                 }
-                if (mv.ThumbDetail.Contains("error", StringComparison.CurrentCultureIgnoreCase))
+                UpdateExtDetailFromCurrentSelection();
+
+                if (ShouldEnqueueDetailThumbnail(viewExtDetail.IsVisible, mv.ThumbDetail))
                 {
                     QueueObj tempObj = new()
                     {
@@ -3458,8 +3460,6 @@ namespace IndigoMovieManager
                     };
                     _ = TryEnqueueThumbnailJob(tempObj);
                 }
-
-                UpdateExtDetailFromCurrentSelection();
             }
         }
 

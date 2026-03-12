@@ -354,6 +354,28 @@ public sealed class MissingThumbnailRescuePolicyTests
         }
     }
 
+    [Test]
+    public void ShouldEnqueueDetailThumbnail_詳細ペイン非表示ならdetail再生成しない()
+    {
+        bool actual = MainWindow.ShouldEnqueueDetailThumbnail(
+            isDetailPaneVisible: false,
+            thumbDetailPath: @"C:\thumb\error-detail.jpg"
+        );
+
+        Assert.That(actual, Is.False);
+    }
+
+    [Test]
+    public void ShouldEnqueueDetailThumbnail_詳細ペイン表示中かつerror時だけTrueを返す()
+    {
+        bool actual = MainWindow.ShouldEnqueueDetailThumbnail(
+            isDetailPaneVisible: true,
+            thumbDetailPath: @"C:\thumb\error-detail.jpg"
+        );
+
+        Assert.That(actual, Is.True);
+    }
+
     private static string DequeueMoviePath(MethodInfo tryDequeue, object state)
     {
         object?[] args = [null];

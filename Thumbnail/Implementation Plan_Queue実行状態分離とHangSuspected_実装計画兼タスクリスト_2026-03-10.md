@@ -392,3 +392,40 @@ workthree 側の直近作業予定:
   - `consumer dispatch begin`
   - `consumer lane entered`
   - `consumer processing watchdog start`
+
+## 20. 2026-03-12 ラ・ラ・ランド 2_2 recovery 実機確認メモ
+- `repair prepare begin` で止まる問題は外れ、recovery worker は次まで進むことを実機で確認した。
+  - `index-probe probe result`
+  - `repair prepare end`
+  - `execution flow begin`
+  - `engine selected: id=ffmpeg1pass`
+- `ffmpeg1pass` の cancel/timeout 問題とは別に、`ffmpeg` 自体は `exit success` なのに出力 JPEG が無い経路が存在した。
+  - 追加ログ `ffmpeg1pass-output` で `ok=True` / `exists=False` / `size=0` を観測済み。
+  - 失敗文言は `ffmpeg exited successfully but produced no output file` として切り分けた。
+- `1x1` タイル時は `-ss` で取得地点を決めているため、`fps/tile` を外して単発抽出寄りの filter に変更した。
+- それでも `ffmpeg1pass` 単独では外れる個体があり、`workthree` 実績どおり終端 `opencv` 救済が必要と判断した。
+
+## 21. 2026-03-12 workthree 合流メモ
+- recovery で `selected=ffmpeg1pass` の時、現行 policy はそこで打ち止めになり `opencv` へ落ちていなかった。
+- `ThumbnailExecutionPolicy.BuildEngineOrderIds(...)` を修正し、`ffmpeg1pass -> opencv` の終端 fallback を復元した。
+- 実機ログで下記の並びを確認済み。
+  - `ffmpeg1pass-output ... ok=True ... exists=False`
+  - `engine failed: category=error id=ffmpeg1pass ... try_next=True`
+  - `engine fallback: category=fallback from=ffmpeg1pass, to=opencv, attempt=2/2`
+  - `execution flow end ... success=True`
+  - `repair success`
+- これにより `ラ・ラ・ランド 2_2.mp4` は、`future` でも `workthree` と同じく「one-pass が外れたら最後は opencv で救う」流れへ戻せた。
+- 未解決は 1 点。
+  - `repair success` 後に同じ `QueueId=1710` をもう一度 lease 取得する区間があり、成功後の再取得抑止は別途確認が必要。
+
+## 22. 2026-03-12 success直後の再取得 原因メモ
+- `repair success` 後に同じ `QueueId=1710` が再取得された件は、`Done` 更新の取りこぼしではなかった。
+- 根拠:
+  - `ThumbnailQueue` 上では一度 `Status=Done` まで更新されていた。
+  - その直後に `debug-runtime.log` で watch 側の通常 `enqueue accepted` と `persister upsert` が走っていた。
+  - さらに `21:36:00` 台で同じ行が再度 `lease acquired` されていた。
+- つまり実際に起きていたのは「成功後の watch 再投入で、同条件の `Done` 行が `Pending` に戻される」だった。
+- 本線の最小修正方針:
+  - `QueueDbService.Upsert(...)` で `Done` 行は無条件に戻さない。
+  - ただし `MovieSizeBytes / ThumbPanelPos / ThumbTimePos` のどれかが変わった時だけは、正当な再作成として `Pending` に戻す。
+- これにより、watch の定常再投入ノイズだけ止めつつ、設定変更やファイル差し替えは従来どおり再生成できる。

@@ -132,6 +132,12 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 scaleFlags
             );
 
+            ThumbnailRuntimeLog.Write(
+                "ffmpeg1pass-process",
+                $"tile request: movie='{context.MovieFullPath}' start_sec={startText} timeout_sec={ffmpegTimeout.TotalSeconds:0} "
+                    + $"tolerant={useTolerantInput} output='{ffmpegOutputPath}'"
+            );
+
             (bool ok, string err) = await TryCreateTileImageAsync(
                 ffmpegExePath,
                 context.MovieFullPath,
@@ -142,6 +148,11 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 useTolerantInput,
                 ffmpegTimeout,
                 cts
+            );
+            ThumbnailRuntimeLog.Write(
+                "ffmpeg1pass-output",
+                $"primary result: movie='{context.MovieFullPath}' ok={ok} "
+                    + $"{DescribeOutputFileState(ffmpegOutputPath)} err='{LimitTextForLog(err)}'"
             );
             if (
                 (!ok || !Path.Exists(ffmpegOutputPath))
@@ -169,6 +180,11 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         $"fallback try: movie='{context.MovieFullPath}' start_sec={fallbackStartText}"
                     );
                     TryDeleteFile(ffmpegOutputPath);
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-process",
+                        $"tile request fallback: movie='{context.MovieFullPath}' start_sec={fallbackStartText} timeout_sec={ffmpegTimeout.TotalSeconds:0} "
+                            + $"tolerant={useTolerantInput} output='{ffmpegOutputPath}'"
+                    );
                     (ok, err) = await TryCreateTileImageAsync(
                         ffmpegExePath,
                         context.MovieFullPath,
@@ -179,6 +195,11 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         useTolerantInput,
                         ffmpegTimeout,
                         cts
+                    );
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-output",
+                        $"fallback result: movie='{context.MovieFullPath}' start_sec={fallbackStartText} ok={ok} "
+                            + $"{DescribeOutputFileState(ffmpegOutputPath)} err='{LimitTextForLog(err)}'"
                     );
                     if (ok && Path.Exists(ffmpegOutputPath))
                     {
@@ -216,7 +237,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     durationSec,
-                    string.IsNullOrWhiteSpace(err) ? "ffmpeg one-pass failed" : err
+                    ResolveTileCreationFailureMessage(ok, err)
                 );
             }
 
@@ -378,7 +399,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             return 1d;
         }
 
-        private static string BuildTileFilter(
+        internal static string BuildTileFilter(
             double intervalSec,
             int width,
             int height,
@@ -392,6 +413,14 @@ namespace IndigoMovieManager.Thumbnail.Engines
             double safeInterval = intervalSec > 0 ? intervalSec : 1d;
             string intervalText = safeInterval.ToString("0.###", CultureInfo.InvariantCulture);
             StringBuilder vf = new();
+
+            // 1x1 は -ss 側で取得地点を決めているので、追加の fps/tile で空振りさせない。
+            if (cols == 1 && rows == 1 && panelCount == 1)
+            {
+                vf.Append("crop='if(gte(iw/ih,4/3),ih*4/3,iw)':'if(gte(iw/ih,4/3),ih,iw*3/4)',");
+                vf.Append($"scale={width}:{height}:flags={scaleFlags}");
+                return vf.ToString();
+            }
 
             // 短尺で必要フレーム数が不足する場合は、末尾フレーム複製で tile 完成を保証する。
             if (
@@ -1084,10 +1113,24 @@ namespace IndigoMovieManager.Thumbnail.Engines
             try
             {
                 process = new Process { StartInfo = psi };
+                ThumbnailRuntimeLog.Write(
+                    "ffmpeg1pass-process",
+                    $"invoke: file='{psi.FileName}' timeout_sec={FormatDurationForLog(timeout.TotalSeconds)} "
+                        + $"args='{SummarizeArgumentList(psi)}'"
+                );
                 if (!process.Start())
                 {
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-process",
+                        "start returned false"
+                    );
                     return (false, "process start returned false");
                 }
+
+                ThumbnailRuntimeLog.Write(
+                    "ffmpeg1pass-process",
+                    $"started: pid={process.Id} timeout_sec={FormatDurationForLog(timeout.TotalSeconds)}"
+                );
 
                 TryApplyChildProcessPriority(process);
 
@@ -1113,6 +1156,10 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                 if (completedTask == cancelTask)
                 {
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-process",
+                        $"canceled: pid={process.Id}"
+                    );
                     TryKillProcess(process);
                     throw new OperationCanceledException(cts);
                 }
@@ -1128,6 +1175,11 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         ? await SafeReadProcessErrorAsync(stderrTask, millisecondsTimeout: 1000)
                             .ConfigureAwait(false)
                         : "";
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-process",
+                        $"timeout: pid={process.Id} timeout_sec={FormatDurationForLog(timeout.TotalSeconds)} exited={exited} "
+                            + $"err='{LimitTextForLog(timeoutErr)}'"
+                    );
                     return (
                         false,
                         string.IsNullOrWhiteSpace(timeoutErr)
@@ -1143,9 +1195,17 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 string stderr = await SafeReadProcessErrorAsync(stderrTask).ConfigureAwait(false);
                 if (process.ExitCode != 0)
                 {
+                    ThumbnailRuntimeLog.Write(
+                        "ffmpeg1pass-process",
+                        $"exit failed: pid={process.Id} exit={process.ExitCode} err='{LimitTextForLog(stderr)}'"
+                    );
                     return (false, $"exit={process.ExitCode}, err={stderr}");
                 }
 
+                ThumbnailRuntimeLog.Write(
+                    "ffmpeg1pass-process",
+                    $"exit success: pid={process.Id}"
+                );
                 return (true, "");
             }
             catch (OperationCanceledException)
@@ -1156,6 +1216,10 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
             catch (Exception ex)
             {
+                ThumbnailRuntimeLog.Write(
+                    "ffmpeg1pass-process",
+                    $"exception: type='{ex.GetType().Name}' message='{LimitTextForLog(ex.Message)}'"
+                );
                 return (false, ex.Message);
             }
             finally
@@ -1207,7 +1271,73 @@ namespace IndigoMovieManager.Thumbnail.Engines
             psi.ArgumentList.Add("-vf");
             psi.ArgumentList.Add(vf);
             psi.ArgumentList.Add(outputPath);
+            ThumbnailRuntimeLog.Write(
+                "ffmpeg1pass-process",
+                $"prepare: movie='{movieFullPath}' start_sec={startText} timeout_sec={FormatDurationForLog(ffmpegTimeout.TotalSeconds)} "
+                    + $"tolerant={useTolerantInput} output='{outputPath}'"
+            );
             return await RunProcessAsync(psi, ffmpegTimeout, cts).ConfigureAwait(false);
+        }
+
+        private static string FormatDurationForLog(double value)
+        {
+            return value.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        private static string LimitTextForLog(string text, int maxLength = 240)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return "";
+            }
+
+            string normalized = text.Replace("\r", " ").Replace("\n", " ").Trim();
+            if (normalized.Length <= maxLength)
+            {
+                return normalized;
+            }
+
+            return normalized[..maxLength] + "...";
+        }
+
+        private static string SummarizeArgumentList(ProcessStartInfo psi, int maxLength = 320)
+        {
+            if (psi?.ArgumentList == null || psi.ArgumentList.Count < 1)
+            {
+                return "";
+            }
+
+            string joined = string.Join(" ", psi.ArgumentList);
+            return LimitTextForLog(joined, maxLength);
+        }
+
+        private static string DescribeOutputFileState(string outputPath)
+        {
+            bool exists = Path.Exists(outputPath);
+            long length = 0;
+            if (exists)
+            {
+                try
+                {
+                    length = new FileInfo(outputPath).Length;
+                }
+                catch
+                {
+                    length = -1;
+                }
+            }
+
+            return $"output='{outputPath}' exists={exists} size={length}";
+        }
+
+        internal static string ResolveTileCreationFailureMessage(bool ok, string err)
+        {
+            if (!string.IsNullOrWhiteSpace(err))
+            {
+                return err;
+            }
+
+            return ok ? "ffmpeg exited successfully but produced no output file" : "ffmpeg one-pass failed";
         }
 
         private static async Task<string> SafeReadProcessErrorAsync(

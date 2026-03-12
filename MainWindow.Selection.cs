@@ -31,13 +31,8 @@ namespace IndigoMovieManager
             viewExtDetail.DataContext = mv;
             viewExtDetail.Visibility = Visibility.Visible;
 
-            // 選択した動画が過去に「サムネ生成エラー」を起こした記録を持っていた場合、
-            // 「今ならファイルにアクセスできて生成できるかもしれない」と判断し、
-            // バックグラウンドのサムネイル作成キュー(QueueDB)に再投入する。
-            if (
-                !string.IsNullOrEmpty(mv.ThumbDetail)
-                && mv.ThumbDetail.Contains("error", StringComparison.CurrentCultureIgnoreCase)
-            )
+            // 下部詳細ペインが実際に見えている時だけ、詳細サムネイルの再生成を試みる。
+            if (ShouldEnqueueDetailThumbnail(viewExtDetail.IsVisible, mv.ThumbDetail))
             {
                 QueueObj tempObj = new()
                 {
@@ -49,6 +44,21 @@ namespace IndigoMovieManager
                 };
                 _ = TryEnqueueThumbnailJob(tempObj);
             }
+        }
+
+        // 詳細ペインが非アクティブなら、詳細用サムネイル(tab=99)の再生成は省略する。
+        internal static bool ShouldEnqueueDetailThumbnail(
+            bool isDetailPaneVisible,
+            string thumbDetailPath
+        )
+        {
+            if (!isDetailPaneVisible)
+            {
+                return false;
+            }
+
+            return !string.IsNullOrWhiteSpace(thumbDetailPath)
+                && thumbDetailPath.Contains("error", StringComparison.CurrentCultureIgnoreCase);
         }
 
         /// <summary>

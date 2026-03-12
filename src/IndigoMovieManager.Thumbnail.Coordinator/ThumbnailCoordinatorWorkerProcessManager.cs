@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using IndigoMovieManager.Thumbnail.QueueDb;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -95,6 +96,14 @@ namespace IndigoMovieManager.Thumbnail
                     );
                 }
 
+                if (
+                    !existing.Process.HasExited
+                    && ShouldDeferRestartForActiveWork(existing.LaunchConfig)
+                )
+                {
+                    return;
+                }
+
                 StopWorker(launchConfig.WorkerRole, log, "config-changed-or-exited");
             }
 
@@ -162,6 +171,29 @@ namespace IndigoMovieManager.Thumbnail
             log(
                 $"coordinator worker started: role={launchConfig.WorkerRole} pid={process.Id} settings={launchConfig.SettingsVersionToken}"
             );
+        }
+
+        internal static bool ShouldDeferRestartForActiveWork(ThumbnailWorkerLaunchConfig launchConfig)
+        {
+            if (
+                launchConfig == null
+                || string.IsNullOrWhiteSpace(launchConfig.MainDbFullPath)
+                || string.IsNullOrWhiteSpace(launchConfig.OwnerInstanceId)
+            )
+            {
+                return false;
+            }
+
+            try
+            {
+                QueueDbService queueDbService = new(launchConfig.MainDbFullPath);
+                return queueDbService.HasOwnedActiveWork(launchConfig.OwnerInstanceId, DateTime.UtcNow);
+            }
+            catch
+            {
+                // 判定不能時は従来どおり再起動を優先する。
+                return false;
+            }
         }
 
         private void StopWorker(ThumbnailQueueWorkerRole role, Action<string> log, string reason)

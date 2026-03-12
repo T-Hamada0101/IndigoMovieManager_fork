@@ -95,6 +95,38 @@ namespace IndigoMovieManager.Thumbnail.Test
             }
         }
 
+        [Test]
+        public void Service_RecoveryでFfmpeg1pass選択時もOpenCvへ落ちる()
+        {
+            string backup = Environment.GetEnvironmentVariable(EngineEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "auto");
+
+                var autogen = new FakeEngine("autogen");
+                var ffmedia = new FakeEngine("ffmediatoolkit");
+                var ffmpeg1pass = new FakeEngine("ffmpeg1pass");
+                var opencv = new FakeEngine("opencv");
+                var context = CreateContext(isManual: false, tabIndex: 0, fileSizeBytes: 1024);
+                context.QueueObj.AttemptCount = 1;
+                var order = BuildThumbnailEngineOrder(
+                    ffmedia,
+                    ffmpeg1pass,
+                    opencv,
+                    autogen,
+                    ffmpeg1pass,
+                    context
+                );
+                string actual = string.Join(">", order.Select(x => x.EngineId));
+
+                Assert.That(actual, Is.EqualTo("ffmpeg1pass>opencv"));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, backup);
+            }
+        }
+
         private static ThumbnailJobContext CreateContext(
             bool isManual,
             int tabIndex,

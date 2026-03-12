@@ -129,6 +129,10 @@ namespace IndigoMovieManager.Thumbnail
 
             if (string.Equals(selectedEngineId, "ffmpeg1pass", StringComparison.OrdinalIgnoreCase))
             {
+                if (!skipOpenCv)
+                {
+                    AddEngineId(order, "opencv");
+                }
                 return order;
             }
 

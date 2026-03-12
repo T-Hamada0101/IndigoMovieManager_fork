@@ -99,3 +99,17 @@
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\優先順位表_workthree_失敗15件の検証順_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_全動画再試行ベースライン_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\連絡用doc_workthree_サムネイル並列再設計向け_難読動画優先順位と成功条件_2026-03-11.md`
+
+## 11. 2026-03-12 本線反映後の確定
+- 本線 `future` では、次の 3 本を入れたことで `2_2` の実機成功を確認済み。
+  - normal 先逃がし
+  - recovery 終端 `ffmpeg1pass -> opencv`
+  - `Done` 行の再投入巻き戻し防止
+- 実機確認:
+  - `2026-03-12 21:59:58` normal 開始
+  - `2026-03-12 22:00:13` `thumbnail-timeout` / `thumbnail-recovery`
+  - rescue 側で同じ `QueueId=10828` を再取得
+  - `2026-03-12 22:00:15` `repair success`
+- 以後、watch の通常 `Upsert` では `db_affected=0` となり、成功後の再 lease も止まった。
+- 完了版の整理は次を正とする。
+  - `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\調査結果_ラ・ラ・ランド対策まとめ_2026-03-12.md`

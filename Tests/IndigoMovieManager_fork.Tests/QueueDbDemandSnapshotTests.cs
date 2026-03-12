@@ -165,6 +165,61 @@ public sealed class QueueDbDemandSnapshotTests
     }
 
     [Test]
+    public void HasOwnedActiveWork_LeaseOrRunningJobがあるownerだけTrueを返す()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-demand-active-owner-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string activeOwner = $"active-owner:{Guid.NewGuid():N}";
+        string idleOwner = $"idle-owner:{Guid.NewGuid():N}";
+
+        try
+        {
+            string moviePath = Path.Combine(Path.GetTempPath(), $"active-{Guid.NewGuid():N}.mp4");
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = Guid.NewGuid().ToString("N"),
+                        TabIndex = 1,
+                        MovieSizeBytes = 1024,
+                    },
+                ],
+                nowUtc
+            );
+
+            List<QueueDbLeaseItem> leased = queueDbService.GetPendingAndLease(
+                activeOwner,
+                takeCount: 1,
+                leaseDuration: TimeSpan.FromMinutes(5),
+                utcNow: nowUtc
+            );
+
+            Assert.That(leased.Count, Is.EqualTo(1));
+            Assert.That(queueDbService.HasOwnedActiveWork(activeOwner, nowUtc.AddSeconds(1)), Is.True);
+            Assert.That(queueDbService.HasOwnedActiveWork(idleOwner, nowUtc.AddSeconds(1)), Is.False);
+
+            _ = queueDbService.MarkLeaseAsRunning(
+                leased[0].QueueId,
+                activeOwner,
+                nowUtc.AddSeconds(2)
+            );
+
+            Assert.That(queueDbService.HasOwnedActiveWork(activeOwner, nowUtc.AddSeconds(3)), Is.True);
+        }
+        finally
+        {
+            TryDelete(queueDbPath);
+            TryDelete(mainDbPath);
+        }
+    }
+
+    [Test]
     public void GetDemandSnapshot_HangLikeError_IsCounted()
     {
         string mainDbPath = Path.Combine(

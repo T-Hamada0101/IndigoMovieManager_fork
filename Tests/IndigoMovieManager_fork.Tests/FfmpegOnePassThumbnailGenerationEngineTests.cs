@@ -238,6 +238,26 @@ public sealed class FfmpegOnePassThumbnailGenerationEngineTests
     }
 
     [Test]
+    public void BuildTileFilter_1x1ではfpsとtileを付けず単発抽出へ寄せる()
+    {
+        string actual = FfmpegOnePassThumbnailGenerationEngine.BuildTileFilter(
+            intervalSec: 2299,
+            width: 160,
+            height: 120,
+            cols: 1,
+            rows: 1,
+            durationSec: 4598,
+            panelCount: 1,
+            scaleFlags: "bilinear"
+        );
+
+        Assert.That(actual, Does.Contain("crop="));
+        Assert.That(actual, Does.Contain("scale=160:120:flags=bilinear"));
+        Assert.That(actual, Does.Not.Contain("fps="));
+        Assert.That(actual, Does.Not.Contain("tile="));
+    }
+
+    [Test]
     public void ResolveProcessTimeout_未指定時は60秒を返す()
     {
         const string envName = "IMM_THUMB_FFMPEG_TIMEOUT_SEC";
@@ -307,6 +327,28 @@ public sealed class FfmpegOnePassThumbnailGenerationEngineTests
         {
             Environment.SetEnvironmentVariable(envName, original);
         }
+    }
+
+    [Test]
+    public void ResolveTileCreationFailureMessage_成功終了でも出力無しなら専用文言を返す()
+    {
+        string actual = FfmpegOnePassThumbnailGenerationEngine.ResolveTileCreationFailureMessage(
+            ok: true,
+            err: ""
+        );
+
+        Assert.That(actual, Is.EqualTo("ffmpeg exited successfully but produced no output file"));
+    }
+
+    [Test]
+    public void ResolveTileCreationFailureMessage_エラー文があればそれを優先する()
+    {
+        string actual = FfmpegOnePassThumbnailGenerationEngine.ResolveTileCreationFailureMessage(
+            ok: false,
+            err: "exit=1"
+        );
+
+        Assert.That(actual, Is.EqualTo("exit=1"));
     }
 
     [Test]

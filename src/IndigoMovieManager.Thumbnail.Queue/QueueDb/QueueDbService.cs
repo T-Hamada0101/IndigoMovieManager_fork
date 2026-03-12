@@ -160,6 +160,7 @@ namespace IndigoMovieManager.Thumbnail.QueueDb
         }
 
         // 追加要求をUPSERTし、既存行があればPendingへ戻して再処理可能にする。
+        // ただし Done 行は、同じ動画条件なら watcher の再投入で巻き戻さない。
         // 戻り値で「投入」「実反映」「新規」「更新」「Processing保護で未反映」を返す。
         public QueueDbUpsertResult Upsert(IEnumerable<QueueDbUpsertItem> items, DateTime utcNow)
         {
@@ -253,7 +254,13 @@ DO UPDATE SET
     LeaseUntilUtc = '',
     StartedAtUtc = '',
     UpdatedAtUtc = @NowUtc
-WHERE ThumbnailQueue.Status <> @Processing;";
+WHERE ThumbnailQueue.Status <> @Processing
+  AND (
+      ThumbnailQueue.Status <> @Done
+      OR IFNULL(ThumbnailQueue.MovieSizeBytes, 0) <> IFNULL(excluded.MovieSizeBytes, 0)
+      OR IFNULL(ThumbnailQueue.ThumbPanelPos, -2147483648) <> IFNULL(excluded.ThumbPanelPos, -2147483648)
+      OR IFNULL(ThumbnailQueue.ThumbTimePos, -2147483648) <> IFNULL(excluded.ThumbTimePos, -2147483648)
+  );";
             upsertCommand.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
             upsertCommand.Parameters.AddWithValue("@MoviePath", "");
             upsertCommand.Parameters.AddWithValue("@MoviePathKey", "");
@@ -264,6 +271,7 @@ WHERE ThumbnailQueue.Status <> @Processing;";
             upsertCommand.Parameters.AddWithValue("@IsRescueRequest", 0);
             upsertCommand.Parameters.AddWithValue("@Status", pendingStatus);
             upsertCommand.Parameters.AddWithValue("@Processing", processingStatus);
+            upsertCommand.Parameters.AddWithValue("@Done", (int)ThumbnailQueueStatus.Done);
             upsertCommand.Parameters.AddWithValue(
                 "@GuaranteedRecoveryAttemptCount",
                 GuaranteedRecoveryAttemptCount
@@ -861,6 +869,34 @@ WHERE MainDbPathHash = @MainDbPathHash;";
                 RunningRecoveryCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
                 HangSuspectedCount = reader.IsDBNull(9) ? 0 : reader.GetInt32(9),
             };
+        }
+
+        // owner が lease 中または running 中の仕事を持つ間は、worker 差し替えを遅延させる。
+        public bool HasOwnedActiveWork(string ownerInstanceId, DateTime utcNow)
+        {
+            EnsureInitialized();
+            if (string.IsNullOrWhiteSpace(ownerInstanceId))
+            {
+                return false;
+            }
+
+            using SQLiteConnection connection = OpenConnection();
+            using SQLiteCommand command = connection.CreateCommand();
+            command.CommandText = @"
+SELECT COUNT(1)
+FROM ThumbnailQueue
+WHERE MainDbPathHash = @MainDbPathHash
+  AND Status = @Processing
+  AND OwnerInstanceId = @OwnerInstanceId
+  AND LeaseUntilUtc <> ''
+  AND LeaseUntilUtc >= @NowUtc;";
+            command.Parameters.AddWithValue("@MainDbPathHash", mainDbPathHash);
+            command.Parameters.AddWithValue("@Processing", (int)ThumbnailQueueStatus.Processing);
+            command.Parameters.AddWithValue("@OwnerInstanceId", ownerInstanceId);
+            command.Parameters.AddWithValue("@NowUtc", ToUtcText(utcNow));
+
+            object count = command.ExecuteScalar();
+            return count != null && count != DBNull.Value && Convert.ToInt32(count) > 0;
         }
 
         // 処理結果に応じて状態を更新し、リース所有者が一致する場合のみ反映する。

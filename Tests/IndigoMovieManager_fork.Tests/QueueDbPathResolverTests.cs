@@ -1544,6 +1544,199 @@ WHERE QueueId = @QueueId;";
     }
 
     [Test]
+    public void Done行へ同条件Upsertが来てもDoneを維持する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-done-keep-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string owner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        string moviePath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-done-keep-{Guid.NewGuid():N}.mp4"
+        );
+        string moviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath);
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = moviePathKey,
+                        TabIndex = 0,
+                        MovieSizeBytes = 1234,
+                        ThumbPanelPos = 160,
+                        ThumbTimePos = 120,
+                    },
+                ],
+                nowUtc
+            );
+
+            QueueDbLeaseItem leased = queueDbService
+                .GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc
+                )
+                .Single();
+            _ = queueDbService.MarkLeaseAsRunning(leased.QueueId, owner, nowUtc.AddSeconds(1));
+            _ = queueDbService.UpdateStatus(
+                leased.QueueId,
+                owner,
+                ThumbnailQueueStatus.Done,
+                nowUtc.AddSeconds(2)
+            );
+
+            QueueDbUpsertResult upsertResult = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = moviePathKey,
+                        TabIndex = 0,
+                        MovieSizeBytes = 1234,
+                        ThumbPanelPos = 160,
+                        ThumbTimePos = 120,
+                    },
+                ],
+                nowUtc.AddSeconds(3)
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(upsertResult.SubmittedCount, Is.EqualTo(1));
+                Assert.That(upsertResult.AffectedCount, Is.Zero);
+                Assert.That(upsertResult.UpdatedCount, Is.Zero);
+            });
+
+            using SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}");
+            verifyConnection.Open();
+            using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = @"
+SELECT Status, AttemptCount, OwnerInstanceId, LeaseUntilUtc, StartedAtUtc
+FROM ThumbnailQueue
+WHERE TabIndex = 0;";
+            using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+            Assert.That(reader.Read(), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(reader.GetInt32(0), Is.EqualTo((int)ThumbnailQueueStatus.Done));
+                Assert.That(reader.GetInt32(1), Is.EqualTo(0));
+                Assert.That(reader.IsDBNull(2) ? "" : reader.GetString(2), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(3) ? "" : reader.GetString(3), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(4) ? "" : reader.GetString(4), Is.EqualTo(""));
+            });
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void Done行でも条件差分があればPendingへ戻して再作成できる()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-done-rebuild-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string owner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        string moviePath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-done-rebuild-{Guid.NewGuid():N}.mp4"
+        );
+        string moviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath);
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = moviePathKey,
+                        TabIndex = 0,
+                        MovieSizeBytes = 1234,
+                        ThumbPanelPos = 160,
+                        ThumbTimePos = 120,
+                    },
+                ],
+                nowUtc
+            );
+
+            QueueDbLeaseItem leased = queueDbService
+                .GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc
+                )
+                .Single();
+            _ = queueDbService.MarkLeaseAsRunning(leased.QueueId, owner, nowUtc.AddSeconds(1));
+            _ = queueDbService.UpdateStatus(
+                leased.QueueId,
+                owner,
+                ThumbnailQueueStatus.Done,
+                nowUtc.AddSeconds(2)
+            );
+
+            QueueDbUpsertResult upsertResult = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = moviePathKey,
+                        TabIndex = 0,
+                        MovieSizeBytes = 5678,
+                        ThumbPanelPos = 160,
+                        ThumbTimePos = 120,
+                    },
+                ],
+                nowUtc.AddSeconds(3)
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(upsertResult.SubmittedCount, Is.EqualTo(1));
+                Assert.That(upsertResult.AffectedCount, Is.EqualTo(1));
+                Assert.That(upsertResult.UpdatedCount, Is.EqualTo(1));
+            });
+
+            using SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}");
+            verifyConnection.Open();
+            using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = @"
+SELECT Status, AttemptCount, MovieSizeBytes, OwnerInstanceId, LeaseUntilUtc, StartedAtUtc
+FROM ThumbnailQueue
+WHERE TabIndex = 0;";
+            using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+            Assert.That(reader.Read(), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(reader.GetInt32(0), Is.EqualTo((int)ThumbnailQueueStatus.Pending));
+                Assert.That(reader.GetInt32(1), Is.EqualTo(0));
+                Assert.That(reader.GetInt64(2), Is.EqualTo(5678));
+                Assert.That(reader.IsDBNull(3) ? "" : reader.GetString(3), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(4) ? "" : reader.GetString(4), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(5) ? "" : reader.GetString(5), Is.EqualTo(""));
+            });
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
     public void 救済Pendingに通常Upsertが来ても救済フラグを維持する()
     {
         string mainDbPath = Path.Combine(

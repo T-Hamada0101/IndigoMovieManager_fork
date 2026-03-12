@@ -67,6 +67,12 @@ python scripts\trace_thumbnail_runtime.py --main-db "<対象MainDBフルパス>"
   - `recovery scheduled by force-reset` または `recovery scheduled by enqueue`
 4. その後の Queue 再取得で recovery レーンへ戻ることを確認する。
 5. `IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC` を `10 -> 15 -> 20` と変えた時に、timeout 発火頻度が変わることを確認する。
+6. recovery で `ffmpeg1pass` が `exit success` でも出力無しだった場合、下記の並びで `opencv` へ落ちることを確認する。
+  - `ffmpeg1pass-output`
+  - `engine failed: category=error id=ffmpeg1pass`
+  - `engine fallback: category=fallback from=ffmpeg1pass, to=opencv`
+  - `execution flow end ... success=True`
+  - `repair success`
 
 ### 4.5 HangSuspected 回復確認
 1. 難動画のうち停滞しやすいものを対象にする。
@@ -114,6 +120,11 @@ python scripts\trace_thumbnail_runtime.py --main-db "<対象MainDBフルパス>"
   - `thumbnail-timeout`
   - `thumbnail-recovery`
   - `IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC`
+- recovery success 後に同じ Queue をまた取り直す:
+  - `repair success`
+  - 直後の `consumer lease: acquired`
+  - `queue_id` が同一か
+  - `debug-runtime.log` の watch 側 `enqueue accepted` / `missing-thumb rescue`
 - `hang` が増えない:
   - `LastError`
   - `FailureDb` の `FailureKind`
