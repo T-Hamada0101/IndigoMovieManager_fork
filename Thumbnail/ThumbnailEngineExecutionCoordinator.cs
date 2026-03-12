@@ -345,6 +345,33 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
+            bool shouldTryRecoverySingleFrameFallback =
+                ThumbnailExecutionPolicy.ShouldTryRecoverySingleFrameFallback(
+                    request.IsManual,
+                    request.IsRecoveryLane,
+                    result.IsSuccess,
+                    engineErrorMessages
+                );
+            if (shouldTryRecoverySingleFrameFallback)
+            {
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail",
+                    $"engine fallback: category=fallback from={processEngineId}, to=single-frame, reason='recovery-bookmark-1sec'"
+                );
+
+                ThumbnailSingleFrameFallbackResult singleFrameFallback = await TryCreateSingleFrameFallbackAsync(
+                    context,
+                    request.SaveThumbFileName,
+                    request.DurationSec,
+                    cts
+                ).ConfigureAwait(false);
+                if (singleFrameFallback.IsSuccess)
+                {
+                    result = singleFrameFallback.Result;
+                    processEngineId = singleFrameFallback.ProcessEngineId;
+                }
+            }
+
             if (!result.IsSuccess && !request.IsManual)
             {
                 bool skipPlaceholderForInitialRetryRouting =
@@ -435,6 +462,66 @@ namespace IndigoMovieManager.Thumbnail
                 context,
                 shouldTryRecoveryOnePassFallback
             );
+        }
+
+        // 救済レーンの終端だけ、1秒1枚の bookmark 取得で代表画像を拾いに行く。
+        private async Task<ThumbnailSingleFrameFallbackResult> TryCreateSingleFrameFallbackAsync(
+            ThumbnailJobContext context,
+            string saveThumbFileName,
+            double? durationSec,
+            CancellationToken cts
+        )
+        {
+            if (context == null || string.IsNullOrWhiteSpace(context.MovieFullPath))
+            {
+                return ThumbnailSingleFrameFallbackResult.NoChange();
+            }
+
+            IReadOnlyList<string> engineOrder =
+                ThumbnailExecutionPolicy.BuildRecoverySingleFrameEngineOrderIds();
+            for (int i = 0; i < engineOrder.Count; i++)
+            {
+                IThumbnailGenerationEngine engine = engineCatalog.ResolveById(engineOrder[i], null);
+                if (engine == null)
+                {
+                    continue;
+                }
+
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail",
+                    $"bookmark fallback try: engine={engine.EngineId}, movie='{context.MovieFullPath}', capture_sec=1"
+                );
+                bool created = await engine
+                    .CreateBookmarkAsync(context.MovieFullPath, saveThumbFileName, 1, cts)
+                    .ConfigureAwait(false);
+                if (!created)
+                {
+                    ThumbnailRuntimeLog.Write(
+                        "thumbnail",
+                        $"bookmark fallback failed: engine={engine.EngineId}, movie='{context.MovieFullPath}', capture_sec=1"
+                    );
+                    continue;
+                }
+
+                string processEngineId = $"{engine.EngineId}-bookmark";
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail",
+                    $"bookmark fallback success: engine={engine.EngineId}, movie='{context.MovieFullPath}', path='{saveThumbFileName}'"
+                );
+                return ThumbnailSingleFrameFallbackResult.Success(
+                    ThumbnailResultFactory.CreateSuccess(
+                        saveThumbFileName,
+                        durationSec,
+                        engineAttempted: processEngineId,
+                        failureStage: "postprocess-single-frame",
+                        policyDecision: "recovery-bookmark-1sec",
+                        placeholderAction: "single-frame"
+                    ),
+                    processEngineId
+                );
+            }
+
+            return ThumbnailSingleFrameFallbackResult.NoChange();
         }
 
         private static void TryDeleteFileQuietly(string path)
@@ -528,5 +615,38 @@ namespace IndigoMovieManager.Thumbnail
         public ThumbnailJobContext Context { get; }
 
         public bool RecoveryOnePassAttempted { get; }
+    }
+
+    internal sealed class ThumbnailSingleFrameFallbackResult
+    {
+        private ThumbnailSingleFrameFallbackResult(
+            bool isSuccess,
+            ThumbnailCreateResult result,
+            string processEngineId
+        )
+        {
+            IsSuccess = isSuccess;
+            Result = result;
+            ProcessEngineId = processEngineId ?? "";
+        }
+
+        public bool IsSuccess { get; }
+
+        public ThumbnailCreateResult Result { get; }
+
+        public string ProcessEngineId { get; }
+
+        public static ThumbnailSingleFrameFallbackResult NoChange()
+        {
+            return new ThumbnailSingleFrameFallbackResult(false, null, "");
+        }
+
+        public static ThumbnailSingleFrameFallbackResult Success(
+            ThumbnailCreateResult result,
+            string processEngineId
+        )
+        {
+            return new ThumbnailSingleFrameFallbackResult(true, result, processEngineId);
+        }
     }
 }

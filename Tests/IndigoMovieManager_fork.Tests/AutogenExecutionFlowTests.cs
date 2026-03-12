@@ -1725,6 +1725,121 @@ public class AutogenExecutionFlowTests
     }
 
     [Test]
+    public async Task CreateThumbAsync_救済レーン失敗時は1秒1枚fallbackで成功できる()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyMp4File(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "autogen failed"
+                        )
+                    ),
+                createBookmarkAsync: (_, saveThumbPath, capturePos, _) =>
+                {
+                    File.WriteAllBytes(saveThumbPath, [0x01, 0x02, 0x03, 0x04]);
+                    return Task.FromResult(capturePos == 1);
+                }
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmedia failed"
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmpeg one-pass failed"
+                        )
+                    ),
+                createBookmarkAsync: (_, __, ___, _) => Task.FromResult(false)
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "frame decode failed at sec=1"
+                        )
+                    ),
+                createBookmarkAsync: (_, __, ___, _) => Task.FromResult(false)
+            );
+            RecordingThumbnailLogger logger = new();
+            var service = ThumbnailCreationServiceFactory.Create(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                new FixedVideoMetadataProvider(2057.380862, "h264"),
+                logger,
+                new RecordingVideoIndexRepairService(
+                    _ => new VideoIndexProbeResult(),
+                    (_, __) => new VideoIndexRepairResult()
+                )
+            );
+
+            ThumbnailCreateResult result = await service.CreateThumbAsync(
+                new QueueObj
+                {
+                    MovieId = 906,
+                    Tabindex = 2,
+                    MovieFullPath = moviePath,
+                    AttemptCount = 1,
+                    IsRescueRequest = true,
+                },
+                dbName: "testdb",
+                thumbFolder: thumbRoot,
+                isResizeThumb: true,
+                isManual: false
+            );
+
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.EngineAttempted, Is.EqualTo("autogen-bookmark"));
+            Assert.That(result.FailureStage, Is.EqualTo("postprocess-single-frame"));
+            Assert.That(result.PolicyDecision, Is.EqualTo("recovery-bookmark-1sec"));
+            Assert.That(result.PlaceholderAction, Is.EqualTo("single-frame"));
+            Assert.That(autogen.BookmarkCallCount, Is.EqualTo(1));
+            Assert.That(ffmpeg1pass.BookmarkCallCount, Is.EqualTo(0));
+            Assert.That(opencv.BookmarkCallCount, Is.EqualTo(0));
+            Assert.That(File.Exists(result.SaveThumbFileName), Is.True);
+            Assert.That(
+                logger.DebugMessages.Any(x =>
+                    x.Contains("bookmark fallback success: engine=autogen")
+                ),
+                Is.True
+            );
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
     public async Task CreateThumbAsync_初回DemuxImmediateEof時はOnePass救済する()
     {
         string tempRoot = CreateTempRoot();
@@ -2499,21 +2614,26 @@ public class AutogenExecutionFlowTests
     private sealed class RecordingEngine : IThumbnailGenerationEngine
     {
         private readonly Func<ThumbnailJobContext, CancellationToken, Task<ThumbnailCreateResult>> createAsync;
+        private readonly Func<string, string, int, CancellationToken, Task<bool>> createBookmarkAsync;
 
         public RecordingEngine(
             string engineId,
-            Func<ThumbnailJobContext, CancellationToken, Task<ThumbnailCreateResult>> createAsync
+            Func<ThumbnailJobContext, CancellationToken, Task<ThumbnailCreateResult>> createAsync,
+            Func<string, string, int, CancellationToken, Task<bool>> createBookmarkAsync = null
         )
         {
             EngineId = engineId;
             EngineName = engineId;
             this.createAsync = createAsync;
+            this.createBookmarkAsync = createBookmarkAsync ?? ((_, _, _, _) => Task.FromResult(false));
         }
 
         public string EngineId { get; }
         public string EngineName { get; }
         public int CreateCallCount { get; private set; }
+        public int BookmarkCallCount { get; private set; }
         public List<string> CreateMoviePaths { get; } = [];
+        public List<string> BookmarkMoviePaths { get; } = [];
 
         public bool CanHandle(ThumbnailJobContext context)
         {
@@ -2537,7 +2657,9 @@ public class AutogenExecutionFlowTests
             CancellationToken cts = default
         )
         {
-            return Task.FromResult(false);
+            BookmarkCallCount++;
+            BookmarkMoviePaths.Add(movieFullPath ?? "");
+            return createBookmarkAsync(movieFullPath, saveThumbPath, capturePos, cts);
         }
     }
 

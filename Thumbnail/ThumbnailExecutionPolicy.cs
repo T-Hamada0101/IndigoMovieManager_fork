@@ -67,6 +67,14 @@ namespace IndigoMovieManager.Thumbnail
             AutogenDemuxImmediateEofKeyword,
         ];
 
+        private static readonly string[] RecoverySingleFrameFallbackKeywords =
+        [
+            "no frames decoded",
+            "ffmpeg one-pass failed",
+            "frame decode failed",
+            "invalid data found when processing input",
+        ];
+
         public static List<string> BuildEngineOrderIds(
             string selectedEngineId,
             bool isManual,
@@ -471,6 +479,40 @@ namespace IndigoMovieManager.Thumbnail
                     StringComparison.OrdinalIgnoreCase
                 )
                 && !ShouldSkipFfmpegOnePassByKnownInvalidInput(engineErrorMessages);
+        }
+
+        public static bool ShouldTryRecoverySingleFrameFallback(
+            bool isManual,
+            bool isRecoveryLane,
+            bool isSuccess,
+            IReadOnlyList<string> engineErrorMessages
+        )
+        {
+            if (isManual || !isRecoveryLane || isSuccess)
+            {
+                return false;
+            }
+
+            if (engineErrorMessages == null || engineErrorMessages.Count < 1)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < engineErrorMessages.Count; i++)
+            {
+                string message = engineErrorMessages[i] ?? "";
+                if (ContainsAnyKeyword(message, RecoverySingleFrameFallbackKeywords))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public static IReadOnlyList<string> BuildRecoverySingleFrameEngineOrderIds()
+        {
+            return ["autogen", "ffmpeg1pass", "opencv"];
         }
 
         public static bool ShouldSkipFailurePlaceholder(
