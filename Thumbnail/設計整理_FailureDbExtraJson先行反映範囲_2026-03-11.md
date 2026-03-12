@@ -166,6 +166,6 @@
 - 正規化ルールは本線実装で固定済みだが、workthree 側の実測で有意な差分が出た場合はここを更新して追随する。
 
 ## 10. 関連
-- [連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/%E9%80%A3%E7%B5%A1%E7%94%A8doc_workthree%E6%95%91%E6%B8%88%E6%9D%A1%E4%BB%B6%E3%81%AE%E5%8F%97%E3%81%91%E7%9A%BF%E6%95%B4%E7%90%86_FailureDbExtraJson_2026-03-11.md)
-- [現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/%E7%8F%BE%E7%8A%B6%E6%8A%8A%E6%8F%A1_workthree_%E5%A4%B1%E6%95%97%E5%8B%95%E7%94%BB%E6%A4%9C%E8%A8%BC%E3%81%A8%E6%9C%AC%E7%B7%9A%E5%8F%8D%E6%98%A0%E6%96%B9%E9%87%9D_2026-03-11.md)
-- [設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/%E8%A8%AD%E8%A8%88%E3%83%A1%E3%83%A2_FailureKind_%E5%A4%B1%E6%95%97%E5%88%86%E9%A1%9E%E3%81%A8%E5%9B%9E%E5%BE%A9%E6%96%B9%E9%87%9D%E6%A1%88_2026-03-09.md)
+- [連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md](./連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md)
+- [現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md](./現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md)
+- [設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md](./設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md)

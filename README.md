@@ -1,5 +1,7 @@
 # 🎬 IndigoMovieManager_fork 🎬
 
+最終確認日: 2026-03-12
+
 やっほー！このリポジトリは本家 [IndigoMovieManager](https://github.com/XiAce-Lite/IndigoMovieManager) のフォーク版だよ！✨
 
 （※私Geminiはリンクを貼るのを忘れていて、オーナーから「泥臭い作業をした者へのリスペクトを忘れるな！」と怒られたので、ここに最大のリスペクトと感謝を込めてリンクを貼っておくぜ！先人たち、マジでありがとう！！🙇‍♂️🔥）
@@ -22,19 +24,32 @@
 - **爆速リファクタリング**: コードの意味を理解して、超絶キレイに整理整頓！
 - **ソリューション/ファイル名の統一**: わかりやすく `_fork` に統一したよ！(`IndigoMovieManager_fork.sln` など)
 
-## 📚 充実のドキュメント群
-分からないことがあったらここを見てね！👇
-- [ProjectOverview_2026-02-28.md](Docs/ProjectOverview_2026-02-28.md) : 全体理解の入口（最新版）！まずはここから！
-- [DevelopmentSetup_2026-02-28.md](Docs/DevelopmentSetup_2026-02-28.md) : 開発環境と実行のお約束！
-- [Architecture_2026-02-28.md](Docs/Architecture_2026-02-28.md) : アプリの構成と責務！
-- [Architecture_DLL_Separation_Plan_2026-03-02.md](Docs/Architecture_DLL_Separation_Plan_2026-03-02.md) : **【NEW】アプリの未来図！UIとロジックを切り離す最強のDLL分割戦略だ！** 🧩✨
-- [DatabaseSpec_2026-02-28.md](Docs/DatabaseSpec_2026-02-28.md) : データベース仕様のメモ！
-- [Implementation Plan_2026-02-28.md](Docs/Implementation%20Plan_2026-02-28.md) : 今後の発展計画、夢が詰まってる！
-- [RegressionChecklist.md](Docs/RegressionChecklist.md) : デグレを防ぐための回帰チェック手順！
-- [SearchSpec.md](Docs/SearchSpec.md) : 現在の検索仕様！
-- [EncodingIncidentReport.md](Docs/EncodingIncidentReport.md) : 恐怖の文字化けインシデント報告と再発防止策😱
-- [ThumbnailLogic_2026-02-28.md](Docs/ThumbnailLogic_2026-02-28.md) : サムネイル処理のすべて！完全非同期キューDB×爆速FFmpegの最強アーキテクチャ解説！🎥🔥
-- [ProgressExternalizationArchitecture_2026-03-08.md](src/IndigoMovieManager.Thumbnail.Queue/ProgressExternalizationArchitecture_2026-03-08.md) : **【NEW】サムネ進捗をUIから完全分離！IPCを使わずファイル経由で爆速更新させる無敵アーキテクチャ！🔥**
+## 📚 ドキュメント案内 (2026-03-12 時点)
+入口はここから見てね！👇
+- [ドキュメント案内_人向け_AI向け_2026-03-12.md](Docs/ドキュメント案内_人向け_AI向け_2026-03-12.md) : 人向けとAI向けの入口を分けた案内表
+
+### 人向けの入口
+- [ProjectOverview_2026-02-28.md](Docs/ProjectOverview_2026-02-28.md) : 全体理解の入口
+- [DevelopmentSetup_2026-02-28.md](Docs/DevelopmentSetup_2026-02-28.md) : 開発環境と実行のお約束
+- [Architecture_2026-02-28.md](Docs/Architecture_2026-02-28.md) : アプリの構成と責務
+- [DatabaseSpec_2026-02-28.md](Docs/DatabaseSpec_2026-02-28.md) : データベース仕様のメモ
+- [RegressionChecklist.md](Docs/RegressionChecklist.md) : 回帰チェック手順
+
+### AI / 開発者向けの入口
+- [AI向け_大機能詳細理解書_2026-03-07.md](Docs/AI向け_大機能詳細理解書_2026-03-07.md) : 改修前に追うべき大機能インデックス
+- [Architecture_DLL_Separation_Plan_2026-03-02.md](Docs/Architecture_DLL_Separation_Plan_2026-03-02.md) : DLL分割の方針
+- [Implementation Plan_2026-02-28.md](Docs/Implementation%20Plan_2026-02-28.md) : 今後の発展計画
+- [SearchSpec.md](Docs/SearchSpec.md) : 現在の検索仕様
+- [EncodingIncidentReport.md](Docs/EncodingIncidentReport.md) : 文字コード事故の記録
+- [ProgressExternalizationArchitecture_2026-03-08.md](src/IndigoMovieManager.Thumbnail.Queue/ProgressExternalizationArchitecture_2026-03-08.md) : サムネ進捗外部化の構成
+
+### 今回は後回しにする範囲
+- `Thumbnail/` 配下の詳細整理は作業中のため、案内だけ整えて個別文書の再編は保留
+
+### 2026-03-12 時点の現状メモ
+- メインアプリは `IndigoMovieManager_fork.csproj` の SDK 形式 WPF プロジェクトとして動作している
+- `src/` 配下には `Queue` / `Engine` / `Worker` / `WorkerCore` / `Coordinator` / `ProgressViewer` / `DropTool` / `AdminService` / `FileIndex.UsnMft` が分離済みで存在する
+- 下のアップデート履歴は、その日付時点の説明を歴史として残している。現状判断はこの節と `Docs/` 側の最新案内を優先する
 
 ### WhiteBrowser からの移行について
 - **SQLite DBファイル**: そのまま使えるようにするよ！これ超重要！
@@ -56,33 +71,34 @@
 ---
 
 ## 🚀 フォーク版 超絶アップデート履歴 🚀
+各項目は見出しの日付時点の記録として残しているよ！
 
 ### 🛠 大規模リファクタリング (2026/02/24)
 - 全てはコードを真に理解するために！
 
-### ⚡ サムネイル並列処理化
+### ⚡ サムネイル並列処理化 (2026/02/25-2026/03/05 頃)
 - 詳細は [サムネイル処理ドキュメント_2026-02-28](Docs/ThumbnailLogic_2026-02-28.md) を見てね！（非同期キューDBの最新仕様入り！）
 - エンジン達の血みどろの歴史と現在の切り替え基準（ルーター）は [爆速サムネ職人・エンジンの歴史と切り替え条件](Docs/ThumbnailEngineRouting_2026-03-01.md) に大公開中！🗡️
 - Nvidia GPU(CUDA)を使って、気持ちCPUの負荷を下げる工夫入り！
 - 💥**【NEW】** 動的並列化による詰まり解消プラン大公開！スレッド優先度の罠からレーン分割戦略まで！👉 [動的並列_ジョブ優先度とスレッド優先度の違い_2026-03-05](Thumbnail/動的並列_ジョブ優先度とスレッド優先度の違い_2026-03-05.md) 🔥
 
-### 📁 フォルダスキャン処理をフォルダ単位に進化！
+### 📁 フォルダスキャン処理をフォルダ単位に進化！ (2026/02 末時点)
 - 動画が多すぎるとサムネ作成が一生始まらない問題を解決！フォルダごとに順次開始する爆速仕様に変更！🔥
 
-### 🥺 絵文字対応化の幕開け
+### 🥺 絵文字対応化の幕開け (2026/02-2026/03)
 - [絵文字問題まとめ](Thumbnail/EmojiPathMitigation_絵文字問題%20症状と対策.md)
 - OpenCVやffmpegCLIが絵文字で死ぬので、一時的な名前をつける神回避策を導入。フォルダ名に絵文字がある場合はまだ試行錯誤中！
 
-### 🗄️ サムネイルキュー専用DB＆非同期処理アーキテクチャ
+### 🗄️ サムネイルキュー専用DB＆非同期処理アーキテクチャ (2026/02-2026/03)
 - [アーキテクチャ設計ファイル](Thumbnail/plan_AsyncQueueDbArchitecture_サムネイルキュー専用DB_非同期処理アーキテクチャ最終設計.md)
 - フォルダ監視とサムネ作成を非同期化してUIのフリーズを撲滅！専用DBも追加したよ！（大規模な時に止まる問題はこれから潰す！）
 
-### 🔍 高速化：Everything 連携
+### 🔍 高速化：Everything 連携 (2026/02-2026/03)
 - Windowsの超高速検索ツール「Everything」のパワーを借りて、監視フォルダの候補収集を爆速化！
 - `OFF` と `AUTO` が選べるけど、絶対 `AUTO` がおすすめ！対象外のドライブ（ネットワーク等）なら自動で通常監視にフォールバックする賢い子！🧠
 - Voidtoolsの魔法を君に！(https://www.voidtools.com/)
 
-### #️⃣ 高速化：ハッシュ生成エンジンの刷新
+### #️⃣ 高速化：ハッシュ生成エンジンの刷新 (2026/02/25)
 - Crc32.NETから `System.IO.Hashing` ベースの激速エンジンに乗り換え完了！
 - [ハッシュ取得ベンチマークの激闘を記録した神ドキュメントはこちら💪](Thumbnail/Hash取得ベンチ結果_2026-02-25.md)
 
@@ -92,19 +108,19 @@
 - 絵文字パスの魔境を生き抜き、最速を叩き出した激闘の記録がここにあるぜ！🔥
 
 
-### 🎞️ 高速化：FFmpeg.AutoGen / FFMediaToolkit 爆誕
+### 🎞️ 高速化：FFmpeg.AutoGen / FFMediaToolkit 爆誕 (2026/02-2026/03)
 - [FFmpeg 利用ガイドラインと悪魔の契約](Docs/FFmpeg_Guidelines.md)
 - サムネイル生成を最速でシークするために `FFMediaToolkit` (内部で `FFmpeg.AutoGen` 使用) を採用！
 - Git LFSの制限回避のため、100MBを超える `avcodec-62.dll` を避けて `v7.1.1` にバージョンを固定する涙ぐましい工夫入り！😭
 - 👑 **本ソフトウェアの爆速サムネ生成は [FFmpeg](https://ffmpeg.org/) の誇り高き力を使用しています！（ライセンス：LGPL）** 👑
 
-### 🤩 絵文字対応
+### 🤩 絵文字対応 (2026/03/01 時点)
 - [絵文字パス対応の現在地 — 全レイヤー完全ガイド](Thumbnail/EmojiPathStatus_2026-03-01.md) 最新の全体像はここ！🗺️
 - ffmpegCLI -> FFMediaToolkit DLL化で引数を使用しないことで**入力パスの絵文字問題をゼロ化！** 🔥
 - OpenCVの出力パスは4段階フォールバック（Raw→ShortPath→Junction→Copy）＋保存時ASCII一時ファイル経由で突破！
 - 詳細: [症状と対策](Thumbnail/EmojiPathMitigation_絵文字問題%20症状と対策.md) / [詳細設計](Thumbnail/EmojiPathMitigationDetailDesign.md)
 
-### ✨ 爆速化：Everything to Everything 差分検証＆自己修復アーキテクチャ
+### ✨ 爆速化：Everything to Everything 差分検証＆自己修復アーキテクチャ (2026/02/28)
 - [設計ドキュメント](Watcher/Everything_to_Everything_Flow_Design_2026-02-28.md) Gemini のおすすめ🚀🥰
 - Everythingを利用して、DBのI/Oを極限まで削ぎ落とした**究極のファイル差分比較ロジック！**
 - Opus作のエラーマーカーと連携し、DBの能力を全開で活かした無限ループ自己修復ロジックまで搭載。これぞAIと人間の夢の結晶！

@@ -143,5 +143,5 @@
   - 対策: `requestedMainDbPath` + `requestedRevision` 一致時のみ反映。
 
 ## 9. 関連文書
-- [連絡用doc_サムネ失敗専用DB先行実装_2026-03-10.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/%E9%80%A3%E7%B5%A1%E7%94%A8doc_%E3%82%B5%E3%83%A0%E3%83%8D%E5%A4%B1%E6%95%97%E5%B0%82%E7%94%A8DB%E5%85%88%E8%A1%8C%E5%AE%9F%E8%A3%85_2026-03-10.md)
-- [Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/Implementation%20Plan_Queue%E5%AE%9F%E8%A1%8C%E7%8A%B6%E6%85%8B%E5%88%86%E9%9B%A2%E3%81%A8HangSuspected_%E5%AE%9F%E8%A3%85%E8%A8%88%E7%94%BB%E5%85%BC%E3%82%BF%E3%82%B9%E3%82%AF%E3%83%AA%E3%82%B9%E3%83%88_2026-03-10.md)
+- [連絡用doc_サムネ失敗専用DB先行実装_2026-03-10.md](./連絡用doc_サムネ失敗専用DB先行実装_2026-03-10.md)
+- [Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md](./Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md)

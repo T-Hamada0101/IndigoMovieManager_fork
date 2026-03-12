@@ -1,4 +1,4 @@
-# 🚀 IndigoMovieManager プロジェクト完全理解ガイド！ (2026-02-28 最新版) 🚀
+# 🚀 IndigoMovieManager プロジェクト完全理解ガイド！ (2026-03-12 確認版) 🚀
 
 やっほー！このドキュメントは、超絶進化を遂げた `IndigoMovieManager` の海に飛び込むための「最新のダイビングガイド」だよ！🤿✨
 これさえ読めば、次にどこを開発すればいいか一瞬で見えるようになるぜ！
@@ -12,7 +12,7 @@
 3. [../MainWindow.xaml](../MainWindow.xaml)（顔となる最強の画面構造！）
 4. **[../MainWindow.xaml.cs](../MainWindow.xaml.cs)（神ロジックの集合体！だけど最近ちょっとずつ分離されて楽になってきた！）**
 5. [../DB/SQLite.cs](../DB/SQLite.cs)（メインDBと会話する魔導書！）
-6. **[../Thumbnail/ThumbnailQueueProcessor.cs](../Thumbnail/ThumbnailQueueProcessor.cs)（新たに生まれた非同期サムネ処理の守護神！）**
+6. **[../src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs](../src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs)（新たに生まれた非同期サムネ処理の守護神！）**
 7. [../ModelViews/MainWindowViewModel.cs](../ModelViews/MainWindowViewModel.cs)（画面と裏側を繋ぐ架け橋！）
 
 ## 3. 🌍 プロジェクトの全貌
@@ -34,11 +34,13 @@
 「MVVMみたいな綺麗なアーキテクチャもいいけど、コードを探す時は直感的なフォルダ分けが一番わかりやすいだろ！」ってことで、主要な機能ごとにフォルダが分かれてるぞ！🔥
 
 - **`Thumbnail/` (爆速サムネ職人の工房とキューの住処)**
-  - サムネイル生成に関するすべてが詰まってる！キューDB(`ThumbnailQueueProcessor`)の制御や、最凶の黒魔術(`FFmpeg.AutoGen`)を使った画像合成まで全部ここだ！🖼️
+  - 画面側の投入制御、`CheckThumbAsync`、`ThumbnailCreationService`、起動管理まわりの土台があるぞ！🖼️
 - **`Watcher/` (不眠不休の監視部隊と特務機関)**
   - `FileSystemWatcher` での検知に加え、**`EverythingFolderSyncService`** が Everything API と通信して爆速の差分抽出を行っている最前線！👀
 - **`DB/` (魔法の書庫)**
   - SQLiteデータベースの作成、SQLの発行など、データの保存に関わる処理！ここがメインDBの入り口だ！📖
+- **`src/` (責務分離済みの別働隊)**
+  - `Thumbnail.Queue`、`Thumbnail.Engine`、`Thumbnail.Worker`、`Thumbnail.WorkerCore`、`Thumbnail.Coordinator`、`Thumbnail.ProgressViewer`、`Thumbnail.DropTool`、`AdminService`、`FileIndex.UsnMft` が並ぶ現行の主戦場だ！
 - **`Models/` & `ModelViews/` (データと画面の架け橋)**
   - `MovieInfo` でメタ情報を引っこ抜いたり、ViewModelとしてUI側（xaml）にデータを流し込むためのコンシェルジュたち！🤵
 - **`UserControls/` (フロントのUI職人たち)**
@@ -50,10 +52,13 @@
 - `MainWindow.xaml.cs`: 総司令官。でも最近は「監視」や「サムネ」をServiceクラスに丸投げして、少し身軽になった！
 - `DB/SQLite.cs`: 古き良きメインDBを支える「DB職人」！⚒️
 - `Thumbnail/ThumbnailCreationService.cs`: 動画から極限速度でフレームをぶっこ抜く「新世代の錬金術師」！🧪
+- `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs`: QueueDBのリース取得と実行制御を担う中核！
+- `src/IndigoMovieManager.Thumbnail.Coordinator/Program.cs`: 外部Workerを束ねる運転席！
+- `src/IndigoMovieManager.Thumbnail.ProgressViewer/ThumbnailProgressViewerWindow.xaml.cs`: 進捗可視化の別窓！
 
 ## 6. 🧐 次、どこ理解する？（優先ミッション）
 1. 圧倒的ボリュームの `../MainWindow.xaml.cs` を解読し、**新しく切り出された「Service呼び出し」**の境界線を見極めよ！
-2. `CheckThumbAsync` の「超絶非同期（キューDB）処理」と「リース排他制御」の動きをマスターせよ！
+2. `CheckThumbAsync` と `Coordinator` の分担、そして「キューDB + リース排他制御」の動きをマスターせよ！
 3. `../DB/SQLite.cs` で、どうやってSQLが作られてるのか探れ！（バインド化作戦進行中！）
 
 ## 7. 📖 仲間のドキュメントたち（最新進化版！🔥）

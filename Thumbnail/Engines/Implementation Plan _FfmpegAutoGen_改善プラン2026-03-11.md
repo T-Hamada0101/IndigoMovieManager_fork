@@ -82,11 +82,11 @@
   - `毎回 latest bright` にはせず、通常動画の代表性は維持する
 
 ## 5. 実装箇所
-- [FfmpegAutoGenThumbnailGenerationEngine.cs](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/Engines/FfmpegAutoGenThumbnailGenerationEngine.cs)
+- [FfmpegAutoGenThumbnailGenerationEngine.cs](./FfmpegAutoGenThumbnailGenerationEngine.cs)
   - デコードループ修正
   - 短尺極小 seek fallback 追加
   - `1枚以上取得で成功` の意図が読めるように整理
-- [ThumbnailImageUtility.cs](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/ThumbnailImageUtility.cs)
+- [ThumbnailImageUtility.cs](../ThumbnailImageUtility.cs)
   - 変更不要の想定
   - `SaveCombinedThumbnail(...)` の既存仕様を前提利用
 

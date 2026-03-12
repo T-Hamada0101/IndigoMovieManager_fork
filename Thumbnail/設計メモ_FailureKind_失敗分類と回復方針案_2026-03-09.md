@@ -126,6 +126,6 @@ internal sealed class ThumbnailExecutionDecision
 - `TransientDecodeFailure` のような再試行系は、失敗のたびに `.#ERROR.jpg` を置くと watcher 再投入を妨げるため、`FinalFail` 確定まで固定化しない。
 
 ## 10. 関連文書
-- [現状把握_サムネ失敗動画リカバリーフロー_2026-03-09.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/現状把握_サムネ失敗動画リカバリーフロー_2026-03-09.md)
-- [設計メモ_エンジン分離後_サムネ失敗リカバリー責務配置図_2026-03-09.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/設計メモ_エンジン分離後_サムネ失敗リカバリー責務配置図_2026-03-09.md)
-- [DCO_エンジン分離実装規則_2026-03-05.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/DCO_エンジン分離実装規則_2026-03-05.md)
+- [現状把握_サムネ失敗動画リカバリーフロー_2026-03-09.md](./現状把握_サムネ失敗動画リカバリーフロー_2026-03-09.md)
+- [設計メモ_エンジン分離後_サムネ失敗リカバリー責務配置図_2026-03-09.md](./設計メモ_エンジン分離後_サムネ失敗リカバリー責務配置図_2026-03-09.md)
+- [DCO_エンジン分離実装規則_2026-03-05.md](./DCO_エンジン分離実装規則_2026-03-05.md)

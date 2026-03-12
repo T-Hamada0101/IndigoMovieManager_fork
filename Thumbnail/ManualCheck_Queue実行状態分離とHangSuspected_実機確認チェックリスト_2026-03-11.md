@@ -139,6 +139,6 @@ python scripts\trace_thumbnail_runtime.py --main-db "<対象MainDBフルパス>"
 - 必要なら `debug-runtime.log`
 
 ## 8. 関連
-- [Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/Implementation%20Plan_Queue%E5%AE%9F%E8%A1%8C%E7%8A%B6%E6%85%8B%E5%88%86%E9%9B%A2%E3%81%A8HangSuspected_%E5%AE%9F%E8%A3%85%E8%A8%88%E7%94%BB%E5%85%BC%E3%82%BF%E3%82%B9%E3%82%AF%E3%83%AA%E3%82%B9%E3%83%88_2026-03-10.md)
-- [現状把握_サムネ失敗動画リカバリーフロー_2026-03-09.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/%E7%8F%BE%E7%8A%B6%E6%8A%8A%E6%8F%A1_%E3%82%B5%E3%83%A0%E3%83%8D%E5%A4%B1%E6%95%97%E5%8B%95%E7%94%BB%E3%83%AA%E3%82%AB%E3%83%90%E3%83%AA%E3%83%BC%E3%83%95%E3%83%AD%E3%83%BC_2026-03-09.md)
-- [設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md](/c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/%E8%A8%AD%E8%A8%88%E3%83%A1%E3%83%A2_FailureKind_%E5%A4%B1%E6%95%97%E5%88%86%E9%A1%9E%E3%81%A8%E5%9B%9E%E5%BE%A9%E6%96%B9%E9%87%9D%E6%A1%88_2026-03-09.md)
+- [Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md](./Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md)
+- [現状把握_サムネ失敗動画リカバリーフロー_2026-03-09.md](./現状把握_サムネ失敗動画リカバリーフロー_2026-03-09.md)
+- [設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md](./設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md)

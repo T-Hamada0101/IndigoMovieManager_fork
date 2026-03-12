@@ -1,11 +1,11 @@
 # Flowchart: サムネイル処理ワークフロー Recovery詳細（2026-03-08）
 
 ## 0. ナビゲーション
-- 全体図: [Flowchart_サムネイル処理ワークフロー_2026-03-08.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/Flowchart_サムネイル処理ワークフロー_2026-03-08.md)
-- 通常経路: [Flowchart_サムネイル処理ワークフロー_通常経路_2026-03-08.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/Flowchart_サムネイル処理ワークフロー_通常経路_2026-03-08.md)
+- 全体図: [Flowchart_サムネイル処理ワークフロー_2026-03-08.md](./Flowchart_サムネイル処理ワークフロー_2026-03-08.md)
+- 通常経路: [Flowchart_サムネイル処理ワークフロー_通常経路_2026-03-08.md](./Flowchart_サムネイル処理ワークフロー_通常経路_2026-03-08.md)
 - Recovery詳細: `この文書`
-- 新動画追加側: [Flowchart_新動画追加処理_時系列整理_2026-03-08.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Watcher/Flowchart_新動画追加処理_時系列整理_2026-03-08.md)
-- 失敗処理詳細: [Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md)
+- 新動画追加側: [Flowchart_新動画追加処理_時系列整理_2026-03-08.md](../Watcher/Flowchart_新動画追加処理_時系列整理_2026-03-08.md)
+- 失敗処理詳細: [Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md](./Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md)
 
 ## 1. 目的
 - `AttemptCount > 0` の再試行ジョブが、どう `Recovery` として扱われ、どこで修復や再試行が入るかを詳細に整理する。
@@ -73,8 +73,8 @@ flowchart TD
 - `Failed` 判定は `AttemptCount + 1 >= 5` ベースだが、`Failed` 更新時に `AttemptCount` 自体は増やさない。
 
 ## 7. 関連ドキュメント
-- [Flowchart_サムネイル処理ワークフロー_2026-03-08.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/Flowchart_サムネイル処理ワークフロー_2026-03-08.md)
-- [Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md](/c:/Users/{username}/source/repos/IndigoMovieManager_fork/Thumbnail/Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md)
+- [Flowchart_サムネイル処理ワークフロー_2026-03-08.md](./Flowchart_サムネイル処理ワークフロー_2026-03-08.md)
+- [Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md](./Flowchart_動画判定処理_失敗時処理_時系列整理_2026-03-08.md)
 
 ## 8. 主な対応コード
 - `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs`

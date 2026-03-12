@@ -1,4 +1,4 @@
-# 🏰 アーキテクチャ爆速概要！ (2026-02-28 最新進化版) 🏰
+# 🏰 アーキテクチャ爆速概要！ (2026-03-12 確認版) 🏰
 
 このアプリがどう進化し、どう組み上がっているのか！？その全貌を解き明かす「アーキテクチャの秘密基地」へようこそ！🚀
 どこに何があるか分かれば、改造もリファクタリングも自由自在だぜ！✨
@@ -10,8 +10,12 @@
 - **データアクセス層（DBの守護者）**: `DB/SQLite.cs`
 - **🚀 独立機能部隊（Service層の誕生）**:
   - `Thumbnail/ThumbnailCreationService.cs`: OpenCVやFFMediaToolkitと格闘するサムネ生成の達人！
-  - `Thumbnail/ThumbnailQueueProcessor.cs`: 非同期で裏側のキューDBをゴリゴリ回すワーカー！
+  - `src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs`: 非同期で裏側のキューDBをゴリゴリ回す本体Consumer！
   - `Watcher/EverythingFolderSyncService.cs`: Everythingの力で爆速ファイル照合を行う特務機関！
+  - `src/IndigoMovieManager.Thumbnail.Worker/Program.cs`: 外部Workerの起動口！
+  - `src/IndigoMovieManager.Thumbnail.Coordinator/Program.cs`: Worker群を束ねる外側の運転席！
+  - `src/IndigoMovieManager.Thumbnail.ProgressViewer/ThumbnailProgressViewerWindow.xaml.cs`: 進捗表示の別窓！
+  - `src/IndigoMovieManager.AdminService/Program.cs`: 管理者権限が必要な監視系補助サービス！
 
 ## 2. 🌊 データと処理の流れ（驚異的な進化の軌跡）
 
@@ -30,12 +34,14 @@
 6. 完全に新規ならDB登録、画像だけ消された状態なら「DB登録をスキップしてサムネキューへ直行」という**完璧な自己修復**を実現！🤖✨
 
 ### 🖼️ 【超進化】サムネ誕生と非同期キューの世界（Thumbnail Engine）
-1. `CheckThumbAsync` タスクが「別スレッド（バックグラウンド）」でひたすら仕事がないか探している👀
+1. `Thumbnail/MainWindow.ThumbnailQueue.cs` が投入要求を Channel へ流し、`ThumbnailQueuePersister` が QueueDB へ永続化する👀
 2. 旧来のオンメモリ管理を捨て、新たに **`thumb_queue` テーブル（専用DB）** を導入！
-3. リース獲得（排他制御）によって、マルチプロセスで起動してもお互いにジョブを取り合わない安全設計！🛡️
-4. `ThumbnailCreationService` が FFMediaToolkit（中身は最強の `FFmpeg.AutoGen`）を使って動画からフレームをダイレクトに「ぶっこ抜く」！💥
-5. エラーが起これば `.#ERROR.jpg` というエラーマーカーを吐き出し、次回以降の無限ループを完全にシャットアウト！
-6. 結合されたJPEGのお尻にWhiteBrowser互換の「サムネ情報」を書き込んでフィニッシュ！🎉
+3. `CheckThumbAsync` は本体Consumerとして残りつつ、設定次第で `Coordinator` が外部 `Worker` 群を起動する！
+4. リース獲得（排他制御）によって、マルチプロセスで起動してもお互いにジョブを取り合わない安全設計！🛡️
+5. `ThumbnailCreationService` が FFMediaToolkit（中身は最強の `FFmpeg.AutoGen`）を使って動画からフレームをダイレクトに「ぶっこ抜く」！💥
+6. 進捗は `ProgressViewer` が別窓で読み取り、必要に応じて `AdminService` が補助観測を受け持つ！
+7. エラーが起これば `.#ERROR.jpg` というエラーマーカーを吐き出し、次回以降の無限ループを完全にシャットアウト！
+8. 結合されたJPEGのお尻にWhiteBrowser互換の「サムネ情報」を書き込んでフィニッシュ！🎉
 
 ## 3. 🤔 今のアーキテクチャの「オイシイところ」と「ヤバいところ」
 - **オイシイ**:

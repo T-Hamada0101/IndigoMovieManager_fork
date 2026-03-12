@@ -1,4 +1,4 @@
-# 💻 最高の開発セットアップ！ (2026-02-28 最新版) 💻
+# 💻 最高の開発セットアップ！ (2026-03-12 確認版) 💻
 
 やっほー！IndigoMovieManagerの開発を始めるための、**最新の**儀式を教えるよ！✨
 これをサクッと終わらせて、爆速コーディングの世界へ飛び込もうぜ！🚀
@@ -6,11 +6,12 @@
 ## 1. ⚙️ まずはここから！（最強の前提条件）
 - **OS**: Windows（そりゃそうだ！）
 - **SDK**: .NET 8 SDK（最新のパワーを喰らえ！）
-- **IDE**: Visual Studio 2026 推奨！（2022でももちろんOK！VSしか勝たん！）💖
+- **IDE**: Visual Studio 2026 推奨！💖
 - **🚨 必須シェル**: **PowerShell 7.x 以降 (Microsoft Storeから入れろ！)**
   - 古いPowerShell 5.xは、様子を見ただけでファイルをUTF-16に変異させる極悪仕様だから絶対使うな！💀
 - **🔍 必須ツール**: **Everything (Voidtools)**
   - 最新の超速ファイル監視をフルパワーで動かすには、ローカルにEverythingが常駐している必要があるぞ！
+- **🎯 プラットフォーム**: `x64` 固定
 
 ## 2. 📦 頼れる仲間たち（依存パッケージ抜粋）
 我々の戦いを支える強力なライブラリ陣だ！
@@ -23,24 +24,25 @@
 - `Notification.Wpf`：イケてるトースト通知を出す担当！🍞
 
 ## 3. 🔨 復元とビルド（魔法の呪文）
-プロジェクトはスッキリ現代風のSDK形式だぜ！
+メインアプリは SDK 形式だけど、実運用では `src/` 配下の関連プロジェクトも一緒に扱うので、まずはソリューションを `x64` でビルドするのが安全だぜ！
 
-**ターミナル派の君へ:**
-```powershell
-dotnet restore
-dotnet build IndigoMovieManager_fork.sln -c Debug
-```
-
-**VSのMSBuildを直接叩きたいガチ勢の君へ:**
+**まずはこれ推奨（MSBuild / x64）:**
 ```powershell
 "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" IndigoMovieManager_fork.sln /p:Configuration=Debug /p:Platform=x64
 ```
+
+**SDK側の確認だけしたい時:**
+```powershell
+dotnet restore
+dotnet build IndigoMovieManager_fork.csproj -c Debug -p:Platform=x64
+```
+
 ※パスが自分の環境と合ってるか確認してね！😉
 ※もしビルドが通らない（警告やエラーが出る）時は、焦らずまず **`/csharpier-format` (CSharpierによるフォーマット)** の儀式を試すんだ！✨
 
 ## 4. 🏃‍♂️💨 実行！（いざ出陣！）
 ```powershell
-dotnet run --project IndigoMovieManager_fork.csproj
+dotnet run --project IndigoMovieManager_fork.csproj -c Debug -p:Platform=x64
 ```
 このコマンド一つで、君のモニターに最強のアプリが立ち上がる！！
 
@@ -54,5 +56,6 @@ dotnet run --project IndigoMovieManager_fork.csproj
 ## 6. 💡 開発者へのワンポイントアドバイス！（2026年最新の教訓）
 - アプリの基本設定（ウィンドウサイズとか）は `Properties.Settings` に記憶してるよ！
 - DBごとに違う設定（サムネの場所とか、プレイヤー設定とか）はDB内の `system` テーブルが生息地だ！
-- サムネイル生成は今や **「非同期DBキュー（`thumb_queue`）」** で管理されていて、バックグラウンドのプロセス（ワーカー）がゴリゴリ回している！UIは絶対に固まらないぜ！💪
+- サムネイル生成は今や **「非同期DBキュー（`thumb_queue`）」** を中心に、必要に応じて `Coordinator` / `Worker` / `ProgressViewer` も同梱起動する構成になっている！💪
+- ビルド後は `thumbnail-worker`、`thumbnail-coordinator`、`thumbnail-progress-viewer`、`thumbnail-drop-tool`、`admin-service` などの出力も一緒に確認すると流れを掴みやすい！
 - **🚨 罠注意 🚨**: いきなり数千動画があるフォルダで試すと、爆速でサムネ生成祭りが始まってPCが悲鳴を上げるから、まずは小さいテストフォルダで遊ぶのが安全だぜ！😎👍
