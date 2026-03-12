@@ -143,5 +143,5 @@
   - 対策: `requestedMainDbPath` + `requestedRevision` 一致時のみ反映。
 
 ## 9. 関連文書
-- [連絡用doc_サムネ失敗専用DB先行実装_2026-03-10.md](./連絡用doc_サムネ失敗専用DB先行実装_2026-03-10.md)
+- [連絡用_サムネ失敗専用DB先行実装_2026-03-10.md](./連絡用_サムネ失敗専用DB先行実装_2026-03-10.md)
 - [Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md](./Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md)

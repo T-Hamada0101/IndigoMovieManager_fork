@@ -3,7 +3,7 @@
 最終更新: 2026-03-11
 
 ## 1. 目的
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` を取り込んだ後、`workthree` 側で near-black 調査をどう再開するかを固定する。
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎ_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` を取り込んだ後、`workthree` 側で near-black 調査をどう再開するかを固定する。
 - 超短尺 `No frames decoded` 群の取りこぼし改善と、true near-black 群の黒判定調査を混ぜない。
 
 ## 2. 前提
@@ -62,6 +62,6 @@
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
 
 ## 7. 参照
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎ_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_true_near_black_2件固定_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\優先順位表_workthree_失敗15件の検証順_2026-03-11.md`

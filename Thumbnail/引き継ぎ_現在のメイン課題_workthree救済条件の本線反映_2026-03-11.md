@@ -80,14 +80,14 @@
 
 ## 9. 関連資料
 - `Thumbnail/現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
-- `Thumbnail/連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `Thumbnail/連絡用_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
 - `Thumbnail/設計整理_FailureDbExtraJson先行反映範囲_2026-03-11.md`
 - `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
 - `Thumbnail/Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
 - `Thumbnail/Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`
 - `Thumbnail/Implementation Plan_サムネイルWorker完全責務移譲_長期計画_2026-03-08.md`
 - `C:/Users/na6ce/source/repos/IndigoMovieManager_fork_workthree/Thumbnail/連絡用doc_workthree_本線向け短文化_35967型と顔型_2026-03-11.md`
-- `Thumbnail/連絡用doc_サムネイルスレッド再構築計画向け_別ツリー成果要約_2026-03-11.md`
+- `Thumbnail/連絡用_サムネイルスレッド再構築計画向け_別ツリー成果要約_2026-03-11.md`
 - `Thumbnail/優先順位表_サムネイルスレッド再構築計画向け_難読動画論点_2026-03-11.md`
 
 ## 10. 一言要約

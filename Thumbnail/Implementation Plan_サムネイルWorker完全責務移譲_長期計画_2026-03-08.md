@@ -646,7 +646,7 @@ Phase 2 の残課題:
 - `Thumbnail/仕様書_サムネイル並列方式再設計_2026-03-08.md`
 - `Thumbnail/Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`
 - `Thumbnail/調査結果_サムネイルProcessing残留とlease先取り過多_2026-03-10.md`
-- `Thumbnail/連絡用doc_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md`
+- `Thumbnail/連絡用_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md`
 - `Thumbnail/Implementation Plan_サムネ失敗専用DB先行実装とautogen試験ハーネスDB記録_2026-03-10.md`
 - `Docs/アプリ全体図_大まか構成_2026-03-08.md`
 

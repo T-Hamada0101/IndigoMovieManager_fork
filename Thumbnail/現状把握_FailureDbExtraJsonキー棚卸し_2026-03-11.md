@@ -148,5 +148,5 @@
 
 ## 9. 関連
 - `Thumbnail/Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
-- `Thumbnail/連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `Thumbnail/連絡用_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
 - `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`

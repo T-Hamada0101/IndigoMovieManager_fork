@@ -1,4 +1,4 @@
-# 連絡用doc: AutogenRepairPlaygroundTests API追従要否 (2026-03-11)
+# 連絡用: AutogenRepairPlaygroundTests API追従要否 (2026-03-11)
 
 ## 結論
 - `AutogenRepairPlaygroundTests` は現状そのままでは検証ハーネスとして使えない。
@@ -26,12 +26,12 @@
   - `FailureDb` 記録つきの試験ハーネスとして再利用可能にする
 
 ## 参照してほしいファイル
-- [AutogenRepairPlaygroundTests.cs](c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Tests/IndigoMovieManager_fork.Tests/AutogenRepairPlaygroundTests.cs)
-- [FfmpegShortClipRecoveryPlaygroundTests.cs](c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Tests/IndigoMovieManager_fork.Tests/FfmpegShortClipRecoveryPlaygroundTests.cs)
-- [TabInfo.cs](c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/TabInfo.cs)
-- [MovieInfo.cs](c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Models/MovieInfo.cs)
-- [ThumbnailJobMaterialBuilder.cs](c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/ThumbnailJobMaterialBuilder.cs)
-- [ThumbnailJobContextFactory.cs](c:/Users/na6ce/source/repos/IndigoMovieManager_fork/Thumbnail/ThumbnailJobContextFactory.cs)
+- [AutogenRepairPlaygroundTests.cs](../Tests/IndigoMovieManager_fork.Tests/AutogenRepairPlaygroundTests.cs)
+- [FfmpegShortClipRecoveryPlaygroundTests.cs](../Tests/IndigoMovieManager_fork.Tests/FfmpegShortClipRecoveryPlaygroundTests.cs)
+- [TabInfo.cs](./TabInfo.cs)
+- [MovieInfo.cs](../Models/MovieInfo.cs)
+- [ThumbnailJobMaterialBuilder.cs](./ThumbnailJobMaterialBuilder.cs)
+- [ThumbnailJobContextFactory.cs](./ThumbnailJobContextFactory.cs)
 
 ## 補足
 - `QH-011` で進めた `coordinator control` の `leased / running / hang` 追加は本体側へ反映済み。

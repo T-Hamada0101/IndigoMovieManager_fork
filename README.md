@@ -43,8 +43,8 @@
 - [EncodingIncidentReport.md](Docs/EncodingIncidentReport.md) : 文字コード事故の記録
 - [ProgressExternalizationArchitecture_2026-03-08.md](src/IndigoMovieManager.Thumbnail.Queue/ProgressExternalizationArchitecture_2026-03-08.md) : サムネ進捗外部化の構成
 
-### 今回は後回しにする範囲
-- `Thumbnail/` 配下の詳細整理は作業中のため、案内だけ整えて個別文書の再編は保留
+### Thumbnail 文書の入口
+- [ドキュメント案内_2026-03-12.md](Thumbnail/ドキュメント案内_2026-03-12.md) : `Thumbnail/` 配下のカテゴリ別入口
 
 ### 2026-03-12 時点の現状メモ
 - メインアプリは `IndigoMovieManager_fork.csproj` の SDK 形式 WPF プロジェクトとして動作している

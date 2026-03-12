@@ -235,8 +235,8 @@
 - `Thumbnail/調査結果_サムネイルProcessing残留とlease先取り過多_2026-03-10.md`
 - `Thumbnail/Implementation Plan_サムネイルWorker完全責務移譲_長期計画_2026-03-08.md`
 - `Thumbnail/設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
-- `Thumbnail/連絡用doc_サムネ失敗専用DB先行実装_2026-03-10.md`
-- `Thumbnail/連絡用doc_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md`
+- `Thumbnail/連絡用_サムネ失敗専用DB先行実装_2026-03-10.md`
+- `Thumbnail/連絡用_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md`
 - `Thumbnail/Implementation Plan_サムネ失敗専用DB先行実装とautogen試験ハーネスDB記録_2026-03-10.md`
 - `scripts/trace_thumbnail_process_tree.ps1`
 - `scripts/trace_thumbnail_runtime.py`

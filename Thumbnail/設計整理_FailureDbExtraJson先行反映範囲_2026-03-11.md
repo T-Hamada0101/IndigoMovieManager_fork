@@ -166,6 +166,6 @@
 - 正規化ルールは本線実装で固定済みだが、workthree 側の実測で有意な差分が出た場合はここを更新して追随する。
 
 ## 10. 関連
-- [連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md](./連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md)
+- [連絡用_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md](./連絡用_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md)
 - [現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md](./現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md)
 - [設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md](./設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md)

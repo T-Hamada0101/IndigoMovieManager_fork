@@ -29,7 +29,7 @@
 ## 5. 判断
 - この2件は `workthree` でも安定して near-black を再現している。
 - したがって、P1-B の true near-black 群として固定してよい。
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` で整理された `EOFドレイン` は、超短尺 `No frames decoded` 系の取りこぼし対策である。
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎ_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` で整理された `EOFドレイン` は、超短尺 `No frames decoded` 系の取りこぼし対策である。
 - この2件は `No frames decoded` ではなく `Autogen produced a near-black thumbnail` で安定しているため、`EOFドレイン` の主対象ではない。
 - 以後はこの2件を
   - 黒判定しきい値
@@ -52,7 +52,7 @@
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Tests\IndigoMovieManager_fork.Tests\TrueNearBlackPairTests.cs`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Tests\IndigoMovieManager_fork.Tests\bin\x64\Debug\net8.0-windows\true-near-black-pair-summary-latest.csv`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\優先順位表_workthree_失敗15件の検証順_2026-03-11.md`
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎ_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
 
 ## 8. 補足
 - 2026-03-11 に `dotnet test --filter FullyQualifiedName~TrueNearBlackPairTests.true_near_black_2件を固定順で比較できる` を再実行したが、NUnit の `Explicit` 扱いで skip になった。

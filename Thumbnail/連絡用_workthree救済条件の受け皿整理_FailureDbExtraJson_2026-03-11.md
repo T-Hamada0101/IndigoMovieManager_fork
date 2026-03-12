@@ -1,4 +1,4 @@
-# 連絡用doc: workthree 救済条件の受け皿整理 `FailureDb.ExtraJson` 2026-03-11
+# 連絡用: workthree 救済条件の受け皿整理 `FailureDb.ExtraJson` 2026-03-11
 
 ## 1. 目的
 - `workthree` で見つかった救済条件を、本線へ戻す前に記録できる受け皿を固定する。
@@ -105,5 +105,5 @@
 ## 10. 関連
 - [現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md](./現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md)
 - [設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md](./設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md)
-- [連絡用doc_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md](./連絡用doc_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md)
+- [連絡用_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md](./連絡用_サムネ失敗専用DB先行実装_完了連絡_2026-03-10.md)
 - [Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md](./Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md)

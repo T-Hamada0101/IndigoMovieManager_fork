@@ -58,6 +58,6 @@
 ## 9. 関連
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_workthree救済条件の本線受け取りとFailureDbExtraJson標準化_2026-03-11.md`
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\優先順位表_workthree_失敗15件の検証順_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_全動画再試行ベースライン_2026-03-11.md`

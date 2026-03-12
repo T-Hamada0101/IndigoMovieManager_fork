@@ -46,7 +46,7 @@
   - repair 側論点
 
 ## 5. `f3fd039` の扱い
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` は取り込み価値あり。
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎ_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` は取り込み価値あり。
 - ただし主対象は near-black ではなく、超短尺 `No frames decoded` 群。
 - 取り込み後の再実行順は次で固定。
   1. `画像1枚あり顔.mkv`

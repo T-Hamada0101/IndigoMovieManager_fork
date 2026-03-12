@@ -58,7 +58,7 @@
 - `FailureDb`、`HangSuspected`、失敗タブ、観測スクリプト、計画書のどこへ反映が必要か。
 
 ## 7. 直近の重点対象
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` を前提に、超短尺 `No frames decoded` 群を先に整理する。
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎ_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md` を前提に、超短尺 `No frames decoded` 群を先に整理する。
 - その後で、真の `Autogen produced a near-black thumbnail` 2件の救済条件整理を行う。
 - `No frames decoded` 13件の中で、一般化価値が高い個体を優先して切る。
 - `35967.mp4` や `インデックス破壊-093-2-4K.mp4` など、既存知見がある no-frames 代表を先に追う。
@@ -111,11 +111,11 @@
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\Implementation Plan_workthree_35967型救済条件の本線反映_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_優先順自動実行_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\優先順位表_workthree_失敗15件の検証順_2026-03-11.md`
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎdoc_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\Engines\引き継ぎ_autogenEOFドレイン対応とベンチ画像出力_f3fd039_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\サムネイルが作成できない動画対策.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\調査結果_難読動画成功パターン集_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\設計メモ_FailureKind_失敗分類と回復方針案_2026-03-09.md`
-- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用doc_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
+- `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\連絡用_workthree救済条件の受け皿整理_FailureDbExtraJson_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Thumbnail\設計整理_FailureDbExtraJson先行反映範囲_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\DifficultVideoBatchPlaygroundTests.cs`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork\Tests\IndigoMovieManager_fork.Tests\AutogenRepairPlaygroundTests.cs`

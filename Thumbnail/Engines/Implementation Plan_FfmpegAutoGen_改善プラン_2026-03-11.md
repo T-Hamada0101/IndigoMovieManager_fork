@@ -1,4 +1,4 @@
-# Implementation Plan _FfmpegAutoGen_改善プラン2026-03-11
+# Implementation Plan_FfmpegAutoGen_改善プラン_2026-03-11
 
 ## 1. 今回の対象
 - 対象リポジトリは `IndigoMovieManager_fork`
