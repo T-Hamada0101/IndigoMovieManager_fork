@@ -114,6 +114,51 @@ public sealed class FfmpegAutoGenThumbnailGenerationEngineTests
     }
 
     [Test]
+    public void ShouldAllowSequentialFreshContextFallback_通常レーンはFalseを返す()
+    {
+        ThumbnailJobContext context = new()
+        {
+            QueueObj = new QueueObj { IsRescueRequest = false },
+            IsManual = false,
+        };
+
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldAllowSequentialFreshContextFallback(
+                context
+            ),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void ShouldAllowSequentialFreshContextFallback_救済と手動はTrueを返す()
+    {
+        ThumbnailJobContext rescueContext = new()
+        {
+            QueueObj = new QueueObj { IsRescueRequest = true },
+            IsManual = false,
+        };
+        ThumbnailJobContext manualContext = new()
+        {
+            QueueObj = new QueueObj { IsRescueRequest = false },
+            IsManual = true,
+        };
+
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldAllowSequentialFreshContextFallback(
+                rescueContext
+            ),
+            Is.True
+        );
+        Assert.That(
+            FfmpegAutoGenThumbnailGenerationEngine.ShouldAllowSequentialFreshContextFallback(
+                manualContext
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
     public void ShouldWriteSeekDebugLog_短尺は拡張子に関係なくTrueを返す()
     {
         Assert.That(

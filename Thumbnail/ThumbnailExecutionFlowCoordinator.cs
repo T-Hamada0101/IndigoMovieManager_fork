@@ -34,152 +34,163 @@ namespace IndigoMovieManager.Thumbnail
                 throw new ArgumentNullException(nameof(request));
             }
 
-            ThumbnailJobContext context = ThumbnailJobContextFactory.Create(
-                request.QueueObj,
-                request.TabInfo,
-                request.ThumbInfo,
-                request.WorkingMovieFullPath,
-                request.SaveThumbFileName,
-                request.IsResizeThumb,
-                request.IsManual,
-                request.DurationSec,
-                request.FileSizeBytes,
-                request.AverageBitrateMbps,
-                request.VideoCodec
-            );
-            ThumbnailJobContext originalMovieContext = ThumbnailJobContextFactory.Create(
-                request.QueueObj,
-                request.TabInfo,
-                request.ThumbInfo,
-                request.MovieFullPath,
-                request.SaveThumbFileName,
-                request.IsResizeThumb,
-                request.IsManual,
-                request.DurationSec,
-                request.FileSizeBytes,
-                request.AverageBitrateMbps,
-                request.VideoCodec
-            );
-
-            ThumbnailEngineExecutionResult execution = await engineExecutionCoordinator
-                .ExecuteAsync(context, request.SaveThumbFileName, request.DurationSec, cts)
-                .ConfigureAwait(false);
-            ThumbnailCreateResult result = execution.Result;
-            string processEngineId = execution.ProcessEngineId;
-            List<string> engineErrorMessages = execution.EngineErrorMessages;
-            ThumbnailRepairExecutionState repairState = request.RepairState;
-
-            ThumbnailRepairExecutionApplyResult repairApply = await repairExecutionCoordinator
-                .TryRepairAndRerunAsync(
-                    new ThumbnailRepairExecutionApplyRequest
-                    {
-                        State = repairState,
-                        QueueObj = request.QueueObj,
-                        TabInfo = request.TabInfo,
-                        ThumbInfo = request.ThumbInfo,
-                        MovieFullPath = request.MovieFullPath,
-                        SaveThumbFileName = request.SaveThumbFileName,
-                        IsResizeThumb = request.IsResizeThumb,
-                        IsManual = request.IsManual,
-                        InitialOnePassAttempted = false,
-                        DurationSec = request.DurationSec,
-                        FileSizeBytes = request.FileSizeBytes,
-                        AverageBitrateMbps = request.AverageBitrateMbps,
-                        Result = result,
-                        EngineErrorMessages = engineErrorMessages,
-                    },
-                    cts
-                )
-                .ConfigureAwait(false);
-            repairState = repairApply.State;
-            if (repairApply.WasApplied)
+            try
             {
-                context = repairApply.Context;
-                result = repairApply.Result;
-                processEngineId = repairApply.ProcessEngineId;
-                engineErrorMessages = repairApply.EngineErrorMessages;
-            }
+                ThumbnailJobContext context = ThumbnailJobContextFactory.Create(
+                    request.QueueObj,
+                    request.TabInfo,
+                    request.ThumbInfo,
+                    request.WorkingMovieFullPath,
+                    request.SaveThumbFileName,
+                    request.IsResizeThumb,
+                    request.IsManual,
+                    request.DurationSec,
+                    request.FileSizeBytes,
+                    request.AverageBitrateMbps,
+                    request.VideoCodec
+                );
+                ThumbnailJobContext originalMovieContext = ThumbnailJobContextFactory.Create(
+                    request.QueueObj,
+                    request.TabInfo,
+                    request.ThumbInfo,
+                    request.MovieFullPath,
+                    request.SaveThumbFileName,
+                    request.IsResizeThumb,
+                    request.IsManual,
+                    request.DurationSec,
+                    request.FileSizeBytes,
+                    request.AverageBitrateMbps,
+                    request.VideoCodec
+                );
 
-            ThumbnailEnginePostProcessResult postProcess = await engineExecutionCoordinator
-                .ApplyPostExecutionFallbacksAsync(
-                    new ThumbnailEnginePostProcessRequest
-                    {
-                        Context = context,
-                        OriginalMovieContext = originalMovieContext,
-                        Result = result,
-                        ProcessEngineId = processEngineId,
-                        EngineErrorMessages = engineErrorMessages,
-                        IsManual = request.IsManual,
-                        IsRecoveryLane = repairState.IsRecoveryLane,
-                        IsIndexRepairTargetMovie = repairState.IsIndexRepairTargetMovie,
-                        RepairedByProbe = repairState.RepairedByProbe,
-                        MovieFullPath = request.MovieFullPath,
-                        SaveThumbFileName = request.SaveThumbFileName,
-                        DurationSec = request.DurationSec,
-                    },
-                    cts
-                )
-                .ConfigureAwait(false);
+                ThumbnailEngineExecutionResult execution = await engineExecutionCoordinator
+                    .ExecuteAsync(context, request.SaveThumbFileName, request.DurationSec, cts)
+                    .ConfigureAwait(false);
+                ThumbnailCreateResult result = execution.Result;
+                string processEngineId = execution.ProcessEngineId;
+                List<string> engineErrorMessages = execution.EngineErrorMessages;
+                ThumbnailRepairExecutionState repairState = request.RepairState;
 
-            if (!repairApply.WasApplied && !postProcess.Result.IsSuccess)
-            {
-                ThumbnailRepairExecutionApplyResult postProcessRepairApply =
-                    await repairExecutionCoordinator
-                        .TryRepairAndRerunAsync(
-                            new ThumbnailRepairExecutionApplyRequest
-                            {
-                                State = repairState,
-                                QueueObj = request.QueueObj,
-                                TabInfo = request.TabInfo,
-                                ThumbInfo = request.ThumbInfo,
-                                MovieFullPath = request.MovieFullPath,
-                                SaveThumbFileName = request.SaveThumbFileName,
-                                IsResizeThumb = request.IsResizeThumb,
-                                IsManual = request.IsManual,
-                                InitialOnePassAttempted = postProcess.RecoveryOnePassAttempted,
-                                DurationSec = request.DurationSec,
-                                FileSizeBytes = request.FileSizeBytes,
-                                AverageBitrateMbps = request.AverageBitrateMbps,
-                                Result = postProcess.Result,
-                                EngineErrorMessages = postProcess.EngineErrorMessages,
-                            },
-                            cts
-                        )
-                        .ConfigureAwait(false);
-
-                if (postProcessRepairApply.WasApplied)
+                ThumbnailRepairExecutionApplyResult repairApply = await repairExecutionCoordinator
+                    .TryRepairAndRerunAsync(
+                        new ThumbnailRepairExecutionApplyRequest
+                        {
+                            State = repairState,
+                            QueueObj = request.QueueObj,
+                            TabInfo = request.TabInfo,
+                            ThumbInfo = request.ThumbInfo,
+                            MovieFullPath = request.MovieFullPath,
+                            SaveThumbFileName = request.SaveThumbFileName,
+                            IsResizeThumb = request.IsResizeThumb,
+                            IsManual = request.IsManual,
+                            InitialOnePassAttempted = false,
+                            DurationSec = request.DurationSec,
+                            FileSizeBytes = request.FileSizeBytes,
+                            AverageBitrateMbps = request.AverageBitrateMbps,
+                            Result = result,
+                            EngineErrorMessages = engineErrorMessages,
+                        },
+                        cts
+                    )
+                    .ConfigureAwait(false);
+                repairState = repairApply.State;
+                if (repairApply.WasApplied)
                 {
-                    repairState = postProcessRepairApply.State;
-                    postProcess = await engineExecutionCoordinator
-                        .ApplyPostExecutionFallbacksAsync(
-                            new ThumbnailEnginePostProcessRequest
-                            {
-                                Context = postProcessRepairApply.Context,
-                                OriginalMovieContext = originalMovieContext,
-                                Result = postProcessRepairApply.Result,
-                                ProcessEngineId = postProcessRepairApply.ProcessEngineId,
-                                EngineErrorMessages = postProcessRepairApply.EngineErrorMessages,
-                                IsManual = request.IsManual,
-                                IsRecoveryLane = repairState.IsRecoveryLane,
-                                IsIndexRepairTargetMovie = repairState.IsIndexRepairTargetMovie,
-                                RepairedByProbe = repairState.RepairedByProbe,
-                                MovieFullPath = request.MovieFullPath,
-                                SaveThumbFileName = request.SaveThumbFileName,
-                                DurationSec = request.DurationSec,
-                            },
-                            cts
-                        )
-                        .ConfigureAwait(false);
+                    context = repairApply.Context;
+                    result = repairApply.Result;
+                    processEngineId = repairApply.ProcessEngineId;
+                    engineErrorMessages = repairApply.EngineErrorMessages;
                 }
-            }
 
-            return new ThumbnailExecutionFlowResult(
-                repairState,
-                postProcess.Context,
-                postProcess.Result,
-                postProcess.ProcessEngineId,
-                postProcess.EngineErrorMessages
-            );
+                ThumbnailEnginePostProcessResult postProcess = await engineExecutionCoordinator
+                    .ApplyPostExecutionFallbacksAsync(
+                        new ThumbnailEnginePostProcessRequest
+                        {
+                            Context = context,
+                            OriginalMovieContext = originalMovieContext,
+                            Result = result,
+                            ProcessEngineId = processEngineId,
+                            EngineErrorMessages = engineErrorMessages,
+                            IsManual = request.IsManual,
+                            IsRecoveryLane = repairState.IsRecoveryLane,
+                            IsIndexRepairTargetMovie = repairState.IsIndexRepairTargetMovie,
+                            RepairedByProbe = repairState.RepairedByProbe,
+                            MovieFullPath = request.MovieFullPath,
+                            SaveThumbFileName = request.SaveThumbFileName,
+                            DurationSec = request.DurationSec,
+                        },
+                        cts
+                    )
+                    .ConfigureAwait(false);
+
+                if (!repairApply.WasApplied && !postProcess.Result.IsSuccess)
+                {
+                    ThumbnailRepairExecutionApplyResult postProcessRepairApply =
+                        await repairExecutionCoordinator
+                            .TryRepairAndRerunAsync(
+                                new ThumbnailRepairExecutionApplyRequest
+                                {
+                                    State = repairState,
+                                    QueueObj = request.QueueObj,
+                                    TabInfo = request.TabInfo,
+                                    ThumbInfo = request.ThumbInfo,
+                                    MovieFullPath = request.MovieFullPath,
+                                    SaveThumbFileName = request.SaveThumbFileName,
+                                    IsResizeThumb = request.IsResizeThumb,
+                                    IsManual = request.IsManual,
+                                    InitialOnePassAttempted = postProcess.RecoveryOnePassAttempted,
+                                    DurationSec = request.DurationSec,
+                                    FileSizeBytes = request.FileSizeBytes,
+                                    AverageBitrateMbps = request.AverageBitrateMbps,
+                                    Result = postProcess.Result,
+                                    EngineErrorMessages = postProcess.EngineErrorMessages,
+                                },
+                                cts
+                            )
+                            .ConfigureAwait(false);
+
+                    if (postProcessRepairApply.WasApplied)
+                    {
+                        repairState = postProcessRepairApply.State;
+                        postProcess = await engineExecutionCoordinator
+                            .ApplyPostExecutionFallbacksAsync(
+                                new ThumbnailEnginePostProcessRequest
+                                {
+                                    Context = postProcessRepairApply.Context,
+                                    OriginalMovieContext = originalMovieContext,
+                                    Result = postProcessRepairApply.Result,
+                                    ProcessEngineId = postProcessRepairApply.ProcessEngineId,
+                                    EngineErrorMessages = postProcessRepairApply.EngineErrorMessages,
+                                    IsManual = request.IsManual,
+                                    IsRecoveryLane = repairState.IsRecoveryLane,
+                                    IsIndexRepairTargetMovie = repairState.IsIndexRepairTargetMovie,
+                                    RepairedByProbe = repairState.RepairedByProbe,
+                                    MovieFullPath = request.MovieFullPath,
+                                    SaveThumbFileName = request.SaveThumbFileName,
+                                    DurationSec = request.DurationSec,
+                                },
+                                cts
+                            )
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                return new ThumbnailExecutionFlowResult(
+                    repairState,
+                    postProcess.Context,
+                    postProcess.Result,
+                    postProcess.ProcessEngineId,
+                    postProcess.EngineErrorMessages
+                );
+            }
+            catch (Exception ex)
+            {
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail-flow-exception",
+                    $"movie='{request.MovieFullPath}' save='{request.SaveThumbFileName}' detail='{ex}'"
+                );
+                throw;
+            }
         }
     }
 

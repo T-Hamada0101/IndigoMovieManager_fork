@@ -117,6 +117,10 @@ namespace IndigoMovieManager.Thumbnail
                     }
                     catch (Exception ex)
                     {
+                        ThumbnailRuntimeLog.Write(
+                            "thumbnail-engine-exception",
+                            $"engine={candidate.EngineId} movie='{context.MovieFullPath}' detail='{ex}'"
+                        );
                         runtimeResult = ThumbnailResultFactory.CreateFailed(
                             saveThumbFileName,
                             durationSec,

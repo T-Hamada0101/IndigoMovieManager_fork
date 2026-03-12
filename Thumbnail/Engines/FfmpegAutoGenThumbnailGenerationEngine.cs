@@ -233,6 +233,8 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
             int targetWidth = context.TabInfo.Width > 0 ? context.TabInfo.Width : 320;
             int targetHeight = context.TabInfo.Height > 0 ? context.TabInfo.Height : 240;
+            bool allowSequentialFreshContextFallback =
+                ShouldAllowSequentialFreshContextFallback(context);
 
             AVFormatContext* pFormatContext = null;
             AVCodecContext* pCodecContext = null;
@@ -372,6 +374,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                             targetHeight,
                             enableSeekDebugLog,
                             preferClosestNonBlackThenLatestBright,
+                            allowSequentialFreshContextFallback,
                             cts,
                             ref observedDemuxImmediateEof,
                             out Bitmap capturedBitmap
@@ -419,6 +422,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                                     targetHeight,
                                     enableSeekDebugLog,
                                     preferClosestNonBlackThenLatestBright,
+                                    allowSequentialFreshContextFallback,
                                     cts,
                                     ref observedDemuxImmediateEof,
                                     out Bitmap shortClipBitmap
@@ -465,6 +469,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         targetHeight,
                         enableSeekDebugLog,
                         preferClosestNonBlackThenLatestBright,
+                        allowSequentialFreshContextFallback,
                         cts,
                         ref observedDemuxImmediateEof,
                         out double headerFallbackSec
@@ -490,10 +495,22 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 ThumbnailPreviewFrame previewFrame = null;
                 if (bitmaps.Count > 0)
                 {
+                    ThumbnailRuntimeLog.Write(
+                        "autogen-stage",
+                        $"preview begin: movie='{context.MovieFullPath}' bitmap_count={bitmaps.Count} cols={cols} rows={rows}"
+                    );
                     // 先頭フレームをミニパネル先行表示用に抜き出す。
                     previewFrame = ThumbnailImageUtility.CreatePreviewFrameFromBitmap(
                         bitmaps[0],
                         120
+                    );
+                    ThumbnailRuntimeLog.Write(
+                        "autogen-stage",
+                        $"preview end: movie='{context.MovieFullPath}' preview_null={previewFrame == null}"
+                    );
+                    ThumbnailRuntimeLog.Write(
+                        "autogen-stage",
+                        $"combined save begin: movie='{context.MovieFullPath}' output='{context.SaveThumbFileName}'"
                     );
                     if (
                         !ThumbnailImageUtility.SaveCombinedThumbnail(
@@ -510,6 +527,10 @@ namespace IndigoMovieManager.Thumbnail.Engines
                             "autogen combined save failed"
                         );
                     }
+                    ThumbnailRuntimeLog.Write(
+                        "autogen-stage",
+                        $"combined save end: movie='{context.MovieFullPath}' output='{context.SaveThumbFileName}'"
+                    );
                 }
                 else
                 {
@@ -520,9 +541,21 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     );
                 }
 
+                ThumbnailRuntimeLog.Write(
+                    "autogen-stage",
+                    $"thumbinfo rebuild begin: movie='{context.MovieFullPath}' actual_capture_count={actualCaptureSecs.Count}"
+                );
                 ThumbInfo saveThumbInfo = ThumbnailImageUtility.RebuildThumbInfoWithCaptureSeconds(
                     context.ThumbInfo,
                     actualCaptureSecs
+                );
+                ThumbnailRuntimeLog.Write(
+                    "autogen-stage",
+                    $"thumbinfo rebuild end: movie='{context.MovieFullPath}' thumbinfo_null={saveThumbInfo == null} secbuf_null={saveThumbInfo?.SecBuffer == null} infobuf_null={saveThumbInfo?.InfoBuffer == null}"
+                );
+                ThumbnailRuntimeLog.Write(
+                    "autogen-stage",
+                    $"thumbinfo write begin: movie='{context.MovieFullPath}' output='{context.SaveThumbFileName}'"
                 );
                 using FileStream dest = new(
                     context.SaveThumbFileName,
@@ -531,6 +564,10 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 );
                 dest.Write(saveThumbInfo.SecBuffer);
                 dest.Write(saveThumbInfo.InfoBuffer);
+                ThumbnailRuntimeLog.Write(
+                    "autogen-stage",
+                    $"thumbinfo write end: movie='{context.MovieFullPath}' output='{context.SaveThumbFileName}'"
+                );
 
                 return ThumbnailResultFactory.CreateSuccess(
                     context.SaveThumbFileName,
@@ -544,6 +581,10 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
             catch (Exception ex)
             {
+                ThumbnailRuntimeLog.Write(
+                    "autogen-exception",
+                    $"movie='{context?.MovieFullPath}' save='{context?.SaveThumbFileName}' detail='{ex}'"
+                );
                 return ThumbnailResultFactory.CreateFailed(
                     context.SaveThumbFileName,
                     durationSec,
@@ -566,7 +607,8 @@ namespace IndigoMovieManager.Thumbnail.Engines
                     ffmpeg.av_dict_free(&pFormatOptions);
                 foreach (Bitmap bmp in bitmaps)
                 {
-                    bmp.Dispose();
+                    // 取得途中で null が混じっても、後始末で本来の失敗理由を潰さない。
+                    bmp?.Dispose();
                 }
             }
         }
@@ -719,6 +761,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int targetHeight,
             bool enableSeekDebugLog,
             bool preferClosestNonBlackThenLatestBright,
+            bool allowSequentialFreshContextFallback,
             CancellationToken cts,
             ref bool observedDemuxImmediateEof,
             out Bitmap capturedBitmap
@@ -1058,6 +1101,20 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
             if (zeroPacketSeekMissObserved)
             {
+                if (!allowSequentialFreshContextFallback)
+                {
+                    if (enableSeekDebugLog)
+                    {
+                        ThumbnailRuntimeLog.Write(
+                            "autogen-seek",
+                            $"sequential fallback skipped: movie='{movieFullPath}' requested_sec={sec:0.###} reason='normal-lane'"
+                        );
+                    }
+
+                    latestBrightFallbackBitmap?.Dispose();
+                    return false;
+                }
+
                 if (enableSeekDebugLog)
                 {
                     ThumbnailRuntimeLog.Write(
@@ -1653,6 +1710,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
             int targetHeight,
             bool enableSeekDebugLog,
             bool preferClosestNonBlackThenLatestBright,
+            bool allowSequentialFreshContextFallback,
             CancellationToken cts,
             ref bool observedDemuxImmediateEof,
             out double capturedSec
@@ -1684,6 +1742,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
                         targetHeight,
                         enableSeekDebugLog,
                         preferClosestNonBlackThenLatestBright,
+                        allowSequentialFreshContextFallback,
                         cts,
                         ref observedDemuxImmediateEof,
                         out Bitmap capturedBitmap
@@ -1746,6 +1805,23 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 && durationSec.Value <= ShortClipFirstFrameSeekFallbackMaxDurationSec
                 && panelCount > 0
                 && panelCount <= 5;
+        }
+
+        internal static bool ShouldAllowSequentialFreshContextFallback(
+            ThumbnailJobContext context
+        )
+        {
+            if (context == null)
+            {
+                return false;
+            }
+
+            if (context.IsManual)
+            {
+                return true;
+            }
+
+            return context.QueueObj?.IsRescueRequest == true;
         }
 
         internal static IReadOnlyList<double> BuildShortClipFirstFrameSeekCandidates(
