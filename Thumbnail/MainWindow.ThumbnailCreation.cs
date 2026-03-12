@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using IndigoMovieManager.Converter;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.Ipc;
 using IndigoMovieManager.Thumbnail.Engines.IndexRepair;
@@ -781,29 +782,11 @@ namespace IndigoMovieManager
                         )
                     )
                     {
-                        switch (queueObj.Tabindex)
-                        {
-                            case 0:
-                                item.ThumbPathSmall = saveThumbFileName;
-                                break;
-                            case 1:
-                                item.ThumbPathBig = saveThumbFileName;
-                                break;
-                            case 2:
-                                item.ThumbPathGrid = saveThumbFileName;
-                                break;
-                            case 3:
-                                item.ThumbPathList = saveThumbFileName;
-                                break;
-                            case 4:
-                                item.ThumbPathBig10 = saveThumbFileName;
-                                break;
-                            case 99:
-                                item.ThumbDetail = saveThumbFileName;
-                                break;
-                            default:
-                                break;
-                        }
+                        _ = ApplyWorkerThumbnailPathToMovieRecord(
+                            item,
+                            queueObj.Tabindex,
+                            saveThumbFileName
+                        );
                     }
                 });
             }
@@ -1168,6 +1151,9 @@ namespace IndigoMovieManager
             {
                 return false;
             }
+
+            // 修復や再生成で同じ保存先へ上書きした直後は、一覧側の古い ImageSource を捨てる。
+            NoLockImageConverter.InvalidatePath(thumbnailPath);
 
             switch (tabIndex)
             {

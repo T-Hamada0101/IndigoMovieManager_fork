@@ -376,7 +376,19 @@ namespace IndigoMovieManager.Thumbnail
                             context.VideoCodec,
                             engineErrorMessages
                         );
-                    if (
+                    if (placeholderKind == FailurePlaceholderKind.None)
+                    {
+                        result.FailureStage = "postprocess-placeholder";
+                        result.PolicyDecision = "placeholder-suppressed";
+                        result.PlaceholderAction = "skipped";
+                        result.PlaceholderKind = "";
+
+                        ThumbnailRuntimeLog.Write(
+                            "thumbnail",
+                            $"failure placeholder suppressed: category=fallback movie='{request.MovieFullPath}', codec='{context.VideoCodec}', reason='no-placeholder-classification'"
+                        );
+                    }
+                    else if (
                         ThumbnailPlaceholderUtility.TryCreateFailurePlaceholderThumbnail(
                             context,
                             placeholderKind,

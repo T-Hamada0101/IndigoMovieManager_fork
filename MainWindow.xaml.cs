@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -3636,6 +3637,26 @@ namespace IndigoMovieManager
             {
                 return false;
             }
+        }
+
+        // 仮想化再利用で前の動画の絵が残る時があるので、DataContext切替時に現在のBindingへ引き戻す。
+        private void ThumbnailImage_DataContextChanged(
+            object sender,
+            DependencyPropertyChangedEventArgs e
+        )
+        {
+            if (sender is not Image image)
+            {
+                return;
+            }
+
+            if (image.DataContext == null)
+            {
+                image.Source = null;
+                return;
+            }
+
+            BindingOperations.GetBindingExpressionBase(image, Image.SourceProperty)?.UpdateTarget();
         }
 
         // クリック位置から対象サムネイルの秒位置を計算して返す。

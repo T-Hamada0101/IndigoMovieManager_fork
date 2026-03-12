@@ -1,6 +1,6 @@
 # 調査結果 workthree みずがめ座2 recovery差分 2026-03-11
 
-最終更新: 2026-03-11
+最終更新: 2026-03-12
 
 ## 1. 目的
 - `E:\_サムネイル作成困難動画\作成1ショットOK\みずがめ座 (2).mp4` の現行 `workthree` 挙動を固定する。
@@ -54,6 +54,26 @@
 
 この2本へ同じ比較を当てて、Recovery 後でも `ffmpeg1pass` が死ぬ群と成功する群の境界を見る
 
-## 7. 参照
+## 7. 2026-03-12 future 本線側の追記
+- `future` 側では、`みずがめ座 (2)` を `UnsupportedCodec` placeholder で成功化してしまう誤判定が一度出た。
+- 実機ログでは、recovery 中の `ffmpeg1pass` / `opencv` 失敗ログに
+  - `Invalid NAL unit size`
+  - `missing picture in access unit`
+  - `Error splitting the input into NAL units`
+  - `Error submitting packet to decoder`
+  - `Decoding error`
+  が含まれており、`unknown / invalid data found` だけで `CODEC NG` に寄せると誤分類になると分かった。
+- これに対して `ThumbnailPlaceholderUtility` を見直し、上記の破損寄り decode error 群は `UnsupportedCodec` へ寄せず、`placeholder-suppressed` として素直に失敗を返すようにした。
+- 実機再確認では以下を確認済み。
+  - normal lane `15秒 timeout` で rescue へ退避
+  - recovery 側で `ffmpeg1pass -> opencv` まで試行
+  - 終端は `failure placeholder suppressed`
+  - `repair failed`
+  - `CODEC NG` は新規生成されない
+- さらに、`repair failed` 直後に watcher の通常 `Upsert` が同じ `Failed` 行を `Pending` に戻し、同じ `QueueId` を即再取得するループも見つかった。
+- `QueueDbService.Upsert(...)` で `Failed` 行も `Done` 行と同じく「同条件の通常再投入では戻さない」ように修正し、実機で `db_affected=0` と `Status=Failed` 維持まで確認済み。
+
+## 8. 参照
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_na04_recovery差分_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\連絡用doc_workthree_サムネイル並列再設計向け_難読動画優先順位と成功条件_2026-03-11.md`
+- `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`

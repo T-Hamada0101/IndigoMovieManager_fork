@@ -334,6 +334,7 @@
                                                                 MouseDown="Label_MouseDown">
                                                                 <Image
                                                                     ContextMenu="{StaticResource menuContext}"
+                                                                    DataContextChanged="ThumbnailImage_DataContextChanged"
                                                                     VirtualizingPanel.IsVirtualizing="True"
                                                                     VirtualizingPanel.ScrollUnit="Pixel"
                                                                     VirtualizingPanel.VirtualizationMode="Recycling">
@@ -448,6 +449,7 @@
                                                                 MouseDown="Label_MouseDown">
                                                                 <Image
                                                                     ContextMenu="{StaticResource menuContext}"
+                                                                    DataContextChanged="ThumbnailImage_DataContextChanged"
                                                                     VirtualizingPanel.IsVirtualizing="True"
                                                                     VirtualizingPanel.ScrollUnit="Pixel"
                                                                     VirtualizingPanel.VirtualizationMode="Recycling">
@@ -522,6 +524,7 @@
                                                             MouseDown="Label_MouseDown">
                                                             <Image
                                                                 ContextMenu="{StaticResource menuContext}"
+                                                                DataContextChanged="ThumbnailImage_DataContextChanged"
                                                                 VirtualizingPanel.IsVirtualizing="True"
                                                                 VirtualizingPanel.ScrollUnit="Pixel"
                                                                 VirtualizingPanel.VirtualizationMode="Recycling">
@@ -588,6 +591,7 @@
                                                                 MouseDoubleClick="PlayMovie_Click"
                                                                 MouseDown="Label_MouseDown">
                                                                 <Image
+                                                                    DataContextChanged="ThumbnailImage_DataContextChanged"
                                                                     VirtualizingPanel.IsVirtualizing="True"
                                                                     VirtualizingPanel.ScrollUnit="Pixel"
                                                                     VirtualizingPanel.VirtualizationMode="Recycling">
@@ -791,6 +795,7 @@
                                                                 VirtualizingPanel.ScrollUnit="Pixel">
                                                                 <Image
                                                                     ContextMenu="{StaticResource menuContext}"
+                                                                    DataContextChanged="ThumbnailImage_DataContextChanged"
                                                                     VirtualizingPanel.IsVirtualizing="True"
                                                                     VirtualizingPanel.ScrollUnit="Pixel"
                                                                     VirtualizingPanel.VirtualizationMode="Recycling">

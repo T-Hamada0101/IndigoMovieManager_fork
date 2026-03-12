@@ -27,10 +27,22 @@ namespace IndigoMovieManager.Thumbnail
             "decoder not found",
             "video stream not found",
             "unknown codec",
-            "unknown",
             "unsupported",
             "invalid data found",
             "failed to open input",
+        ];
+
+        private static readonly string[] CorruptionButNotUnsupportedKeywords =
+        [
+            "invalid nal unit size",
+            "missing picture in access unit",
+            "error splitting the input into nal units",
+            "corrupt decoded frame",
+            "error while decoding mb",
+            "error submitting packet to decoder",
+            "decoding error",
+            "decode error rate",
+            "terminating thread with return code",
         ];
 
         public static FailurePlaceholderKind ClassifyFailure(
@@ -39,9 +51,10 @@ namespace IndigoMovieManager.Thumbnail
         )
         {
             StringBuilder merged = new();
-            if (!string.IsNullOrWhiteSpace(codec))
+            string normalizedCodec = NormalizeCodecForClassification(codec);
+            if (!string.IsNullOrWhiteSpace(normalizedCodec))
             {
-                merged.Append(codec);
+                merged.Append(normalizedCodec);
                 merged.Append(' ');
             }
 
@@ -68,6 +81,11 @@ namespace IndigoMovieManager.Thumbnail
             if (ContainsAnyKeyword(text, DrmErrorKeywords))
             {
                 return FailurePlaceholderKind.DrmSuspected;
+            }
+
+            if (ContainsAnyKeyword(text, CorruptionButNotUnsupportedKeywords))
+            {
+                return FailurePlaceholderKind.None;
             }
 
             if (ContainsAnyKeyword(text, UnsupportedErrorKeywords))
@@ -234,6 +252,13 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return false;
+        }
+
+        private static string NormalizeCodecForClassification(string codec)
+        {
+            return string.Equals(codec?.Trim(), "unknown", StringComparison.OrdinalIgnoreCase)
+                ? ""
+                : codec ?? "";
         }
 
         // プレースホルダー1コマを描画する。画面で原因が分かることを優先する。

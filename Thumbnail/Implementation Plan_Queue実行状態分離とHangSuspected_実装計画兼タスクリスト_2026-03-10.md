@@ -429,3 +429,44 @@ workthree 側の直近作業予定:
   - `QueueDbService.Upsert(...)` で `Done` 行は無条件に戻さない。
   - ただし `MovieSizeBytes / ThumbPanelPos / ThumbTimePos` のどれかが変わった時だけは、正当な再作成として `Pending` に戻す。
 - これにより、watch の定常再投入ノイズだけ止めつつ、設定変更やファイル差し替えは従来どおり再生成できる。
+
+## 23. 2026-03-12 みずがめ座 `CODEC NG` 誤判定と `Failed` 再取得ループ メモ
+- 対象:
+  - `E:\_サムネイル作成困難動画\開発用\みずがめ座\みずがめ座 (2).mp4`
+- `workthree` では `repair workflow` 後に `autogen` / `ffmpeg1pass` 成功実績がある個体だが、`future` では一度 `placeholder-unsupported` で `CODEC NG` 化していた。
+- 実機ログを追うと、recovery 中の decode error は `UnsupportedCodec` より「途中破損」寄りだった。
+  - `Invalid NAL unit size`
+  - `missing picture in access unit`
+  - `Error splitting the input into NAL units`
+  - `Error submitting packet to decoder`
+  - `Decoding error`
+  - `Decode error rate`
+- 対応:
+  - `ThumbnailPlaceholderUtility` で上記キーワード群を `CorruptionButNotUnsupportedKeywords` として切り出し、`FailurePlaceholderKind.None` を返すようにした。
+  - `ThumbnailEngineExecutionCoordinator` では `FailurePlaceholderKind.None` の時に placeholder を作らず、
+    - `PolicyDecision=placeholder-suppressed`
+    - `PlaceholderAction=skipped`
+    を result へ残すようにした。
+- 実機確認:
+  - normal lane `15秒 timeout` で rescue へ退避
+  - recovery 側で `ffmpeg1pass -> opencv` まで試行
+  - 終端は
+    - `failure placeholder suppressed`
+    - `thumbnail create failed`
+    - `repair failed`
+  - となり、新しい `CODEC NG` は生成されない
+- 追加で見えた別問題:
+  - `repair failed` の直後に watcher の通常 `Upsert` が同じ `Failed` 行を `Pending` に巻き戻し、同一 `QueueId` をすぐ再 dispatch していた
+- 対応:
+  - `QueueDbService.Upsert(...)` で、`Failed` 行も `Done` 行と同様に「同条件の通常再投入では戻さない」ようにした
+  - ただし `MovieSizeBytes / ThumbPanelPos / ThumbTimePos` に差分がある場合だけは、正当な再作成として `Pending` に戻す
+- 実機再確認:
+  - `Failed` 行を置いた状態で本体起動
+  - watcher の `enqueue accepted` は発生
+  - それでも `persister upsert` は `db_affected=0`
+  - `consumer dispatch begin` は新規発生せず
+  - QueueDB も `Status=Failed` を維持
+- これで `みずがめ座` 系は
+  - `CODEC NG` 誤成功化を止める
+  - `repair failed` 後の即時再取得ループを止める
+  まで本線で固定できた。

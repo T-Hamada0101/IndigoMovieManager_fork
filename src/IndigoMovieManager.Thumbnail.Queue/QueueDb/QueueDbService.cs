@@ -256,7 +256,7 @@ DO UPDATE SET
     UpdatedAtUtc = @NowUtc
 WHERE ThumbnailQueue.Status <> @Processing
   AND (
-      ThumbnailQueue.Status <> @Done
+      (ThumbnailQueue.Status <> @Done AND ThumbnailQueue.Status <> @Failed)
       OR IFNULL(ThumbnailQueue.MovieSizeBytes, 0) <> IFNULL(excluded.MovieSizeBytes, 0)
       OR IFNULL(ThumbnailQueue.ThumbPanelPos, -2147483648) <> IFNULL(excluded.ThumbPanelPos, -2147483648)
       OR IFNULL(ThumbnailQueue.ThumbTimePos, -2147483648) <> IFNULL(excluded.ThumbTimePos, -2147483648)
@@ -272,6 +272,7 @@ WHERE ThumbnailQueue.Status <> @Processing
             upsertCommand.Parameters.AddWithValue("@Status", pendingStatus);
             upsertCommand.Parameters.AddWithValue("@Processing", processingStatus);
             upsertCommand.Parameters.AddWithValue("@Done", (int)ThumbnailQueueStatus.Done);
+            upsertCommand.Parameters.AddWithValue("@Failed", (int)ThumbnailQueueStatus.Failed);
             upsertCommand.Parameters.AddWithValue(
                 "@GuaranteedRecoveryAttemptCount",
                 GuaranteedRecoveryAttemptCount

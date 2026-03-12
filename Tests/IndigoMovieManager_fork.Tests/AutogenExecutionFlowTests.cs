@@ -874,7 +874,7 @@ public class AutogenExecutionFlowTests
                 Assert.That(indexRepairService.ProbeCallCount, Is.EqualTo(1));
                 Assert.That(indexRepairService.RepairCallCount, Is.EqualTo(1));
                 Assert.That(autogen.CreateCallCount, Is.EqualTo(0));
-                Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(2));
+                Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(3));
                 Assert.That(Path.Exists(repairedPath), Is.False);
             }
             finally
@@ -2108,6 +2108,118 @@ public class AutogenExecutionFlowTests
                 Assert.That(ffmedia.CreateCallCount, Is.EqualTo(0));
                 Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(0));
                 Assert.That(opencv.CreateCallCount, Is.EqualTo(0));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, oldEngine);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CreateThumbAsync_Recovery破損Mp4失敗はUnsupportedPlaceholder成功化しない()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyMp4File(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            const string corruptionError =
+                "exit=69, err=[h264 @ 000002a425411240] Invalid NAL unit size (0 > 1266). [h264 @ 000002a425411240] missing picture in access unit with size 1270";
+            var autogen = new RecordingEngine(
+                "autogen",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "autogen failed"
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmedia failed"
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            corruptionError
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "opencv failed"
+                        )
+                    )
+            );
+            RecordingThumbnailLogger logger = new();
+            var service = ThumbnailCreationServiceFactory.Create(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                new FixedVideoMetadataProvider(2057.380862, "h264"),
+                logger,
+                new RecordingVideoIndexRepairService(
+                    _ => new VideoIndexProbeResult(),
+                    (_, __) => new VideoIndexRepairResult()
+                )
+            );
+
+            string? oldEngine = Environment.GetEnvironmentVariable(EngineEnvName);
+            try
+            {
+                Environment.SetEnvironmentVariable(EngineEnvName, "ffmpeg1pass");
+
+                ThumbnailCreateResult result = await service.CreateThumbAsync(
+                    new QueueObj
+                    {
+                        MovieId = 904,
+                        Tabindex = 4,
+                        MovieFullPath = moviePath,
+                        AttemptCount = 2,
+                    },
+                    dbName: "testdb",
+                    thumbFolder: thumbRoot,
+                    isResizeThumb: true,
+                    isManual: false
+                );
+
+                Assert.That(result.IsSuccess, Is.False);
+                Assert.That(result.PolicyDecision, Is.EqualTo("placeholder-suppressed"));
+                Assert.That(result.PlaceholderAction, Is.EqualTo("skipped"));
+                Assert.That(result.PlaceholderKind, Is.Empty);
+                Assert.That(
+                    logger.DebugMessages.Any(x => x.Contains("failure placeholder created")),
+                    Is.False
+                );
             }
             finally
             {

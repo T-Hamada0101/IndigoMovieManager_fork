@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Data;
@@ -19,6 +20,39 @@ namespace IndigoMovieManager.Converter
         private static readonly object CacheGate = new();
         private static readonly Dictionary<string, CacheEntry> Cache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly LinkedList<string> CacheLru = new();
+
+        // 同じ保存先へ再生成した直後に古い画像が残らないよう、対象パスのキャッシュを明示的に落とす。
+        internal static void InvalidatePath(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(filePath);
+            }
+            catch
+            {
+                return;
+            }
+
+            lock (CacheGate)
+            {
+                List<string> keysToRemove = Cache.Keys
+                    .Where(x => x.StartsWith(fullPath + "|", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                foreach (string key in keysToRemove)
+                {
+                    if (Cache.TryGetValue(key, out CacheEntry entry))
+                    {
+                        RemoveCacheEntry(key, entry);
+                    }
+                }
+            }
+        }
 
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
