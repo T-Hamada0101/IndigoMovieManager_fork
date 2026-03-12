@@ -95,6 +95,18 @@
   - 後続通常ジョブは既存画像を再利用する
   流れへ持ち込めた。
 
+## 8.1 2026-03-13 future 本線側の追加追記
+- 通常 `tab=4` の `NullReference` は、`autogen` 本体の失敗ではなく後始末 `finally` の `bmp.Dispose()` が原因だった。
+- `bitmaps` に `null` が混じるケースで cleanup 側の `NullReference` が本来の失敗を覆い隠していたため、`bmp?.Dispose()` に修正した。
+- 修正後の実機ログでは、通常 `tab=4` の本当の失敗は `NullReference` ではなく `OperationCanceledException` だった。
+  - 停止位置: `TryCaptureFrameBySequentialReadFromFreshContext(...)`
+  - 原因: `autogen` の fresh context 逐次読み fallback が normal lane の `10秒` を食い切る
+- これに対して、`autogen` の重い逐次読み fallback は `manual / rescue` のみ許可し、通常レーンでは深追いしないようにした。
+- 実機体感では、この修正後に `みずがめ座 (2)` の通常レーン応答が明確に速くなった。
+  - normal lane は早く rescue へ handoff
+  - rescue 側は既存の `1秒1枚 fallback + sibling 作成` で回収
+  - 結果として workthree で重視しているテンポ感に近づいた
+
 ## 9. 参照
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_na04_recovery差分_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\連絡用doc_workthree_サムネイル並列再設計向け_難読動画優先順位と成功条件_2026-03-11.md`

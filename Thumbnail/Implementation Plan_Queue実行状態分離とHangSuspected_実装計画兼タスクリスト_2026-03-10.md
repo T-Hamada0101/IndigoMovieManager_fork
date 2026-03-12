@@ -497,3 +497,21 @@ workthree 側の直近作業予定:
 - 補足:
   - 初回の `tab=4` 失敗自体は残っているが、救済後の体感表示は復元できた
   - 次に詰めるなら、通常多パネル経路の `NullReference` 根本原因を別件として潰す
+
+## 25. 2026-03-13 みずがめ座 normal lane 高速化メモ
+- `みずがめ座 (2)` の通常 `tab=4` で見えていた `Object reference not set to an instance of an object.` は、`autogen` の本線失敗ではなく cleanup 側の `bmp.Dispose()` だった。
+- `ThumbnailEngineExecutionCoordinator` の例外ログから、実際の本線停止は `OperationCanceledException` で、normal lane の `10秒` timeout に達していたことを確認した。
+  - 停止位置:
+    - `FfmpegAutoGenThumbnailGenerationEngine.TryCaptureFrameBySequentialReadFromFreshContext(...)`
+    - `FfmpegAutoGenThumbnailGenerationEngine.CreateInternal(...)`
+- 判断:
+  - normal lane では `autogen` の fresh context 逐次読み fallback は重すぎる
+  - この深追いは rescue lane の責務へ寄せた方が、通常 job を長く塞がずに済む
+- 対応:
+  - cleanup 側は `bmp?.Dispose()` に修正し、偽の `NullReference` を除去
+  - `autogen` の sequential fresh context fallback は `manual` と `IsRescueRequest=1` の時だけ許可
+  - normal lane では `zeroPacketSeekMissObserved` 後に早く諦め、既存の `thumbnail-timeout -> thumbnail-recovery` へつなぐ
+- 確認:
+  - `FfmpegAutoGenThumbnailGenerationEngineTests` / `AutogenExecutionFlowTests` 合格
+  - 実機ではユーザー体感で `はやい` を確認
+  - これにより、通常レーンでの「難動画長居」をさらに短くできた
