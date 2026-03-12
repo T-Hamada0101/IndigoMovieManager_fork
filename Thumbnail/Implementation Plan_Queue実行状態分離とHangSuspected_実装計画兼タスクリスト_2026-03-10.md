@@ -470,3 +470,30 @@ workthree 側の直近作業予定:
   - `CODEC NG` 誤成功化を止める
   - `repair failed` 後の即時再取得ループを止める
   まで本線で固定できた。
+
+## 24. 2026-03-13 みずがめ座 single-frame rescue 横展開メモ
+- 対象:
+  - `E:\_サムネイル作成困難動画\開発用\みずがめ座\みずがめ座 (2).mp4`
+- 課題:
+  - rescue の `1秒1枚 fallback` で代表画像は取れるが、多パネル表示タブは後続通常ジョブが個別に走り、`NullReference` で落ちる区間があった
+- 対応:
+  - `ThumbnailEngineExecutionCoordinator` で、bookmark fallback で得た代表1枚を要求タブのタイル画像へ組み直して保存する
+  - 同じ代表1枚から sibling タブ `0/1/2/3/4` の出力も先に生成する
+  - `ThumbnailPreflightChecker` で、有効な既存サムネがある時は通常ジョブを再生成せず `existing-thumbnail` 成功として早帰りする
+- 実機確認:
+  - `2026-03-13 02:41:42` に normal `tab=4` が `NullReference` で失敗
+  - `2026-03-13 02:42:58` に rescue 側で `bookmark fallback success: engine=autogen`
+  - 同時に `bookmark fallback sibling created: tab=0/1/2/3`
+  - 以後の通常ジョブは
+    - `160x120x1x1`
+    - `56x42x5x1`
+    - `200x150x3x1`
+    - `120x90x3x1`
+    で `existing thumbnail reused` となり、再生成へ入らない
+- 効果:
+  - 「救済で1枚でも拾えれば一般表示タブまで埋める」
+  - 「後続通常ジョブは既存画像を使って静かに終わる」
+  の2段が成立した
+- 補足:
+  - 初回の `tab=4` 失敗自体は残っているが、救済後の体感表示は復元できた
+  - 次に詰めるなら、通常多パネル経路の `NullReference` 根本原因を別件として潰す

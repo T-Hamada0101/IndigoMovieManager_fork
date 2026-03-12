@@ -1,6 +1,6 @@
 # 調査結果 workthree みずがめ座2 recovery差分 2026-03-11
 
-最終更新: 2026-03-12
+最終更新: 2026-03-13
 
 ## 1. 目的
 - `E:\_サムネイル作成困難動画\作成1ショットOK\みずがめ座 (2).mp4` の現行 `workthree` 挙動を固定する。
@@ -73,7 +73,29 @@
 - さらに、`repair failed` 直後に watcher の通常 `Upsert` が同じ `Failed` 行を `Pending` に戻し、同じ `QueueId` を即再取得するループも見つかった。
 - `QueueDbService.Upsert(...)` で `Failed` 行も `Done` 行と同じく「同条件の通常再投入では戻さない」ように修正し、実機で `db_affected=0` と `Status=Failed` 維持まで確認済み。
 
-## 8. 参照
+## 8. 2026-03-13 future 本線側の追記
+- `みずがめ座 (2)` は、通常の多パネル生成では `Object reference not set to an instance of an object.` で落ちる区間がまだ残っている。
+- ただし recovery 側に `1秒1枚` の bookmark fallback を追加したことで、repaired movie から代表1枚を取り出して救済できることを確認した。
+- 追加対応は2段。
+  1. 救済で取れた代表1枚を、要求タブの寸法へ組み直して保存する。
+  2. さらに同じ代表1枚から sibling タブ `0/1/2/3/4` の画像も先に横展開しておく。
+- 実機ログでは以下の並びを確認した。
+  - normal 側で `tab=4` が `NullReference` で失敗
+  - rescue 側で `bookmark fallback success: engine=autogen`
+  - 続けて `bookmark fallback sibling created: tab=0/1/2/3`
+  - その後の通常ジョブは `existing thumbnail reused` で早帰り
+- 早帰りが効いたタブ:
+  - `160x120x1x1`
+  - `56x42x5x1`
+  - `200x150x3x1`
+  - `120x90x3x1`
+- これにより、`みずがめ座 (2)` は
+  - rescue で1枚でも取れれば
+  - 一般表示タブまで埋めて
+  - 後続通常ジョブは既存画像を再利用する
+  流れへ持ち込めた。
+
+## 9. 参照
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\調査結果_workthree_na04_recovery差分_2026-03-11.md`
 - `C:\Users\{username}\source\repos\IndigoMovieManager_fork_workthree\Thumbnail\連絡用doc_workthree_サムネイル並列再設計向け_難読動画優先順位と成功条件_2026-03-11.md`
 - `C:\Users\na6ce\source\repos\IndigoMovieManager_fork\Thumbnail\Implementation Plan_Queue実行状態分離とHangSuspected_実装計画兼タスクリスト_2026-03-10.md`

@@ -1,3 +1,4 @@
+using System.Drawing;
 using IndigoMovieManager.Thumbnail.Engines;
 
 namespace IndigoMovieManager.Thumbnail
@@ -35,6 +36,16 @@ namespace IndigoMovieManager.Thumbnail
                 Directory.CreateDirectory(request.TabInfo.OutPath);
             }
 
+            if (!request.IsManual && TryReuseExistingThumbnail(request, out var existingResult))
+            {
+                return ThumbnailPreflightCheckResult.Complete(
+                    existingResult,
+                    "existing-thumbnail",
+                    "",
+                    request.FileSizeBytes
+                );
+            }
+
             if (!Path.Exists(request.MovieFullPath))
             {
                 if (!Path.Exists(request.SaveThumbFileName))
@@ -67,6 +78,73 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return ThumbnailPreflightCheckResult.Continue();
+        }
+
+        // 救済横展開で先に有効サムネが出来ている時は、後続通常ジョブで作り直さず成功扱いにする。
+        private static bool TryReuseExistingThumbnail(
+            ThumbnailPreflightCheckRequest request,
+            out ThumbnailCreateResult result
+        )
+        {
+            result = null;
+
+            if (string.IsNullOrWhiteSpace(request.SaveThumbFileName) || !Path.Exists(request.SaveThumbFileName))
+            {
+                return false;
+            }
+
+            try
+            {
+                FileInfo fileInfo = new(request.SaveThumbFileName);
+                if (fileInfo.Length < 1)
+                {
+                    return false;
+                }
+
+                int expectedWidth = Math.Max(1, request.TabInfo.Width * request.TabInfo.Columns);
+                int expectedHeight = Math.Max(1, request.TabInfo.Height * request.TabInfo.Rows);
+                using (Image image = Image.FromFile(request.SaveThumbFileName))
+                {
+                    if (image.Width != expectedWidth || image.Height != expectedHeight)
+                    {
+                        return false;
+                    }
+                }
+
+                ThumbInfo thumbInfo = new();
+                thumbInfo.GetThumbInfo(request.SaveThumbFileName);
+                if (
+                    !thumbInfo.IsThumbnail
+                    || thumbInfo.ThumbWidth != request.TabInfo.Width
+                    || thumbInfo.ThumbHeight != request.TabInfo.Height
+                    || thumbInfo.ThumbColumns != request.TabInfo.Columns
+                    || thumbInfo.ThumbRows != request.TabInfo.Rows
+                    || thumbInfo.ThumbCounts != request.TabInfo.Columns * request.TabInfo.Rows
+                )
+                {
+                    return false;
+                }
+
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail",
+                    $"existing thumbnail reused: movie='{request.MovieFullPath}', path='{request.SaveThumbFileName}'"
+                );
+                result = ThumbnailResultFactory.CreateSuccess(
+                    request.SaveThumbFileName,
+                    request.DurationSec,
+                    failureStage: "preflight-existing-thumbnail",
+                    policyDecision: "reuse-existing-thumbnail"
+                );
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail",
+                    $"existing thumbnail reuse skipped: path='{request.SaveThumbFileName}', err='{ex.Message}'"
+                );
+                return false;
+            }
         }
 
         private static ThumbnailPreflightCheckResult HandleDrmPrecheck(

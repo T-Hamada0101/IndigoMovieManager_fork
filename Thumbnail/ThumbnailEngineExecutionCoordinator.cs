@@ -1,3 +1,4 @@
+using System.Drawing;
 using IndigoMovieManager.Thumbnail.Engines;
 
 namespace IndigoMovieManager.Thumbnail
@@ -491,8 +492,12 @@ namespace IndigoMovieManager.Thumbnail
                     "thumbnail",
                     $"bookmark fallback try: engine={engine.EngineId}, movie='{context.MovieFullPath}', capture_sec=1"
                 );
+                string representativeImagePath = BuildSingleFrameTempPath(
+                    saveThumbFileName,
+                    engine.EngineId
+                );
                 bool created = await engine
-                    .CreateBookmarkAsync(context.MovieFullPath, saveThumbFileName, 1, cts)
+                    .CreateBookmarkAsync(context.MovieFullPath, representativeImagePath, 1, cts)
                     .ConfigureAwait(false);
                 if (!created)
                 {
@@ -500,28 +505,224 @@ namespace IndigoMovieManager.Thumbnail
                         "thumbnail",
                         $"bookmark fallback failed: engine={engine.EngineId}, movie='{context.MovieFullPath}', capture_sec=1"
                     );
+                    TryDeleteFileQuietly(representativeImagePath);
                     continue;
                 }
 
-                string processEngineId = $"{engine.EngineId}-bookmark";
-                ThumbnailRuntimeLog.Write(
-                    "thumbnail",
-                    $"bookmark fallback success: engine={engine.EngineId}, movie='{context.MovieFullPath}', path='{saveThumbFileName}'"
-                );
-                return ThumbnailSingleFrameFallbackResult.Success(
-                    ThumbnailResultFactory.CreateSuccess(
-                        saveThumbFileName,
-                        durationSec,
-                        engineAttempted: processEngineId,
-                        failureStage: "postprocess-single-frame",
-                        policyDecision: "recovery-bookmark-1sec",
-                        placeholderAction: "single-frame"
-                    ),
-                    processEngineId
-                );
+                try
+                {
+                    if (
+                        !TryCreateSingleFrameTileThumbnail(
+                            representativeImagePath,
+                            saveThumbFileName,
+                            context.TabInfo,
+                            context.ThumbInfo,
+                            context.DurationSec,
+                            out ThumbnailPreviewFrame previewFrame,
+                            out string errorMessage
+                        )
+                    )
+                    {
+                        ThumbnailRuntimeLog.Write(
+                            "thumbnail",
+                            $"bookmark fallback tile failed: engine={engine.EngineId}, movie='{context.MovieFullPath}', err='{errorMessage}'"
+                        );
+                        continue;
+                    }
+
+                    string processEngineId = $"{engine.EngineId}-bookmark";
+                    ThumbnailRuntimeLog.Write(
+                        "thumbnail",
+                        $"bookmark fallback success: engine={engine.EngineId}, movie='{context.MovieFullPath}', path='{saveThumbFileName}'"
+                    );
+                    TryFanOutSingleFrameRescueThumbnails(representativeImagePath, context);
+                    return ThumbnailSingleFrameFallbackResult.Success(
+                        ThumbnailResultFactory.CreateSuccess(
+                            saveThumbFileName,
+                            durationSec,
+                            previewFrame: previewFrame,
+                            engineAttempted: processEngineId,
+                            failureStage: "postprocess-single-frame",
+                            policyDecision: "recovery-bookmark-1sec",
+                            placeholderAction: "single-frame"
+                        ),
+                        processEngineId
+                    );
+                }
+                finally
+                {
+                    TryDeleteFileQuietly(representativeImagePath);
+                }
             }
 
             return ThumbnailSingleFrameFallbackResult.NoChange();
+        }
+
+        // 代表1枚を現在のTabInfo寸法へ揃え、既存タイル形式へ複製して保存する。
+        private static bool TryCreateSingleFrameTileThumbnail(
+            string representativeImagePath,
+            string saveThumbFileName,
+            TabInfo tabInfo,
+            ThumbInfo sourceThumbInfo,
+            double? durationSec,
+            out ThumbnailPreviewFrame previewFrame,
+            out string errorMessage
+        )
+        {
+            previewFrame = null;
+            errorMessage = "";
+
+            if (tabInfo == null)
+            {
+                errorMessage = "tab info is missing";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(representativeImagePath) || !Path.Exists(representativeImagePath))
+            {
+                errorMessage = "representative image is missing";
+                return false;
+            }
+
+            try
+            {
+                using Bitmap representativeBitmap = new(representativeImagePath);
+                Rectangle cropRect = ThumbnailImageUtility.GetAspectRect(
+                    representativeBitmap.Width,
+                    representativeBitmap.Height
+                );
+                using Bitmap croppedBitmap = ThumbnailImageUtility.CropBitmap(
+                    representativeBitmap,
+                    cropRect
+                );
+                using Bitmap resizedBitmap = ThumbnailImageUtility.ResizeBitmap(
+                    croppedBitmap,
+                    new Size(tabInfo.Width, tabInfo.Height)
+                );
+                previewFrame = ThumbnailImageUtility.CreatePreviewFrameFromBitmap(resizedBitmap, 120);
+
+                int frameCount = Math.Max(1, tabInfo.Columns * tabInfo.Rows);
+                List<Bitmap> frames = [];
+                try
+                {
+                    for (int i = 0; i < frameCount; i++)
+                    {
+                        frames.Add(new Bitmap(resizedBitmap));
+                    }
+
+                    if (
+                        !ThumbnailImageUtility.SaveCombinedThumbnail(
+                            saveThumbFileName,
+                            frames,
+                            tabInfo.Columns,
+                            tabInfo.Rows
+                        )
+                    )
+                    {
+                        errorMessage = "combined thumbnail save failed";
+                        return false;
+                    }
+                }
+                finally
+                {
+                    for (int i = 0; i < frames.Count; i++)
+                    {
+                        frames[i]?.Dispose();
+                    }
+                }
+
+                ThumbInfo rebuiltThumbInfo =
+                    ThumbnailImageUtility.RebuildThumbInfoWithCaptureSeconds(
+                        sourceThumbInfo
+                            ?? ThumbnailImageUtility.BuildAutoThumbInfo(tabInfo, durationSec),
+                        Enumerable.Repeat(1d, frameCount).ToList()
+                    );
+                if (rebuiltThumbInfo?.SecBuffer != null && rebuiltThumbInfo.InfoBuffer != null)
+                {
+                    using FileStream dest = new(saveThumbFileName, FileMode.Append, FileAccess.Write);
+                    dest.Write(rebuiltThumbInfo.SecBuffer);
+                    dest.Write(rebuiltThumbInfo.InfoBuffer);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
+        // 単発救済で拾えた代表画像を、一般タブの複数パネル表示にも横展開しておく。
+        private static void TryFanOutSingleFrameRescueThumbnails(
+            string representativeImagePath,
+            ThumbnailJobContext context
+        )
+        {
+            if (context?.QueueObj == null || string.IsNullOrWhiteSpace(context.SaveThumbFileName))
+            {
+                return;
+            }
+
+            string currentDirectory = Path.GetDirectoryName(context.SaveThumbFileName) ?? "";
+            string thumbRoot = Directory.GetParent(currentDirectory)?.FullName ?? "";
+            if (string.IsNullOrWhiteSpace(thumbRoot))
+            {
+                return;
+            }
+
+            string fileName = Path.GetFileName(context.SaveThumbFileName) ?? "";
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return;
+            }
+
+            string dbName = new DirectoryInfo(thumbRoot).Name;
+            int[] siblingTabs = [0, 1, 2, 3, 4];
+            foreach (int tabIndex in siblingTabs)
+            {
+                if (tabIndex == context.QueueObj.Tabindex)
+                {
+                    continue;
+                }
+
+                TabInfo siblingTab = new(tabIndex, dbName, thumbRoot);
+                string siblingPath = Path.Combine(siblingTab.OutPath, fileName);
+                if (
+                    !TryCreateSingleFrameTileThumbnail(
+                        representativeImagePath,
+                        siblingPath,
+                        siblingTab,
+                        ThumbnailImageUtility.BuildAutoThumbInfo(siblingTab, context.DurationSec),
+                        context.DurationSec,
+                        out _,
+                        out string siblingError
+                    )
+                )
+                {
+                    ThumbnailRuntimeLog.Write(
+                        "thumbnail",
+                        $"bookmark fallback sibling skipped: tab={tabIndex}, movie='{context.MovieFullPath}', err='{siblingError}'"
+                    );
+                    continue;
+                }
+
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail",
+                    $"bookmark fallback sibling created: tab={tabIndex}, movie='{context.MovieFullPath}', path='{siblingPath}'"
+                );
+            }
+        }
+
+        private static string BuildSingleFrameTempPath(string saveThumbFileName, string engineId)
+        {
+            string directory = Path.GetDirectoryName(saveThumbFileName) ?? "";
+            string fileName = Path.GetFileNameWithoutExtension(saveThumbFileName) ?? "thumb";
+            string safeEngineId = string.IsNullOrWhiteSpace(engineId) ? "engine" : engineId;
+            return Path.Combine(
+                directory,
+                $"{fileName}.single-frame.{safeEngineId}.{Guid.NewGuid():N}.jpg"
+            );
         }
 
         private static void TryDeleteFileQuietly(string path)

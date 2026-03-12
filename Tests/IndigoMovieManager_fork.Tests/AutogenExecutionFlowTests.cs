@@ -1746,7 +1746,10 @@ public class AutogenExecutionFlowTests
                     ),
                 createBookmarkAsync: (_, saveThumbPath, capturePos, _) =>
                 {
-                    File.WriteAllBytes(saveThumbPath, [0x01, 0x02, 0x03, 0x04]);
+                    using Bitmap bitmap = new(640, 480);
+                    using Graphics graphics = Graphics.FromImage(bitmap);
+                    graphics.Clear(Color.DarkSeaGreen);
+                    bitmap.Save(saveThumbPath, System.Drawing.Imaging.ImageFormat.Jpeg);
                     return Task.FromResult(capturePos == 1);
                 }
             );
@@ -1823,12 +1826,132 @@ public class AutogenExecutionFlowTests
             Assert.That(ffmpeg1pass.BookmarkCallCount, Is.EqualTo(0));
             Assert.That(opencv.BookmarkCallCount, Is.EqualTo(0));
             Assert.That(File.Exists(result.SaveThumbFileName), Is.True);
+            using (Bitmap outputBitmap = new(result.SaveThumbFileName))
+            {
+                Assert.That(outputBitmap.Width, Is.EqualTo(160));
+                Assert.That(outputBitmap.Height, Is.EqualTo(120));
+            }
+            string multiPanelPath = Path.Combine(
+                thumbRoot,
+                "120x90x5x2",
+                Path.GetFileName(result.SaveThumbFileName)
+            );
+            Assert.That(File.Exists(multiPanelPath), Is.True);
+            using (Bitmap multiPanelBitmap = new(multiPanelPath))
+            {
+                Assert.That(multiPanelBitmap.Width, Is.EqualTo(600));
+                Assert.That(multiPanelBitmap.Height, Is.EqualTo(180));
+            }
             Assert.That(
                 logger.DebugMessages.Any(x =>
                     x.Contains("bookmark fallback success: engine=autogen")
                 ),
                 Is.True
             );
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CreateThumbAsync_既存有効サムネがあれば後続通常ジョブは再生成しない()
+    {
+        string tempRoot = CreateTempRoot();
+        try
+        {
+            string moviePath = CreateDummyMp4File(tempRoot);
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            var autogen = new RecordingEngine(
+                "autogen",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "autogen should not run"
+                        )
+                    )
+            );
+            var ffmedia = new RecordingEngine(
+                "ffmediatoolkit",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmedia should not run"
+                        )
+                    )
+            );
+            var ffmpeg1pass = new RecordingEngine(
+                "ffmpeg1pass",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "ffmpeg should not run"
+                        )
+                    )
+            );
+            var opencv = new RecordingEngine(
+                "opencv",
+                createAsync: (ctx, _) =>
+                    Task.FromResult(
+                        ThumbnailResultFactory.CreateFailed(
+                            ctx.SaveThumbFileName,
+                            ctx.DurationSec,
+                            "opencv should not run"
+                        )
+                    )
+            );
+            RecordingThumbnailLogger logger = new();
+            var service = ThumbnailCreationServiceFactory.Create(
+                ffmedia,
+                ffmpeg1pass,
+                opencv,
+                autogen,
+                new FixedVideoMetadataProvider(2057.380862, "h264"),
+                logger,
+                new RecordingVideoIndexRepairService(
+                    _ => new VideoIndexProbeResult(),
+                    (_, __) => new VideoIndexRepairResult()
+                )
+            );
+
+            string hash = ThumbnailMovieMetaCache.GetOrCreate(moviePath, null).Meta.Hash;
+            TabInfo tabInfo = new(4, "testdb", thumbRoot);
+            string existingPath = ThumbnailPathResolver.BuildThumbnailPath(tabInfo, moviePath, hash);
+            CreateExistingThumbnail(existingPath, tabInfo);
+
+            ThumbnailCreateResult result = await service.CreateThumbAsync(
+                new QueueObj
+                {
+                    MovieId = 907,
+                    Tabindex = 4,
+                    MovieFullPath = moviePath,
+                    AttemptCount = 0,
+                },
+                dbName: "testdb",
+                thumbFolder: thumbRoot,
+                isResizeThumb: true,
+                isManual: false
+            );
+
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.PolicyDecision, Is.EqualTo("reuse-existing-thumbnail"));
+            Assert.That(result.FailureStage, Is.EqualTo("preflight-existing-thumbnail"));
+            Assert.That(autogen.CreateCallCount, Is.EqualTo(0));
+            Assert.That(ffmedia.CreateCallCount, Is.EqualTo(0));
+            Assert.That(ffmpeg1pass.CreateCallCount, Is.EqualTo(0));
+            Assert.That(opencv.CreateCallCount, Is.EqualTo(0));
         }
         finally
         {
@@ -2507,6 +2630,43 @@ public class AutogenExecutionFlowTests
         );
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static void CreateExistingThumbnail(string savePath, TabInfo tabInfo)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? "");
+        List<Bitmap> frames = [];
+        try
+        {
+            int frameCount = Math.Max(1, tabInfo.Columns * tabInfo.Rows);
+            for (int i = 0; i < frameCount; i++)
+            {
+                Bitmap bitmap = new(tabInfo.Width, tabInfo.Height);
+                using Graphics graphics = Graphics.FromImage(bitmap);
+                graphics.Clear(Color.SteelBlue);
+                frames.Add(bitmap);
+            }
+
+            bool saved = ThumbnailImageUtility.SaveCombinedThumbnail(
+                savePath,
+                frames,
+                tabInfo.Columns,
+                tabInfo.Rows
+            );
+            Assert.That(saved, Is.True);
+
+            ThumbInfo thumbInfo = ThumbnailImageUtility.BuildAutoThumbInfo(tabInfo, 2057.380862);
+            using FileStream dest = new(savePath, FileMode.Append, FileAccess.Write);
+            dest.Write(thumbInfo.SecBuffer);
+            dest.Write(thumbInfo.InfoBuffer);
+        }
+        finally
+        {
+            foreach (Bitmap bitmap in frames)
+            {
+                bitmap.Dispose();
+            }
+        }
     }
 
     private static string CreateDummyMovieFile(string tempRoot)
