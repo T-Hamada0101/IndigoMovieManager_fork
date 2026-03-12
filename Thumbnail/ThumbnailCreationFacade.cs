@@ -29,12 +29,20 @@ namespace IndigoMovieManager.Thumbnail
             TabInfo tabInfo = new(queueObj.Tabindex, dbName, thumbFolder);
             string movieFullPath = queueObj.MovieFullPath;
             string repairedMovieTempPath = "";
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-facade",
+                $"enter movie='{movieFullPath}' tab={queueObj?.Tabindex} rescue={queueObj?.IsRescueRequest} attempt={queueObj?.AttemptCount}"
+            );
 
             CachedMovieMetaLookup cacheLookup = ThumbnailMovieMetaCache.GetOrCreate(
                 movieFullPath,
                 queueObj?.Hash
             );
             CachedMovieMeta cacheMeta = cacheLookup.Meta;
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-facade",
+                $"cache ready movie='{movieFullPath}' hash='{cacheMeta?.Hash}' duration_sec={cacheMeta?.DurationSec:0.###}"
+            );
             string hash = cacheMeta.Hash;
             double? durationSec = cacheMeta.DurationSec;
             WriteCacheDurationDebugLog(movieFullPath, "cache-read", durationSec, queueObj);
@@ -49,9 +57,17 @@ namespace IndigoMovieManager.Thumbnail
                 movieFullPath,
                 hash
             );
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-facade",
+                $"path ready movie='{movieFullPath}' output='{saveThumbFileName}'"
+            );
             OutputFileLockEntry outputLock = await ThumbnailOutputLockManager.AcquireAsync(
                 saveThumbFileName,
                 cts
+            );
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-facade",
+                $"lock acquired movie='{movieFullPath}' output='{saveThumbFileName}'"
             );
             ThumbnailResultCompletionCoordinator completionCoordinator = new(
                 isManual,
@@ -64,6 +80,10 @@ namespace IndigoMovieManager.Thumbnail
 
             try
             {
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail-facade",
+                    $"orchestration begin movie='{movieFullPath}'"
+                );
                 ThumbnailCreationOrchestrationResult orchestration =
                     await creationOrchestrationCoordinator
                         .ExecuteAsync(
@@ -89,6 +109,10 @@ namespace IndigoMovieManager.Thumbnail
                         )
                         .ConfigureAwait(false);
                 repairedMovieTempPath = orchestration.RepairedMovieTempPath;
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail-facade",
+                    $"orchestration end movie='{movieFullPath}' success={orchestration?.Result?.IsSuccess} err='{orchestration?.Result?.ErrorMessage}'"
+                );
                 return orchestration.Result;
             }
             finally
@@ -96,6 +120,10 @@ namespace IndigoMovieManager.Thumbnail
                 // 自動修復で作った一時動画は必ず片付ける。
                 TryDeleteFileQuietly(repairedMovieTempPath);
                 ThumbnailOutputLockManager.Release(saveThumbFileName, outputLock);
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail-facade",
+                    $"lock released movie='{movieFullPath}' output='{saveThumbFileName}'"
+                );
             }
         }
 

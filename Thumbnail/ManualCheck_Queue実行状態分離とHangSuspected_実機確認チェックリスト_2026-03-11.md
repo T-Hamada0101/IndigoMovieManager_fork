@@ -10,6 +10,11 @@
 - 対象 MainDB を 1 つ決める。
 - 難動画サンプルを用意する。
   - 推奨: `<difficult-video-root>`
+- 必要なら normal lane の早期退避秒数を設定する。
+  - 既定: `10秒`
+  - 上書き環境変数: `IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC`
+  - 例: PowerShell セッションだけ `15秒` にする場合は `$env:IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC='15'`
+  - 補助スクリプト: `Thumbnail\Test\run_normal_lane_timeout_manual.ps1 -TimeoutSec 15 -LaunchApp`
 - 必要なら `thumbnail-progress-viewer` を起動できる状態にする。
 - `FailureDb` の保存先を確認しておく。
   - `%LOCALAPPDATA%\IndigoMovieManager_fork\thumbnail-failure-db\*.failure-debug.imm`
@@ -18,6 +23,7 @@
 - 本体サムネイルタブに `leased / running / hang` が表示される。
 - 外側運転席に `queued / leased / running / hang` が表示される。
 - `trace_thumbnail_runtime.py` で `queued / leased / running / hang` を採れる。
+- normal lane timeout 時に通常 job が救済へ自動移送される。
 - `HangSuspected` 初回は recovery レーンへ戻る。
 - `サムネ失敗` タブ active 時に FailureDb の内容を表示する。
 
@@ -51,7 +57,18 @@ python scripts\trace_thumbnail_runtime.py --main-db "<対象MainDBフルパス>"
   - `queue oldest_running=...`
 3. `StartedAtUtc` がある QueueDB では、`leased` と `running` が分かれて出ることを確認する。
 
-### 4.4 HangSuspected 回復確認
+### 4.4 normal lane 早期退避確認
+1. 停滞しやすい難動画を 1 件以上投入する。
+2. `debug-runtime.log` を確認し、normal 側で下記が出ることを確認する。
+  - `thumbnail-timeout`
+  - `normal lane timeout handoff`
+3. 続けて下記が出ることを確認する。
+  - `thumbnail-recovery`
+  - `recovery scheduled by force-reset` または `recovery scheduled by enqueue`
+4. その後の Queue 再取得で recovery レーンへ戻ることを確認する。
+5. `IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC` を `10 -> 15 -> 20` と変えた時に、timeout 発火頻度が変わることを確認する。
+
+### 4.5 HangSuspected 回復確認
 1. 難動画のうち停滞しやすいものを対象にする。
 2. `HangSuspected` が発生したら、FailureDb を確認する。
 3. 初回の記録で下記を確認する。
@@ -62,7 +79,7 @@ python scripts\trace_thumbnail_runtime.py --main-db "<対象MainDBフルパス>"
 4. その後の Queue 再取得で recovery レーンへ戻ることを確認する。
 5. 同一動画で recovery 再発した場合は、`Reason = final-failed` と `QueueStatus = Failed` になることを確認する。
 
-### 4.5 サムネ失敗タブ確認
+### 4.6 サムネ失敗タブ確認
 1. `サムネ失敗` タブを active にする。
 2. FailureDb 由来の一覧へ切り替わることを確認する。
 3. 下記の列が表示されることを確認する。
@@ -82,6 +99,7 @@ python scripts\trace_thumbnail_runtime.py --main-db "<対象MainDBフルパス>"
 - 本体と運転席の両方で停滞要約を読める。
 - QueueDB の `Processing` は `leased` と `running` の内訳で追える。
 - `trace_thumbnail_runtime.py` の観測結果と UI 表示が大きく矛盾しない。
+- normal lane timeout は通常 job だけに掛かり、timeout 時は recovery へ自動移送される。
 - `HangSuspected` 初回は recovery 戻し、再発時は `Failed` になる。
 - `サムネ失敗` タブは QueueDB ではなく FailureDb の内容を表示する。
 
@@ -92,6 +110,10 @@ python scripts\trace_thumbnail_runtime.py --main-db "<対象MainDBフルパス>"
 - `running` が増えない:
   - `MarkLeaseAsRunning(...)` 到達有無
   - worker health の `LastHeartbeatUtc`
+- timeout しても recovery へ戻らない:
+  - `thumbnail-timeout`
+  - `thumbnail-recovery`
+  - `IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC`
 - `hang` が増えない:
   - `LastError`
   - `FailureDb` の `FailureKind`

@@ -6,6 +6,63 @@ namespace IndigoMovieManager_fork.Tests;
 public class VideoIndexRepairServiceTests
 {
     [Test]
+    public void ResolveProbeTimeout_未指定時は既定5秒を返す()
+    {
+        const string envName = "IMM_THUMB_INDEX_PROBE_TIMEOUT_SEC";
+        string? original = Environment.GetEnvironmentVariable(envName);
+        try
+        {
+            Environment.SetEnvironmentVariable(envName, null);
+
+            TimeSpan actual = VideoIndexRepairService.ResolveProbeTimeout();
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envName, original);
+        }
+    }
+
+    [Test]
+    public void ResolveProbeTimeout_環境変数指定を優先する()
+    {
+        const string envName = "IMM_THUMB_INDEX_PROBE_TIMEOUT_SEC";
+        string? original = Environment.GetEnvironmentVariable(envName);
+        try
+        {
+            Environment.SetEnvironmentVariable(envName, "9");
+
+            TimeSpan actual = VideoIndexRepairService.ResolveProbeTimeout();
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(9)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envName, original);
+        }
+    }
+
+    [Test]
+    public void ResolveProbeTimeout_不正値時は既定5秒へ戻す()
+    {
+        const string envName = "IMM_THUMB_INDEX_PROBE_TIMEOUT_SEC";
+        string? original = Environment.GetEnvironmentVariable(envName);
+        try
+        {
+            Environment.SetEnvironmentVariable(envName, "abc");
+
+            TimeSpan actual = VideoIndexRepairService.ResolveProbeTimeout();
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envName, original);
+        }
+    }
+
+    [Test]
     public async Task RepairAsync_入力出力同一パスは失敗する()
     {
         string tempRoot = CreateTempRoot();

@@ -377,3 +377,18 @@ workthree 側の直近作業予定:
   - `consumer processing action begin/returned/completed/canceled/faulted`
 - 目的は `ProcessLeasedItemAsync` 入口から `processingAction` 返却までのどこで止まるかを実機ログだけで切り分けること。
 - 原因が確定したら、この観測ログは整理または削減する。
+
+## 19. 2026-03-11 normal 先逃がしメモ
+- 通常レーンだけ短い時間予算を掛け、難動画が normal job を長く塞がないようにした。
+- 初期値は `10秒` で、`IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC` で実機上書きできる。
+  - 例: `15` を指定すると normal lane のみ 15 秒で救済判定する。
+  - `manual` と `IsRescueRequest=1` は対象外とする。
+- timeout 時は `thumbnail-timeout` ログを出し、同じ Queue 行を `ForceRetryMovieToPending(..., promoteToRecovery: true)` で救済へ戻す。
+- engine が失敗を返した場合も、通常レーン起点なら `thumbnail-recovery` ログを出して救済へ昇格する。
+- ffmpeg1pass の cancel 時は外部プロセスを `Kill(entireProcessTree: true)` し、2 秒待って残留を抑える。
+- 実機確認では以下を揃えて読む。
+  - `thumbnail-timeout`
+  - `thumbnail-recovery`
+  - `consumer dispatch begin`
+  - `consumer lane entered`
+  - `consumer processing watchdog start`

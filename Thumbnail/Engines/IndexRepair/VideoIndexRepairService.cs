@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
+using System.Globalization;
 
 namespace IndigoMovieManager.Thumbnail.Engines.IndexRepair
 {
@@ -8,18 +9,47 @@ namespace IndigoMovieManager.Thumbnail.Engines.IndexRepair
     /// </summary>
     internal sealed class VideoIndexRepairService : IVideoIndexRepairService
     {
+        private const string ProbeTimeoutSecEnvName = "IMM_THUMB_INDEX_PROBE_TIMEOUT_SEC";
+        private const int DefaultProbeTimeoutSec = 5;
         private static readonly string[] AllowedOutputExtensions = [".mp4", ".mkv"];
         private static bool _isInitialized;
         private static bool _initAttempted;
         private static string _initFailureReason = "";
         private static readonly object _initLock = new();
 
-        public Task<VideoIndexProbeResult> ProbeAsync(
+        public async Task<VideoIndexProbeResult> ProbeAsync(
             string moviePath,
             CancellationToken cts = default
         )
         {
-            return Task.Run(() => ProbeInternal(moviePath, cts), cts);
+            TimeSpan timeout = ResolveProbeTimeout();
+            Task<VideoIndexProbeResult> probeTask = Task.Factory.StartNew(
+                () => ProbeInternal(moviePath, cts),
+                CancellationToken.None,
+                TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
+                TaskScheduler.Default
+            );
+
+            Task completed = await Task.WhenAny(probeTask, Task.Delay(timeout, cts))
+                .ConfigureAwait(false);
+            if (completed == probeTask)
+            {
+                return await probeTask.ConfigureAwait(false);
+            }
+
+            cts.ThrowIfCancellationRequested();
+            ThumbnailRuntimeLog.Write(
+                "index-repair",
+                $"probe timeout: movie='{moviePath}' timeout_sec={timeout.TotalSeconds:0}"
+            );
+            return new VideoIndexProbeResult
+            {
+                MoviePath = moviePath ?? "",
+                IsIndexCorruptionDetected = false,
+                DetectionReason = $"probe_timeout:{timeout.TotalSeconds:0}s",
+                ContainerFormat = "",
+                ErrorCode = "timeout",
+            };
         }
 
         public Task<VideoIndexRepairResult> RepairAsync(
@@ -29,6 +59,21 @@ namespace IndigoMovieManager.Thumbnail.Engines.IndexRepair
         )
         {
             return Task.Run(() => RepairInternal(moviePath, outputPath, cts), cts);
+        }
+
+        // rescue入口のprobeで長時間塞がないよう、短い既定値を持たせる。
+        internal static TimeSpan ResolveProbeTimeout()
+        {
+            string raw = Environment.GetEnvironmentVariable(ProbeTimeoutSecEnvName)?.Trim() ?? "";
+            if (
+                int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int sec)
+                && sec >= 1
+            )
+            {
+                return TimeSpan.FromSeconds(sec);
+            }
+
+            return TimeSpan.FromSeconds(DefaultProbeTimeoutSec);
         }
 
         private static bool EnsureFfmpegInitializedSafe(out string errorMessage)

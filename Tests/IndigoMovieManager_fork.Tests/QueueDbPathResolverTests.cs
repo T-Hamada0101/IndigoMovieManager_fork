@@ -1460,6 +1460,163 @@ WHERE TabIndex = 0;";
         }
     }
 
+    [Test]
+    public void ForceRetry後は古いOwnerのDone更新を受け付けない()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-force-retry-owner-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string owner = $"thumb-normal:{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        string moviePath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-force-retry-owner-{Guid.NewGuid():N}.mp4"
+        );
+
+        try
+        {
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath),
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            QueueDbLeaseItem leased = queueDbService
+                .GetPendingAndLease(
+                    owner,
+                    takeCount: 1,
+                    leaseDuration: TimeSpan.FromMinutes(5),
+                    utcNow: nowUtc
+                )
+                .Single();
+
+            _ = queueDbService.MarkLeaseAsRunning(leased.QueueId, owner, nowUtc.AddSeconds(1));
+
+            int retried = queueDbService.ForceRetryMovieToPending(
+                moviePath,
+                tabIndex: 0,
+                utcNow: nowUtc.AddSeconds(2),
+                promoteToRecovery: true
+            );
+            int staleDoneUpdate = queueDbService.UpdateStatus(
+                leased.QueueId,
+                owner,
+                ThumbnailQueueStatus.Done,
+                nowUtc.AddSeconds(3)
+            );
+
+            Assert.That(retried, Is.EqualTo(1));
+            Assert.That(staleDoneUpdate, Is.Zero);
+
+            using SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}");
+            verifyConnection.Open();
+            using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = @"
+SELECT Status, AttemptCount, IsRescueRequest, OwnerInstanceId, LeaseUntilUtc, StartedAtUtc
+FROM ThumbnailQueue
+WHERE QueueId = @QueueId;";
+            verifyCommand.Parameters.AddWithValue("@QueueId", leased.QueueId);
+            using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+            Assert.That(reader.Read(), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(reader.GetInt32(0), Is.EqualTo((int)ThumbnailQueueStatus.Pending));
+                Assert.That(reader.GetInt32(1), Is.EqualTo(2));
+                Assert.That(reader.GetInt32(2), Is.EqualTo(1));
+                Assert.That(reader.IsDBNull(3) ? "" : reader.GetString(3), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(4) ? "" : reader.GetString(4), Is.EqualTo(""));
+                Assert.That(reader.IsDBNull(5) ? "" : reader.GetString(5), Is.EqualTo(""));
+            });
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
+    [Test]
+    public void 救済Pendingに通常Upsertが来ても救済フラグを維持する()
+    {
+        string mainDbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"imm-main-rescue-sticky-{Guid.NewGuid():N}.wb"
+        );
+        QueueDbService queueDbService = new(mainDbPath);
+        string queueDbPath = queueDbService.QueueDbFullPath;
+        DateTime nowUtc = DateTime.UtcNow;
+        string moviePath = Path.Combine(
+            Path.GetTempPath(),
+            $"movie-rescue-sticky-{Guid.NewGuid():N}.mp4"
+        );
+
+        try
+        {
+            string moviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath);
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = moviePathKey,
+                        TabIndex = 0,
+                    },
+                ],
+                nowUtc
+            );
+
+            int retried = queueDbService.ForceRetryMovieToPending(
+                moviePath,
+                tabIndex: 0,
+                utcNow: nowUtc.AddSeconds(1),
+                promoteToRecovery: true
+            );
+            Assert.That(retried, Is.EqualTo(1));
+
+            // Watcher の通常再投入が重なっても、救済行の意図は落とさない。
+            _ = queueDbService.Upsert(
+                [
+                    new QueueDbUpsertItem
+                    {
+                        MoviePath = moviePath,
+                        MoviePathKey = moviePathKey,
+                        TabIndex = 0,
+                        IsRescueRequest = false,
+                    },
+                ],
+                nowUtc.AddSeconds(2)
+            );
+
+            using SQLiteConnection verifyConnection = new($"Data Source={queueDbPath}");
+            verifyConnection.Open();
+            using SQLiteCommand verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = @"
+SELECT Status, AttemptCount, IsRescueRequest
+FROM ThumbnailQueue
+WHERE TabIndex = 0;";
+            using SQLiteDataReader reader = verifyCommand.ExecuteReader();
+            Assert.That(reader.Read(), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(reader.GetInt32(0), Is.EqualTo((int)ThumbnailQueueStatus.Pending));
+                Assert.That(reader.GetInt32(1), Is.EqualTo(2));
+                Assert.That(reader.GetInt32(2), Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            TryDeleteFile(queueDbPath);
+        }
+    }
+
     // テスト後のQueueDBを掃除して、ローカル環境を汚さない。
     private static void TryDeleteFile(string path)
     {

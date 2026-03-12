@@ -227,6 +227,133 @@ public sealed class MissingThumbnailRescuePolicyTests
         }
     }
 
+    [Test]
+    public void ShouldUseThumbnailNormalLaneTimeout_通常キューだけTrueを返す()
+    {
+        QueueObj normalQueueObj = new()
+        {
+            MovieFullPath = @"E:\movies\normal.mp4",
+            Tabindex = 0,
+        };
+        QueueObj rescueQueueObj = new()
+        {
+            MovieFullPath = @"E:\movies\rescue.mp4",
+            Tabindex = 0,
+            IsRescueRequest = true,
+        };
+
+        Assert.That(
+            MainWindow.ShouldUseThumbnailNormalLaneTimeout(normalQueueObj, isManual: false),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.ShouldUseThumbnailNormalLaneTimeout(rescueQueueObj, isManual: false),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.ShouldUseThumbnailNormalLaneTimeout(normalQueueObj, isManual: true),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void ShouldPromoteThumbnailFailureToRescueLane_通常失敗だけTrueを返す()
+    {
+        QueueObj normalQueueObj = new()
+        {
+            MovieFullPath = @"E:\movies\normal.mp4",
+            Tabindex = 0,
+        };
+        QueueObj rescueQueueObj = new()
+        {
+            MovieFullPath = @"E:\movies\rescue.mp4",
+            Tabindex = 0,
+            IsRescueRequest = true,
+        };
+
+        Assert.That(
+            MainWindow.ShouldPromoteThumbnailFailureToRescueLane(
+                normalQueueObj,
+                isManual: false
+            ),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.ShouldPromoteThumbnailFailureToRescueLane(
+                rescueQueueObj,
+                isManual: false
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.ShouldPromoteThumbnailFailureToRescueLane(
+                normalQueueObj,
+                isManual: true
+            ),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void ResolveThumbnailNormalLaneTimeout_未指定時は既定10秒を返す()
+    {
+        string? original = Environment.GetEnvironmentVariable(
+            ThumbnailEnvConfig.NormalLaneTimeoutSec
+        );
+        try
+        {
+            Environment.SetEnvironmentVariable(ThumbnailEnvConfig.NormalLaneTimeoutSec, null);
+
+            TimeSpan actual = MainWindow.ResolveThumbnailNormalLaneTimeout();
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(10)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ThumbnailEnvConfig.NormalLaneTimeoutSec, original);
+        }
+    }
+
+    [Test]
+    public void ResolveThumbnailNormalLaneTimeout_環境変数指定を優先する()
+    {
+        string? original = Environment.GetEnvironmentVariable(
+            ThumbnailEnvConfig.NormalLaneTimeoutSec
+        );
+        try
+        {
+            Environment.SetEnvironmentVariable(ThumbnailEnvConfig.NormalLaneTimeoutSec, "17");
+
+            TimeSpan actual = MainWindow.ResolveThumbnailNormalLaneTimeout();
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(17)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ThumbnailEnvConfig.NormalLaneTimeoutSec, original);
+        }
+    }
+
+    [Test]
+    public void ResolveThumbnailNormalLaneTimeout_不正値時は既定10秒へ戻す()
+    {
+        string? original = Environment.GetEnvironmentVariable(
+            ThumbnailEnvConfig.NormalLaneTimeoutSec
+        );
+        try
+        {
+            Environment.SetEnvironmentVariable(ThumbnailEnvConfig.NormalLaneTimeoutSec, "abc");
+
+            TimeSpan actual = MainWindow.ResolveThumbnailNormalLaneTimeout();
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(10)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ThumbnailEnvConfig.NormalLaneTimeoutSec, original);
+        }
+    }
+
     private static string DequeueMoviePath(MethodInfo tryDequeue, object state)
     {
         object?[] args = [null];

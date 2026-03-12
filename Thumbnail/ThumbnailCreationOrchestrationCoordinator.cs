@@ -43,6 +43,10 @@ namespace IndigoMovieManager.Thumbnail
 
             double? durationSec = request.DurationSec;
             long fileSizeBytes = 0;
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-orchestration",
+                $"begin movie='{request.MovieFullPath}' rescue={request.QueueObj?.IsRescueRequest} attempt={request.QueueObj?.AttemptCount}"
+            );
 
             ThumbnailPreflightCheckResult preflight = ThumbnailPreflightChecker.Evaluate(
                 new ThumbnailPreflightCheckRequest
@@ -61,6 +65,10 @@ namespace IndigoMovieManager.Thumbnail
             );
             if (preflight.ShouldReturn)
             {
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail-orchestration",
+                    $"preflight returned movie='{request.MovieFullPath}' engine='{preflight.ProcessEngineId}' err='{preflight.Result?.ErrorMessage}'"
+                );
                 return ThumbnailCreationOrchestrationResult.Completed(
                     request.CompletionCoordinator.Complete(
                         preflight.Result,
@@ -84,6 +92,10 @@ namespace IndigoMovieManager.Thumbnail
                 string swfDetail = string.IsNullOrWhiteSpace(request.CacheMeta.SwfDetail)
                     ? "swf_candidate_hit"
                     : request.CacheMeta.SwfDetail;
+                ThumbnailRuntimeLog.Write(
+                    "thumbnail-orchestration",
+                    $"swf route movie='{request.MovieFullPath}' detail='{swfDetail}'"
+                );
                 Swf.SwfThumbnailRouteResult swfRoute = await swfThumbnailRouteHandler
                     .HandleAsync(
                         new Swf.SwfThumbnailRouteRequest
@@ -112,10 +124,18 @@ namespace IndigoMovieManager.Thumbnail
                 );
             }
 
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-orchestration",
+                $"repair prepare begin movie='{request.MovieFullPath}'"
+            );
             ThumbnailRepairExecutionState repairState = await repairExecutionCoordinator
                 .PrepareAsync(request.QueueObj, request.MovieFullPath, cts)
                 .ConfigureAwait(false);
             string repairedMovieTempPath = repairState.RepairedMovieTempPath;
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-orchestration",
+                $"repair prepare end movie='{request.MovieFullPath}' working='{repairState.WorkingMovieFullPath}' repaired='{repairState.RepairedMovieTempPath}'"
+            );
 
             ThumbnailJobMaterialBuildResult materials = jobMaterialBuilder.Build(
                 new ThumbnailJobMaterialBuildRequest
@@ -128,6 +148,10 @@ namespace IndigoMovieManager.Thumbnail
                     DurationSec = durationSec,
                     FileSizeBytes = fileSizeBytes,
                 }
+            );
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-orchestration",
+                $"material build end movie='{request.MovieFullPath}' success={materials.IsSuccess} err='{materials.ErrorMessage}' duration_sec={materials.DurationSec:0.###}"
             );
             durationSec = materials.DurationSec;
             request.CompletionCoordinator.UpdateCachedDuration(durationSec);
@@ -150,6 +174,10 @@ namespace IndigoMovieManager.Thumbnail
 
             request.OnResolvedDuration?.Invoke(durationSec);
 
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-orchestration",
+                $"execution flow begin movie='{request.MovieFullPath}' working='{repairState.WorkingMovieFullPath}'"
+            );
             ThumbnailExecutionFlowResult flow = await executionFlowCoordinator
                 .ExecuteAsync(
                     new ThumbnailExecutionFlowRequest
@@ -171,6 +199,10 @@ namespace IndigoMovieManager.Thumbnail
                     cts
                 )
                 .ConfigureAwait(false);
+            ThumbnailRuntimeLog.Write(
+                "thumbnail-orchestration",
+                $"execution flow end movie='{request.MovieFullPath}' success={flow?.Result?.IsSuccess} err='{flow?.Result?.ErrorMessage}'"
+            );
 
             return ThumbnailCreationOrchestrationResult.Completed(
                 request.CompletionCoordinator.Complete(

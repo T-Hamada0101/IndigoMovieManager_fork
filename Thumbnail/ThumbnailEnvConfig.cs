@@ -15,6 +15,7 @@ namespace IndigoMovieManager.Thumbnail
         public const string FfmpegExePath = "IMM_FFMPEG_EXE_PATH";
         public const string ThumbDecoder = "IMM_THUMB_DECODER";
         public const string ThumbFileLog = "IMM_THUMB_FILE_LOG";
+        public const string NormalLaneTimeoutSec = "IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC";
         private static readonly object GpuDetectSync = new();
         private static readonly object StartupGpuInitSync = new();
         private static bool hasCachedGpuMode;

@@ -234,7 +234,10 @@ DO UPDATE SET
     MovieSizeBytes = excluded.MovieSizeBytes,
     ThumbPanelPos = excluded.ThumbPanelPos,
     ThumbTimePos = excluded.ThumbTimePos,
-    IsRescueRequest = excluded.IsRescueRequest,
+    IsRescueRequest = CASE
+        WHEN ThumbnailQueue.IsRescueRequest = 1 THEN 1
+        ELSE excluded.IsRescueRequest
+    END,
     Status = @Status,
     AttemptCount = CASE
         WHEN ThumbnailQueue.AttemptCount >= @GuaranteedRecoveryAttemptCount

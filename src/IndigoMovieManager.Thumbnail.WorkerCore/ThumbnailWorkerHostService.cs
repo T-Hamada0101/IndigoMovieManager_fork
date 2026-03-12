@@ -10,6 +10,10 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     public sealed class ThumbnailWorkerHostService
     {
+        private const int ThumbnailNormalLaneTimeoutDefaultSec = 10;
+        private const string ThumbnailNormalLaneTimeoutSecEnvName =
+            "IMM_THUMB_NORMAL_LANE_TIMEOUT_SEC";
+
         public async Task RunAsync(
             ThumbnailWorkerRuntimeOptions options,
             CancellationToken cts = default
@@ -289,16 +293,79 @@ namespace IndigoMovieManager.Thumbnail
             CancellationToken cts
         )
         {
-            ThumbnailCreateResult result = await creationRuntime
-                .CreateThumbAsync(
-                    queueObj,
-                    resolvedSettings.DbName,
-                    resolvedSettings.ThumbFolder,
-                    resolvedSettings.ResizeThumb,
-                    isManual: false,
-                    cts
+            bool useNormalLaneTimeout = ShouldUseThumbnailNormalLaneTimeout(queueObj);
+            TimeSpan normalLaneTimeout = ResolveThumbnailNormalLaneTimeout();
+            CancellationTokenSource timeoutCts = null;
+            CancellationTokenSource linkedCts = null;
+            ThumbnailCreateResult result;
+            runtimeLog.Write(
+                "thumbnail",
+                $"enter role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' tab={queueObj?.Tabindex} rescue={queueObj?.IsRescueRequest} attempt={queueObj?.AttemptCount}"
+            );
+            try
+            {
+                if (useNormalLaneTimeout)
+                {
+                    // 通常レーンだけ短い予算を掛け、重い仕事は recovery へ逃がす。
+                    timeoutCts = new CancellationTokenSource(normalLaneTimeout);
+                    linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        cts,
+                        timeoutCts.Token
+                    );
+                }
+
+                runtimeLog.Write(
+                    "thumbnail",
+                    $"invoke create role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' timeout_enabled={useNormalLaneTimeout} timeout_sec={(useNormalLaneTimeout ? normalLaneTimeout.TotalSeconds : 0):0}"
+                );
+                result = await creationRuntime
+                    .CreateThumbAsync(
+                        queueObj,
+                        resolvedSettings.DbName,
+                        resolvedSettings.ThumbFolder,
+                        resolvedSettings.ResizeThumb,
+                        isManual: false,
+                        linkedCts?.Token ?? cts
+                    )
+                    .ConfigureAwait(false);
+                runtimeLog.Write(
+                    "thumbnail",
+                    $"create returned role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' success={result?.IsSuccess} err='{result?.ErrorMessage}' output='{result?.SaveThumbFileName}'"
+                );
+            }
+            catch (OperationCanceledException)
+                when (
+                    useNormalLaneTimeout
+                    && timeoutCts?.IsCancellationRequested == true
+                    && !cts.IsCancellationRequested
                 )
-                .ConfigureAwait(false);
+            {
+                if (
+                    TryPromoteThumbnailJobToRescueLane(
+                        queueDbService,
+                        queueObj,
+                        runtimeLog,
+                        $"normal-timeout:{normalLaneTimeout.TotalSeconds:0}"
+                    )
+                )
+                {
+                    runtimeLog.Write(
+                        "thumbnail-timeout",
+                        $"normal lane timeout handoff: role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' tab={queueObj?.Tabindex} timeout_sec={normalLaneTimeout.TotalSeconds:0}"
+                    );
+                    return;
+                }
+
+                throw new TimeoutException(
+                    $"thumbnail normal lane timeout: role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' tab={queueObj?.Tabindex} timeout_sec={normalLaneTimeout.TotalSeconds:0}"
+                );
+            }
+            finally
+            {
+                linkedCts?.Dispose();
+                timeoutCts?.Dispose();
+            }
+
             if (result.IsSuccess)
             {
                 if (!string.IsNullOrWhiteSpace(result.SaveThumbFileName))
@@ -325,8 +392,29 @@ namespace IndigoMovieManager.Thumbnail
                 return;
             }
 
+            if (
+                ShouldPromoteThumbnailFailureToRescueLane(queueObj)
+                && TryPromoteThumbnailJobToRescueLane(
+                    queueDbService,
+                    queueObj,
+                    runtimeLog,
+                    $"normal-failed:{result.ErrorMessage}"
+                )
+            )
+            {
+                runtimeLog.Write(
+                    "thumbnail-recovery",
+                    $"normal lane failure handoff: role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' tab={queueObj?.Tabindex} reason='{result.ErrorMessage}'"
+                );
+                return;
+            }
+
             string message =
                 $"thumbnail create failed: role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}' reason='{result.ErrorMessage}'";
+            runtimeLog.Write(
+                "thumbnail",
+                $"failure finalize begin role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}'"
+            );
             progressRuntime.MarkJobFailed(queueObj);
             PublishProgress(
                 progressRuntime,
@@ -336,7 +424,87 @@ namespace IndigoMovieManager.Thumbnail
                 slowLaneMinGb
             );
             runtimeLog.Write("thumbnail", message);
+            runtimeLog.Write(
+                "thumbnail",
+                $"failure finalize end role={resolvedSettings.WorkerRole} movie='{queueObj?.MovieFullPath}'"
+            );
             throw new ThumbnailCreateFailedException(message, result);
+        }
+
+        // 通常レーンだけ短い予算を掛け、recovery は長居を許可する。
+        private static bool ShouldUseThumbnailNormalLaneTimeout(QueueObj queueObj)
+        {
+            if (queueObj?.IsRescueRequest == true)
+            {
+                return false;
+            }
+
+            return queueObj != null;
+        }
+
+        // 通常レーン失敗だけ recovery へ昇格し、recovery 内の再帰的横流しは避ける。
+        private static bool ShouldPromoteThumbnailFailureToRescueLane(QueueObj queueObj)
+        {
+            if (queueObj?.IsRescueRequest == true)
+            {
+                return false;
+            }
+
+            return queueObj != null;
+        }
+
+        // 実機で秒数を詰めやすいよう、normal lane timeout は環境変数で上書きできる。
+        private static TimeSpan ResolveThumbnailNormalLaneTimeout()
+        {
+            string raw =
+                Environment.GetEnvironmentVariable(ThumbnailNormalLaneTimeoutSecEnvName)?.Trim()
+                ?? "";
+            if (
+                int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int sec)
+                && sec > 0
+            )
+            {
+                return TimeSpan.FromSeconds(sec);
+            }
+
+            return TimeSpan.FromSeconds(ThumbnailNormalLaneTimeoutDefaultSec);
+        }
+
+        // QueueDB 行を recovery へ昇格し、同じ重い仕事が normal を塞ぎ続けるのを防ぐ。
+        private static bool TryPromoteThumbnailJobToRescueLane(
+            QueueDbService queueDbService,
+            QueueObj queueObj,
+            ThumbnailWorkerRuntimeLog runtimeLog,
+            string reason
+        )
+        {
+            if (!ShouldPromoteThumbnailFailureToRescueLane(queueObj))
+            {
+                return false;
+            }
+
+            if (queueDbService == null || string.IsNullOrWhiteSpace(queueObj?.MovieFullPath))
+            {
+                return false;
+            }
+
+            int updated = queueDbService.ForceRetryMovieToPending(
+                queueObj.MovieFullPath,
+                queueObj.Tabindex,
+                DateTime.UtcNow,
+                promoteToRecovery: true
+            );
+            if (updated > 0)
+            {
+                queueObj.IsRescueRequest = true;
+                runtimeLog.Write(
+                    "thumbnail-recovery",
+                    $"recovery scheduled by force-reset: movie='{queueObj?.MovieFullPath}' tab={queueObj?.Tabindex} reason='{reason}'"
+                );
+                return true;
+            }
+
+            return false;
         }
 
         private static IAdminTelemetryClient CreateAdminTelemetryClient()

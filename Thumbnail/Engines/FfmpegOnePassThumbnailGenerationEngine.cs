@@ -18,6 +18,7 @@ namespace IndigoMovieManager.Thumbnail.Engines
         private const string FfmpegTimeoutSecEnvName = "IMM_THUMB_FFMPEG_TIMEOUT_SEC";
         private const string FfmpegPriorityEnvName = "IMM_THUMB_FFMPEG_PRIORITY";
         private const int DefaultJpegQuality = 5;
+        private const int DefaultFfmpegTimeoutSec = 60;
         private const double ShortClipSeekFallbackMaxDurationSec = 1.0d;
         private static readonly ProcessPriorityClass DefaultFfmpegPriorityClass =
             ProcessPriorityClass.Idle;
@@ -979,7 +980,8 @@ namespace IndigoMovieManager.Thumbnail.Engines
                 return TimeSpan.FromSeconds(envSec);
             }
 
-            return Timeout.InfiniteTimeSpan;
+            // 未指定でも外部 ffmpeg を無期限放置せず、救済レーン長居を防ぐ。
+            return TimeSpan.FromSeconds(DefaultFfmpegTimeoutSec);
         }
 
         internal static ProcessPriorityClass? ResolveChildProcessPriorityClass()
@@ -1078,9 +1080,10 @@ namespace IndigoMovieManager.Thumbnail.Engines
             CancellationToken cts
         )
         {
+            Process process = null;
             try
             {
-                using Process process = new() { StartInfo = psi };
+                process = new Process { StartInfo = psi };
                 if (!process.Start())
                 {
                     return (false, "process start returned false");
@@ -1116,14 +1119,21 @@ namespace IndigoMovieManager.Thumbnail.Engines
 
                 if (hasTimeout && completedTask == timeoutTask)
                 {
-                    TryKillProcess(process);
-                    await process.WaitForExitAsync().ConfigureAwait(false);
-                    _ = await stdoutTask.ConfigureAwait(false);
-                    string timeoutErr = await SafeReadProcessErrorAsync(stderrTask).ConfigureAwait(false);
+                    TryKillProcess(process, waitForExitMilliseconds: 2000);
+                    bool exited = await WaitForProcessExitAsync(
+                        waitForExitTask,
+                        millisecondsTimeout: 2000
+                    ).ConfigureAwait(false);
+                    string timeoutErr = exited
+                        ? await SafeReadProcessErrorAsync(stderrTask, millisecondsTimeout: 1000)
+                            .ConfigureAwait(false)
+                        : "";
                     return (
                         false,
                         string.IsNullOrWhiteSpace(timeoutErr)
-                            ? $"ffmpeg timeout after {timeout.TotalSeconds:0}s"
+                            ? exited
+                                ? $"ffmpeg timeout after {timeout.TotalSeconds:0}s"
+                                : $"ffmpeg timeout after {timeout.TotalSeconds:0}s, process did not exit after kill"
                             : $"ffmpeg timeout after {timeout.TotalSeconds:0}s, err={timeoutErr}"
                     );
                 }
@@ -1140,11 +1150,17 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
             catch (OperationCanceledException)
             {
+                // cancel時は対象プロセスが残らないよう、ここで実体を待って止め切る。
+                TryKillProcess(process, waitForExitMilliseconds: 2000);
                 throw;
             }
             catch (Exception ex)
             {
                 return (false, ex.Message);
+            }
+            finally
+            {
+                process?.Dispose();
             }
         }
 
@@ -1194,10 +1210,24 @@ namespace IndigoMovieManager.Thumbnail.Engines
             return await RunProcessAsync(psi, ffmpegTimeout, cts).ConfigureAwait(false);
         }
 
-        private static async Task<string> SafeReadProcessErrorAsync(Task<string> stderrTask)
+        private static async Task<string> SafeReadProcessErrorAsync(
+            Task<string> stderrTask,
+            int millisecondsTimeout = 0
+        )
         {
             try
             {
+                if (millisecondsTimeout > 0)
+                {
+                    Task completed = await Task
+                        .WhenAny(stderrTask, Task.Delay(millisecondsTimeout))
+                        .ConfigureAwait(false);
+                    if (completed != stderrTask)
+                    {
+                        return "";
+                    }
+                }
+
                 return await stderrTask.ConfigureAwait(false);
             }
             catch
@@ -1206,13 +1236,39 @@ namespace IndigoMovieManager.Thumbnail.Engines
             }
         }
 
-        private static void TryKillProcess(Process process)
+        private static async Task<bool> WaitForProcessExitAsync(
+            Task waitForExitTask,
+            int millisecondsTimeout
+        )
+        {
+            if (waitForExitTask == null)
+            {
+                return true;
+            }
+
+            Task completed = await Task
+                .WhenAny(waitForExitTask, Task.Delay(millisecondsTimeout))
+                .ConfigureAwait(false);
+            if (completed != waitForExitTask)
+            {
+                return false;
+            }
+
+            await waitForExitTask.ConfigureAwait(false);
+            return true;
+        }
+
+        private static void TryKillProcess(Process process, int waitForExitMilliseconds = 0)
         {
             try
             {
                 if (process != null && !process.HasExited)
                 {
                     process.Kill(entireProcessTree: true);
+                    if (waitForExitMilliseconds > 0)
+                    {
+                        process.WaitForExit(waitForExitMilliseconds);
+                    }
                 }
             }
             catch

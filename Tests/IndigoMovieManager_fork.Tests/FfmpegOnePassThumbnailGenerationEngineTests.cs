@@ -238,16 +238,27 @@ public sealed class FfmpegOnePassThumbnailGenerationEngineTests
     }
 
     [Test]
-    public void ResolveProcessTimeout_未指定時はタイムアウトなしを返す()
+    public void ResolveProcessTimeout_未指定時は60秒を返す()
     {
-        TimeSpan actual = FfmpegOnePassThumbnailGenerationEngine.ResolveProcessTimeout(
-            panelCount: 10,
-            durationSec: TimeSpan.FromHours(2).TotalSeconds,
-            useTolerantInput: true,
-            useCandidateFiltering: true
-        );
+        const string envName = "IMM_THUMB_FFMPEG_TIMEOUT_SEC";
+        string? original = Environment.GetEnvironmentVariable(envName);
+        try
+        {
+            Environment.SetEnvironmentVariable(envName, null);
 
-        Assert.That(actual, Is.EqualTo(Timeout.InfiniteTimeSpan));
+            TimeSpan actual = FfmpegOnePassThumbnailGenerationEngine.ResolveProcessTimeout(
+                panelCount: 10,
+                durationSec: TimeSpan.FromHours(2).TotalSeconds,
+                useTolerantInput: true,
+                useCandidateFiltering: true
+            );
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(60)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envName, original);
+        }
     }
 
     [Test]
@@ -267,6 +278,30 @@ public sealed class FfmpegOnePassThumbnailGenerationEngineTests
             );
 
             Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(55)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envName, original);
+        }
+    }
+
+    [Test]
+    public void ResolveProcessTimeout_不正な環境変数時は60秒へ戻す()
+    {
+        const string envName = "IMM_THUMB_FFMPEG_TIMEOUT_SEC";
+        string? original = Environment.GetEnvironmentVariable(envName);
+        try
+        {
+            Environment.SetEnvironmentVariable(envName, "abc");
+
+            TimeSpan actual = FfmpegOnePassThumbnailGenerationEngine.ResolveProcessTimeout(
+                panelCount: 6,
+                durationSec: 120,
+                useTolerantInput: false,
+                useCandidateFiltering: false
+            );
+
+            Assert.That(actual, Is.EqualTo(TimeSpan.FromSeconds(60)));
         }
         finally
         {

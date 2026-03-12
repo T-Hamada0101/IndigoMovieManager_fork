@@ -42,21 +42,21 @@
 補足:
 - `ffmpeg -ss 2289.917 -frames:v 1` の midpoint 直接抽出も失敗した。
 
-### 5.2 Recovery あり
-| engine | 結果 | エラー | 補足 |
+### 5.2 workthree 実運転での成功履歴
+| 時刻 | engine | 結果 | 補足 |
 | --- | --- | --- | --- |
-| `autogen` | 成功 | なし | bench CSV `20260311-113259` |
-| `ffmpeg1pass` | 失敗 | `ffmpeg one-pass failed` | 同 CSV 時刻帯 |
+| `2026-03-11 22:09:04.502` | `opencv` | 成功 | `thumbnail-create-process.csv` 上の最初の成功 |
 
 ## 6. 既存履歴との差分
 - `thumbnail-create-process.csv` では過去に
-  - `Autogen produced a near-black thumbnail`
+  - `autogen = No frames decoded`
+  - `ffmediatoolkit = frame decode failed at sec=167`
   - `ffmpeg one-pass failed`
-  が記録されていた。
-- 今回の `workthree` bench では
-  - Recovery なし `autogen = No frames decoded`
-  - Recovery あり `autogen = success`
-  を確認した。
+  - `opencv = success`
+  がこの順で記録されていた。
+- 成功の決め手は、最後の `opencv` フォールバックで保存まで到達した点。
+  - `2026-03-11 22:09:03.218 [thumbnail] engine fallback: from=autogen, to=opencv, attempt=4/4`
+  - `2026-03-11 22:09:04.502 [thumbnail-path] Created thumbnail saved to: ...「ラ・ラ・ランド」は少女漫画か！？ 1_2...`
 
 ## 6.1 Recovery で何が変わるか
 - `ThumbnailEngineBenchTests` では `Recovery` 指定時に `QueueObj.AttemptCount = 1` を入れる。
@@ -69,11 +69,11 @@
 - ただし 2026-03-11 08:45:11 に `「ラ・ラ・ランド」は少女漫画か！？ 1_2.remux.mp4` の enqueue 履歴があり、repair 系の作業ファイルが作られた痕跡は確認できた。
 
 ## 7. 現時点の判断
-- `1_2` は `2_2` と同型でよい。
-- 2本とも
-  - 非 Recovery では `autogen` / `ffmpeg1pass` とも失敗
-  - Recovery ありでは `autogen` 成功
-  なので、`retry policy` より `repair workflow` 側の個体として扱う。
+- `1_2` の実運転上の本命成功パターンは
+  - `autogen -> ffmediatoolkit -> ffmpeg1pass -> opencv`
+  の最終 `opencv` 救済成功。
+- したがって、この個体は `autogen` 成功型ではなく、最後の救済フォールバックが刺さる個体として扱う方が正確。
+- `retry policy` よりも、エンジンの終端フォールバック順と救済条件の整理を優先する。
 
 ## 8. 次の一手
 1. `1_2` / `2_2` で Recovery 時に効いた準備経路をログで固定する
