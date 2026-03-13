@@ -349,13 +349,10 @@ namespace IndigoMovieManager
                 {
                     // サムネイルも消す。
                     var checkFileName = rec.Movie_Body;
-                    var thumbFolder = MainVM.DbInfo.ThumbFolder;
-                    var defaultThumbFolder = Path.Combine(
-                        Directory.GetCurrentDirectory(),
-                        "Thumb",
-                        MainVM.DbInfo.DBName
+                    var thumbFolder = ThumbnailStoragePathResolver.ResolveThumbFolder(
+                        MainVM.DbInfo.DBName,
+                        MainVM.DbInfo.ThumbFolder
                     );
-                    thumbFolder = thumbFolder == "" ? defaultThumbFolder : thumbFolder;
 
                     if (Path.Exists(thumbFolder))
                     {

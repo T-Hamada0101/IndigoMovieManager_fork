@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Include="..\..\Thumbnail\QueueObj.cs" Link="QueueObj.cs" />
     <Compile Include="..\..\Thumbnail\TabInfo.cs" Link="TabInfo.cs" />
+    <Compile Include="..\..\Thumbnail\ThumbnailStoragePathResolver.cs" Link="ThumbnailStoragePathResolver.cs" />
     <Compile Include="..\..\Thumbnail\ThumbInfo.cs" Link="ThumbInfo.cs" />
     <Compile Include="..\..\Thumbnail\Tools.cs" Link="Tools.cs" />
     <Compile Include="..\..\Thumbnail\ThumbnailEnvConfig.cs" Link="ThumbnailEnvConfig.cs" />

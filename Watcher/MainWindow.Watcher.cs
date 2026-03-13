@@ -673,7 +673,10 @@ namespace IndigoMovieManager
 
             // 🔥 開始時のDB情報をスナップショット！途中でDB切り替えが起きても混入しない！🛡️
             string snapshotDbFullPath = currentDbFullPath;
-            string snapshotThumbFolder = MainVM.DbInfo.ThumbFolder;
+            string snapshotThumbFolder = ThumbnailStoragePathResolver.ResolveThumbFolder(
+                MainVM.DbInfo.DBName,
+                MainVM.DbInfo.ThumbFolder
+            );
             string snapshotDbName = MainVM.DbInfo.DBName;
             int snapshotTabIndex = MainVM.DbInfo.CurrentTabIndex;
 

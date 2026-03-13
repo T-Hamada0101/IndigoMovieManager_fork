@@ -67,18 +67,20 @@ namespace IndigoMovieManager.Thumbnail
                     break;
             }
             divCount = columns * rows;
-            if (thumbFolder == "")
+            string resolvedThumbFolder = ThumbnailStoragePathResolver.ResolveThumbFolder(
+                dbName,
+                thumbFolder
+            );
+            if (string.IsNullOrWhiteSpace(resolvedThumbFolder))
             {
-                outPath = Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "Thumb",
-                    dbName,
-                    $"{width}x{height}x{columns}x{rows}"
-                );
+                outPath = "";
             }
             else
             {
-                outPath = Path.Combine(thumbFolder, $"{width}x{height}x{columns}x{rows}");
+                outPath = Path.Combine(
+                    resolvedThumbFolder,
+                    $"{width}x{height}x{columns}x{rows}"
+                );
             }
         }
     }

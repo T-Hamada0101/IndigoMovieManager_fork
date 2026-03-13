@@ -449,7 +449,7 @@ namespace IndigoMovieManager
                 return "";
             }
 
-            return Path.Combine(Directory.GetCurrentDirectory(), "Thumb", dbName);
+            return ThumbnailStoragePathResolver.ResolveThumbFolder(dbName, thumbFolder);
         }
 
         private IAdminTelemetryClient CreateAdminTelemetryClient()

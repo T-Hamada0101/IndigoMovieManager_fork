@@ -2863,13 +2863,10 @@ namespace IndigoMovieManager
 
                     //サムネイルのリネーム
                     var checkFileName = Path.GetFileNameWithoutExtension(oldFullPath);
-                    var thumbFolder = MainVM.DbInfo.ThumbFolder;
-                    var defaultThumbFolder = Path.Combine(
-                        Directory.GetCurrentDirectory(),
-                        "Thumb",
-                        MainVM.DbInfo.DBName
+                    var thumbFolder = ThumbnailStoragePathResolver.ResolveThumbFolder(
+                        MainVM.DbInfo.DBName,
+                        MainVM.DbInfo.ThumbFolder
                     );
-                    thumbFolder = thumbFolder == "" ? defaultThumbFolder : thumbFolder;
 
                     if (Path.Exists(thumbFolder))
                     {
