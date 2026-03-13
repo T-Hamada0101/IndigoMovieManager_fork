@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Threading;
 using Notification.Wpf;
 
 namespace IndigoMovieManager.Thumbnail
@@ -7,13 +9,20 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     internal sealed class AppThumbnailQueueProgressPresenter : IThumbnailQueueProgressPresenter
     {
-        private readonly NotificationManager notificationManager = new();
+        // Notification.Wpf は内部でWPF Window資源を握るため、使い回しで増殖を抑える。
+        private static readonly NotificationManager SharedNotificationManager = new();
+        private static int _disabledByResourceExhaustion;
 
         public IThumbnailQueueProgressHandle Show(string title)
         {
+            if (Volatile.Read(ref _disabledByResourceExhaustion) != 0)
+            {
+                return NoOpThumbnailQueueProgressHandle.Instance;
+            }
+
             try
             {
-                var progress = notificationManager.ShowProgressBar(
+                var progress = SharedNotificationManager.ShowProgressBar(
                     title,
                     false,
                     true,
@@ -23,6 +32,16 @@ namespace IndigoMovieManager.Thumbnail
                     ""
                 );
                 return new AppThumbnailQueueProgressHandle(progress);
+            }
+            catch (Win32Exception ex)
+            {
+                // ハンドル枯渇時は通知UIだけ諦め、本体処理は継続する。
+                Interlocked.Exchange(ref _disabledByResourceExhaustion, 1);
+                DebugRuntimeLog.Write(
+                    "queue-consumer",
+                    $"progress presenter disabled by Win32 resource exhaustion: {ex.Message}"
+                );
+                return NoOpThumbnailQueueProgressHandle.Instance;
             }
             catch (Exception ex)
             {
