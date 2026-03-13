@@ -2,9 +2,6 @@
   "profiles": {
     "IndigoMovieManager_fork": {
       "commandName": "Project",
-      "environmentVariables": {
-        "IMM_THUMB_ENGINE": "autogen"
-      },
       "remoteDebugEnabled": true
     }
   }

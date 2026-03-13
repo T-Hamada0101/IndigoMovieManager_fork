@@ -49,7 +49,6 @@
 - **Codex のあなたはここを読め！** 👉 [.CODEX.md](.CODEX.md)
 - **このブランチで作業する全AIはここも読め！** 👉 [AI向け_ブランチ方針_future難読動画実験線_2026-03-11.md](AI向け_ブランチ方針_future難読動画実験線_2026-03-11.md)
 
-
 ## `.local` の運用ルール
 - 保管場所: `C:\Users\osakacenter\source\repos\MyLab\.local`
 - 用途: 環境固有情報、機密情報（APIキー、トークン、接続文字列、資格情報など）の保管専用。
@@ -63,3 +62,9 @@
 ## 補足
 - `.local` はローカル環境専用ディレクトリとして扱う。
 - 既存ツールやスクリプトで参照する場合も、機密値の平文露出を避ける。
+
+## 参照場所
+- Debug起動設定の `launchSettings.json` は `Properties\launchSettings.json`
+- Debugランタイムログは `%LOCALAPPDATA%\IndigoMovieManager_fork\logs\debug-runtime.log`
+- 初回例外追跡ログは `%LOCALAPPDATA%\IndigoMovieManager_fork\logs\firstchance.log`
+- ログディレクトリ自体は `%LOCALAPPDATA%\IndigoMovieManager_fork\logs`
