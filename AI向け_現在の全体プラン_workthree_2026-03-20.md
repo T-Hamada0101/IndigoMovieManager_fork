@@ -1,8 +1,9 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-04-27
+最終更新日: 2026-04-28
 
 変更概要:
+- WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
 - watch query-only 局所更新が full reload へ戻る時の理由を `changed_path_fallback` としてログへ出し、`no-changed-movies` / `filter-unavailable` / `dup-hash-dirty` を実機ログだけで切り分けられるようにした
 - watch キュー圧縮で trigger / path の因果が消えたように見える経路へログを足し、圧縮前後の理由を `debug-runtime.log` で追えるようにした
 - WebView Player の停止・切替時に pending の `user-priority` 解放を `ResetWebViewPlayerSurface()` で畳み、`NavigationCompleted` 後着時に watch / poll defer が残り続ける経路を塞いだ
@@ -253,6 +254,7 @@
 - `CheckFolderAsync` の入口では `watch table load failure`、`visible gate`、`scan strategy detail + strategy log`、`full reconcile user-priority` を helper / policy 1 呼び出しへまとめ、`Watcher.cs` 側の引数直書きと一時変数をさらに減らした
 - `CheckFolderAsync` の入口・中盤・終端では、`context 初期化`、`background scan`、`scan pipeline`、`movie loop`、`pending flush`、`final queue flush`、`run finish`、`folder failure recovery result` も helper / runtime 1 呼び出しへ寄せ、`Watcher.cs` 側の直書きと局所 if をさらに減らした
 - 直近では `watch folder` 解決、`PrepareWatchFolderScanAsync(...)`、`TryBeginWatchFolderMovieLoop(...)`、`AwaitAndApplyWatchLoopDecisionAsync(...)`、`TryHandleWatchFolderPhaseResult(...)`、`TryFinishWatchRunAndReturnAsync(...)` を入れ、入口から終端までの flow 判定を同じ形へそろえた
+- WebView Player は動画切り替え時のホスト側音量適用中フラグを持ち、切り替え直後に WebView から来る 100% 既定音量通知を保存しないことで、ユーザー設定音量を維持するようにした
 - watch query-only reload は `ChangedMoviePaths` を deferred reload まで保持し、`RefreshMovieViewFromCurrentSourceAsync(...)` で `FilteredMovieRecs` から changed paths だけ抜き差しして再評価する初手まで入った
 - さらに `WatchChangedMovie(ChangeKind)` を通し、`SourceInserted` / `ViewRepaired` / `DisplayedViewRefresh` は empty search 時に直接復帰できるようになった
 - rename も `WatchChangedMovie(ChangeKind + DirtyFields)` に寄せ、`MovieName / MoviePath / Kana` 変更でも current sort 非依存なら既存順を再利用できるようになった

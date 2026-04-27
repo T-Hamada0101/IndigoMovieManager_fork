@@ -1,8 +1,9 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-04-27
+最終更新日: 2026-04-28
 
 変更概要:
+- WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
 - watch query-only 局所更新が full reload へ戻る理由を `changed_path_fallback` で残し、局所更新が効かない条件を観測して次の縮小対象を選べるようにした
 - watch キュー圧縮の trigger / path 因果ログを追加し、圧縮で見えにくくなる発火理由を `debug-runtime.log` で追えるようにした
 - WebView Player 停止・切替時に `user-priority` 解放待ちを残さないよう、WebView surface リセットで pending 解放を畳む方針を反映した
@@ -271,6 +272,7 @@
 - 画像存在確認と file stamp 取得を、converter 個別呼び出しから `ThumbnailStampCache` 相当へ寄せる。
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。
 - Player / UpperTabs の追加・ fullscreen・表示切替は、watch / thumbnail / skin の背後処理と同時に走っても UI スレッドを長く掴まない形へ寄せる。
+- WebView Player の動画切り替えでは、ホスト側音量適用中の通知を保存せず、切り替え直後の 100% 既定音量通知でユーザー音量を上書きしない。
 
 完了条件:
 - ページ Up/Down 時の体感引っかかりが、cache miss 頻度とともに下がる。
