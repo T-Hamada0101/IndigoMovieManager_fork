@@ -284,15 +284,13 @@ namespace IndigoMovieManager
             string keyword = text ?? "";
             string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
             int searchCount = MainVM?.DbInfo?.SearchCount ?? 0;
-            string currentText = SearchBox?.Text ?? "";
-            QueueSearchHistoryRefresh(dbFullPath, keyword, searchCount, currentText);
+            QueueSearchHistoryRefresh(dbFullPath, keyword, searchCount);
         }
 
         private void QueueSearchHistoryRefresh(
             string dbFullPath,
             string keyword,
-            int searchCount,
-            string currentText
+            int searchCount
         )
         {
             if (
@@ -348,7 +346,7 @@ namespace IndigoMovieManager
                                         return;
                                     }
 
-                                    ApplySearchHistoryRecords(task.Result, currentText);
+                                    ApplySearchHistoryRecords(task.Result, SearchBox?.Text ?? "");
                                 }
                             ),
                             DispatcherPriority.Background

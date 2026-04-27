@@ -103,6 +103,8 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(refreshMethod, Does.Contain("SearchHistoryService.LoadLatestHistory("));
         Assert.That(refreshMethod, Does.Contain("Dispatcher.BeginInvoke("));
         Assert.That(refreshMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(refreshMethod, Does.Contain("ApplySearchHistoryRecords(task.Result, SearchBox?.Text ?? \"\")"));
+        Assert.That(refreshMethod, Does.Not.Contain("currentText"));
         Assert.That(lostFocusMethod, Does.Contain("QueueSearchHistoryUsageRecord("));
         Assert.That(lostFocusMethod, Does.Not.Contain("SearchHistoryService.RecordSearchUsage("));
     }
