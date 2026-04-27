@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows;
 using IndigoMovieManager.DB;
 using Notification.Wpf;
@@ -73,7 +74,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            ApplyDroppedWatchFolders(droppedPaths);
+            QueueDroppedWatchFolders(droppedPaths);
             e.Handled = true;
         }
 
@@ -228,25 +229,81 @@ namespace IndigoMovieManager
             }
         }
 
-        // メイン画面のフォルダドロップは、その場で watch テーブルへ追加してトーストだけ返す。
-        private void ApplyDroppedWatchFolders(IEnumerable<string> droppedPaths)
+        // メイン画面のフォルダドロップは、DB I/Oを背景化してUIには結果反映だけ戻す。
+        private void QueueDroppedWatchFolders(IEnumerable<string> droppedPaths)
         {
-            if (string.IsNullOrWhiteSpace(MainVM?.DbInfo?.DBFullPath))
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            string[] droppedPathSnapshot = [.. droppedPaths ?? []];
+            if (string.IsNullOrWhiteSpace(dbFullPath) || droppedPathSnapshot.Length < 1)
             {
                 return;
             }
 
+            _ = Task.Run(() => ApplyDroppedWatchFoldersInBackground(dbFullPath, droppedPathSnapshot))
+                .ContinueWith(
+                    task =>
+                    {
+                        if (task.IsFaulted)
+                        {
+                            DebugRuntimeLog.Write(
+                                "watch-drop",
+                                $"watch folder drop failed: db='{dbFullPath}' err='{task.Exception?.GetBaseException().Message}'"
+                            );
+                            return;
+                        }
+
+                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+                        {
+                            return;
+                        }
+
+                        _ = Dispatcher.BeginInvoke(
+                            new Action(
+                                () =>
+                                {
+                                    if (
+                                        !AreSameMainDbPath(
+                                            dbFullPath,
+                                            MainVM?.DbInfo?.DBFullPath ?? ""
+                                        )
+                                    )
+                                    {
+                                        return;
+                                    }
+
+                                    watchData = task.Result.RefreshedWatchData;
+                                    if (task.Result.Result.DirectoriesToAdd.Count > 0)
+                                    {
+                                        // 直接追加した監視フォルダを次回pollへ反映するため、キャッシュを捨てる。
+                                        InvalidateEverythingWatchPollWatchFolderSnapshot();
+                                    }
+
+                                    ShowDroppedWatchFolderToast(task.Result.Result);
+                                }
+                            )
+                        );
+                    },
+                    TaskScheduler.Default
+                );
+        }
+
+        private static DroppedWatchFolderApplyResult ApplyDroppedWatchFoldersInBackground(
+            string dbFullPath,
+            IEnumerable<string> droppedPaths
+        )
+        {
             const string watchTableSql = "SELECT * FROM watch";
-            GetWatchTable(MainVM.DbInfo.DBFullPath, watchTableSql);
+            DataTable currentWatchData = SQLite.GetData(dbFullPath, watchTableSql);
+            WatchTableRowNormalizer.Normalize(currentWatchData);
             WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.Build(
                 droppedPaths,
-                EnumerateCurrentWatchDirectories()
+                EnumerateWatchDirectories(currentWatchData)
             );
 
             foreach (string directoryPath in result.DirectoriesToAdd)
             {
                 SQLite.InsertWatchTable(
-                    MainVM.DbInfo.DBFullPath,
+                    dbFullPath,
                     new WatchRecords
                     {
                         Auto = true,
@@ -257,25 +314,20 @@ namespace IndigoMovieManager
                 );
             }
 
-            GetWatchTable(MainVM.DbInfo.DBFullPath, watchTableSql);
-            if (result.DirectoriesToAdd.Count > 0)
-            {
-                // 直接追加した監視フォルダを次回pollへ反映するため、キャッシュを捨てる。
-                InvalidateEverythingWatchPollWatchFolderSnapshot();
-            }
-
-            ShowDroppedWatchFolderToast(result);
+            DataTable refreshedWatchData = SQLite.GetData(dbFullPath, watchTableSql);
+            WatchTableRowNormalizer.Normalize(refreshedWatchData);
+            return new DroppedWatchFolderApplyResult(result, refreshedWatchData);
         }
 
-        private IEnumerable<string> EnumerateCurrentWatchDirectories()
+        private static IEnumerable<string> EnumerateWatchDirectories(DataTable sourceWatchData)
         {
-            if (watchData == null || watchData.Rows.Count == 0)
+            if (sourceWatchData == null || sourceWatchData.Rows.Count == 0)
             {
                 return [];
             }
 
             List<string> directories = [];
-            foreach (DataRow row in watchData.Rows)
+            foreach (DataRow row in sourceWatchData.Rows)
             {
                 string directoryPath = row["dir"]?.ToString() ?? "";
                 if (!string.IsNullOrWhiteSpace(directoryPath))
@@ -286,6 +338,11 @@ namespace IndigoMovieManager
 
             return directories;
         }
+
+        private sealed record DroppedWatchFolderApplyResult(
+            WatchFolderDropResult Result,
+            DataTable RefreshedWatchData
+        );
 
         private void ShowDroppedWatchFolderToast(WatchFolderDropResult result)
         {
