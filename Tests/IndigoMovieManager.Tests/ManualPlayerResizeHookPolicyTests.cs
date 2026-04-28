@@ -61,6 +61,32 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayMovie_Click_再生統計DB更新は背景へ逃がす()
+    {
+        string source = GetMainWindowPlayerSourceText();
+        string playMethod = GetMethodBlock(source, "public async void PlayMovie_Click(");
+        string movieStatsMethod = GetMethodBlock(
+            source,
+            "private void QueueMoviePlaybackStatsPersist("
+        );
+        string bookmarkStatsMethod = GetMethodBlock(
+            source,
+            "private static void QueueBookmarkViewCountUpdate("
+        );
+
+        Assert.That(playMethod, Does.Contain("QueueMoviePlaybackStatsPersist("));
+        Assert.That(playMethod, Does.Contain("QueueBookmarkViewCountUpdate("));
+        Assert.That(playMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateScore("));
+        Assert.That(playMethod, Does.Not.Contain("UpdateBookmarkViewCount("));
+        Assert.That(movieStatsMethod, Does.Contain("Task.Run("));
+        Assert.That(movieStatsMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateScore("));
+        Assert.That(movieStatsMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateViewCount("));
+        Assert.That(movieStatsMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateLastDate("));
+        Assert.That(bookmarkStatsMethod, Does.Contain("Task.Run("));
+        Assert.That(bookmarkStatsMethod, Does.Contain("UpdateBookmarkViewCount("));
+    }
+
+    [Test]
     public void WebViewPlayer_ホスト音量適用前の既定音量通知を抑止する()
     {
         string mainWindowPlayerSource = GetMainWindowPlayerSourceText();

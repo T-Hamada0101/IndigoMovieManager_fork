@@ -6,6 +6,7 @@
 - WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
 - Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - Bookmark 削除時の DB 書き込みも UI クリック処理から外し、DB が同じ時だけ一覧 reload する形へ寄せた
+- Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新を UI クリック処理から外し、背景保存へ寄せた
 - watch query-only 局所更新が full reload へ戻る時の理由を `changed_path_fallback` としてログへ出し、`no-changed-movies` / `filter-unavailable` / `dup-hash-dirty` を実機ログだけで切り分けられるようにした
 - watch キュー圧縮で trigger / path の因果が消えたように見える経路へログを足し、圧縮前後の理由を `debug-runtime.log` で追えるようにした
 - WebView Player の停止・切替時に pending の `user-priority` 解放を `ResetWebViewPlayerSurface()` で畳み、`NavigationCompleted` 後着時に watch / poll defer が残り続ける経路を塞いだ
@@ -245,6 +246,7 @@
 - Bookmark 下部タブの再読込は、表示中でも `bookmark` DB read と `MovieRecords` 生成を background 化し、UI スレッドにはコレクション反映だけを残した
 - Bookmark 追加は、UI 側で選択行・再生位置・DB パスだけ snapshot し、重いメタ取得と DB 登録は背景へ逃がす。旧 DB の reload 後着は DB 一致ガードで捨てる
 - Bookmark 削除も UI 側では対象 ID と DB パスだけ snapshot し、削除 DB 書き込みは背景へ逃がす
+- Player 再生時の統計保存も、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす
 - 起動 deferred services の `CreateWatcher()` は `ApplicationIdle` へ後ろ倒しし、first-page 表示直後の light services を少し薄くした
 - 監視系コードは次の partial へ分割済み
   - `Watcher/MainWindow.WatcherRegistration.cs`

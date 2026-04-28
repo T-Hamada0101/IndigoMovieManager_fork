@@ -177,7 +177,7 @@ namespace IndigoMovieManager
                         MovieInfo mvi = new(BookMarkedFilePath, true); //Hashの取得が重いのでオプション付けた。ブックマークには不要。
                         msec = (int)mv.Score / (int)mvi.FPS * 1000;
                         moviePath = $"\"{BookMarkedFilePath}\"";
-                        UpdateBookmarkViewCount(MainVM.DbInfo.DBFullPath, mv.Movie_Id);
+                        QueueBookmarkViewCountUpdate(MainVM?.DbInfo?.DBFullPath ?? "", mv.Movie_Id);
                     }
                 }
             }
@@ -259,19 +259,11 @@ namespace IndigoMovieManager
                 var result = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
                 mv.Last_Date = result.ToString("yyyy-MM-dd HH:mm:ss");
 
-                _mainDbMovieMutationFacade.UpdateScore(
-                    MainVM.DbInfo.DBFullPath,
+                QueueMoviePlaybackStatsPersist(
+                    MainVM?.DbInfo?.DBFullPath ?? "",
                     mv.Movie_Id,
-                    mv.Score
-                );
-                _mainDbMovieMutationFacade.UpdateViewCount(
-                    MainVM.DbInfo.DBFullPath,
-                    mv.Movie_Id,
-                    mv.View_Count
-                );
-                _mainDbMovieMutationFacade.UpdateLastDate(
-                    MainVM.DbInfo.DBFullPath,
-                    mv.Movie_Id,
+                    mv.Score,
+                    mv.View_Count,
                     result
                 );
             }
@@ -285,6 +277,65 @@ namespace IndigoMovieManager
                 );
                 return;
             }
+        }
+
+        // 再生開始後の軽い統計保存もDB I/Oなので、UIクリック処理から外す。
+        private void QueueMoviePlaybackStatsPersist(
+            string dbFullPath,
+            long movieId,
+            long score,
+            long viewCount,
+            DateTime lastDate
+        )
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath) || movieId <= 0)
+            {
+                return;
+            }
+
+            _ = Task.Run(
+                () =>
+                {
+                    try
+                    {
+                        _mainDbMovieMutationFacade.UpdateScore(dbFullPath, movieId, score);
+                        _mainDbMovieMutationFacade.UpdateViewCount(dbFullPath, movieId, viewCount);
+                        _mainDbMovieMutationFacade.UpdateLastDate(dbFullPath, movieId, lastDate);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugRuntimeLog.Write(
+                            "player",
+                            $"playback stats persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                        );
+                    }
+                }
+            );
+        }
+
+        private static void QueueBookmarkViewCountUpdate(string dbFullPath, long movieId)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath) || movieId <= 0)
+            {
+                return;
+            }
+
+            _ = Task.Run(
+                () =>
+                {
+                    try
+                    {
+                        UpdateBookmarkViewCount(dbFullPath, movieId);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugRuntimeLog.Write(
+                            "player",
+                            $"bookmark view count persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                        );
+                    }
+                }
+            );
         }
 
         private bool IsPlaying = false;
