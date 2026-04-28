@@ -74,11 +74,11 @@ namespace IndigoMovieManager
         // Bookmark 一覧の反映は UI に残し、DB read と item 生成だけを背景へ逃がす。
         private async Task ReloadBookmarkTabDataCoreAsync()
         {
-            _bookmarkTabPresenter?.OnReloadCompleted();
             if (string.IsNullOrWhiteSpace(MainVM?.DbInfo?.DBFullPath))
             {
                 bookmarkData?.Clear();
                 MainVM?.BookmarkRecs.Clear();
+                _bookmarkTabPresenter?.OnReloadCompleted();
                 return;
             }
 
@@ -104,6 +104,7 @@ namespace IndigoMovieManager
             MainVM.BookmarkRecs.Clear();
             if (bookmarkData == null)
             {
+                _bookmarkTabPresenter?.OnReloadCompleted();
                 return;
             }
 
@@ -113,6 +114,7 @@ namespace IndigoMovieManager
             }
 
             RefreshBookmarkTabView();
+            _bookmarkTabPresenter?.OnReloadCompleted();
         }
 
         /// <summary>

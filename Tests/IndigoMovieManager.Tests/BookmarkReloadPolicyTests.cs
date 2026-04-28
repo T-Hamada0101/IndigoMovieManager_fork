@@ -63,6 +63,27 @@ public sealed class BookmarkReloadPolicyTests
     }
 
     [Test]
+    public void ReloadBookmarkTabDataCoreAsync_dirty解除は成功反映後に行う()
+    {
+        string source = GetRepoText("BottomTabs", "Bookmark", "MainWindow.BottomTab.Bookmark.cs");
+        string reloadMethod = GetMethodBlock(
+            source,
+            "private async Task ReloadBookmarkTabDataCoreAsync("
+        );
+
+        int loadIndex = reloadMethod.IndexOf("LoadBookmarkReloadSnapshot", StringComparison.Ordinal);
+        int refreshIndex = reloadMethod.IndexOf("RefreshBookmarkTabView();", StringComparison.Ordinal);
+        int completedIndex = reloadMethod.LastIndexOf(
+            "_bookmarkTabPresenter?.OnReloadCompleted();",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(loadIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(refreshIndex, Is.GreaterThan(loadIndex));
+        Assert.That(completedIndex, Is.GreaterThan(refreshIndex));
+    }
+
+    [Test]
     public void BuildBookmarkRecordsForReload_bookmark行をMovieRecordsへ変換できる()
     {
         DataTable bookmarkData = new();

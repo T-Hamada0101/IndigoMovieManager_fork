@@ -8,6 +8,7 @@
 - Bookmark 削除時の DB 書き込みも UI クリック処理から外し、DB が同じ時だけ一覧 reload する形へ寄せた
 - Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新を UI クリック処理から外し、背景保存へ寄せた
 - Bookmark ラベル再生時の FPS 取得用 `MovieInfo` 生成を背景化し、再生位置計算中も UI スレッドを空ける形へ寄せた
+- Bookmark reload の dirty 解除を開始時ではなく成功反映後へ移し、背景読込中の追加/削除を取りこぼさないようにした
 - watch query-only 局所更新が full reload へ戻る理由を `changed_path_fallback` で残し、局所更新が効かない条件を観測して次の縮小対象を選べるようにした
 - watch キュー圧縮の trigger / path 因果ログを追加し、圧縮で見えにくくなる発火理由を `debug-runtime.log` で追えるようにした
 - WebView Player 停止・切替時に `user-priority` 解放待ちを残さないよう、WebView surface リセットで pending 解放を畳む方針を反映した
@@ -124,6 +125,7 @@
 - さらに Bookmark 削除時の DB 書き込みも背景化し、削除クリックでは対象 ID と DB パスの snapshot だけを持つ形へ寄せた。
 - さらに Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新も背景保存へ寄せ、再生クリック後の DB 待ちを減らした。
 - さらに Bookmark ラベル再生の FPS 取得用 `MovieInfo` 生成も背景化し、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした。
+- さらに Bookmark reload の dirty 解除を成功反映後へ移し、revision 不一致や DB 切替後着では dirty を消さずに捨てるようにした。
 - さらに起動 deferred services の `CreateWatcher()` も `ApplicationIdle` へ後ろ倒しし、first-page 直後の UI tick に watch table 読込と watcher 配備を詰め込まないようにした。
 - warm start をさらに詰めるには、起動直後に必要な read model と、後で良い常駐処理をより明確に分ける必要がある。
 
@@ -285,6 +287,7 @@
 - Bookmark 削除も、UI 側では対象 ID と DB パスだけ snapshot し、DB 書き込みは背景へ逃がす。
 - Player 再生時の統計保存も、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
 - Bookmark ラベル再生の FPS 取得も背景化し、再生位置計算中に UI スレッドを掴まないようにする。
+- Bookmark reload の dirty 解除は成功反映後に限定し、古い背景読込結果で未反映更新を消さない。
 
 完了条件:
 - ページ Up/Down 時の体感引っかかりが、cache miss 頻度とともに下がる。
