@@ -34,6 +34,22 @@ public sealed class BookmarkReloadPolicyTests
     }
 
     [Test]
+    public void DeleteBookmark_削除DB書き込みは背景へ逃がす()
+    {
+        string source = GetRepoText("BottomTabs", "Bookmark", "MainWindow.BottomTab.Bookmark.cs");
+        string deleteMethod = GetMethodBlock(source, "public async void DeleteBookmark(");
+        string backgroundMethod = GetMethodBlock(
+            source,
+            "private static void DeleteBookmarkInBackground("
+        );
+
+        Assert.That(deleteMethod, Does.Contain("Task.Run("));
+        Assert.That(deleteMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(deleteMethod, Does.Not.Contain("DeleteBookmarkTable("));
+        Assert.That(backgroundMethod, Does.Contain("DeleteBookmarkTable("));
+    }
+
+    [Test]
     public void ReloadBookmarkTabDataCoreAsync_旧DBの後着結果は反映しない()
     {
         string source = GetRepoText("BottomTabs", "Bookmark", "MainWindow.BottomTab.Bookmark.cs");

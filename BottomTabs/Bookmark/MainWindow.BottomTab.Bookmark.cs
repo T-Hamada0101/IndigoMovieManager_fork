@@ -180,7 +180,7 @@ namespace IndigoMovieManager
         }
 
         // Bookmarkタブ上の削除は、DBと一覧再構築をまとめて処理する。
-        public void DeleteBookmark(object sender, RoutedEventArgs e)
+        public async void DeleteBookmark(object sender, RoutedEventArgs e)
         {
             if (sender is not Button deleteButton)
             {
@@ -192,8 +192,25 @@ namespace IndigoMovieManager
                 return;
             }
 
-            DeleteBookmarkTable(MainVM.DbInfo.DBFullPath, item.Movie_Id);
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            long movieId = item.Movie_Id;
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return;
+            }
+
+            await Task.Run(() => DeleteBookmarkInBackground(dbFullPath, movieId));
+            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                return;
+            }
+
             ReloadBookmarkTabData();
+        }
+
+        private static void DeleteBookmarkInBackground(string dbFullPath, long movieId)
+        {
+            DeleteBookmarkTable(dbFullPath, movieId);
         }
 
         // 再生位置からBookmarkサムネを作り、一覧まで更新する。
