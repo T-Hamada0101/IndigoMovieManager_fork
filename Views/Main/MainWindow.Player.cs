@@ -174,8 +174,10 @@ namespace IndigoMovieManager
                             )
                             .First();
                         var BookMarkedFilePath = bookmarkedMv.Movie_Path;
-                        MovieInfo mvi = new(BookMarkedFilePath, true); //Hashの取得が重いのでオプション付けた。ブックマークには不要。
-                        msec = (int)mv.Score / (int)mvi.FPS * 1000;
+                        msec = await ResolveBookmarkPlaybackMillisecondsAsync(
+                            BookMarkedFilePath,
+                            mv.Score
+                        );
                         moviePath = $"\"{BookMarkedFilePath}\"";
                         QueueBookmarkViewCountUpdate(MainVM?.DbInfo?.DBFullPath ?? "", mv.Movie_Id);
                     }
@@ -277,6 +279,27 @@ namespace IndigoMovieManager
                 );
                 return;
             }
+        }
+
+        private static Task<int> ResolveBookmarkPlaybackMillisecondsAsync(
+            string movieFullPath,
+            long bookmarkFrame
+        )
+        {
+            return Task.Run(() => ResolveBookmarkPlaybackMilliseconds(movieFullPath, bookmarkFrame));
+        }
+
+        private static int ResolveBookmarkPlaybackMilliseconds(string movieFullPath, long bookmarkFrame)
+        {
+            if (string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return 0;
+            }
+
+            // Bookmark再生位置のFPS取得は動画メタを読むため、UIスレッドから切り離す。
+            MovieInfo movieInfo = new(movieFullPath, true);
+            int fps = Math.Max(1, (int)movieInfo.FPS);
+            return (int)bookmarkFrame / fps * 1000;
         }
 
         // 再生開始後の軽い統計保存もDB I/Oなので、UIクリック処理から外す。

@@ -87,6 +87,27 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayMovie_Click_Bookmark再生位置のMovieInfo取得は背景へ逃がす()
+    {
+        string source = GetMainWindowPlayerSourceText();
+        string playMethod = GetMethodBlock(source, "public async void PlayMovie_Click(");
+        string resolveAsyncMethod = GetMethodBlock(
+            source,
+            "private static Task<int> ResolveBookmarkPlaybackMillisecondsAsync("
+        );
+        string resolveMethod = GetMethodBlock(
+            source,
+            "private static int ResolveBookmarkPlaybackMilliseconds("
+        );
+
+        Assert.That(playMethod, Does.Contain("await ResolveBookmarkPlaybackMillisecondsAsync("));
+        Assert.That(playMethod, Does.Not.Contain("new MovieInfo(BookMarkedFilePath"));
+        Assert.That(resolveAsyncMethod, Does.Contain("Task.Run("));
+        Assert.That(resolveMethod, Does.Contain("MovieInfo movieInfo = new("));
+        Assert.That(resolveMethod, Does.Contain("Math.Max(1, (int)movieInfo.FPS)"));
+    }
+
+    [Test]
     public void WebViewPlayer_ホスト音量適用前の既定音量通知を抑止する()
     {
         string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
