@@ -4,6 +4,7 @@
 
 変更概要:
 - WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
+- Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - watch query-only 局所更新が full reload へ戻る理由を `changed_path_fallback` で残し、局所更新が効かない条件を観測して次の縮小対象を選べるようにした
 - watch キュー圧縮の trigger / path 因果ログを追加し、圧縮で見えにくくなる発火理由を `debug-runtime.log` で追えるようにした
 - WebView Player 停止・切替時に `user-priority` 解放待ちを残さないよう、WebView surface リセットで pending 解放を畳む方針を反映した
@@ -116,6 +117,7 @@
 - 起動段階ロード化で first-page 化は進んだが、起動後の watch / bookmark / queue / skin 関連の warm path はまだ分散している。
 - 直近では、起動時 auto-open の `system` 先読みをコンストラクタから外し、最初の表示前は cold start 既定値だけを使って `ContentRendered` 後の DB 切替へ寄せた。
 - さらに Bookmark 下部タブの再読込も、`bookmark` DB read と item 生成を background 化し、UI スレッドには結果反映だけを残し始めた。
+- さらに Bookmark 追加時のメタ取得、bookmark フォルダ作成、DB 登録も UI クリック処理から外し、サムネ生成成功後に背景 DB 登録してから一覧 reload する形へ寄せた。
 - さらに起動 deferred services の `CreateWatcher()` も `ApplicationIdle` へ後ろ倒しし、first-page 直後の UI tick に watch table 読込と watcher 配備を詰め込まないようにした。
 - warm start をさらに詰めるには、起動直後に必要な read model と、後で良い常駐処理をより明確に分ける必要がある。
 
@@ -273,6 +275,7 @@
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。
 - Player / UpperTabs の追加・ fullscreen・表示切替は、watch / thumbnail / skin の背後処理と同時に走っても UI スレッドを長く掴まない形へ寄せる。
 - WebView Player の動画切り替えでは、ホスト側音量適用中の通知を保存せず、切り替え直後の 100% 既定音量通知でユーザー音量を上書きしない。
+- Bookmark 追加は、UI 側で選択行・再生位置・DB パスだけ snapshot し、動画メタ取得と DB 登録は背景へ逃がす。DB 切替後着は現在 DB 一致で捨てる。
 
 完了条件:
 - ページ Up/Down 時の体感引っかかりが、cache miss 頻度とともに下がる。

@@ -1,4 +1,6 @@
+using System;
 using System.Data;
+using System.IO;
 using NUnit.Framework;
 
 namespace IndigoMovieManager.Tests;
@@ -6,6 +8,44 @@ namespace IndigoMovieManager.Tests;
 [TestFixture]
 public sealed class BookmarkReloadPolicyTests
 {
+    [Test]
+    public void AddBookmark_Click_動画メタ取得とDB登録は背景へ逃がす()
+    {
+        string source = GetRepoText("BottomTabs", "Bookmark", "MainWindow.BottomTab.Bookmark.cs");
+        string clickMethod = GetMethodBlock(source, "private async void AddBookmark_Click(");
+        string prepareMethod = GetMethodBlock(
+            source,
+            "private static BookmarkAddResult PrepareBookmarkAddInBackground("
+        );
+        string persistMethod = GetMethodBlock(
+            source,
+            "private static void PersistPreparedBookmarkInBackground("
+        );
+
+        Assert.That(clickMethod, Does.Contain("Task.Run("));
+        Assert.That(clickMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(clickMethod, Does.Contain("await CreateBookmarkThumbAsync("));
+        Assert.That(clickMethod, Does.Not.Contain("new MovieInfo("));
+        Assert.That(clickMethod, Does.Not.Contain("InsertBookmarkTable("));
+        Assert.That(prepareMethod, Does.Contain("MovieInfo movieInfo = new("));
+        Assert.That(prepareMethod, Does.Contain("Directory.CreateDirectory("));
+        Assert.That(prepareMethod, Does.Not.Contain("InsertBookmarkTable("));
+        Assert.That(persistMethod, Does.Contain("InsertBookmarkTable("));
+    }
+
+    [Test]
+    public void ReloadBookmarkTabDataCoreAsync_旧DBの後着結果は反映しない()
+    {
+        string source = GetRepoText("BottomTabs", "Bookmark", "MainWindow.BottomTab.Bookmark.cs");
+        string reloadMethod = GetMethodBlock(
+            source,
+            "private async Task ReloadBookmarkTabDataCoreAsync("
+        );
+
+        Assert.That(reloadMethod, Does.Contain("AreSameMainDbPath(dbFullPath"));
+        Assert.That(reloadMethod, Does.Contain("bookmarkData = snapshot.BookmarkData;"));
+    }
+
     [Test]
     public void BuildBookmarkRecordsForReload_bookmark行をMovieRecordsへ変換できる()
     {
@@ -51,5 +91,52 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(items[0].Kana, Is.EqualTo("さむぷる"));
             Assert.That(items[0].Roma, Is.EqualTo("sample"));
         });
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        while (current != null)
+        {
+            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
+        return "";
+    }
+
+    private static string GetMethodBlock(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終了が見つかりません。");
+        return "";
     }
 }

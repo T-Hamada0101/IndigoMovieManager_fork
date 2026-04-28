@@ -4,6 +4,7 @@
 
 変更概要:
 - WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
+- Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - watch query-only 局所更新が full reload へ戻る時の理由を `changed_path_fallback` としてログへ出し、`no-changed-movies` / `filter-unavailable` / `dup-hash-dirty` を実機ログだけで切り分けられるようにした
 - watch キュー圧縮で trigger / path の因果が消えたように見える経路へログを足し、圧縮前後の理由を `debug-runtime.log` で追えるようにした
 - WebView Player の停止・切替時に pending の `user-priority` 解放を `ResetWebViewPlayerSurface()` で畳み、`NavigationCompleted` 後着時に watch / poll defer が残り続ける経路を塞いだ
@@ -241,6 +242,7 @@
 - `skin` profile cache は `pending / persisted / faulted` を分離し、API 即時整合と初期タブ復元整合を分けて扱い始めた
 - 起動時 auto-open の `system` 先読みはコンストラクタで同期実行せず、cold start 既定値だけ入れて `ContentRendered` 後の `TrySwitchMainDb(...)` に一本化した
 - Bookmark 下部タブの再読込は、表示中でも `bookmark` DB read と `MovieRecords` 生成を background 化し、UI スレッドにはコレクション反映だけを残した
+- Bookmark 追加は、UI 側で選択行・再生位置・DB パスだけ snapshot し、重いメタ取得と DB 登録は背景へ逃がす。旧 DB の reload 後着は DB 一致ガードで捨てる
 - 起動 deferred services の `CreateWatcher()` は `ApplicationIdle` へ後ろ倒しし、first-page 表示直後の light services を少し薄くした
 - 監視系コードは次の partial へ分割済み
   - `Watcher/MainWindow.WatcherRegistration.cs`

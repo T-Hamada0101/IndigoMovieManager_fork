@@ -151,7 +151,7 @@ namespace IndigoMovieManager
         }
 
         // ブックマーク用の単一フレームサムネイルを作成する。
-        private async Task CreateBookmarkThumbAsync(
+        private async Task<bool> CreateBookmarkThumbAsync(
             string movieFullPath,
             string saveThumbPath,
             int capturePos
@@ -167,11 +167,11 @@ namespace IndigoMovieManager
             );
             if (!created)
             {
-                return;
+                return false;
             }
 
             await Task.Delay(1000);
-            RefreshBookmarkTabView();
+            return true;
         }
 
         /// <summary>

@@ -95,6 +95,11 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                return;
+            }
+
             bookmarkData = snapshot.BookmarkData;
             MainVM.BookmarkRecs.Clear();
             if (bookmarkData == null)
@@ -207,19 +212,98 @@ namespace IndigoMovieManager
 
             timer.Stop();
             uxVideoPlayer.Pause();
+            int pos = (int)uxVideoPlayer.Position.TotalSeconds;
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            string bookmarkFolder = ResolveBookmarkFolderPath();
+            string movieFullPath = mv.Movie_Path;
+            string movieBody = mv.Movie_Body;
 
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;
             uxVideoPlayer.Visibility = Visibility.Collapsed;
+            uxVideoPlayer.Stop();
+            IsPlaying = false;
 
-            MovieInfo mvi = new(mv.Movie_Path, true);
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return;
+            }
 
-            int pos = (int)uxVideoPlayer.Position.TotalSeconds;
-            int targetFrame = pos * (int)mvi.FPS;
+            BookmarkAddResult result;
+            try
+            {
+                result = await Task.Run(
+                    () => PrepareBookmarkAddInBackground(
+                        dbFullPath,
+                        bookmarkFolder,
+                        movieFullPath,
+                        movieBody,
+                        pos
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "bookmark",
+                    $"add bookmark failed: db='{dbFullPath}' path='{movieFullPath}' err='{ex.GetType().Name}'"
+                );
+                return;
+            }
+
+            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(result.ThumbFileName))
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+            bool thumbCreated = await CreateBookmarkThumbAsync(
+                result.MovieFullPath,
+                result.ThumbFileName,
+                result.PositionSeconds
+            );
+            if (!thumbCreated)
+            {
+                DebugRuntimeLog.Write(
+                    "bookmark",
+                    $"add bookmark thumbnail failed: db='{dbFullPath}' path='{result.MovieFullPath}'"
+                );
+                return;
+            }
+
+            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                return;
+            }
+
+            await Task.Run(() => PersistPreparedBookmarkInBackground(dbFullPath, result));
+            ReloadBookmarkTabData();
+        }
+
+        private static BookmarkAddResult PrepareBookmarkAddInBackground(
+            string dbFullPath,
+            string bookmarkFolder,
+            string movieFullPath,
+            string movieBody,
+            int positionSeconds
+        )
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath) || string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                throw new ArgumentException("Bookmark source is empty.");
+            }
+
+            MovieInfo movieInfo = new(movieFullPath, true);
+            int targetFrame = positionSeconds * (int)movieInfo.FPS;
             string timestamp = string.Format($"{DateTime.Now:HH-mm-ss}");
-            string thumbBody = $"{mv.Movie_Body}[({targetFrame}){timestamp}]";
+            string thumbBody = $"{movieBody}[({targetFrame}){timestamp}]";
             string thumbFileName = Path.Combine(
-                ResolveBookmarkFolderPath(),
+                bookmarkFolder,
                 $"{thumbBody}.jpg"
             );
             string thumbFolder = Path.GetDirectoryName(thumbFileName) ?? "";
@@ -228,17 +312,30 @@ namespace IndigoMovieManager
                 Directory.CreateDirectory(thumbFolder);
             }
 
-            await Task.Delay(10);
-            _ = CreateBookmarkThumbAsync(mv.Movie_Path, thumbFileName, pos);
-
-            uxVideoPlayer.Stop();
-            IsPlaying = false;
-
-            mvi.MovieName = thumbBody;
-            mvi.MoviePath = $"{thumbBody}.jpg";
-            InsertBookmarkTable(MainVM.DbInfo.DBFullPath, mvi);
-            ReloadBookmarkTabData();
+            movieInfo.MovieName = thumbBody;
+            movieInfo.MoviePath = $"{thumbBody}.jpg";
+            return new BookmarkAddResult(
+                movieFullPath,
+                thumbFileName,
+                positionSeconds,
+                movieInfo
+            );
         }
+
+        private static void PersistPreparedBookmarkInBackground(
+            string dbFullPath,
+            BookmarkAddResult result
+        )
+        {
+            InsertBookmarkTable(dbFullPath, result.MovieInfo);
+        }
+
+        private sealed record BookmarkAddResult(
+            string MovieFullPath,
+            string ThumbFileName,
+            int PositionSeconds,
+            MovieInfo MovieInfo
+        );
 
         private sealed class BookmarkReloadSnapshot
         {
