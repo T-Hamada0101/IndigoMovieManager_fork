@@ -450,13 +450,10 @@ namespace IndigoMovieManager
             _searchInputDebounceTimer = new DispatcherTimer { Interval = _timeInputInterval };
             _searchInputDebounceTimer.Tick += SearchInputDebounceTimer_Tick;
 
-            // 保存済み音量を先に復元し、その値を内蔵プレイヤーと表示へ揃える。
-            double savedPlayerVolume = ResolveSavedPlayerVolumeSetting(Properties.Settings.Default.PlayerVolume);
-            uxVolumeSlider.Value = savedPlayerVolume;
-            uxVideoPlayer.Volume = savedPlayerVolume;
+            // 保存済み音量は中央入口へ通し、内蔵プレイヤー・WebView2・表示の正本を揃える。
+            RestorePlayerVolumeFromSettings();
 
             uxTime.Text = "00:00:00";
-            uxVolume.Text = ((int)(savedPlayerVolume * 100)).ToString();
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;
             uxVideoPlayer.Visibility = Visibility.Collapsed;

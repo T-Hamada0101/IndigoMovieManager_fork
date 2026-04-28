@@ -20,7 +20,8 @@ namespace IndigoMovieManager
         private bool _isTimeSliderSyncingFromPlayer;
         private bool _isTimeSliderDragging;
         private bool _isManualPlayerResizeTrackingHooked;
-        private bool _isPlayerVolumeSyncingFromWebView;
+        private bool _isPlayerVolumeApplyingToUi;
+        private double _currentPlayerVolume = DefaultPlayerVolume;
         private DispatcherTimer _playerVolumeSaveDebounceTimer;
 
         // 保存済み設定が壊れていても、音量は常に 0.0 から 1.0 の安全域へ戻す。
@@ -34,26 +35,75 @@ namespace IndigoMovieManager
             return Math.Max(0d, Math.Min(1d, volume));
         }
 
-        // 保存値は 0%/100% もユーザー操作として尊重し、範囲外や NaN だけ安全域へ戻す。
+        // WebView2 の既定値 100% が保存に混ざった時は、次回起動で既定の 50% へ戻す。
         private static double ResolveSavedPlayerVolumeSetting(double volume)
         {
-            return ClampPlayerVolumeSetting(volume);
+            double resolvedVolume = ClampPlayerVolumeSetting(volume);
+            return resolvedVolume >= 1d ? DefaultPlayerVolume : resolvedVolume;
         }
 
-        // 画面表示と保存値を同じ音量へ寄せ、次に開く動画にもそのまま引き継ぐ。
-        private void ApplyPlayerVolumeSetting(double volume, bool pushToWebView)
+        // 起動時の復元も中央入口へ通し、保存値・UI・プレイヤーの正本を分散させない。
+        private void RestorePlayerVolumeFromSettings()
+        {
+            double rawSavedVolume = Properties.Settings.Default.PlayerVolume;
+            double savedPlayerVolume = ResolveSavedPlayerVolumeSetting(rawSavedVolume);
+            bool repairSavedVolume =
+                Math.Abs(ClampPlayerVolumeSetting(rawSavedVolume) - savedPlayerVolume) > 0.0001d;
+
+            ApplyPlayerVolumeSetting(
+                savedPlayerVolume,
+                updateSlider: true,
+                save: repairSavedVolume,
+                pushToWebView: false
+            );
+        }
+
+        // 他ファイルから音量を参照する時も、スライダー値ではなくこの正本を使う。
+        private double GetCurrentPlayerVolumeSetting()
+        {
+            return ClampPlayerVolumeSetting(_currentPlayerVolume);
+        }
+
+        // 画面表示・保存・WebView2反映をここへ集約し、動画切り替えごとの音量ぶれを防ぐ。
+        private void ApplyPlayerVolumeSetting(
+            double volume,
+            bool updateSlider,
+            bool save,
+            bool pushToWebView
+        )
         {
             double resolvedVolume = ClampPlayerVolumeSetting(volume);
+            _currentPlayerVolume = resolvedVolume;
 
-            uxVideoPlayer.Volume = resolvedVolume;
+            if (uxVideoPlayer != null)
+            {
+                uxVideoPlayer.Volume = resolvedVolume;
+            }
 
             if (uxVolume != null)
             {
                 uxVolume.Text = ((int)(resolvedVolume * 100)).ToString();
             }
 
-            // WebView から同じ音量通知が返ってきた時は、保存キューだけ積み直さない。
-            if (Math.Abs(Properties.Settings.Default.PlayerVolume - resolvedVolume) > 0.0001d)
+            if (
+                updateSlider
+                && uxVolumeSlider != null
+                && Math.Abs(uxVolumeSlider.Value - resolvedVolume) > 0.0001d
+            )
+            {
+                _isPlayerVolumeApplyingToUi = true;
+                try
+                {
+                    uxVolumeSlider.Value = resolvedVolume;
+                }
+                finally
+                {
+                    _isPlayerVolumeApplyingToUi = false;
+                }
+            }
+
+            // 保存が必要な入口だけここで畳み、設定ファイルへ直接触る場所を増やさない。
+            if (save && Math.Abs(Properties.Settings.Default.PlayerVolume - resolvedVolume) > 0.0001d)
             {
                 Properties.Settings.Default.PlayerVolume = resolvedVolume;
                 QueuePlayerVolumeSettingSave();
@@ -65,7 +115,48 @@ namespace IndigoMovieManager
             }
 
             _ = uxWebVideoPlayer.ExecuteScriptAsync(
-                $"const player = document.querySelector('video'); if (player) {{ player.dataset.indigoPlayerHostVolumeApplying = '1'; player.muted = false; player.volume = {resolvedVolume.ToString(System.Globalization.CultureInfo.InvariantCulture)}; player.dataset.indigoPlayerHostVolumeApplied = '1'; setTimeout(() => {{ delete player.dataset.indigoPlayerHostVolumeApplying; }}, 0); }}"
+                $"const player = document.querySelector('video'); if (player) {{ player.dataset.indigoPlayerHostVolumeApplying = '1'; player.muted = false; player.volume = {resolvedVolume.ToString(System.Globalization.CultureInfo.InvariantCulture)}; player.dataset.indigoPlayerHostVolumeApplied = '1'; setTimeout(() => {{ delete player.dataset.indigoPlayerHostVolumeApplying; }}, 250); }}"
+            );
+        }
+
+        // ユーザー操作は保存し、現在のWebView2プレイヤーにも即時反映する。
+        private void SetPlayerVolumeFromUser(double volume)
+        {
+            ApplyPlayerVolumeSetting(
+                volume,
+                updateSlider: true,
+                save: true,
+                pushToWebView: _isWebViewPlayerActive
+            );
+        }
+
+        // WebView2の100%既定値が逆流した時は、正本を守って50%または現在値へ戻す。
+        private void SetPlayerVolumeFromWebView(double volume)
+        {
+            double resolvedVolume = ClampPlayerVolumeSetting(volume);
+            if (resolvedVolume >= 1d)
+            {
+                double currentVolume = GetCurrentPlayerVolumeSetting();
+                double fallbackVolume = currentVolume >= 1d ? DefaultPlayerVolume : currentVolume;
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"player webview default volume ignored: incoming={resolvedVolume:0.###} current={currentVolume:0.###} fallback={fallbackVolume:0.###}"
+                );
+
+                ApplyPlayerVolumeSetting(
+                    fallbackVolume,
+                    updateSlider: true,
+                    save: true,
+                    pushToWebView: false
+                );
+                return;
+            }
+
+            ApplyPlayerVolumeSetting(
+                resolvedVolume,
+                updateSlider: true,
+                save: true,
+                pushToWebView: false
             );
         }
 
@@ -103,31 +194,7 @@ namespace IndigoMovieManager
         // WebView2 のネイティブ音量変更も設定へ戻し、以後の全動画へ同じ値を配る。
         private void SyncPlayerVolumeFromWebView(double volume)
         {
-            double resolvedVolume = ClampPlayerVolumeSetting(volume);
-            double currentVolume = ClampPlayerVolumeSetting(uxVolumeSlider?.Value ?? DefaultPlayerVolume);
-            if (resolvedVolume >= 1d && currentVolume < 0.999d)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"player webview default volume ignored: incoming={resolvedVolume:0.###} current={currentVolume:0.###}"
-                );
-                return;
-            }
-
-            _isPlayerVolumeSyncingFromWebView = true;
-            try
-            {
-                if (uxVolumeSlider != null && Math.Abs(uxVolumeSlider.Value - resolvedVolume) > 0.0001d)
-                {
-                    uxVolumeSlider.Value = resolvedVolume;
-                }
-            }
-            finally
-            {
-                _isPlayerVolumeSyncingFromWebView = false;
-            }
-
-            ApplyPlayerVolumeSetting(resolvedVolume, pushToWebView: false);
+            SetPlayerVolumeFromWebView(volume);
         }
 
         public async void PlayMovie_Click(object sender, RoutedEventArgs e)
@@ -743,17 +810,12 @@ namespace IndigoMovieManager
             RoutedPropertyChangedEventArgs<double> e
         )
         {
-            double resolvedVolume = ClampPlayerVolumeSetting(uxVolumeSlider.Value);
-            if (Math.Abs(uxVolumeSlider.Value - resolvedVolume) > double.Epsilon)
+            if (_isPlayerVolumeApplyingToUi)
             {
-                uxVolumeSlider.Value = resolvedVolume;
                 return;
             }
 
-            ApplyPlayerVolumeSetting(
-                resolvedVolume,
-                pushToWebView: _isWebViewPlayerActive && !_isPlayerVolumeSyncingFromWebView
-            );
+            SetPlayerVolumeFromUser(uxVolumeSlider.Value);
         }
 
         /// <summary>

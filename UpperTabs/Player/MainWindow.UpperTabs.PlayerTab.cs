@@ -499,7 +499,7 @@ namespace IndigoMovieManager
                 bool focusTimeSlider = _pendingPlayerFocusTimeSlider;
                 _hasPendingPlayerPlaybackRequest = false;
 
-                double restoreVolume = uxVolumeSlider?.Value ?? 0.5d;
+                double restoreVolume = GetCurrentPlayerVolumeSetting();
                 uxVideoPlayer.Volume = mute ? 0d : restoreVolume;
 
                 if (startMilliseconds > 0)
@@ -882,7 +882,7 @@ namespace IndigoMovieManager
                 string seconds = (startMilliseconds / 1000d).ToString(
                     System.Globalization.CultureInfo.InvariantCulture
                 );
-                string volume = uxVolumeSlider.Value.ToString(
+                string volume = GetCurrentPlayerVolumeSetting().ToString(
                     System.Globalization.CultureInfo.InvariantCulture
                 );
                 string script = $$"""
@@ -903,7 +903,7 @@ namespace IndigoMovieManager
                         player.dataset.indigoPlayerHostVolumeApplied = '1';
                         setTimeout(() => {
                           delete player.dataset.indigoPlayerHostVolumeApplying;
-                        }, 0);
+                        }, 250);
 
                         const playPromise = player.play();
                         if (playPromise) {

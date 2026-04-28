@@ -262,7 +262,7 @@ namespace IndigoMovieManager
             {
                 return new PlayerWebViewPlaybackSnapshot
                 {
-                    Volume = ClampPlayerVolumeSetting(uxVolumeSlider?.Value ?? 0.5d),
+                    Volume = GetCurrentPlayerVolumeSetting(),
                 };
             }
 
@@ -294,7 +294,7 @@ namespace IndigoMovieManager
             {
                 return new PlayerWebViewPlaybackSnapshot
                 {
-                    Volume = ClampPlayerVolumeSetting(uxVolumeSlider?.Value ?? 0.5d),
+                    Volume = GetCurrentPlayerVolumeSetting(),
                 };
             }
         }
@@ -402,7 +402,8 @@ namespace IndigoMovieManager
 
             ReturnDetachedWebViewPlayerToPlayerTab();
 
-            ApplyPlayerVolumeSetting(snapshot.Volume, pushToWebView: false);
+            SetPlayerVolumeFromWebView(snapshot.Volume);
+            snapshot.Volume = GetCurrentPlayerVolumeSetting();
 
             if (_isWebViewPlayerActive && uxWebVideoPlayer?.CoreWebView2 != null)
             {

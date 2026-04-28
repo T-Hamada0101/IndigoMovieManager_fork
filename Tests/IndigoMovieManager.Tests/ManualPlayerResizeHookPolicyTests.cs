@@ -45,19 +45,42 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void PlayerVolume_保存値0と100もユーザー設定として復元する()
+    public void PlayerVolume_保存値100は既定音量として50へ戻す()
     {
         string playerSource = GetMainWindowPlayerSourceText();
         string windowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
 
         Assert.That(playerSource, Does.Contain("private const double DefaultPlayerVolume = 0.5d;"));
         Assert.That(playerSource, Does.Contain("private static double ResolveSavedPlayerVolumeSetting(double volume)"));
-        Assert.That(playerSource, Does.Contain("return ClampPlayerVolumeSetting(volume);"));
-        Assert.That(playerSource, Does.Not.Contain("resolvedVolume <= 0d || resolvedVolume >= 1d"));
+        Assert.That(playerSource, Does.Contain("return resolvedVolume >= 1d ? DefaultPlayerVolume : resolvedVolume;"));
+        Assert.That(playerSource, Does.Contain("private void RestorePlayerVolumeFromSettings()"));
+        Assert.That(playerSource, Does.Contain("save: repairSavedVolume"));
         Assert.That(
             windowSource,
-            Does.Contain("ResolveSavedPlayerVolumeSetting(Properties.Settings.Default.PlayerVolume)")
+            Does.Contain("RestorePlayerVolumeFromSettings();")
         );
+    }
+
+    [Test]
+    public void PlayerVolume_更新入口を中央関数へ集約する()
+    {
+        string playerSource = GetMainWindowPlayerSourceText();
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
+
+        Assert.That(playerSource, Does.Contain("private double _currentPlayerVolume = DefaultPlayerVolume;"));
+        Assert.That(playerSource, Does.Contain("private double GetCurrentPlayerVolumeSetting()"));
+        Assert.That(playerSource, Does.Contain("private void ApplyPlayerVolumeSetting("));
+        Assert.That(playerSource, Does.Contain("bool updateSlider,"));
+        Assert.That(playerSource, Does.Contain("bool save,"));
+        Assert.That(playerSource, Does.Contain("bool pushToWebView"));
+        Assert.That(playerSource, Does.Contain("private void SetPlayerVolumeFromUser(double volume)"));
+        Assert.That(playerSource, Does.Contain("private void SetPlayerVolumeFromWebView(double volume)"));
+        Assert.That(playerSource, Does.Contain("SetPlayerVolumeFromUser(uxVolumeSlider.Value);"));
+        Assert.That(upperTabPlayerSource, Does.Contain("double restoreVolume = GetCurrentPlayerVolumeSetting();"));
+        Assert.That(upperTabPlayerSource, Does.Contain("string volume = GetCurrentPlayerVolumeSetting().ToString("));
+        Assert.That(fullscreenWindowSource, Does.Contain("SetPlayerVolumeFromWebView(snapshot.Volume);"));
+        Assert.That(fullscreenWindowSource, Does.Contain("snapshot.Volume = GetCurrentPlayerVolumeSetting();"));
     }
 
     [Test]
@@ -119,6 +142,8 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(fullscreenWindowSource, Does.Contain("indigoPlayerHostVolumeApplied = '1'"));
         Assert.That(mainWindowPlayerSource, Does.Contain("indigoPlayerHostVolumeApplying = '1'"));
         Assert.That(upperTabPlayerSource, Does.Contain("indigoPlayerHostVolumeApplying = '1'"));
+        Assert.That(mainWindowPlayerSource, Does.Contain("}, 250);"));
+        Assert.That(upperTabPlayerSource, Does.Contain("}, 250);"));
         Assert.That(
             upperTabPlayerSource,
             Does.Contain("player.dataset.indigoPlayerHostVolumeApplied !== '1'")
@@ -135,8 +160,12 @@ public sealed class ManualPlayerResizeHookPolicyTests
     {
         string playerSource = GetMainWindowPlayerSourceText();
 
-        Assert.That(playerSource, Does.Contain("if (resolvedVolume >= 1d && currentVolume < 0.999d)"));
+        Assert.That(playerSource, Does.Contain("if (resolvedVolume >= 1d)"));
+        Assert.That(playerSource, Does.Contain("double fallbackVolume = currentVolume >= 1d ? DefaultPlayerVolume : currentVolume;"));
         Assert.That(playerSource, Does.Contain("player webview default volume ignored"));
+        Assert.That(playerSource, Does.Contain("ApplyPlayerVolumeSetting("));
+        Assert.That(playerSource, Does.Contain("fallbackVolume,"));
+        Assert.That(playerSource, Does.Contain("pushToWebView: false"));
         Assert.That(playerSource, Does.Contain("return;"));
     }
 
