@@ -21,12 +21,35 @@ permissions:
 jobs:
   build-release-package:
     runs-on: windows-latest
+    environment: release
 
     steps:
       - name: Checkout IndigoMovieManager_fork
         uses: actions/checkout@v4
         with:
           path: IndigoMovieManager_fork
+
+      - name: Validate release ref
+        shell: pwsh
+        working-directory: IndigoMovieManager_fork
+        env:
+          GITHUB_REF_TYPE_VALUE: ${{ github.ref_type }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+        run: |
+          if ($env:GITHUB_REF_TYPE_VALUE -ne "tag") {
+            Write-Host "manual preview run のため release tag 検証をスキップします。"
+            return
+          }
+
+          # リリースタグは master の現在 HEAD だけを許可し、未レビュー commit からの release を防ぐ。
+          git fetch --no-tags --depth=1 origin +refs/heads/master:refs/remotes/origin/master
+          $tagCommit = (git rev-parse HEAD).Trim()
+          $masterCommit = (git rev-parse refs/remotes/origin/master).Trim()
+          if ($tagCommit -ne $masterCommit) {
+            throw "release tag '$($env:GITHUB_REF_NAME_VALUE)' は master HEAD ではありません。tag=$tagCommit master=$masterCommit"
+          }
+
+          Write-Host "release tag は master HEAD を指しています: $tagCommit"
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
@@ -44,8 +67,10 @@ jobs:
           PRIVATE_ENGINE_RUN_ID_PIN: ${{ vars.PRIVATE_ENGINE_PUBLISH_RUN_ID }}
           PRIVATE_ENGINE_RELEASE_TAG_INPUT: ${{ inputs.private_engine_release_tag }}
           PRIVATE_ENGINE_RELEASE_TAG_PIN: ${{ vars.PRIVATE_ENGINE_RELEASE_TAG }}
+          GITHUB_REF_TYPE_VALUE: ${{ github.ref_type }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
         run: |
-          $isTagRelease = "${{ github.ref_type }}" -eq "tag"
+          $isTagRelease = $env:GITHUB_REF_TYPE_VALUE -eq "tag"
           $privateEngineReleaseTag = if (-not [string]::IsNullOrWhiteSpace($env:PRIVATE_ENGINE_RELEASE_TAG_INPUT)) {
             $env:PRIVATE_ENGINE_RELEASE_TAG_INPUT.Trim()
           }
@@ -53,7 +78,7 @@ jobs:
             $env:PRIVATE_ENGINE_RELEASE_TAG_PIN.Trim()
           }
           elseif ($isTagRelease) {
-            "${{ github.ref_name }}".Trim()
+            $env:GITHUB_REF_NAME_VALUE.Trim()
           }
           else {
             ""
@@ -71,8 +96,8 @@ jobs:
 
           $defaultPrivateEngineRepo = "T-Hamada0101/IndigoMovieEngine"
           $defaultPublicMirrorRepo = "T-Hamada0101/IndigoMovieEngine-Mirror"
-          $publicMirrorRepo = if (-not [string]::IsNullOrWhiteSpace("${{ vars.PUBLIC_ENGINE_MIRROR_REPO }}")) {
-            "${{ vars.PUBLIC_ENGINE_MIRROR_REPO }}".Trim()
+          $publicMirrorRepo = if (-not [string]::IsNullOrWhiteSpace($env:PUBLIC_ENGINE_MIRROR_REPO)) {
+            $env:PUBLIC_ENGINE_MIRROR_REPO.Trim()
           }
           else {
             $defaultPublicMirrorRepo
@@ -208,8 +233,10 @@ jobs:
           PRIVATE_ENGINE_RUN_ID_PIN: ${{ vars.PRIVATE_ENGINE_PUBLISH_RUN_ID }}
           PRIVATE_ENGINE_RELEASE_TAG_INPUT: ${{ inputs.private_engine_release_tag }}
           PRIVATE_ENGINE_RELEASE_TAG_PIN: ${{ vars.PRIVATE_ENGINE_RELEASE_TAG }}
+          GITHUB_REF_TYPE_VALUE: ${{ github.ref_type }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
         run: |
-          $isTagRelease = "${{ github.ref_type }}" -eq "tag"
+          $isTagRelease = $env:GITHUB_REF_TYPE_VALUE -eq "tag"
           $privateEngineReleaseTag = if (-not [string]::IsNullOrWhiteSpace($env:PRIVATE_ENGINE_RELEASE_TAG_INPUT)) {
             $env:PRIVATE_ENGINE_RELEASE_TAG_INPUT.Trim()
           }
@@ -217,7 +244,7 @@ jobs:
             $env:PRIVATE_ENGINE_RELEASE_TAG_PIN.Trim()
           }
           elseif ($isTagRelease) {
-            "${{ github.ref_name }}".Trim()
+            $env:GITHUB_REF_NAME_VALUE.Trim()
           }
           else {
             ""
@@ -235,8 +262,8 @@ jobs:
 
           $defaultPrivateEngineRepo = "T-Hamada0101/IndigoMovieEngine"
           $defaultPublicMirrorRepo = "T-Hamada0101/IndigoMovieEngine-Mirror"
-          $publicMirrorRepo = if (-not [string]::IsNullOrWhiteSpace("${{ vars.PUBLIC_ENGINE_MIRROR_REPO }}")) {
-            "${{ vars.PUBLIC_ENGINE_MIRROR_REPO }}".Trim()
+          $publicMirrorRepo = if (-not [string]::IsNullOrWhiteSpace($env:PUBLIC_ENGINE_MIRROR_REPO)) {
+            $env:PUBLIC_ENGINE_MIRROR_REPO.Trim()
           }
           else {
             $defaultPublicMirrorRepo
@@ -364,9 +391,15 @@ jobs:
       - name: Create release package
         shell: pwsh
         working-directory: IndigoMovieManager_fork
+        env:
+          GITHUB_REF_TYPE_VALUE: ${{ github.ref_type }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER_VALUE: ${{ github.run_number }}
+          WORKER_SYNCED: ${{ steps.sync_private_engine.outputs.synced }}
+          PACKAGES_SYNCED: ${{ steps.sync_private_engine_packages.outputs.synced }}
         run: |
           # タグ実行時はタグ名をそのまま配布ラベルへ流し、手動実行時は run 番号へ逃がす。
-          $versionLabel = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "manual-${{ github.run_number }}" }
+          $versionLabel = if ($env:GITHUB_REF_TYPE_VALUE -eq "tag") { $env:GITHUB_REF_NAME_VALUE } else { "manual-$($env:GITHUB_RUN_NUMBER_VALUE)" }
           $packageArguments = @(
             "-NoLogo",
             "-NoProfile",
@@ -383,10 +416,10 @@ jobs:
           )
 
           # Public workflow は local source build へ戻らず、Private source を同期した publish を正本として使う。
-          if ("${{ steps.sync_private_engine.outputs.synced }}" -ne "true") {
+          if ($env:WORKER_SYNCED -ne "true") {
             throw "Private engine publish source の同期結果が取得できませんでした。"
           }
-          if ("${{ steps.sync_private_engine_packages.outputs.synced }}" -ne "true") {
+          if ($env:PACKAGES_SYNCED -ne "true") {
             throw "Private engine packages の同期結果が取得できませんでした。"
           }
 
@@ -405,8 +438,12 @@ jobs:
       - name: Create WiX installer
         shell: pwsh
         working-directory: IndigoMovieManager_fork
+        env:
+          GITHUB_REF_TYPE_VALUE: ${{ github.ref_type }}
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER_VALUE: ${{ github.run_number }}
         run: |
-          $versionLabel = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "manual-${{ github.run_number }}" }
+          $versionLabel = if ($env:GITHUB_REF_TYPE_VALUE -eq "tag") { $env:GITHUB_REF_NAME_VALUE } else { "manual-$($env:GITHUB_RUN_NUMBER_VALUE)" }
           $packageDir = Join-Path "artifacts/github-release/package" "IndigoMovieManager-$versionLabel-win-x64"
           $installerArguments = @(
             "-NoLogo",
