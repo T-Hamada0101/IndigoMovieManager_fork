@@ -160,24 +160,18 @@ namespace IndigoMovieManager
                 }
 
                 var destFolder = dlg.FolderName;
-                foreach (var watcher in fileWatchers)
+                if (item.Name == "FileCopy")
                 {
-                    if (watcher.Path == destFolder)
-                    {
-                        watcher.EnableRaisingEvents = false;
-                    }
+                    QueueMovieFileCopy(mv, destFolder);
+                    return;
                 }
 
-                foreach (var rec in mv)
+                FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(destFolder, enabled: false);
+                try
                 {
-                    var destName = Path.Combine(dlg.FolderName, Path.GetFileName(rec.Movie_Path));
-
-                    if (item.Name == "FileCopy")
+                    foreach (var rec in mv)
                     {
-                        File.Copy(rec.Movie_Path, destName, true);
-                    }
-                    else
-                    {
+                        var destName = Path.Combine(dlg.FolderName, Path.GetFileName(rec.Movie_Path));
                         File.Move(rec.Movie_Path, destName, true);
                         rec.Movie_Path = destName;
                         rec.Dir = destFolder;
@@ -185,15 +179,142 @@ namespace IndigoMovieManager
                         Refresh();
                     }
                 }
-
-                foreach (var watcher in fileWatchers)
+                finally
                 {
-                    if (watcher.Path == destFolder)
-                    {
-                        watcher.EnableRaisingEvents = true;
-                    }
+                    RestoreFileWatchers(suppressedWatchers);
                 }
             }
+        }
+
+        // コピーは登録状態を変えないので、重いファイルI/Oだけ背景へ逃がして UI を先に返す。
+        private void QueueMovieFileCopy(IReadOnlyList<MovieRecords> records, string destFolder)
+        {
+            if (records == null || records.Count == 0 || string.IsNullOrWhiteSpace(destFolder))
+            {
+                return;
+            }
+
+            var copyRequests = records
+                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Movie_Path))
+                .Select(x => (
+                    SourcePath: x.Movie_Path,
+                    DestinationPath: Path.Combine(destFolder, Path.GetFileName(x.Movie_Path))
+                ))
+                .ToArray();
+            if (copyRequests.Length == 0)
+            {
+                return;
+            }
+
+            FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(destFolder, enabled: false);
+            _ = Task.Run(
+                () =>
+                {
+                    List<string> copyFailureMessages = new();
+                    try
+                    {
+                        foreach (var request in copyRequests)
+                        {
+                            try
+                            {
+                                File.Copy(request.SourcePath, request.DestinationPath, true);
+                            }
+                            catch (Exception ex)
+                            {
+                                AddFileCopyFailure(
+                                    copyFailureMessages,
+                                    request.SourcePath,
+                                    request.DestinationPath,
+                                    ex
+                                );
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _ = Dispatcher.InvokeAsync(
+                            () =>
+                            {
+                                RestoreFileWatchers(suppressedWatchers);
+                                ShowFileCopyFailureSummary(copyFailureMessages);
+                            }
+                        );
+                    }
+                }
+            );
+        }
+
+        private FileSystemWatcher[] SetFileWatchersEnabled(string folderPath, bool enabled)
+        {
+            if (string.IsNullOrWhiteSpace(folderPath))
+            {
+                return [];
+            }
+
+            FileSystemWatcher[] targets = fileWatchers
+                .Where(x => string.Equals(x.Path, folderPath, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            foreach (FileSystemWatcher watcher in targets)
+            {
+                watcher.EnableRaisingEvents = enabled;
+            }
+
+            return targets;
+        }
+
+        private static void RestoreFileWatchers(IReadOnlyList<FileSystemWatcher> watchers)
+        {
+            if (watchers == null)
+            {
+                return;
+            }
+
+            foreach (FileSystemWatcher watcher in watchers)
+            {
+                watcher.EnableRaisingEvents = true;
+            }
+        }
+
+        private static void AddFileCopyFailure(
+            List<string> copyFailureMessages,
+            string sourcePath,
+            string destinationPath,
+            Exception exception
+        )
+        {
+            string reason = string.IsNullOrWhiteSpace(exception?.Message)
+                ? exception?.GetType().Name ?? "理由不明"
+                : exception.Message;
+            copyFailureMessages.Add($"{sourcePath ?? ""} -> {destinationPath ?? ""} ({reason})");
+            DebugRuntimeLog.Write(
+                "file-copy",
+                $"copy failed: source='{sourcePath ?? ""}' dest='{destinationPath ?? ""}' reason='{reason}'"
+            );
+        }
+
+        private static void ShowFileCopyFailureSummary(List<string> copyFailureMessages)
+        {
+            if (copyFailureMessages == null || copyFailureMessages.Count == 0)
+            {
+                return;
+            }
+
+            const int maxVisibleFailures = 5;
+            string message = string.Join(
+                Environment.NewLine,
+                copyFailureMessages.Take(maxVisibleFailures)
+            );
+            if (copyFailureMessages.Count > maxVisibleFailures)
+            {
+                message += $"{Environment.NewLine}...他 {copyFailureMessages.Count - maxVisibleFailures} 件";
+            }
+
+            MessageBox.Show(
+                $"一部のコピーに失敗しました。{Environment.NewLine}{message}",
+                Assembly.GetExecutingAssembly().GetName().Name,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning
+            );
         }
 
         private void MenuScore_Click(object sender, RoutedEventArgs e)

@@ -36,6 +36,23 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void FileCopy_ファイルI_Oは背景へ逃がす()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string copyMoveMethod = GetMethodBlock(source, "private void MenuCopyAndMove_Click(");
+        string copyQueueMethod = GetMethodBlock(source, "private void QueueMovieFileCopy(");
+
+        Assert.That(copyMoveMethod, Does.Contain("QueueMovieFileCopy(mv, destFolder);"));
+        Assert.That(copyMoveMethod, Does.Not.Contain("File.Copy("));
+        Assert.That(copyMoveMethod, Does.Contain("try"));
+        Assert.That(copyMoveMethod, Does.Contain("finally"));
+        Assert.That(copyQueueMethod, Does.Contain("Task.Run("));
+        Assert.That(copyQueueMethod, Does.Contain("File.Copy("));
+        Assert.That(copyQueueMethod, Does.Contain("RestoreFileWatchers("));
+        Assert.That(copyQueueMethod, Does.Contain("ShowFileCopyFailureSummary("));
+    }
+
+    [Test]
     public void サムネイルのみ削除は背景へ逃がす()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
