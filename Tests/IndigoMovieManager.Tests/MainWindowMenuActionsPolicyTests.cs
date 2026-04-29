@@ -21,6 +21,32 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(persistMethod, Does.Contain("score persist failed"));
     }
 
+    [Test]
+    public void タグ操作_DB更新は背景へ逃がす()
+    {
+        string tagSource = GetRepoText("Views", "Main", "MainWindow.Tag.cs");
+        string bottomTagEditorSource = GetRepoText(
+            "BottomTabs",
+            "TagEditor",
+            "MainWindow.BottomTab.TagEditor.cs"
+        );
+        string tagControlSource = GetRepoText("UserControls", "TagControl.xaml.cs");
+        string persistMethod = GetMethodBlock(
+            tagSource,
+            "internal void QueueMovieTagPersist("
+        );
+
+        Assert.That(tagSource, Does.Contain("QueueMovieTagPersist("));
+        Assert.That(bottomTagEditorSource, Does.Contain("QueueMovieTagPersist("));
+        Assert.That(tagControlSource, Does.Contain("QueueMovieTagPersist("));
+        Assert.That(CountOccurrences(tagSource, "_mainDbMovieMutationFacade.UpdateTag("), Is.EqualTo(1));
+        Assert.That(bottomTagEditorSource, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+        Assert.That(tagControlSource, Does.Not.Contain("MainDbMovieMutationFacade.UpdateTag("));
+        Assert.That(persistMethod, Does.Contain("Task.Run("));
+        Assert.That(persistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+        Assert.That(persistMethod, Does.Contain("tag persist failed"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
@@ -66,5 +92,18 @@ public sealed class MainWindowMenuActionsPolicyTests
 
         Assert.Fail($"{signature} の本文終了が見つかりません。");
         return "";
+    }
+
+    private static int CountOccurrences(string source, string text)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = source.IndexOf(text, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += text.Length;
+        }
+
+        return count;
     }
 }

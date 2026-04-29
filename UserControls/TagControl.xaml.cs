@@ -1,6 +1,4 @@
 using IndigoMovieManager.ViewModels;
-using IndigoMovieManager.Data;
-using IndigoMovieManager.DB;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -15,9 +13,6 @@ namespace IndigoMovieManager.UserControls
     public partial class TagControl : UserControl
     {
         private bool ctrlFlg = false;
-        private static readonly IMainDbMovieMutationFacade MainDbMovieMutationFacade =
-            new MainDbMovieMutationFacade();
-
         // タグ表示/操作用コントロールの初期化。
         public TagControl()
         {
@@ -123,9 +118,9 @@ namespace IndigoMovieManager.UserControls
                     mv.Tags = ConvertTagsWithNewLine(mv.Tag);
                     int index = ownerWindow.Tabs.SelectedIndex;
 
-                    //タグをDBに入れる仕掛け。
+                    // タグの見た目は先に更新し、DB保存は MainWindow 側の背景保存へ任せる。
                     var dt = (MainWindowViewModel)ownerWindow.DataContext;
-                    MainDbMovieMutationFacade.UpdateTag(dt.DbInfo.DBFullPath, mv.Movie_Id, mv.Tags);
+                    ownerWindow.QueueMovieTagPersist(dt?.DbInfo?.DBFullPath ?? "", mv.Movie_Id, mv.Tags);
                     ownerWindow.NotifyTagEditorTagIndexChanged(mv);
 
                     try

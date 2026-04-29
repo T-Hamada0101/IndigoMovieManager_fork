@@ -70,12 +70,7 @@ namespace IndigoMovieManager
                     .SplitDistinct(rec.Tags, StringComparer.CurrentCultureIgnoreCase)
                     .ToList();
 
-                // 最後に単一カラムのみをDBへUPDATEする
-                _mainDbMovieMutationFacade.UpdateTag(
-                    MainVM.DbInfo.DBFullPath,
-                    rec.Movie_Id,
-                    rec.Tags
-                );
+                QueueMovieTagPersist(MainVM?.DbInfo?.DBFullPath ?? "", rec.Movie_Id, rec.Tags);
                 NotifyTagEditorTagIndexChanged(rec);
             }
 
@@ -260,12 +255,7 @@ namespace IndigoMovieManager
                     rec.Tag = tagArray;
                     rec.Tags = tagsWithNewLine;
 
-                    // DB更新
-                    _mainDbMovieMutationFacade.UpdateTag(
-                        MainVM.DbInfo.DBFullPath,
-                        rec.Movie_Id,
-                        rec.Tags
-                    );
+                    QueueMovieTagPersist(MainVM?.DbInfo?.DBFullPath ?? "", rec.Movie_Id, rec.Tags);
                     NotifyTagEditorTagIndexChanged(rec);
                 }
             }
@@ -328,8 +318,7 @@ namespace IndigoMovieManager
                 mv.Tags = "";
             }
 
-            // DB更新
-            _mainDbMovieMutationFacade.UpdateTag(MainVM.DbInfo.DBFullPath, mv.Movie_Id, mv.Tags);
+            QueueMovieTagPersist(MainVM?.DbInfo?.DBFullPath ?? "", mv.Movie_Id, mv.Tags);
             NotifyTagEditorTagIndexChanged(mv);
 
             Refresh();
@@ -397,16 +386,39 @@ namespace IndigoMovieManager
                 rec.Tag = tagArray;
                 rec.Tags = tagsWithNewLine;
 
-                _mainDbMovieMutationFacade.UpdateTag(
-                    MainVM.DbInfo.DBFullPath,
-                    rec.Movie_Id,
-                    rec.Tags
-                );
+                QueueMovieTagPersist(MainVM?.DbInfo?.DBFullPath ?? "", rec.Movie_Id, rec.Tags);
                 NotifyTagEditorTagIndexChanged(rec);
             }
 
             Refresh();
             RefreshTagEditorView();
+        }
+
+        // タグ編集は UI 上の値を先に確定し、DB 反映は背景へ逃がしてクリックやタグペイン操作を詰まらせない。
+        internal void QueueMovieTagPersist(string dbFullPath, long movieId, string tags)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath) || movieId <= 0)
+            {
+                return;
+            }
+
+            string tagSnapshot = tags ?? "";
+            _ = Task.Run(
+                () =>
+                {
+                    try
+                    {
+                        _mainDbMovieMutationFacade.UpdateTag(dbFullPath, movieId, tagSnapshot);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugRuntimeLog.Write(
+                            "ui-tempo",
+                            $"tag persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                        );
+                    }
+                }
+            );
         }
 
         // 一括タグ付けの完了は軽いトーストで返し、一覧操作の流れを止めない。
@@ -468,11 +480,7 @@ namespace IndigoMovieManager
                 rec.Tag = currentTags;
                 rec.Tags = ThumbnailTagFormatter.ConvertTagsWithNewLine([.. currentTags]);
 
-                _mainDbMovieMutationFacade.UpdateTag(
-                    MainVM.DbInfo.DBFullPath,
-                    rec.Movie_Id,
-                    rec.Tags
-                );
+                QueueMovieTagPersist(MainVM?.DbInfo?.DBFullPath ?? "", rec.Movie_Id, rec.Tags);
                 NotifyTagEditorTagIndexChanged(rec);
             }
 

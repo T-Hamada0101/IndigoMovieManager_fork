@@ -420,7 +420,7 @@ namespace IndigoMovieManager
                 .Distinct(StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
             record.Tags = ThumbnailTagFormatter.ConvertTagsWithNewLine([.. record.Tag]);
-            _mainDbMovieMutationFacade.UpdateTag(MainVM.DbInfo.DBFullPath, record.Movie_Id, record.Tags);
+            QueueMovieTagPersist(MainVM?.DbInfo?.DBFullPath ?? "", record.Movie_Id, record.Tags);
             NotifyTagEditorTagIndexChanged(record);
         }
 
