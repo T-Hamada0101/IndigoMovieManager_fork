@@ -235,11 +235,32 @@ namespace IndigoMovieManager
                 mv.Score -= 1;
             }
 
-            // DBのスコアを更新する。
-            _mainDbMovieMutationFacade.UpdateScore(
-                MainVM.DbInfo.DBFullPath,
-                mv.Movie_Id,
-                mv.Score
+            QueueMovieScorePersist(MainVM?.DbInfo?.DBFullPath ?? "", mv.Movie_Id, mv.Score);
+        }
+
+        // スコア操作は表示だけ先に変え、DB保存は背景へ逃がしてクリックの詰まりを避ける。
+        private void QueueMovieScorePersist(string dbFullPath, long movieId, long score)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath) || movieId <= 0)
+            {
+                return;
+            }
+
+            _ = Task.Run(
+                () =>
+                {
+                    try
+                    {
+                        _mainDbMovieMutationFacade.UpdateScore(dbFullPath, movieId, score);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugRuntimeLog.Write(
+                            "ui-tempo",
+                            $"score persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                        );
+                    }
+                }
             );
         }
 

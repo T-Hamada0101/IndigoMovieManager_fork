@@ -1,12 +1,13 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-04-28
+最終更新日: 2026-04-29
 
 変更概要:
 - WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
 - Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - Bookmark 削除時の DB 書き込みも UI クリック処理から外し、DB が同じ時だけ一覧 reload する形へ寄せた
 - Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新を UI クリック処理から外し、背景保存へ寄せた
+- スコア増減メニューの DB 更新も UI クリック処理から外し、表示値を先に変えて DB 保存は背景へ逃がす形へ寄せた
 - Bookmark ラベル再生時の FPS 取得用 `MovieInfo` 生成を背景化し、再生位置計算中も UI スレッドを空ける形へ寄せた
 - Bookmark reload の dirty 解除を開始時ではなく成功反映後へ移し、背景読込中の追加/削除を取りこぼさないようにした
 - watch query-only 局所更新が full reload へ戻る時の理由を `changed_path_fallback` としてログへ出し、`no-changed-movies` / `filter-unavailable` / `dup-hash-dirty` を実機ログだけで切り分けられるようにした
@@ -249,6 +250,7 @@
 - Bookmark 追加は、UI 側で選択行・再生位置・DB パスだけ snapshot し、重いメタ取得と DB 登録は背景へ逃がす。旧 DB の reload 後着は DB 一致ガードで捨てる
 - Bookmark 削除も UI 側では対象 ID と DB パスだけ snapshot し、削除 DB 書き込みは背景へ逃がす
 - Player 再生時の統計保存も、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす
+- スコア増減メニューも UI 側では `MovieRecords.Score` の表示値更新だけを先に行い、DB 更新は背景 task で実行してクリック導線を塞がない
 - Bookmark ラベル再生の FPS 取得も `Task.Run` 経由へ寄せ、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした
 - Bookmark reload は成功反映後に dirty を解除し、revision 不一致や DB 切替後着では dirty を消さずに捨てる
 - 起動 deferred services の `CreateWatcher()` は `ApplicationIdle` へ後ろ倒しし、first-page 表示直後の light services を少し薄くした
