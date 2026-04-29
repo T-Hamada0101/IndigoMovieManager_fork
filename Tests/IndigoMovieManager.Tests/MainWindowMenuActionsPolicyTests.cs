@@ -53,6 +53,21 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void RenameFile_watcher抑止はfinallyで復旧する()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string renameMethod = GetMethodBlock(source, "private void RenameFile_Click(");
+
+        Assert.That(renameMethod, Does.Contain("SetFileWatchersEnabled(destFolder, enabled: false);"));
+        Assert.That(renameMethod, Does.Contain("try"));
+        Assert.That(renameMethod, Does.Contain("RenameThumb(destMoveFile, mv.Movie_Path);"));
+        Assert.That(renameMethod, Does.Contain("finally"));
+        Assert.That(renameMethod, Does.Contain("RestoreFileWatchers(suppressedWatchers);"));
+        Assert.That(renameMethod, Does.Not.Contain("watcher.EnableRaisingEvents = false;"));
+        Assert.That(renameMethod, Does.Not.Contain("watcher.EnableRaisingEvents = true;"));
+    }
+
+    [Test]
     public void サムネイルのみ削除は背景へ逃がす()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");

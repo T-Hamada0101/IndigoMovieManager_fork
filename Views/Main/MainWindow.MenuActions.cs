@@ -550,25 +550,15 @@ namespace IndigoMovieManager
                 return;
             }
 
-            // 監視の一時停止（あれば）
-            foreach (var watcher in fileWatchers)
+            FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(destFolder, enabled: false);
+            try
             {
-                if (watcher.Path == destFolder)
-                {
-                    watcher.EnableRaisingEvents = false;
-                }
+                // 監視時のリネーム処理の実体を呼び出す。
+                RenameThumb(destMoveFile, mv.Movie_Path);
             }
-
-            // 監視時のリネーム処理の実体を呼び出す。
-            RenameThumb(destMoveFile, mv.Movie_Path);
-
-            // 監視の再開（あれば）
-            foreach (var watcher in fileWatchers)
+            finally
             {
-                if (watcher.Path == destFolder)
-                {
-                    watcher.EnableRaisingEvents = true;
-                }
+                RestoreFileWatchers(suppressedWatchers);
             }
         }
 
