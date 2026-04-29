@@ -22,6 +22,20 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void FileMove_movie_path更新は背景へ逃がす()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string moveMethod = GetMethodBlock(source, "private void MenuCopyAndMove_Click(");
+        string persistMethod = GetMethodBlock(source, "private void QueueMoviePathPersist(");
+
+        Assert.That(moveMethod, Does.Contain("QueueMoviePathPersist("));
+        Assert.That(moveMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+        Assert.That(persistMethod, Does.Contain("Task.Run("));
+        Assert.That(persistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+        Assert.That(persistMethod, Does.Contain("movie path persist failed"));
+    }
+
+    [Test]
     public void タグ操作_DB更新は背景へ逃がす()
     {
         string tagSource = GetRepoText("Views", "Main", "MainWindow.Tag.cs");

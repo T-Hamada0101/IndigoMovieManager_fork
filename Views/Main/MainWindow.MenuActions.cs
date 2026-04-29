@@ -181,11 +181,7 @@ namespace IndigoMovieManager
                         File.Move(rec.Movie_Path, destName, true);
                         rec.Movie_Path = destName;
                         rec.Dir = destFolder;
-                        _mainDbMovieMutationFacade.UpdateMoviePath(
-                            MainVM.DbInfo.DBFullPath,
-                            rec.Movie_Id,
-                            destName
-                        );
+                        QueueMoviePathPersist(MainVM?.DbInfo?.DBFullPath ?? "", rec.Movie_Id, destName);
                         Refresh();
                     }
                 }
@@ -258,6 +254,37 @@ namespace IndigoMovieManager
                         DebugRuntimeLog.Write(
                             "ui-tempo",
                             $"score persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                        );
+                    }
+                }
+            );
+        }
+
+        // ファイル移動後の表示反映を先に返し、movie_path 保存は背景へ逃がす。
+        private void QueueMoviePathPersist(string dbFullPath, long movieId, string moviePath)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath) || movieId <= 0)
+            {
+                return;
+            }
+
+            string moviePathSnapshot = moviePath ?? "";
+            _ = Task.Run(
+                () =>
+                {
+                    try
+                    {
+                        _mainDbMovieMutationFacade.UpdateMoviePath(
+                            dbFullPath,
+                            movieId,
+                            moviePathSnapshot
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugRuntimeLog.Write(
+                            "ui-tempo",
+                            $"movie path persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
                         );
                     }
                 }

@@ -9,6 +9,7 @@
 - Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新を UI クリック処理から外し、背景保存へ寄せた
 - スコア増減メニューの DB 更新も UI クリック処理から外し、表示値を先に変えて DB 保存は背景へ逃がす形へ寄せた
 - タグメニュー、下部タグ編集タブ、タグチップ削除の DB 更新も背景保存へ寄せ、タグ操作中の UI 待ちを減らした
+- ファイル移動後の `movie_path` DB 更新も背景保存へ寄せ、移動後の表示反映と DB 保存待ちを分離した
 - Bookmark ラベル再生時の FPS 取得用 `MovieInfo` 生成を背景化し、再生位置計算中も UI スレッドを空ける形へ寄せた
 - Bookmark reload の dirty 解除を開始時ではなく成功反映後へ移し、背景読込中の追加/削除を取りこぼさないようにした
 - watch query-only 局所更新が full reload へ戻る理由を `changed_path_fallback` で残し、局所更新が効かない条件を観測して次の縮小対象を選べるようにした
@@ -128,6 +129,7 @@
 - さらに Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新も背景保存へ寄せ、再生クリック後の DB 待ちを減らした。
 - さらにスコア増減メニューも、UI 側では `MovieRecords.Score` の表示値更新だけを先に行い、DB 更新は背景 task で実行してクリック導線を塞がないようにした。
 - さらにタグメニュー、下部タグ編集タブ、タグチップ削除も、UI 側では `MovieRecords.Tag/Tags` の表示更新だけを先に行い、DB 更新は共通背景 helper へ逃がす形へ寄せた。
+- さらにファイル移動メニューも、物理移動成功後の `MovieRecords.Movie_Path` 表示更新を先に行い、`movie_path` DB 更新は背景 helper へ逃がす形へ寄せた。
 - さらに Bookmark ラベル再生の FPS 取得用 `MovieInfo` 生成も背景化し、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした。
 - さらに Bookmark reload の dirty 解除を成功反映後へ移し、revision 不一致や DB 切替後着では dirty を消さずに捨てるようにした。
 - さらに起動 deferred services の `CreateWatcher()` も `ApplicationIdle` へ後ろ倒しし、first-page 直後の UI tick に watch table 読込と watcher 配備を詰め込まないようにした。
@@ -292,6 +294,7 @@
 - Player 再生時の統計保存も、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
 - スコア増減メニューも、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
 - タグメニュー、下部タグ編集タブ、タグチップ削除も、UI 側ではタグ表示更新だけ先に行い、DB 書き込みは背景へ逃がす。
+- ファイル移動後の `movie_path` 保存も、表示反映後の背景 DB 書き込みへ寄せる。
 - Bookmark ラベル再生の FPS 取得も背景化し、再生位置計算中に UI スレッドを掴まないようにする。
 - Bookmark reload の dirty 解除は成功反映後に限定し、古い背景読込結果で未反映更新を消さない。
 
