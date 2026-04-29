@@ -36,6 +36,22 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void サムネイルのみ削除は背景へ逃がす()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string deleteMethod = GetMethodBlock(source, "private void ExecuteDeleteAction(");
+        string queueMethod = GetMethodBlock(source, "private void QueueThumbnailOnlyDelete(");
+        string coreMethod = GetMethodBlock(source, "private void DeleteThumbnailsForMovieCore(");
+
+        Assert.That(deleteMethod, Does.Contain("QueueThumbnailOnlyDelete(mv);"));
+        Assert.That(queueMethod, Does.Contain("Task.Run("));
+        Assert.That(queueMethod, Does.Contain("DeleteThumbnailsForMovieCore("));
+        Assert.That(queueMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(coreMethod, Does.Contain("TryDeleteThumbnailFile("));
+        Assert.That(coreMethod, Does.Contain("TryDeleteThumbnailErrorMarker("));
+    }
+
+    [Test]
     public void タグ操作_DB更新は背景へ逃がす()
     {
         string tagSource = GetRepoText("Views", "Main", "MainWindow.Tag.cs");

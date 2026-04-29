@@ -10,6 +10,7 @@
 - スコア増減メニューの DB 更新も UI クリック処理から外し、表示値を先に変えて DB 保存は背景へ逃がす形へ寄せた
 - タグメニュー、下部タグ編集タブ、タグチップ削除の DB 更新も背景保存へ寄せ、タグ操作中の UI 待ちを減らした
 - ファイル移動後の `movie_path` DB 更新も背景保存へ寄せ、移動後の表示反映と DB 保存待ちを分離した
+- サムネイルのみ削除は DB を触らないファイル削除だけを背景化し、完了後に失敗表示と一覧更新を UI へ戻す形へ寄せた
 - Bookmark ラベル再生時の FPS 取得用 `MovieInfo` 生成を背景化し、再生位置計算中も UI スレッドを空ける形へ寄せた
 - Bookmark reload の dirty 解除を開始時ではなく成功反映後へ移し、背景読込中の追加/削除を取りこぼさないようにした
 - watch query-only 局所更新が full reload へ戻る時の理由を `changed_path_fallback` としてログへ出し、`no-changed-movies` / `filter-unavailable` / `dup-hash-dirty` を実機ログだけで切り分けられるようにした
@@ -255,6 +256,7 @@
 - スコア増減メニューも UI 側では `MovieRecords.Score` の表示値更新だけを先に行い、DB 更新は背景 task で実行してクリック導線を塞がない
 - タグメニュー、下部タグ編集タブ、タグチップ削除も UI 側では `MovieRecords.Tag/Tags` の表示更新だけを先に行い、DB 更新は共通背景 helper へ逃がす
 - ファイル移動メニューも、物理移動成功後の `MovieRecords.Movie_Path` 表示更新を先に行い、`movie_path` DB 更新は背景 helper へ逃がす
+- サムネイルのみ削除は選択レコードとサムネパスを snapshot し、ファイル削除は背景 task、完了後の失敗表示と `FilterAndSort(...)` だけ UI へ戻す
 - Bookmark ラベル再生の FPS 取得も `Task.Run` 経由へ寄せ、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした
 - Bookmark reload は成功反映後に dirty を解除し、revision 不一致や DB 切替後着では dirty を消さずに捨てる
 - 起動 deferred services の `CreateWatcher()` は `ApplicationIdle` へ後ろ倒しし、first-page 表示直後の light services を少し薄くした

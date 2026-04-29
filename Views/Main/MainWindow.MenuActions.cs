@@ -661,6 +661,12 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (isDeleteThumbnailOnlyMode)
+            {
+                QueueThumbnailOnlyDelete(mv);
+                return;
+            }
+
             List<string> deleteFailureMessages = new();
             foreach (var rec in mv)
             {
@@ -672,11 +678,6 @@ namespace IndigoMovieManager
                         sendToRecycleBin: isDeleteWithRecycleMode,
                         deleteFailureMessages
                     );
-                }
-
-                if (isDeleteThumbnailOnlyMode)
-                {
-                    continue;
                 }
 
                 int deletedCount = DeleteMovieTable(MainVM.DbInfo.DBFullPath, rec.Movie_Id);
@@ -767,6 +768,45 @@ namespace IndigoMovieManager
             FilterAndSort(MainVM.DbInfo.Sort, true);
         }
 
+        // サムネイルのみ削除は DB を触らないため、ファイル削除を背景へ逃がして UI 操作を先に返す。
+        private void QueueThumbnailOnlyDelete(IReadOnlyList<MovieRecords> records)
+        {
+            MovieRecords[] recordSnapshot = records?.Where(x => x != null).ToArray() ?? [];
+            if (recordSnapshot.Length == 0)
+            {
+                return;
+            }
+
+            string thumbFolder = ResolveCurrentThumbnailRoot();
+            string thumbOutPath = ResolveCurrentThumbnailOutPath(GetCurrentThumbnailActionTabIndex());
+            string sortId = MainVM?.DbInfo?.Sort ?? "";
+
+            _ = Task.Run(
+                () =>
+                {
+                    List<string> deleteFailureMessages = new();
+                    foreach (MovieRecords rec in recordSnapshot)
+                    {
+                        DeleteThumbnailsForMovieCore(
+                            rec,
+                            thumbFolder,
+                            thumbOutPath,
+                            sendToRecycleBin: false,
+                            deleteFailureMessages
+                        );
+                    }
+
+                    _ = Dispatcher.InvokeAsync(
+                        () =>
+                        {
+                            ShowDeleteFailureSummary(deleteFailureMessages);
+                            FilterAndSort(sortId, true);
+                        }
+                    );
+                }
+            );
+        }
+
         // 選択動画に紐づくサムネイル本体と ERROR マーカーをまとめて片付ける。
         private void DeleteThumbnailsForMovie(
             MovieRecords rec,
@@ -774,7 +814,23 @@ namespace IndigoMovieManager
             List<string> deleteFailureMessages
         )
         {
-            string thumbFolder = ResolveCurrentThumbnailRoot();
+            DeleteThumbnailsForMovieCore(
+                rec,
+                ResolveCurrentThumbnailRoot(),
+                ResolveCurrentThumbnailOutPath(GetCurrentThumbnailActionTabIndex()),
+                sendToRecycleBin,
+                deleteFailureMessages
+            );
+        }
+
+        private void DeleteThumbnailsForMovieCore(
+            MovieRecords rec,
+            string thumbFolder,
+            string thumbOutPath,
+            bool sendToRecycleBin,
+            List<string> deleteFailureMessages
+        )
+        {
             if (Path.Exists(thumbFolder))
             {
                 DirectoryInfo di = new(thumbFolder);
@@ -815,10 +871,7 @@ namespace IndigoMovieManager
                 }
             }
 
-            TryDeleteThumbnailErrorMarker(
-                ResolveCurrentThumbnailOutPath(GetCurrentThumbnailActionTabIndex()),
-                rec.Movie_Path
-            );
+            TryDeleteThumbnailErrorMarker(thumbOutPath, rec.Movie_Path);
         }
 
         // サムネ削除前に画像キャッシュを外し、自前参照で消せない事故を減らす。
