@@ -49,12 +49,19 @@ public sealed class ManualPlayerResizeHookPolicyTests
     {
         string playerSource = GetMainWindowPlayerSourceText();
         string windowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string settingsSource = GetRepoText("Properties", "Settings.settings");
+        string settingsDesignerSource = GetRepoText("Properties", "Settings.Designer.cs");
+        string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
 
         Assert.That(playerSource, Does.Contain("private const double DefaultPlayerVolume = 0.5d;"));
         Assert.That(playerSource, Does.Contain("private static double ResolveSavedPlayerVolumeSetting(double volume)"));
         Assert.That(playerSource, Does.Contain("return resolvedVolume >= 1d ? DefaultPlayerVolume : resolvedVolume;"));
         Assert.That(playerSource, Does.Contain("private void RestorePlayerVolumeFromSettings()"));
         Assert.That(playerSource, Does.Contain("save: repairSavedVolume"));
+        Assert.That(settingsSource, Does.Contain("<Setting Name=\"PlayerVolume\" Type=\"System.Double\" Scope=\"User\">"));
+        Assert.That(settingsSource, Does.Contain("<Value Profile=\"(Default)\">0.5</Value>"));
+        Assert.That(settingsDesignerSource, Does.Contain("DefaultSettingValueAttribute(\"0.5\")"));
+        Assert.That(fullscreenWindowSource, Does.Contain("public double Volume { get; set; } = 0.5d;"));
         Assert.That(
             windowSource,
             Does.Contain("RestorePlayerVolumeFromSettings();")
@@ -75,10 +82,13 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(playerSource, Does.Contain("bool save,"));
         Assert.That(playerSource, Does.Contain("bool pushToWebView"));
         Assert.That(playerSource, Does.Contain("private void SetPlayerVolumeFromUser(double volume)"));
+        Assert.That(playerSource, Does.Contain("private void PushCurrentPlayerVolumeToWebView()"));
         Assert.That(playerSource, Does.Contain("private void SetPlayerVolumeFromWebView(double volume)"));
         Assert.That(playerSource, Does.Contain("SetPlayerVolumeFromUser(uxVolumeSlider.Value);"));
         Assert.That(upperTabPlayerSource, Does.Contain("double restoreVolume = GetCurrentPlayerVolumeSetting();"));
         Assert.That(upperTabPlayerSource, Does.Contain("string volume = GetCurrentPlayerVolumeSetting().ToString("));
+        Assert.That(upperTabPlayerSource, Does.Contain("const string playerReadyMessage = \"player-ready\";"));
+        Assert.That(upperTabPlayerSource, Does.Contain("PushCurrentPlayerVolumeToWebView();"));
         Assert.That(fullscreenWindowSource, Does.Contain("SetPlayerVolumeFromWebView(snapshot.Volume);"));
         Assert.That(fullscreenWindowSource, Does.Contain("snapshot.Volume = GetCurrentPlayerVolumeSetting();"));
     }
@@ -144,6 +154,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(upperTabPlayerSource, Does.Contain("indigoPlayerHostVolumeApplying = '1'"));
         Assert.That(mainWindowPlayerSource, Does.Contain("}, 250);"));
         Assert.That(upperTabPlayerSource, Does.Contain("}, 250);"));
+        Assert.That(upperTabPlayerSource, Does.Contain("chrome.webview.postMessage('player-ready');"));
         Assert.That(
             upperTabPlayerSource,
             Does.Contain("player.dataset.indigoPlayerHostVolumeApplied !== '1'")
@@ -165,7 +176,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(playerSource, Does.Contain("player webview default volume ignored"));
         Assert.That(playerSource, Does.Contain("ApplyPlayerVolumeSetting("));
         Assert.That(playerSource, Does.Contain("fallbackVolume,"));
-        Assert.That(playerSource, Does.Contain("pushToWebView: false"));
+        Assert.That(playerSource, Does.Contain("pushToWebView: true"));
         Assert.That(playerSource, Does.Contain("return;"));
     }
 

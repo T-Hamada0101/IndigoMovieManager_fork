@@ -130,6 +130,17 @@ namespace IndigoMovieManager
             );
         }
 
+        // 新しい video 要素ができた時は、保存せずに現在の正本音量だけをWebView2へ注入する。
+        private void PushCurrentPlayerVolumeToWebView()
+        {
+            ApplyPlayerVolumeSetting(
+                GetCurrentPlayerVolumeSetting(),
+                updateSlider: false,
+                save: false,
+                pushToWebView: true
+            );
+        }
+
         // WebView2の100%既定値が逆流した時は、正本を守って50%または現在値へ戻す。
         private void SetPlayerVolumeFromWebView(double volume)
         {
@@ -147,7 +158,7 @@ namespace IndigoMovieManager
                     fallbackVolume,
                     updateSlider: true,
                     save: true,
-                    pushToWebView: false
+                    pushToWebView: true
                 );
                 return;
             }

@@ -978,12 +978,21 @@ namespace IndigoMovieManager
             CoreWebView2WebMessageReceivedEventArgs e
         )
         {
+            const string playerReadyMessage = "player-ready";
             const string playerVolumeMessagePrefix = "player-volume:";
             string message = e.TryGetWebMessageAsString();
-            if (
-                string.IsNullOrWhiteSpace(message)
-                || !message.StartsWith(playerVolumeMessagePrefix, System.StringComparison.Ordinal)
-            )
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            if (string.Equals(message, playerReadyMessage, System.StringComparison.Ordinal))
+            {
+                PushCurrentPlayerVolumeToWebView();
+                return;
+            }
+
+            if (!message.StartsWith(playerVolumeMessagePrefix, System.StringComparison.Ordinal))
             {
                 return;
             }
@@ -1257,6 +1266,10 @@ namespace IndigoMovieManager
                     player.style.objectFit = 'contain';
                     player.style.background = '#000';
                     player.controls = true;
+
+                    try {
+                      chrome.webview.postMessage('player-ready');
+                    } catch {}
 
                     const notifyVolume = () => {
                       if (player.dataset.indigoPlayerHostVolumeApplying === '1') {

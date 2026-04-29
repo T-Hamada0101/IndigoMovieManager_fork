@@ -14,7 +14,9 @@ namespace IndigoMovieManager
     {
         public double CurrentTime { get; set; }
         public bool Paused { get; set; }
-        public double Volume { get; set; }
+
+        // WebView2から音量が取れない時も、指定なしは必ず50%として扱う。
+        public double Volume { get; set; } = 0.5d;
     }
 
     internal sealed class PlayerFullscreenHostWindow : Window
