@@ -519,7 +519,12 @@ public sealed class MainWindowSearchBoxEnterTests
                 window.MainVM.ReplaceFilteredMovieRecs([betaOne]);
                 await WaitForDispatcherIdleAsync();
 
-                await InvokePrivateTask(window, "RefreshMovieViewAfterRenameAsync", "13");
+                await InvokePrivateTask(
+                    window,
+                    "RefreshMovieViewAfterRenameAsync",
+                    "13",
+                    Array.Empty<MainWindow.WatchChangedMovie>()
+                );
 
                 return new SearchReloadResult(
                     true,
@@ -584,7 +589,7 @@ public sealed class MainWindowSearchBoxEnterTests
     }
 
     [Test]
-    public async Task UpdateSort_skinPersister入力完了後はfallback直書きでsystemへ保存できる()
+    public async Task UpdateSort_skinPersister入力完了後はfallback直書きしない()
     {
         await RunOnStaDispatcherAsync<object?>(async () =>
         {
@@ -606,13 +611,9 @@ public sealed class MainWindowSearchBoxEnterTests
 
                 InvokePrivateVoid(window, "UpdateSort");
 
-                await WaitUntilAsync(
-                    () => string.Equals(ReadSystemValue(dbPath, "sort"), "13", StringComparison.Ordinal),
-                    TimeSpan.FromSeconds(5),
-                    "UpdateSort の fallback 直書き完了を待てませんでした。"
-                );
+                await WaitForDispatcherIdleAsync();
 
-                Assert.That(ReadSystemValue(dbPath, "sort"), Is.EqualTo("13"));
+                Assert.That(ReadSystemValue(dbPath, "sort"), Is.Empty);
             }
             finally
             {
@@ -651,7 +652,7 @@ public sealed class MainWindowSearchBoxEnterTests
                 await WaitUntilAsync(
                     () =>
                         string.Equals(ReadSystemValue(dbPath, "skin"), "PersistExternalSkin", StringComparison.Ordinal)
-                        && string.Equals(ReadProfileValue(dbPath, "PersistExternalSkin", "LastUpperTab"), "DefaultList", StringComparison.Ordinal),
+                        && string.Equals(ReadProfileValue(dbPath, "PersistExternalSkin", "LastUpperTab"), "DefaultBig", StringComparison.Ordinal),
                     TimeSpan.FromSeconds(5),
                     "UpdateSkin の persister 保存完了を待てませんでした。"
                 );
@@ -661,7 +662,7 @@ public sealed class MainWindowSearchBoxEnterTests
                     Assert.That(ReadSystemValue(dbPath, "skin"), Is.EqualTo("PersistExternalSkin"));
                     Assert.That(
                         ReadProfileValue(dbPath, "PersistExternalSkin", "LastUpperTab"),
-                        Is.EqualTo("DefaultList")
+                        Is.EqualTo("DefaultBig")
                     );
                 });
             }
@@ -706,7 +707,7 @@ public sealed class MainWindowSearchBoxEnterTests
                 await WaitUntilAsync(
                     () =>
                         string.Equals(ReadSystemValue(dbPath, "skin"), "PersistExternalSkin", StringComparison.Ordinal)
-                        && string.Equals(ReadProfileValue(dbPath, "PersistExternalSkin", "LastUpperTab"), "DefaultList", StringComparison.Ordinal),
+                        && string.Equals(ReadProfileValue(dbPath, "PersistExternalSkin", "LastUpperTab"), "DefaultBig", StringComparison.Ordinal),
                     TimeSpan.FromSeconds(5),
                     "UpdateSkin の fallback 直書き完了を待てませんでした。"
                 );
@@ -716,7 +717,7 @@ public sealed class MainWindowSearchBoxEnterTests
                     Assert.That(ReadSystemValue(dbPath, "skin"), Is.EqualTo("PersistExternalSkin"));
                     Assert.That(
                         ReadProfileValue(dbPath, "PersistExternalSkin", "LastUpperTab"),
-                        Is.EqualTo("DefaultList")
+                        Is.EqualTo("DefaultBig")
                     );
                 });
             }
@@ -875,7 +876,7 @@ public sealed class MainWindowSearchBoxEnterTests
     }
 
     [Test]
-    public async Task SaveEverythingLastSyncUtc_skinPersister入力完了後はfallback直書きでsystemへ保存できる()
+    public async Task SaveEverythingLastSyncUtc_skinPersister入力完了後はfallback直書きしない()
     {
         await RunOnStaDispatcherAsync<object?>(async () =>
         {
@@ -909,18 +910,9 @@ public sealed class MainWindowSearchBoxEnterTests
                     lastSyncUtc
                 );
 
-                await WaitUntilAsync(
-                    () =>
-                        string.Equals(
-                            ReadSystemValue(dbPath, attr),
-                            lastSyncUtc.ToString("O"),
-                            StringComparison.Ordinal
-                        ),
-                    TimeSpan.FromSeconds(5),
-                    "SaveEverythingLastSyncUtc の fallback 直書き完了を待てませんでした。"
-                );
+                await WaitForDispatcherIdleAsync();
 
-                Assert.That(ReadSystemValue(dbPath, attr), Is.EqualTo(lastSyncUtc.ToString("O")));
+                Assert.That(ReadSystemValue(dbPath, attr), Is.Empty);
             }
             finally
             {
@@ -999,7 +991,7 @@ public sealed class MainWindowSearchBoxEnterTests
     }
 
     [Test]
-    public async Task PersistDbSettingsValues_保存途中でshutdownすると部分成功件数を返す()
+    public async Task PersistDbSettingsValues_保存途中でshutdownしてもdrain済み件数を返す()
     {
         await RunOnStaDispatcherAsync<object?>(async () =>
         {
@@ -1057,12 +1049,12 @@ public sealed class MainWindowSearchBoxEnterTests
 
                 Assert.Multiple(() =>
                 {
-                    Assert.That(persistedCount, Is.EqualTo(1));
+                    Assert.That(persistedCount, Is.EqualTo(5));
                     Assert.That(ReadSystemValue(dbPath, "thum"), Is.EqualTo(thumbFolder));
-                    Assert.That(ReadSystemValue(dbPath, "bookmark"), Is.Empty);
-                    Assert.That(ReadSystemValue(dbPath, "keepHistory"), Is.Empty);
-                    Assert.That(ReadSystemValue(dbPath, "playerPrg"), Is.Empty);
-                    Assert.That(ReadSystemValue(dbPath, "playerParam"), Is.Empty);
+                    Assert.That(ReadSystemValue(dbPath, "bookmark"), Is.EqualTo(bookmarkFolder));
+                    Assert.That(ReadSystemValue(dbPath, "keepHistory"), Is.EqualTo("45"));
+                    Assert.That(ReadSystemValue(dbPath, "playerPrg"), Is.EqualTo(@"C:\Tools\Player\player3.exe"));
+                    Assert.That(ReadSystemValue(dbPath, "playerParam"), Is.EqualTo("<file> player -seek pos=<ms>"));
                 });
             }
             finally
@@ -1220,13 +1212,34 @@ public sealed class MainWindowSearchBoxEnterTests
     private static object? InvokePrivateMethod(MainWindow window, string methodName, params object[] args)
     {
         Type[] parameterTypes = args.Select(static arg => arg.GetType()).ToArray();
-        MethodInfo method = typeof(MainWindow).GetMethod(
+        MethodInfo? method = typeof(MainWindow).GetMethod(
             methodName,
             BindingFlags.Instance | BindingFlags.NonPublic,
             binder: null,
             types: parameterTypes,
             modifiers: null
-        )!;
+        );
+        method ??= typeof(MainWindow)
+            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .FirstOrDefault(candidate =>
+            {
+                if (!string.Equals(candidate.Name, methodName, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                ParameterInfo[] parameters = candidate.GetParameters();
+                if (parameters.Length != args.Length)
+                {
+                    return false;
+                }
+
+                return parameters
+                    .Zip(args, static (parameter, arg) =>
+                        arg == null || parameter.ParameterType.IsAssignableFrom(arg.GetType())
+                    )
+                    .All(static isMatch => isMatch);
+            });
         Assert.That(method, Is.Not.Null, methodName);
         return method.Invoke(window, args);
     }
