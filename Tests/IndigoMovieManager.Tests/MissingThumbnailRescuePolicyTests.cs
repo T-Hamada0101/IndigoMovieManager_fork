@@ -1462,7 +1462,7 @@ public sealed class MissingThumbnailRescuePolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo directory = new(TestContext.CurrentContext.TestDirectory);
+        DirectoryInfo? directory = new(TestContext.CurrentContext.TestDirectory);
         while (directory != null)
         {
             string candidate = Path.Combine([directory.FullName, .. relativePathParts]);

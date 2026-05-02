@@ -130,7 +130,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                 window.Show();
                 await WaitForDispatcherIdleAsync();
 
-                WhiteBrowserSkinDefinition externalSkin = window.GetAvailableSkinDefinitions()
+                WhiteBrowserSkinDefinition? externalSkin = window.GetAvailableSkinDefinitions()
                     .FirstOrDefault(x => x?.RequiresWebView2 == true);
                 Assert.That(externalSkin, Is.Not.Null, "外部 skin fixture が見つかりませんでした。");
                 if (externalSkin == null)
@@ -208,7 +208,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     await WaitForDispatcherIdleAsync();
                     appliedEvents.Clear();
 
-                    WhiteBrowserSkinDefinition externalSkin = window.GetAvailableSkinDefinitions()
+                    WhiteBrowserSkinDefinition? externalSkin = window.GetAvailableSkinDefinitions()
                         .FirstOrDefault(x => x?.RequiresWebView2 == true);
                     Assert.That(externalSkin, Is.Not.Null, "外部 skin fixture が見つかりませんでした。");
                     if (externalSkin == null)
@@ -731,7 +731,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                 window.Show();
                 await WaitForDispatcherIdleAsync();
 
-                WhiteBrowserSkinDefinition externalSkin = window.GetAvailableSkinDefinitions()
+                WhiteBrowserSkinDefinition? externalSkin = window.GetAvailableSkinDefinitions()
                     .FirstOrDefault(x => x?.RequiresWebView2 == true);
                 Assert.That(externalSkin, Is.Not.Null, "外部 skin fixture が見つかりませんでした。");
                 if (externalSkin == null)

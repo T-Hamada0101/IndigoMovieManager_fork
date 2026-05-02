@@ -252,8 +252,8 @@ public sealed class WatchScanCoordinatorPolicyTests
         List<MainWindow.PendingMovieRegistration> pendingNewMovies = [];
         List<QueueObj> addFilesByFolder = [];
         string[] remainingScanPaths = [@"E:\Movies\remain.mp4"];
-        List<string> capturedDeferredMoviePaths = null;
-        List<string> capturedRemainingScanPaths = null;
+        List<string>? capturedDeferredMoviePaths = null;
+        List<string>? capturedRemainingScanPaths = null;
 
         processResult.AddDeferredMoviePath(@"E:\Movies\sample.mp4", null, "");
 
@@ -284,7 +284,7 @@ public sealed class WatchScanCoordinatorPolicyTests
         MainWindow.WatchScannedMovieProcessResult processResult = new();
         List<MainWindow.PendingMovieRegistration> pendingNewMovies = [];
         List<QueueObj> addFilesByFolder = [];
-        List<string> capturedRemainingScanPaths = null;
+        List<string>? capturedRemainingScanPaths = null;
         string[] scanMoviePaths =
         [
             @"E:\Movies\current.mp4",
@@ -803,7 +803,7 @@ public sealed class WatchScanCoordinatorPolicyTests
         int enqueuedCount = 5;
         bool folderCheckflg = false;
         List<MainWindow.WatchChangedMovie> changedMoviesForUiReload = [];
-        List<string> mergedDeferredMoviePaths = null;
+        List<string>? mergedDeferredMoviePaths = null;
 
         bool wasDeferred = MainWindow.TryHandleRecoveryFlushResult(
             flushResult,

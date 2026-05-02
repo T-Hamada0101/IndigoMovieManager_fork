@@ -421,7 +421,7 @@ public class AutogenRegressionTests
         long fileSizeBytes,
         string initialEngineHint = "",
         double durationSec = 120,
-        ThumbnailLayoutProfile layoutProfile = null
+        ThumbnailLayoutProfile? layoutProfile = null
     )
     {
         string testThumbRoot = BuildTestThumbRoot();

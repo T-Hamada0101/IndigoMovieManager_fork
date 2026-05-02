@@ -1284,7 +1284,7 @@ public sealed class WatchDeferredUiReloadPolicyTests
                         MainWindow.WatchMovieDirtyFields.MovieName
                     ),
                 ];
-        Func<IEnumerable<MovieRecords>, string, IEnumerable<MovieRecords>> filter =
+        Func<IEnumerable<MovieRecords>, string, IEnumerable<MovieRecords>>? filter =
             expectedReason == "filter-unavailable"
                 ? null
                 : IndigoMovieManager.Infrastructure.SearchService.FilterMovies;

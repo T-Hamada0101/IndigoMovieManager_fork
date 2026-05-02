@@ -99,12 +99,13 @@ public sealed class WhiteBrowserSkinApiServiceTests
         );
 
         Assert.That(result.Succeeded, Is.True);
-        WhiteBrowserSkinUpdateResponse payload = result.Payload as WhiteBrowserSkinUpdateResponse;
+        WhiteBrowserSkinUpdateResponse? payload = result.Payload as WhiteBrowserSkinUpdateResponse;
         Assert.That(payload, Is.Not.Null);
-        Assert.That(payload.TotalCount, Is.EqualTo(1));
-        Assert.That(payload.Items.Length, Is.EqualTo(1));
+        WhiteBrowserSkinUpdateResponse resolvedPayload = payload!;
+        Assert.That(resolvedPayload.TotalCount, Is.EqualTo(1));
+        Assert.That(resolvedPayload.Items.Length, Is.EqualTo(1));
 
-        WhiteBrowserSkinMovieDto dto = payload.Items[0];
+        WhiteBrowserSkinMovieDto dto = resolvedPayload.Items[0];
         string expectedRevision = ComputeExpectedThumbRevision(
             thumbPath,
             WhiteBrowserSkinThumbnailSourceKinds.ManagedThumbnail
@@ -202,17 +203,18 @@ public sealed class WhiteBrowserSkinApiServiceTests
         );
 
         Assert.That(result.Succeeded, Is.True);
-        WhiteBrowserSkinMovieDto dto = result.Payload as WhiteBrowserSkinMovieDto;
+        WhiteBrowserSkinMovieDto? dto = result.Payload as WhiteBrowserSkinMovieDto;
         Assert.That(dto, Is.Not.Null);
+        WhiteBrowserSkinMovieDto resolvedDto = dto!;
         Assert.Multiple(() =>
         {
-            Assert.That(dto.MovieId, Is.EqualTo(9));
-            Assert.That(dto.ThumbNaturalWidth, Is.EqualTo(320));
-            Assert.That(dto.ThumbNaturalHeight, Is.EqualTo(240));
-            Assert.That(dto.ThumbSheetColumns, Is.EqualTo(2));
-            Assert.That(dto.ThumbSheetRows, Is.EqualTo(2));
+            Assert.That(resolvedDto.MovieId, Is.EqualTo(9));
+            Assert.That(resolvedDto.ThumbNaturalWidth, Is.EqualTo(320));
+            Assert.That(resolvedDto.ThumbNaturalHeight, Is.EqualTo(240));
+            Assert.That(resolvedDto.ThumbSheetColumns, Is.EqualTo(2));
+            Assert.That(resolvedDto.ThumbSheetRows, Is.EqualTo(2));
             Assert.That(
-                dto.ThumbRevision,
+                resolvedDto.ThumbRevision,
                 Is.EqualTo(
                     ComputeExpectedThumbRevision(
                         thumbPath,
@@ -261,13 +263,14 @@ public sealed class WhiteBrowserSkinApiServiceTests
         );
 
         Assert.That(result.Succeeded, Is.True);
-        WhiteBrowserSkinMovieDto[] payload = result.Payload as WhiteBrowserSkinMovieDto[];
+        WhiteBrowserSkinMovieDto[]? payload = result.Payload as WhiteBrowserSkinMovieDto[];
         Assert.That(payload, Is.Not.Null);
+        WhiteBrowserSkinMovieDto[] resolvedPayload = payload!;
         Assert.Multiple(() =>
         {
-            Assert.That(payload.Length, Is.EqualTo(1));
-            Assert.That(payload[0].MovieId, Is.EqualTo(32));
-            Assert.That(payload[0].Selected, Is.True);
+            Assert.That(resolvedPayload.Length, Is.EqualTo(1));
+            Assert.That(resolvedPayload[0].MovieId, Is.EqualTo(32));
+            Assert.That(resolvedPayload[0].Selected, Is.True);
         });
     }
 
@@ -309,9 +312,9 @@ public sealed class WhiteBrowserSkinApiServiceTests
         );
 
         Assert.That(result.Succeeded, Is.True);
-        WhiteBrowserSkinMovieDto[] payload = result.Payload as WhiteBrowserSkinMovieDto[];
+        WhiteBrowserSkinMovieDto[]? payload = result.Payload as WhiteBrowserSkinMovieDto[];
         Assert.That(payload, Is.Not.Null);
-        Assert.That(payload.Select(x => x.MovieId), Is.EqualTo(new[] { 42L, 41L }));
+        Assert.That(payload!.Select(x => x.MovieId), Is.EqualTo(new[] { 42L, 41L }));
     }
 
     [Test]
@@ -325,8 +328,8 @@ public sealed class WhiteBrowserSkinApiServiceTests
             Movie_Path = Path.Combine(root, "focus.mp4"),
         };
 
-        MovieRecords focused = null;
-        MovieRecords currentSelectedMovie = null;
+        MovieRecords? focused = null;
+        MovieRecords? currentSelectedMovie = null;
         IReadOnlyList<MovieRecords> currentSelectedMovies = [];
         WhiteBrowserSkinApiService service = CreateService(
             [movie],
@@ -400,17 +403,18 @@ public sealed class WhiteBrowserSkinApiServiceTests
         );
 
         Assert.That(result.Succeeded, Is.True);
-        WhiteBrowserSkinUpdateResponse payload = result.Payload as WhiteBrowserSkinUpdateResponse;
+        WhiteBrowserSkinUpdateResponse? payload = result.Payload as WhiteBrowserSkinUpdateResponse;
         Assert.That(payload, Is.Not.Null);
+        WhiteBrowserSkinUpdateResponse resolvedPayload = payload!;
         Assert.Multiple(() =>
         {
-            Assert.That(payload.Items.Length, Is.EqualTo(2));
-            Assert.That(payload.Items[0].MovieId, Is.EqualTo(21));
-            Assert.That(payload.Items[0].Selected, Is.True);
-            Assert.That(payload.Items[0].select, Is.EqualTo(1));
-            Assert.That(payload.Items[1].MovieId, Is.EqualTo(22));
-            Assert.That(payload.Items[1].Selected, Is.True);
-            Assert.That(payload.Items[1].select, Is.EqualTo(1));
+            Assert.That(resolvedPayload.Items.Length, Is.EqualTo(2));
+            Assert.That(resolvedPayload.Items[0].MovieId, Is.EqualTo(21));
+            Assert.That(resolvedPayload.Items[0].Selected, Is.True);
+            Assert.That(resolvedPayload.Items[0].select, Is.EqualTo(1));
+            Assert.That(resolvedPayload.Items[1].MovieId, Is.EqualTo(22));
+            Assert.That(resolvedPayload.Items[1].Selected, Is.True);
+            Assert.That(resolvedPayload.Items[1].select, Is.EqualTo(1));
         });
     }
 

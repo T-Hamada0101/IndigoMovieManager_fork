@@ -6402,7 +6402,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                 return candidate;
             }
 
-            DirectoryInfo parent = Directory.GetParent(current);
+            DirectoryInfo? parent = Directory.GetParent(current);
             if (parent == null)
             {
                 break;
