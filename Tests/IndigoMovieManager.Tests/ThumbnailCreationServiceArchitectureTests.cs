@@ -363,19 +363,32 @@ public sealed class ThumbnailCreationServiceArchitectureTests
     }
 
     [Test]
-    public void EngineProject_LegacyCompile条件が残っていない()
+    public void ThumbnailProjects_LegacyCompile条件が残っていない()
     {
         string root = FindRepositoryRoot();
-        string csprojPath = Path.Combine(
-            root,
-            "src",
-            "IndigoMovieManager.Thumbnail.Engine",
-            "IndigoMovieManager.Thumbnail.Engine.csproj"
-        );
-        string xml = File.ReadAllText(csprojPath);
+        string[] projectPaths =
+        [
+            Path.Combine(
+                root,
+                "src",
+                "IndigoMovieManager.Thumbnail.Runtime",
+                "IndigoMovieManager.Thumbnail.Runtime.csproj"
+            ),
+            Path.Combine(
+                root,
+                "src",
+                "IndigoMovieManager.Thumbnail.Queue",
+                "IndigoMovieManager.Thumbnail.Queue.csproj"
+            ),
+        ];
 
-        Assert.That(xml, Does.Not.Contain("EnableThumbnailCreationServiceLegacyApi"));
-        Assert.That(xml, Does.Not.Contain("ThumbnailCreationService.Legacy.cs"));
+        foreach (string csprojPath in projectPaths)
+        {
+            string xml = File.ReadAllText(csprojPath);
+
+            Assert.That(xml, Does.Not.Contain("EnableThumbnailCreationServiceLegacyApi"));
+            Assert.That(xml, Does.Not.Contain("ThumbnailCreationService.Legacy.cs"));
+        }
     }
 
     [Test]
