@@ -14,7 +14,7 @@ public sealed class EverythingWatchPollPolicyTests
         MainWindow window = CreateWindow();
         SetStartupFeedPartialActive(window, isActive: false);
 
-        int delayMs = (int)InvokePrivateInstance(
+        int delayMs = InvokePrivateInt(
             window,
             "ResolveEverythingWatchPollDelayFromState",
             200
@@ -29,7 +29,7 @@ public sealed class EverythingWatchPollPolicyTests
         MainWindow window = CreateWindow();
         SetStartupFeedPartialActive(window, isActive: false);
 
-        int delayMs = (int)InvokePrivateInstance(
+        int delayMs = InvokePrivateInt(
             window,
             "ResolveEverythingWatchPollDelayFromState",
             50
@@ -46,7 +46,7 @@ public sealed class EverythingWatchPollPolicyTests
         SetPrivateField(window, "_consecutiveCalmEverythingPollCount", 3);
         SetPrivateField(window, "_everythingWatchPollLoopStartedTick64", Environment.TickCount64 - 15000);
 
-        int delayMs = (int)InvokePrivateInstance(
+        int delayMs = InvokePrivateInt(
             window,
             "ResolveEverythingWatchPollDelayFromState",
             0
@@ -63,7 +63,7 @@ public sealed class EverythingWatchPollPolicyTests
         SetPrivateField(window, "_consecutiveCalmEverythingPollCount", 3);
         SetPrivateField(window, "_everythingWatchPollLoopStartedTick64", Environment.TickCount64);
 
-        int delayMs = (int)InvokePrivateInstance(
+        int delayMs = InvokePrivateInt(
             window,
             "ResolveEverythingWatchPollDelayFromState",
             0
@@ -404,6 +404,13 @@ public sealed class EverythingWatchPollPolicyTests
         )!;
         Assert.That(method, Is.Not.Null, methodName);
         return method.Invoke(window, args);
+    }
+
+    private static int InvokePrivateInt(MainWindow window, string methodName, params object[] args)
+    {
+        object? result = InvokePrivateInstance(window, methodName, args);
+        Assert.That(result, Is.TypeOf<int>(), methodName);
+        return (int)result!;
     }
 
     private static void SetPrivateField(MainWindow window, string fieldName, object value)
