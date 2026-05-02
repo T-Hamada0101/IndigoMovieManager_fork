@@ -1783,6 +1783,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -1990,6 +1991,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -15986,6 +15988,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -16265,6 +16268,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -16437,6 +16441,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -16611,6 +16616,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -16785,6 +16791,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -17326,6 +17333,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -17479,6 +17487,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -17649,6 +17658,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -17822,6 +17832,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -21949,6 +21960,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -22140,6 +22152,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -22338,6 +22351,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -22539,6 +22553,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -26681,6 +26696,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -26821,6 +26837,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -26983,6 +27000,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -27148,6 +27166,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.MainVM.DbInfo.DBFullPath = dbPath;
                     window.MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbPath);
                     window.MainVM.DbInfo.ThumbFolder = thumbFolderPath;
+                    SetScoreDescendingSortForSkinWebViewTest(window);
 
                     window.Show();
                     await WaitForDispatcherIdleAsync();
@@ -34214,6 +34233,12 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             FilteredMovieRecsUpdateMode.Reset
         );
         window.MainVM.DbInfo.RegisteredMovieCount = normalizedMovies.Length;
+    }
+
+    private static void SetScoreDescendingSortForSkinWebViewTest(MainWindow window)
+    {
+        // skin 経由の再検索では、現在の並び順を保つ前提をテスト側で明示する。
+        window.MainVM.DbInfo.Sort = "6";
     }
 
     private static MovieRecords CreateMovieRecord(
