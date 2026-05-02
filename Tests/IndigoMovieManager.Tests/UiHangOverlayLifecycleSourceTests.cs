@@ -59,12 +59,17 @@ public sealed class UiHangOverlayLifecycleSourceTests
     public void NativeOverlayHostはowner付き生成と停止時即hideを持つ()
     {
         string source = GetSourceText(new[] { "Views", "Main", "NativeOverlayHost.cs" });
+        string overlayThreadMain = ExtractMethod(source, "private void OverlayThreadMain()");
 
         Assert.That(source, Does.Contain("_ownerWindowHandle"));
         Assert.That(source, Does.Contain("internal void UpdateOwnerWindowHandle(nint ownerWindowHandle)"));
         Assert.That(source, Does.Contain("_ownerWindowHandle,"));
         Assert.That(source, Does.Contain("ForceHideNativeOverlayImmediately(overlayHwnd);"));
         Assert.That(source, Does.Contain("RequestOverlayClose(overlayHwnd);"));
+        Assert.That(overlayThreadMain, Does.Contain("try"));
+        Assert.That(overlayThreadMain, Does.Contain("finally"));
+        Assert.That(overlayThreadMain, Does.Contain("DestroyOverlayOnCurrentThread();"));
+        Assert.That(overlayThreadMain, Does.Contain("overlay thread destroyed"));
     }
 
     [Test]
@@ -145,5 +150,34 @@ public sealed class UiHangOverlayLifecycleSourceTests
         }
 
         return null;
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int braceStart = source.IndexOf('{', start);
+        Assert.That(braceStart, Is.GreaterThanOrEqualTo(0), $"{signature} の開始波括弧が見つかりません。");
+
+        int depth = 0;
+        for (int index = braceStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の終端が見つかりません。");
+        return string.Empty;
     }
 }

@@ -198,23 +198,30 @@ namespace IndigoMovieManager
                 _overlayDispatcher = currentDispatcher;
             }
 
-            CreateOverlayOnCurrentThread();
-            Log("overlay thread created");
-            DrainPendingActions();
-
-            if (_stopRequested)
+            try
             {
-                RequestOverlayDispatcherShutdown(currentDispatcher);
+                CreateOverlayOnCurrentThread();
+                Log("overlay thread created");
+                DrainPendingActions();
+
+                if (_stopRequested)
+                {
+                    RequestOverlayDispatcherShutdown(currentDispatcher);
+                }
+
+                Dispatcher.Run();
             }
-
-            Dispatcher.Run();
-            DestroyOverlayOnCurrentThread();
-            Log("overlay thread destroyed");
-
-            lock (_gate)
+            finally
             {
-                _overlayDispatcher = null;
-                _overlayThread = null;
+                // 起動直後の例外や stop 競合でも、別スレッド HWND を必ず畳む。
+                DestroyOverlayOnCurrentThread();
+                Log("overlay thread destroyed");
+
+                lock (_gate)
+                {
+                    _overlayDispatcher = null;
+                    _overlayThread = null;
+                }
             }
         }
 

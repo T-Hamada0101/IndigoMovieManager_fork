@@ -1,8 +1,9 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-04-29
+最終更新日: 2026-05-02
 
 変更概要:
+- `UiHang` native overlay thread の `Create -> Drain -> Run` を `try/finally` で包み、起動直後の例外や stop 競合でも native/fallback window を必ず破棄するようにした
 - WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
 - Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - Bookmark 削除時の DB 書き込みも UI クリック処理から外し、DB が同じ時だけ一覧 reload する形へ寄せた
@@ -299,6 +300,7 @@
 - さらに検索確定後の履歴保存・履歴再読込は背景 task に逃がし、DB が同じ時だけ UI へ履歴候補を反映する形へ寄せた
 - watch query-only full 戻り理由ログ、watch キュー圧縮の因果ログ、WebView 停止時の `user-priority` pending 解放、サムネ進捗初期全走査の背景化は完了済みとして扱う
 - `UiHangNotificationCoordinator` と `NativeOverlayHost` の停止経路を確認し、オーバーレイ残留は「owner なし native popup を別スレッド dispatcher 依存で止めていること」が主因候補と整理した。直し方は `owner 付与 -> caller 側即 hide -> join timeout 後の強制閉鎖 -> shutdown 専用 safety fuse` の順に固定する
+- `NativeOverlayHost` の overlay thread は `try/finally` で終了出口を固定し、`CreateOverlayOnCurrentThread()` 後または pending action 処理中に例外が起きても `DestroyOverlayOnCurrentThread()` を必ず通す
 
 ### 7.2 再構築後の次の着手順
 
