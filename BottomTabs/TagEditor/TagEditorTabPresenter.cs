@@ -28,6 +28,7 @@ namespace IndigoMovieManager.BottomTabs.TagEditor
 
             _tabHost.PropertyChanged += OnTabHostPropertyChanged;
             _monitoringInitialized = true;
+            _isDirty = true;
             TryFlushIfVisible();
         }
 
@@ -53,7 +54,7 @@ namespace IndigoMovieManager.BottomTabs.TagEditor
 
         public void TryFlushIfVisible()
         {
-            if (!IsVisibleOrSelected())
+            if (!_isDirty || !IsVisibleOrSelected())
             {
                 return;
             }
