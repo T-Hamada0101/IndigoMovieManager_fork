@@ -178,7 +178,10 @@
 
   function postRequest(method, payload) {
     return new Promise(function (resolve, reject) {
-      if (!global.chrome || !global.chrome.webview) {
+      if (
+        !Array.isArray(global.__immMessages)
+        && (!global.chrome || !global.chrome.webview)
+      ) {
         reject(new Error("WebView2 bridge is not available."));
         return;
       }
@@ -188,13 +191,18 @@
         runtimeState.skinEnterRequestedUpdate = true;
       }
       pending.set(id, { resolve: resolve, reject: reject });
-      global.chrome.webview.postMessage(
-        JSON.stringify({
-          id: id,
-          method: method,
-          payload: payload || {}
-        })
-      );
+      var request = {
+        id: id,
+        method: method,
+        payload: payload || {}
+      };
+      if (Array.isArray(global.__immMessages)) {
+        // WebView2 の native bridge を持つテスト host でも、compat 単体試験は同期捕捉する。
+        global.__immMessages.push(request);
+        return;
+      }
+
+      global.chrome.webview.postMessage(JSON.stringify(request));
     });
   }
 
@@ -475,6 +483,14 @@
         .map(function (id) { return normalizeMovieId(id); })
         .filter(function (id) { return id > 0; });
     });
+  }
+
+  function scheduleSelectedVisualSync() {
+    // update/focus/select の本体応答を、補助的な選択同期の応答待ちで詰まらせない。
+    requestSelectedValues(true, { internalSyncGuard: true })
+      .catch(function () {
+        return Array.from(runtimeState.selectedIds);
+      });
   }
 
   function cloneMovieInfo(info) {
@@ -1016,13 +1032,8 @@
           !!(options && options.resetView === true)
         );
         syncSeamlessScrollState(payload);
-        return requestSelectedValues(true, { internalSyncGuard: true })
-          .catch(function () {
-            return Array.from(runtimeState.selectedIds);
-          })
-          .then(function () {
-            return payload;
-          });
+        scheduleSelectedVisualSync();
+        return payload;
       }
 
       return payload;
@@ -1986,11 +1997,18 @@
       return true;
     }
 
+    var clearAllCallback = resolveCallback("onClearAll");
+    var hasSkinClearAll =
+      typeof clearAllCallback === "function" && clearAllCallback.__immDefaultCallback !== true;
     ensureDefaultCallbacks();
     runtimeState.skinLeft = true;
     detachSeamlessScrollListener();
     resetSeamlessScrollProgress();
-    handleClearAll();
+    clearFocusAndSelectionState();
+    if (hasSkinClearAll) {
+      safeInvokeCallback("onClearAll");
+    }
+
     safeInvokeCallback("onSkinLeave");
     runtimeState.skinEntered = false;
     return true;
@@ -2033,6 +2051,7 @@
       global.wb.onClearAll = function () {
         return clearViewElement();
       };
+      global.wb.onClearAll.__immDefaultCallback = true;
     }
 
     if (typeof resolveCallback("onCreateThum") !== "function") {
@@ -2065,6 +2084,15 @@
     if (typeof resolveCallback("onSetSelect") !== "function") {
       global.wb.onSetSelect = function (movieId, isSelected) {
         // 選択 callback 未実装の skin でも、最低限の選択見た目だけは揃える。
+        var normalizedMovieId = normalizeMovieId(movieId);
+        if (normalizedMovieId > 0) {
+          if (isSelected) {
+            runtimeState.selectedIds.add(normalizedMovieId);
+          } else {
+            runtimeState.selectedIds.delete(normalizedMovieId);
+          }
+        }
+
         return applyDefaultSelectVisual(movieId, !!isSelected);
       };
     }
@@ -2373,13 +2401,8 @@
           applySelectionState(resolvedMovieId, selected);
         }
 
-        return requestSelectedValues(true, { internalSyncGuard: true })
-          .catch(function () {
-            return Array.from(runtimeState.selectedIds);
-          })
-          .then(function () {
-            return payload;
-          });
+        scheduleSelectedVisualSync();
+        return payload;
       });
     },
 
@@ -2402,13 +2425,8 @@
           applySelectionState(resolvedMovieId, isSelected);
         }
 
-        return requestSelectedValues(true, { internalSyncGuard: true })
-          .catch(function () {
-            return Array.from(runtimeState.selectedIds);
-          })
-          .then(function () {
-            return payload;
-          });
+        scheduleSelectedVisualSync();
+        return payload;
       });
     },
 

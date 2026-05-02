@@ -3763,6 +3763,19 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                   window.__wbResetError = "";
                   window.__wbResetResult = { sequence: [], methods: [] };
                   window.__immMessages = [];
+                  const takeNextMainRequest = function () {
+                    while (window.__immMessages.length > 0) {
+                      const request = window.__immMessages.shift();
+                      if (request && request.method === "getSelectThums") {
+                        window.__immWbCompat.resolve(request.id, []);
+                        continue;
+                      }
+
+                      return request;
+                    }
+
+                    return null;
+                  };
                   window.wb.onClearAll = function () {
                     window.__wbResetResult.sequence.push("clear");
                     return true;
@@ -3773,7 +3786,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                   };
 
                   const firstPromise = wb.update(0, 200);
-                  const firstRequest = window.__immMessages.shift();
+                  const firstRequest = takeNextMainRequest();
                   if (!firstRequest) {
                     throw new Error("first update request was not captured.");
                   }
@@ -3786,7 +3799,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
                   firstPromise.then(function () {
                     const secondPromise = wb.update(120, 80);
-                    const secondRequest = window.__immMessages.shift();
+                    const secondRequest = takeNextMainRequest();
                     if (!secondRequest) {
                       throw new Error("second update request was not captured.");
                     }
@@ -3799,7 +3812,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
                     return secondPromise.then(function () {
                       const thirdPromise = wb.find("idol");
-                      const thirdRequest = window.__immMessages.shift();
+                      const thirdRequest = takeNextMainRequest();
                       if (!thirdRequest) {
                         throw new Error("find request was not captured.");
                       }
@@ -4111,6 +4124,19 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                   window.__wbDefaultAppendError = "";
                   window.__wbDefaultAppendResult = { sequence: [], methods: [], titles: [] };
                   window.__immMessages = [];
+                  const takeNextUpdateRequest = function () {
+                    while (window.__immMessages.length > 0) {
+                      const request = window.__immMessages.shift();
+                      if (request && request.method === "getSelectThums") {
+                        window.__immWbCompat.resolve(request.id, []);
+                        continue;
+                      }
+
+                      return request;
+                    }
+
+                    return null;
+                  };
 
                   window.wb.onClearAll = function () {
                     window.__wbDefaultAppendResult.sequence.push("clear");
@@ -4129,7 +4155,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                   };
 
                   const firstPromise = wb.update(0, 2);
-                  const firstRequest = window.__immMessages.shift();
+                  const firstRequest = takeNextUpdateRequest();
                   if (!firstRequest) {
                     throw new Error("first update request was not captured.");
                   }
@@ -4147,7 +4173,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
                   firstPromise.then(function () {
                     const secondPromise = wb.update(2, 1);
-                    const secondRequest = window.__immMessages.shift();
+                    const secondRequest = takeNextUpdateRequest();
                     if (!secondRequest) {
                       throw new Error("second update request was not captured.");
                     }
@@ -4301,6 +4327,20 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                   window.__immMessages = [];
                   window.g_thumbs_limit = 2;
 
+                  const takeNextUpdateRequest = function () {
+                    while (window.__immMessages.length > 0) {
+                      const request = window.__immMessages.shift();
+                      if (request && request.method === "getSelectThums") {
+                        window.__immWbCompat.resolve(request.id, []);
+                        continue;
+                      }
+
+                      return request;
+                    }
+
+                    return null;
+                  };
+
                   const scroll = document.getElementById("scroll");
                   scroll.style.height = "120px";
                   scroll.style.overflowY = "auto";
@@ -4326,7 +4366,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
                   wb.scrollSetting(2, "scroll").then(function () {
                     const pumpSecondRequest = function (remaining) {
-                      const secondRequest = window.__immMessages.shift();
+                      const secondRequest = takeNextUpdateRequest();
                       if (secondRequest) {
                         window.__wbSeamlessResult.methods.push(
                           secondRequest.method + ":" +
@@ -4378,7 +4418,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                     window.__wbSeamlessDone = true;
                   });
 
-                  const firstRequest = window.__immMessages.shift();
+                  const firstRequest = takeNextUpdateRequest();
                   if (!firstRequest) {
                     throw new Error("first seamless update request was not captured.");
                   }
@@ -4523,6 +4563,20 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                   window.__immMessages = [];
                   window.g_thumbs_limit = 2;
 
+                  const takeNextUpdateRequest = function () {
+                    while (window.__immMessages.length > 0) {
+                      const request = window.__immMessages.shift();
+                      if (request && request.method === "getSelectThums") {
+                        window.__immWbCompat.resolve(request.id, []);
+                        continue;
+                      }
+
+                      return request;
+                    }
+
+                    return null;
+                  };
+
                   const scroll = document.getElementById("scroll");
                   scroll.style.height = "120px";
                   scroll.style.overflowY = "auto";
@@ -4546,7 +4600,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
                   wb.scrollSetting(2, "scroll").then(function () {
                     const pumpSecondRequest = function (remaining) {
-                      const secondRequest = window.__immMessages.shift();
+                      const secondRequest = takeNextUpdateRequest();
                       if (secondRequest) {
                         window.__wbSeamlessStopResult.methods.push(
                           secondRequest.method + ":" +
@@ -4570,7 +4624,15 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                               ).map(function (node) {
                                 return node.textContent || "";
                               });
-                              window.__wbSeamlessStopResult.pendingRequestCount = window.__immMessages.length;
+                              window.__wbSeamlessStopResult.pendingRequestCount =
+                                window.__immMessages.filter(function (request) {
+                                  if (request && request.method === "getSelectThums") {
+                                    window.__immWbCompat.resolve(request.id, []);
+                                    return false;
+                                  }
+
+                                  return true;
+                                }).length;
                               window.__wbSeamlessStopDone = true;
                             }, 120);
                           } catch (error) {
@@ -4608,7 +4670,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
                     window.__wbSeamlessStopDone = true;
                   });
 
-                  const firstRequest = window.__immMessages.shift();
+                  const firstRequest = takeNextUpdateRequest();
                   if (!firstRequest) {
                     throw new Error("first seamless stop request was not captured.");
                   }
@@ -4745,9 +4807,22 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
               window.__wbTagResult = [];
               window.__immMessages = [];
               window.__wbTagOps = [];
+              const takeNextMainRequest = function () {
+                while (window.__immMessages.length > 0) {
+                  const request = window.__immMessages.shift();
+                  if (request && request.method === "getSelectThums") {
+                    window.__immWbCompat.resolve(request.id, [42]);
+                    continue;
+                  }
+
+                  return request;
+                }
+
+                return null;
+              };
 
               const focusPromise = wb.focusThum(42);
-              const focusRequest = window.__immMessages.shift();
+              const focusRequest = takeNextMainRequest();
               if (!focusRequest) {
                 throw new Error("focusThum request was not captured before tag mutation.");
               }
@@ -4762,7 +4837,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
               focusPromise.then(function () {
                 const addPromise = wb.addTag("idol");
-                const addRequest = window.__immMessages.shift();
+                const addRequest = takeNextMainRequest();
                 if (!addRequest) {
                   throw new Error("addTag request was not captured.");
                 }
@@ -4781,7 +4856,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
                 return addPromise.then(function () {
                 const flipPromise = wb.flipTag("beta", "77");
-                const flipRequest = window.__immMessages.shift();
+                const flipRequest = takeNextMainRequest();
                 if (!flipRequest) {
                   throw new Error("flipTag request was not captured.");
                 }
@@ -5821,13 +5896,26 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
               window.__wbFilterError = "";
               window.__wbFilterResult = { methods: [], counts: [] };
               window.__immMessages = [];
+              const takeNextFilterRequest = function () {
+                while (window.__immMessages.length > 0) {
+                  const request = window.__immMessages.shift();
+                  if (request && request.method === "getSelectThums") {
+                    window.__immWbCompat.resolve(request.id, []);
+                    continue;
+                  }
+
+                  return request;
+                }
+
+                return null;
+              };
               window.wb.onUpdate = function (items) {
                 window.__wbFilterResult.counts.push(String(Array.isArray(items) ? items.length : 0));
                 return true;
               };
 
               const addPromise = wb.addFilter("idol");
-              const addRequest = window.__immMessages.shift();
+              const addRequest = takeNextFilterRequest();
               if (!addRequest) {
                 throw new Error("addFilter request was not captured.");
               }
@@ -5837,7 +5925,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
               addPromise.then(function () {
                 const removePromise = wb.removeFilter("idol");
-                const removeRequest = window.__immMessages.shift();
+                const removeRequest = takeNextFilterRequest();
                 if (!removeRequest) {
                   throw new Error("removeFilter request was not captured.");
                 }
@@ -5847,7 +5935,7 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
 
                 return removePromise.then(function () {
                   const clearPromise = wb.clearFilter();
-                  const clearRequest = window.__immMessages.shift();
+                  const clearRequest = takeNextFilterRequest();
                   if (!clearRequest) {
                     throw new Error("clearFilter request was not captured.");
                   }
@@ -5911,7 +5999,27 @@ public sealed class WhiteBrowserSkinCompatScriptIntegrationTests
             await Task.Delay(50);
         }
 
-        throw new TimeoutException($"WebView2 側の待機フラグ '{flagName}' が立ちませんでした。");
+        string diagnosticsJson = await webView.ExecuteScriptAsync(
+            """
+            JSON.stringify({
+              compatErrors: window.__immCompatErrors || [],
+              resetError: window.__wbResetError || "",
+              seamlessError: window.__wbSeamlessError || "",
+              seamlessStopError: window.__wbSeamlessStopError || "",
+              defaultAppendError: window.__wbDefaultAppendError || "",
+              tagError: window.__wbTagError || "",
+              findInfoStaleError: window.__wbFindInfoStaleError || "",
+              resetResult: window.__wbResetResult || null,
+              messages: (window.__immMessages || []).map(function (message) {
+                return message && message.method ? message.method : "";
+              })
+            })
+            """
+        );
+        string diagnostics = JsonSerializer.Deserialize<string>(diagnosticsJson) ?? "{}";
+        throw new TimeoutException(
+            $"WebView2 側の待機フラグ '{flagName}' が立ちませんでした。 diagnostics={diagnostics}"
+        );
     }
 
     private static string[] ExtractEventList(string json, string propertyName)
