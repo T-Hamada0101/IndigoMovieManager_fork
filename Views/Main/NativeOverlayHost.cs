@@ -211,6 +211,11 @@ namespace IndigoMovieManager
 
                 Dispatcher.Run();
             }
+            catch (Exception ex)
+            {
+                // 通知用 overlay の失敗で本体プロセスまで巻き込まない。
+                Log($"overlay thread failed: {ex.GetType().Name}: {ex.Message}");
+            }
             finally
             {
                 // 起動直後の例外や stop 競合でも、別スレッド HWND を必ず畳む。
@@ -1062,6 +1067,7 @@ namespace IndigoMovieManager
                 || text.StartsWith("overlay thread join wait")
                 || text.StartsWith("overlay thread join timeout")
                 || text.StartsWith("overlay thread still alive")
+                || text.StartsWith("overlay thread failed")
                 || text.StartsWith("overlay created.")
                 || text.StartsWith("overlay hide request")
                 || text.StartsWith("overlay fallback show")
