@@ -94,11 +94,13 @@ public sealed class WatchFolderFullReconcilePolicyTests
     [Test]
     public void ResolveWatchFolderFullReconcilePlanForCurrentRun_Watchモードなら開始条件へ変換する()
     {
-        Type checkModeType = typeof(MainWindow).GetNestedType(
+        Type? checkModeType = typeof(MainWindow).GetNestedType(
             "CheckMode",
             BindingFlags.NonPublic
         );
-        object watchMode = Enum.Parse(checkModeType, "Watch");
+        Assert.That(checkModeType, Is.Not.Null);
+
+        object watchMode = Enum.Parse(checkModeType!, "Watch");
         (
             bool shouldStart,
             bool shouldDeferByUserPriority
