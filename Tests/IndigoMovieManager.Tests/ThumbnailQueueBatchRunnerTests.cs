@@ -10,9 +10,9 @@ namespace IndigoMovieManager.Tests;
 public sealed class ThumbnailQueueBatchRunnerTests
 {
     [TestCase(128L * 1024L * 1024L, "normal", false)]
-    [TestCase(4L * 1024L * 1024L * 1024L, "slow", false)]
+    [TestCase(256L * 1024L * 1024L * 1024L, "slow", false)]
     [TestCase(128L * 1024L * 1024L, "normal", true)]
-    [TestCase(4L * 1024L * 1024L * 1024L, "slow", true)]
+    [TestCase(256L * 1024L * 1024L * 1024L, "slow", true)]
     public async Task RunAsync_失敗時もBatchRunnerからHandleFailedItemへLaneを渡す(
         long movieSizeBytes,
         string expectedLane,

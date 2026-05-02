@@ -113,15 +113,29 @@ public sealed class EverythingDetailPolicyTests
         )!;
         Assert.That(method, Is.Not.Null);
         object result = method.Invoke(null, [detail])!;
-        PropertyInfo codeProperty =
-            result.GetType().GetProperty("Code")
-            ?? result.GetType().GetProperty("Item1")!;
-        PropertyInfo messageProperty =
-            result.GetType().GetProperty("Message")
-            ?? result.GetType().GetProperty("Item2")!;
+        Type resultType = result.GetType();
+        PropertyInfo? codeProperty =
+            resultType.GetProperty("Code")
+            ?? resultType.GetProperty("Item1");
+        PropertyInfo? messageProperty =
+            resultType.GetProperty("Message")
+            ?? resultType.GetProperty("Item2");
+
+        if (codeProperty != null && messageProperty != null)
+        {
+            return (
+                (string)(codeProperty.GetValue(result) ?? ""),
+                (string)(messageProperty.GetValue(result) ?? "")
+            );
+        }
+
+        FieldInfo codeField = resultType.GetField("Item1")!;
+        FieldInfo messageField = resultType.GetField("Item2")!;
+        Assert.That(codeField, Is.Not.Null);
+        Assert.That(messageField, Is.Not.Null);
         return (
-            (string)(codeProperty.GetValue(result) ?? ""),
-            (string)(messageProperty.GetValue(result) ?? "")
+            (string)(codeField.GetValue(result) ?? ""),
+            (string)(messageField.GetValue(result) ?? "")
         );
     }
 }
