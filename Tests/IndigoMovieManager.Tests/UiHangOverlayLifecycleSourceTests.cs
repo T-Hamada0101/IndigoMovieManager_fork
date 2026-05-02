@@ -66,7 +66,12 @@ public sealed class UiHangOverlayLifecycleSourceTests
         Assert.That(source, Does.Contain("_ownerWindowHandle,"));
         Assert.That(source, Does.Contain("ForceHideNativeOverlayImmediately(overlayHwnd);"));
         Assert.That(source, Does.Contain("RequestOverlayClose(overlayHwnd);"));
+        Assert.That(source, Does.Contain("private void HandleOverlayDispatcherUnhandledException("));
+        Assert.That(source, Does.Contain("overlay dispatcher action failed"));
+        Assert.That(source, Does.Contain("e.Handled = true;"));
         Assert.That(overlayThreadMain, Does.Contain("try"));
+        Assert.That(overlayThreadMain, Does.Contain("UnhandledException +="));
+        Assert.That(overlayThreadMain, Does.Contain("UnhandledException -="));
         Assert.That(overlayThreadMain, Does.Contain("catch (Exception ex)"));
         Assert.That(overlayThreadMain, Does.Contain("overlay thread failed"));
         Assert.That(overlayThreadMain, Does.Contain("finally"));

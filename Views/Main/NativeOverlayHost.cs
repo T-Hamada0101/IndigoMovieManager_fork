@@ -192,6 +192,7 @@ namespace IndigoMovieManager
         private void OverlayThreadMain()
         {
             Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
+            currentDispatcher.UnhandledException += HandleOverlayDispatcherUnhandledException;
 
             lock (_gate)
             {
@@ -218,6 +219,8 @@ namespace IndigoMovieManager
             }
             finally
             {
+                currentDispatcher.UnhandledException -= HandleOverlayDispatcherUnhandledException;
+
                 // 起動直後の例外や stop 競合でも、別スレッド HWND を必ず畳む。
                 DestroyOverlayOnCurrentThread();
                 Log("overlay thread destroyed");
@@ -236,6 +239,18 @@ namespace IndigoMovieManager
                     }
                 }
             }
+        }
+
+        private void HandleOverlayDispatcherUnhandledException(
+            object sender,
+            DispatcherUnhandledExceptionEventArgs e
+        )
+        {
+            // overlay thread 上の描画要求失敗は通知機能内で閉じ、本体 UI を守る。
+            Log(
+                $"overlay dispatcher action failed: {e.Exception.GetType().Name}: {e.Exception.Message}"
+            );
+            e.Handled = true;
         }
 
         private void Post(Action action)
@@ -1068,6 +1083,7 @@ namespace IndigoMovieManager
                 || text.StartsWith("overlay thread join timeout")
                 || text.StartsWith("overlay thread still alive")
                 || text.StartsWith("overlay thread failed")
+                || text.StartsWith("overlay dispatcher action failed")
                 || text.StartsWith("overlay created.")
                 || text.StartsWith("overlay hide request")
                 || text.StartsWith("overlay fallback show")

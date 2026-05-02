@@ -6,6 +6,7 @@
 - `UiHang` native overlay thread の `Create -> Drain -> Run` を `try/finally` で包み、起動直後の例外や stop 競合でも native/fallback window を必ず破棄するようにした
 - `UiHang` overlay thread の終了時クリアは thread / dispatcher の一致確認つきにし、Stop timeout 後の再 Start 状態を古い thread が消さないようにした
 - `UiHang` overlay thread 内の例外は `overlay thread failed` としてログに閉じ、本体プロセスへ波及させないようにした
+- `UiHang` overlay dispatcher action 内の未処理例外も `Handled=true` でログへ閉じ、補助通知の描画失敗が本体へ波及しないようにした
 - WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
 - Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - Bookmark 削除時の DB 書き込みも UI クリック処理から外し、DB が同じ時だけ一覧 reload する形へ寄せた
@@ -305,6 +306,7 @@
 - `NativeOverlayHost` の overlay thread は `try/finally` で終了出口を固定し、`CreateOverlayOnCurrentThread()` 後または pending action 処理中に例外が起きても `DestroyOverlayOnCurrentThread()` を必ず通す
 - Stop timeout 後に overlay support が再 Start された場合でも、古い overlay thread の `finally` は一致する thread / dispatcher だけをクリアし、新しい管理状態を壊さない
 - overlay thread 内例外は `catch (Exception ex)` で記録して終了処理へ流し、補助表示の失敗がアプリ本体の終了要因にならないようにする
+- overlay dispatcher action 内例外は `Dispatcher.UnhandledException` で記録して `Handled=true` にし、描画・配置更新失敗を補助表示内へ閉じる
 
 ### 7.2 再構築後の次の着手順
 
