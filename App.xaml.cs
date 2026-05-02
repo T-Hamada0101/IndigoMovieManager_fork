@@ -287,6 +287,16 @@ namespace IndigoMovieManager
         {
             var app = Current;
             if (app == null) return;
+            if (!app.Dispatcher.CheckAccess())
+            {
+                if (app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
+                {
+                    return;
+                }
+
+                app.Dispatcher.Invoke(() => ApplyTheme(themeMode));
+                return;
+            }
 
             // MDIX本体のベーステーマも合わせて切り替え、入力欄の下線や装飾を正しい配色へ戻す。
             var paletteHelper = new PaletteHelper();
