@@ -28,6 +28,9 @@ namespace IndigoMovieManager.Infrastructure
 
         internal static string[] BuildAsciiSearchFields(MovieRecords item)
         {
+            string kana = ResolveSearchKana(item);
+            string roma = ResolveSearchRoma(item, kana);
+
             return
             [
                 item?.Movie_Name ?? "",
@@ -36,7 +39,7 @@ namespace IndigoMovieManager.Infrastructure
                 item?.Comment1 ?? "",
                 item?.Comment2 ?? "",
                 item?.Comment3 ?? "",
-                item?.Roma ?? "",
+                roma,
             ];
         }
 
