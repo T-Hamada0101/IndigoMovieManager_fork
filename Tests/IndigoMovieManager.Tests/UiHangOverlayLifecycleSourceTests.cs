@@ -69,6 +69,8 @@ public sealed class UiHangOverlayLifecycleSourceTests
         Assert.That(overlayThreadMain, Does.Contain("try"));
         Assert.That(overlayThreadMain, Does.Contain("finally"));
         Assert.That(overlayThreadMain, Does.Contain("DestroyOverlayOnCurrentThread();"));
+        Assert.That(overlayThreadMain, Does.Contain("ReferenceEquals(_overlayDispatcher, currentDispatcher)"));
+        Assert.That(overlayThreadMain, Does.Contain("ReferenceEquals(_overlayThread, Thread.CurrentThread)"));
         Assert.That(overlayThreadMain, Does.Contain("overlay thread destroyed"));
     }
 

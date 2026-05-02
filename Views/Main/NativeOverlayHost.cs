@@ -219,8 +219,16 @@ namespace IndigoMovieManager
 
                 lock (_gate)
                 {
-                    _overlayDispatcher = null;
-                    _overlayThread = null;
+                    // Stop timeout 後に再 Start された場合、古い thread の finally で新しい状態を消さない。
+                    if (ReferenceEquals(_overlayDispatcher, currentDispatcher))
+                    {
+                        _overlayDispatcher = null;
+                    }
+
+                    if (ReferenceEquals(_overlayThread, Thread.CurrentThread))
+                    {
+                        _overlayThread = null;
+                    }
                 }
             }
         }
