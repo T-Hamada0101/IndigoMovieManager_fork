@@ -148,7 +148,13 @@ public sealed class UiHangOverlayLifecycleSourceTests
             return null;
         }
 
-        DirectoryInfo? current = new(Path.GetDirectoryName(testSourcePath));
+        string? sourceDirectory = Path.GetDirectoryName(testSourcePath);
+        if (string.IsNullOrWhiteSpace(sourceDirectory))
+        {
+            return null;
+        }
+
+        DirectoryInfo? current = new(sourceDirectory);
         while (current != null)
         {
             string candidate = Path.Combine(current.FullName, "IndigoMovieManager.sln");
