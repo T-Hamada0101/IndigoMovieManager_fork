@@ -7,6 +7,7 @@
 - `UiHang` overlay thread の終了時クリアは thread / dispatcher の一致確認つきにし、Stop timeout 後の再 Start 状態を古い thread が消さないようにした
 - `UiHang` overlay thread 内の例外は `overlay thread failed` としてログに閉じ、本体プロセスへ波及させないようにした
 - `UiHang` overlay dispatcher action 内の未処理例外も `Handled=true` でログへ閉じ、補助通知の描画失敗が本体へ波及しないようにした
+- Stop timeout 後に古い `UiHang` overlay thread がまだ alive の場合は再 Start をスキップし、共有 HWND 状態の二重所有を避けるようにした
 - WebView Player の動画切り替え時に、ホスト側音量適用中の `volumechange` 通知と 100% 既定通知を保存しないようにし、ユーザー音量がリセットされる経路を塞いだ
 - Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - Bookmark 削除時の DB 書き込みも UI クリック処理から外し、DB が同じ時だけ一覧 reload する形へ寄せた
@@ -80,6 +81,7 @@
 - Stop timeout 後に overlay support が再 Start された場合でも、古い overlay thread の `finally` は一致する thread / dispatcher だけをクリアし、新しい管理状態を壊さない
 - overlay thread 内例外は `catch (Exception ex)` で記録して終了処理へ流し、補助表示の失敗がアプリ本体の終了要因にならないようにする
 - overlay dispatcher action 内例外は `Dispatcher.UnhandledException` で記録して `Handled=true` にし、描画・配置更新失敗を補助表示内へ閉じる
+- Stop timeout 後に古い overlay thread が alive の間は Start をスキップし、古い thread が自然終了してから次の Start に任せる
 - `Watcher.cs` は入口と中盤の `watch table load failure`、`visible gate`、`scan strategy detail`、`full reconcile` 入口判定を helper / policy 側へ寄せ続け、`CheckFolderAsync(...)` を orchestration 専念へさらに寄せた
 - `Everything poll` は watch folder snapshot、eligible 判定再利用、重複 path 除去、low-update 時の間隔延長まで入り、通常周回の CPU / wakeup コストを下げ始めた
 - `Watcher.cs` はさらに、`context 初期化`、`background scan`、`scan pipeline`、`movie loop`、`pending flush`、`folder completion`、`run finish`、`folder failure recovery result` を helper / runtime 側へ寄せ、入口・中盤・終端を段単位で薄くした

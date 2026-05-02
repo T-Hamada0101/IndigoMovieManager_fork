@@ -66,6 +66,13 @@ namespace IndigoMovieManager
                     return;
                 }
 
+                if (_overlayThread != null && _overlayThread.IsAlive)
+                {
+                    // Stop timeout 後に古い thread が残っている間は、共有 HWND 状態の二重所有を避ける。
+                    Log("overlay thread start skipped; previous thread still alive");
+                    return;
+                }
+
                 _isStarted = true;
                 _stopRequested = false;
                 _overlayThread = new Thread(OverlayThreadMain)
@@ -1076,6 +1083,7 @@ namespace IndigoMovieManager
 
             if (
                 text.StartsWith("overlay thread start")
+                || text.StartsWith("overlay thread start skipped")
                 || text.StartsWith("overlay thread created")
                 || text.StartsWith("overlay thread destroyed")
                 || text.StartsWith("overlay thread stop requested")
