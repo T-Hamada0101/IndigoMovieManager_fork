@@ -509,7 +509,7 @@ namespace IndigoMovieManager
         }
 
         // タイピングが一段落した時だけ、現在テキストを query-only 検索へ流す。
-        private async void SearchInputDebounceTimer_Tick(object? sender, EventArgs e)
+        private async void SearchInputDebounceTimer_Tick(object sender, EventArgs e)
         {
             CancelIncrementalSearchDebounce();
 

@@ -1,3 +1,5 @@
+#nullable enable
+
 using IndigoReleaseManager.Models;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;

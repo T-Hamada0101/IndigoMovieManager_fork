@@ -1,3 +1,5 @@
+#nullable enable
+
 using IndigoReleaseManager.Models;
 using IndigoReleaseManager.Services;
 using IndigoReleaseManager.ViewModels;
