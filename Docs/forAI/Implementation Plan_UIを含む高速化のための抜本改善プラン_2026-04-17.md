@@ -84,6 +84,11 @@
 - Stop timeout 後に古い overlay thread が alive の間は Start をスキップし、古い thread が自然終了してから次の Start に任せる
 - `Watcher.cs` は入口と中盤の `watch table load failure`、`visible gate`、`scan strategy detail`、`full reconcile` 入口判定を helper / policy 側へ寄せ続け、`CheckFolderAsync(...)` を orchestration 専念へさらに寄せた
 - `Everything poll` は watch folder snapshot、eligible 判定再利用、重複 path 除去、low-update 時の間隔延長まで入り、通常周回の CPU / wakeup コストを下げ始めた
+- `RunEverythingWatchPollLoopAsync(...)` は初回待機後に UI コンテキストへ戻らない形へ寄せ、周期判定と queue 投入を背後側で進めるようにした
+- poll loop が背後側で読む Player 再生中状態と起動 partial 状態は `Volatile.Read/Write` 経由へ寄せ、UI から更新される軽量状態を安全に共有する形へ固めた
+- `DBInfo.DBFullPath` も `Volatile.Read/Write` 経由へ寄せ、Everything poll が UI 外で現在DBパスを参照する前提を明示した
+- Everything poll の watch folder snapshot / eligible snapshot は cache 参照と invalidation を同じ lock へ寄せつつ、watch table 読み取りと eligible 判定は lock 外へ逃がし、poll loop 背後化後の共有状態境界を固めた
+- `QueueCheckFolderAsync(...)` は enqueue 後の check-folder queue runner を ThreadPool 起動かつ 1 本共有へ寄せ、UI 操作から入った watch / manual scan でも呼び出し元 UI スレッドに同期前半を残しにくくした
 - `Watcher.cs` はさらに、`context 初期化`、`background scan`、`scan pipeline`、`movie loop`、`pending flush`、`folder completion`、`run finish`、`folder failure recovery result` を helper / runtime 側へ寄せ、入口・中盤・終端を段単位で薄くした
 - `WatchLoopDecision` を `movie loop` と `pending flush` の共通戻り値へ揃え、`return / break / continue` の flow を同じ読み筋で追える形へ寄せた
 - `watch folder` 解決、`scan 準備`、`movie loop preparation`、`loop decision await/apply`、`folder phase result`、`run finish` 呼び出しも helper 化し、`CheckFolderAsync(...)` は段ごとの orchestration を読む形へさらに近づいた
@@ -199,6 +204,11 @@
 実施内容:
 - `filter start/end`、watch reload、page append、thumbnail decode、skin refresh の trace id を揃える。
 - 指標を `debug-runtime.log` で横断して読めるようにする。
+- 2026-05-03: watch 終端 reload の判断理由を `plan_reason` として `debug-runtime.log` に残す。`watch-full-fallback` が残る経路を次の差分化候補として扱う。
+- 2026-05-03: deferred watch reload は schedule と apply の両方で同じ `plan_reason` を残す。圧縮後の reload でも query-only 由来か full fallback 由来かを追えるようにする。
+- 2026-05-03: deferred watch reload が適用されなかった理由を `skip_reason` として `debug-runtime.log` に残す。`revision-stale` / `db-changed` / `ui-suppressed` を分けて shutdown と DB 切替の後着を追えるようにする。
+- 2026-05-03: deferred watch reload の consume 失敗も `skip_reason=not-pending / revision-stale` で残し、二重消費と古い要求を分けて追えるようにする。
+- 2026-05-03: watch 終端 reload ログへ `can_query_only` を追加する。`watch-full-fallback` が query-only 不可由来かを実機ログから絞り、次の差分化候補を選ぶ。
 - 着手前に `git status --short` で対象外差分を確認する。
 - `layout*.xml` や実機操作で動く差分は、目的が一致する時だけ扱う。
 - 最低限の計測点を固定する。
@@ -207,6 +217,11 @@
   - watch: `event accepted -> ui diff applied`
   - skin: `apply requested -> host presented`
   - 画像: `viewport request -> image ready`
+- 2026-05-03: 実 WebView2 を使う `MainWindowWebViewSkinIntegrationTests` は `WebView2Real` / `MainWindowWebViewSkin` category で識別する。全件一括では testhost shutdown 側のクラッシュが出るため、リリース前は category と `Name` filter を併用して小分け検証する。
+- 2026-05-03: 小分け検証の入口として `Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1` を追加。既定順は `HostBasics` / `TutorialCallback` / `DefaultList` / `SimpleGrid` / `TagInputSmoke` / `TreeSmoke` / `BuildOutputSkins`。`TagInputRelation` 全体や tree 系全体の broad filter は testhost shutdown 側のクラッシュ再現域なので、まず smoke chunk から通す。
+- 2026-05-03 実測: `HostBasics` 23件、`TutorialCallback` 9件、`DefaultList` 4件、`SimpleGrid` 8件、`TagInputSmoke` 6件、`TreeSmoke` 3件、`BuildOutputSkins` 109件は、ビルド込みの既定順連続実行で成功。
+- 2026-05-03 追加確認: poll / queue 境界変更後も `FullyQualifiedName~Watch` は 322件成功、`Run-WebView2SkinIntegrationChunks.ps1 -NoBuild -Chunk HostBasics` は 23件成功。
+- chunk 名の確認は `pwsh -NoProfile -ExecutionPolicy Bypass -File Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1 -ListChunks` を使う。
 
 完了条件:
 - どこが遅いかを「起動」「一覧」「watch」「skin」「画像」で分けて説明できる。
@@ -266,8 +281,10 @@
 
 実施内容:
 - `FileSystemWatcher` 入力停止、watch event queue complete、created ready pipeline drain、Everything poll 停止を順序付きで扱う。
+- Everything poll loop は UI コンテキストへ戻らない待機を使い、周期判定を UI tick と競合させない。
 - low-update 時の poll interval 延長を、初期処理が落ち着いた後だけ有効化する。
 - `watch folder snapshot` と eligible 判定 cache の invalidation 条件を、DB 切替 / watch folder 編集 / settings 変更へ限定する。
+- check-folder queue runner は UI スレッドから直接走らせず、enqueue と処理実行の境界を分ける。runner task は 1 本共有にし、burst 時に待機 task を増やしすぎない。runner fault は `watch-check` へ残し、await している経路には例外をそのまま返す。
 - queue の mode 圧縮で trigger / path の因果が消えすぎる箇所は、追加済みログを維持し、必要なら軽量 DTO へ広げる。
 
 完了条件:
@@ -428,9 +445,9 @@
 
 ## 10. 関連資料
 
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\AI向け_現在の全体プラン_workthree_2026-03-20.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Docs\forAI\調査結果_UIボトルネック解消_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Docs\forAI\調査結果_watch_DB管理分離_UI詰まり防止_2026-03-20.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Views\Main\Docs\Implementation Plan_大DB起動段階ロード化_2026-03-17.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\UpperTabs\Docs\Implementation Plan_ページUpDown引っかかり解消_2026-03-18.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\AI向け_現在の全体プラン_workthree_2026-03-20.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\調査結果_UIボトルネック解消_2026-03-11.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\調査結果_watch_DB管理分離_UI詰まり防止_2026-03-20.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Views\Main\Docs\Implementation Plan_大DB起動段階ロード化_2026-03-17.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\UpperTabs\Docs\Implementation Plan_ページUpDown引っかかり解消_2026-03-18.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`

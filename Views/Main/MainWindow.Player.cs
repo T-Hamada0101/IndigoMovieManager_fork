@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -441,6 +442,17 @@ namespace IndigoMovieManager
 
         private bool IsPlaying = false;
 
+        // 背後の poll loop からも読むため、再生中フラグは必ずこの入口で扱う。
+        private bool IsPlayerPlaybackActive()
+        {
+            return Volatile.Read(ref IsPlaying);
+        }
+
+        private void SetPlayerPlaybackActive(bool isActive)
+        {
+            Volatile.Write(ref IsPlaying, isActive);
+        }
+
         /// <summary>
         /// 動画再生の号砲！プレイヤーを呼び覚まし、熱い映像体験をスタートさせるぜ！▶️✨
         /// （ありがとう先人の知恵：https://resanaplaza.com/2023/06/24/%e3%80%90...MediaElement）
@@ -449,7 +461,7 @@ namespace IndigoMovieManager
         {
             if (_isWebViewPlayerActive)
             {
-                IsPlaying = true;
+                SetPlayerPlaybackActive(true);
                 _ = uxWebVideoPlayer?.ExecuteScriptAsync(
                     "document.querySelector('video')?.play();"
                 );
@@ -458,7 +470,7 @@ namespace IndigoMovieManager
 
             ShowPlayerSurface();
             uxVideoPlayer.Play();
-            IsPlaying = true;
+            SetPlayerPlaybackActive(true);
             uxTimeSlider.Value = uxVideoPlayer.Position.TotalMilliseconds;
             TryStartDispatcherTimer(timer, nameof(timer));
         }
@@ -475,20 +487,20 @@ namespace IndigoMovieManager
             }
 
             uxVideoPlayer.Pause();
-            IsPlaying = false;
+            SetPlayerPlaybackActive(false);
         }
 
         private void UxVideoPlayer_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (IsPlaying == true)
+            if (IsPlayerPlaybackActive())
             {
                 uxVideoPlayer.Pause();
-                IsPlaying = false;
+                SetPlayerPlaybackActive(false);
             }
             else
             {
                 uxVideoPlayer.Play();
-                IsPlaying = true;
+                SetPlayerPlaybackActive(true);
             }
         }
 
@@ -542,7 +554,7 @@ namespace IndigoMovieManager
         private void UxVideoPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e)
         {
             // ロード失敗時も user-priority を解放し、背後監視を永久停止させない。
-            IsPlaying = false;
+            SetPlayerPlaybackActive(false);
             _hasPendingPlayerPlaybackRequest = false;
             ReleasePendingPlayerUserPriorityWork();
             StopDispatcherTimerSafely(timer, nameof(timer));
@@ -555,7 +567,7 @@ namespace IndigoMovieManager
         private void UxVideoPlayer_MediaEnded(object sender, RoutedEventArgs e)
         {
             // 再生終了後は poll の再生中扱いを解除し、通常の監視間隔へ戻す。
-            IsPlaying = false;
+            SetPlayerPlaybackActive(false);
             StopDispatcherTimerSafely(timer, nameof(timer));
             UpdatePlayerPositionUi(uxVideoPlayer.Position);
         }
@@ -784,7 +796,7 @@ namespace IndigoMovieManager
             _hasPendingPlayerPlaybackRequest = false;
             _currentPlayerMoviePath = "";
             ResetWebViewPlayerSurface();
-            IsPlaying = false;
+            SetPlayerPlaybackActive(false);
             uxTimeSlider.Value = 0;
             uxTimeSlider.Maximum = 0;
             uxTime.Text = "00:00:00";

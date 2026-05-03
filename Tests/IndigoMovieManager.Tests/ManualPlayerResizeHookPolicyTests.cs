@@ -345,7 +345,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(mainWindowXaml, Does.Contain("MediaFailed=\"UxVideoPlayer_MediaFailed\""));
         Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaFailed("));
         Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaEnded("));
-        Assert.That(mainWindowPlayerSource, Does.Contain("IsPlaying = false;"));
+        Assert.That(mainWindowPlayerSource, Does.Contain("SetPlayerPlaybackActive(false);"));
         Assert.That(mainWindowPlayerSource, Does.Contain("_hasPendingPlayerPlaybackRequest = false;"));
         Assert.That(upperTabPlayerSource, Does.Contain("try"));
         Assert.That(upperTabPlayerSource, Does.Contain("finally"));

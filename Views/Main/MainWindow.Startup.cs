@@ -39,7 +39,8 @@ namespace IndigoMovieManager
         private bool _startupAppendInFlight;
 
         private bool IsStartupFeedPartialActive =>
-            _startupFeedIsPartialActive && !_startupFeedLoadedAllPages;
+            Volatile.Read(ref _startupFeedIsPartialActive)
+            && !Volatile.Read(ref _startupFeedLoadedAllPages);
 
         private void LogStartupWindowShownOnce()
         {

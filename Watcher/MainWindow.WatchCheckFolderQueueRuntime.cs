@@ -20,6 +20,8 @@ namespace IndigoMovieManager
         private bool _hasPendingManualReloadDeferredRescueSuppression;
         private bool _isRunningManualReloadDeferredRescueSuppression;
         private bool _isCheckFolderQueueShutdownRequested;
+        private Task _checkFolderQueueRunnerTask = Task.CompletedTask;
+        private bool _isCheckFolderQueueRunnerScheduled;
 
         // テストでは本経路の呼び出し回数だけ観測し、既存の制御自体はそのまま通す。
         internal Action<string, string> QueueCheckFolderAsyncRequestedForTesting { get; set; }
@@ -79,7 +81,40 @@ namespace IndigoMovieManager
                 "watch-check",
                 queueTraceMessage
             );
-            return ProcessCheckFolderQueueAsync();
+            return StartCheckFolderQueueRunnerAsync();
+        }
+
+        // UI操作から enqueue されても、走査本体の前半を呼び出し元スレッドへ残さない。
+        private Task StartCheckFolderQueueRunnerAsync()
+        {
+            lock (_checkFolderRequestSync)
+            {
+                if (_isCheckFolderQueueRunnerScheduled)
+                {
+                    return _checkFolderQueueRunnerTask;
+                }
+
+                _isCheckFolderQueueRunnerScheduled = true;
+                _checkFolderQueueRunnerTask = Task.Run(ProcessCheckFolderQueueAsync);
+                return _checkFolderQueueRunnerTask;
+            }
+        }
+
+        // runner は 1 本共有し、終了直前に入った pending だけ次 runner へ引き継ぐ。
+        private void CompleteCheckFolderQueueRunnerAndRestartIfNeeded()
+        {
+            bool shouldRestart;
+            lock (_checkFolderRequestSync)
+            {
+                _isCheckFolderQueueRunnerScheduled = false;
+                shouldRestart =
+                    _hasPendingCheckFolderRequest && !_isCheckFolderQueueShutdownRequested;
+            }
+
+            if (shouldRestart)
+            {
+                _ = StartCheckFolderQueueRunnerAsync();
+            }
         }
 
         private void BeginCheckFolderQueueShutdownForClosing()
@@ -304,6 +339,7 @@ namespace IndigoMovieManager
         {
             await WaitForCheckFolderRunnerAsync();
 
+            bool completedNormally = false;
             try
             {
                 int processedCount = 0;
@@ -337,10 +373,24 @@ namespace IndigoMovieManager
                         $"scan queue drained: runs={processedCount} mode={lastTrace.Mode} {BuildWatchCheckFolderQueueTraceSummary(lastTrace.FirstTrigger, lastTrace.LastTrigger, lastTrace.CompressionCount)}"
                     );
                 }
+
+                completedNormally = true;
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"scan queue runner failed: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+                throw;
             }
             finally
             {
                 _checkFolderRunLock.Release();
+                if (!completedNormally)
+                {
+                    CompleteCheckFolderQueueRunnerAndRestartIfNeeded();
+                }
             }
         }
 
@@ -359,6 +409,7 @@ namespace IndigoMovieManager
             {
                 if (!_hasPendingCheckFolderRequest)
                 {
+                    _isCheckFolderQueueRunnerScheduled = false;
                     request = default;
                     return false;
                 }

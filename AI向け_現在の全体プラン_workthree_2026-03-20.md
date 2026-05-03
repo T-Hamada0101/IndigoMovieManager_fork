@@ -71,6 +71,11 @@
 - DB 施策は「先頭の決定打」ではなく「第2群の土台施策」と位置づけ直し、単一ライター / cache / shutdown の固定ルールを追加
 - `Watcher.cs` の入口・中盤・終端に残っていた `visible gate / scan strategy detail / watch table load failure / full reconcile` の直書きをさらに helper / policy 側へ寄せ、`CheckFolderAsync(...)` を orchestration 専念へ寄せ続けている
 - `Everything poll` は low-update 時の間隔延長、watch folder snapshot、eligible 判定再利用、重複 path 除去まで入り、通常周回の判定コストを一段落とした
+- `RunEverythingWatchPollLoopAsync(...)` は初回待機後の継続を UI コンテキストへ戻さず、周期判定と queue 投入を背後側で進める形へ寄せた
+- poll loop が背後側で読む `IsPlaying` と起動 partial 状態は `Volatile.Read/Write` 経由へ寄せ、UI からの更新を軽く安全に共有する形へ固めた
+- `DBInfo.DBFullPath` も `Volatile.Read/Write` 経由へ寄せ、Everything poll が背後側で現在DBパスを読む前提を明示した
+- Everything poll の watch folder snapshot / eligible snapshot は cache 参照と invalidation を同じ lock へ寄せつつ、watch table 読み取りと eligible 判定は lock 外へ逃がし、poll loop 背後化後の共有状態境界を固めた
+- `QueueCheckFolderAsync(...)` は enqueue 後の queue runner を ThreadPool 起動へ寄せ、runner task は 1 本共有にして、UI 操作から入った監視走査でも `CheckFolderAsync(...)` 前半を呼び出し元 UI スレッドへ残しにくくした
 - `Watcher.cs` はさらに、`context 初期化`、`background scan`、`scan pipeline`、`movie loop`、`pending flush`、`folder completion`、`run finish`、`folder failure recovery result` を helper / runtime 側へ寄せ、入口・中盤・終端を段単位で薄くした
 - `Watcher` の flow 制御は `WatchLoopDecision` を共通の戻り値として揃え、`return / break / continue` の判定を helper 経由で追える形へ寄せた
 - さらに `watch folder` 解決、`scan 準備`、`movie loop preparation`、`loop decision await/apply`、`folder phase result`、`run finish` 呼び出しを helper 化し、`CheckFolderAsync(...)` は「フォルダを選ぶ -> scan を準備する -> loop / flush / finish を順に流す」形へ近づいた
@@ -173,6 +178,11 @@
 - `Watcher.cs` の入口では `watch table load failure`、`visible gate`、`scan strategy detail`、`full reconcile` の引数組み立てを順次内側へ寄せ、`CheckFolderAsync(...)` の読み筋をさらに薄くしている
 - `Watcher.cs` はさらに `context 初期化`、`background scan`、`movie loop`、`pending flush`、`folder 終端`、`run finish`、`folder failure recovery` を helper / runtime 側へ寄せ、`CheckFolderAsync(...)` の直列処理を段ごとに読める形へ近づけている
 - `skin` 切り替えでは、重さの主因が `refresh` 二重化 / stale 判定後ろ倒し / catalog 再走査 / WebView2 再 navigate に寄っていることを確認済み
+- 2026-05-03: `MainWindowWebViewSkinIntegrationTests` は `WebView2Real` / `MainWindowWebViewSkin` category を付与済み。全件一括では testhost shutdown 側で落ちることがあるため、リリース前検証では category と `Name` filter で小分けにして通す
+- 2026-05-03: 小分け実行は `Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1` を使う。既定順は `HostBasics` / `TutorialCallback` / `DefaultList` / `SimpleGrid` / `TagInputSmoke` / `TreeSmoke` / `BuildOutputSkins`。`TagInputRelation` 全体や tree 系全体の broad filter は testhost shutdown 側のクラッシュ再現域なので、まず smoke chunk から通す
+- 2026-05-03 実測: 上記 chunk はビルド込みの既定順連続実行で成功済み。件数は `HostBasics` 23、`TutorialCallback` 9、`DefaultList` 4、`SimpleGrid` 8、`TagInputSmoke` 6、`TreeSmoke` 3、`BuildOutputSkins` 109
+- 2026-05-03 追加確認: poll / queue 境界変更後も `FullyQualifiedName~Watch` は 322 件成功、`Run-WebView2SkinIntegrationChunks.ps1 -NoBuild -Chunk HostBasics` は 23 件成功
+- chunk 名の確認は `pwsh -NoProfile -ExecutionPolicy Bypass -File Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1 -ListChunks`
 
 ただし、いまの本線は rescue を先頭テーマとして広げる段階ではない。最上位優先は `Watcher / UI差分反映` と起動テンポ改善であり、rescue はその副作用を増やさない維持レーンとして扱う。
 
@@ -241,6 +251,8 @@
 - `Created` は直接 MainDB 登録せず、watch 本流の `QueueCheckFolderAsync(CheckMode.Watch, ...)` へ合流済み
 - `Renamed` は watch event queue 経由で単一ランナー処理へ変更済み
 - `WatcherEventQueue` は処理 task を 1 本共有し、enqueue ごとに runner を増やさない形へ寄せて watch burst 時の先頭詰まり増幅を抑えた
+- `QueueCheckFolderAsync(...)` の check-folder queue runner は ThreadPool 起動かつ 1 本共有へ寄せ、UI からの enqueue は受け付けとログだけに近づけた
+- check-folder queue runner の fault は `watch-check` へ残し、await している経路には例外を返すため、fire-and-forget 経路でも失敗原因を追える
 - `Created` の ready 待機は queue runner から分離して直列専用パイプラインへ逃がし、`Renamed` が `Created` 待ちで詰まらないように整合を補強した
 - 旧パス未登録の `Renamed` は `QueueCheckFolderAsync(CheckMode.Watch, ...)` へ再合流させ、`Created -> Renamed` 連鎖の取りこぼしを watch 本流で回収する形へ寄せた
 - watch 終端の全件 `FilterAndSort(..., true)` は `CheckMode.Watch` 時のみ debounce 済み
@@ -293,10 +305,15 @@
 - そのうえで `{dup}` 検索だけは `Hash` 変化時に changed-path 局所更新を使わず、full in-memory filter へ戻す安全弁を入れた
 - そのうえで通常検索では `MovieSize / FileDate / MovieLength` など検索非依存 dirty の時、changed path ごとの `FilterMovies(...)` 呼び出しも省くようにした
 - さらに本線の通常検索では、`MovieRecords` 側へ検索投影 cache を持たせて `kana / katakana / roma / normalized tags` の再生成回数を減らし、既存 `SearchService` 正本のまま hot path を軽くした
-- `Everything poll` は watch folder 一覧を snapshot 化し、eligible 判定結果の再利用と重複 path 除去も入れ、low-update 時の間隔延長と合わせて通常周回の無駄判定を減らした
+- `Everything poll` は watch folder 一覧を snapshot 化し、eligible 判定結果の再利用と重複 path 除去も入れ、low-update 時の間隔延長と UI 非捕捉の loop 継続を合わせて通常周回の無駄判定と UI 滞在を減らした
 - 検索窓は 1 文字ごとの即時実行を常時有効にはせず、通常時だけ `0.5s debounce -> query-only 検索確定`、起動時部分ロード・IME変換中・途中構文(`-` / `|` / `{`)では Enter 確定へ寄せる形へ戻した
 - 検索確定中は `user priority` スコープを張り、`Auto / Watch` の再走査、`watch_zero_diff reconcile`、`missing-thumb rescue` を後ろへ逃がして、明示的なユーザー要求を先に完了させる導線を入れた
 - さらに `FilterAndSortAsync(...)` の観測点を `db-reload / source-apply / filter-movies / sort-movies / replace-filtered` へ細分化し、検索 hot path の詰まり位置を実機ログで断定できるようにした
+- watch 終端 reload の判断理由を `plan_reason` として `no-changes / ui-suppressed / not-watch / watch-query-only / watch-full-fallback` へ固定し、次の full 戻り削減候補を `debug-runtime.log` から拾いやすくした
+- deferred watch reload は schedule 時の `plan_reason` を pending 状態へ保持し、apply ログでも同じ札を出すことで、圧縮後の reload が query-only 由来か full fallback 由来か追えるようにした
+- deferred watch reload の適用可否も `skip_reason` として `ui-suppressed / revision-stale / db-empty / db-changed` へ固定し、DB切替・shutdown・古い要求の切り分けをログだけで追いやすくした
+- deferred watch reload の consume 失敗も `skip_reason=not-pending / revision-stale` として固定し、既に消費済みの要求と古い要求を区別できるようにした
+- watch 終端 reload ログへ `can_query_only` を追加し、`watch-full-fallback` が query-only 不可由来かを実機ログから即時に絞れるようにした
 - さらに通常検索の比較は、ASCII 系検索語だけ `OrdinalIgnoreCase` の軽い比較へ寄せ、日本語など非 ASCII を含む語は従来どおり `CurrentCultureIgnoreCase` を維持して `filter-movies` の hot path を軽くし始めた
 - さらに ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / Roma` だけを見る軽量投影 cache を使い、`kana / katakana` 派生列の全件生成を避けて `filter-movies` の詰まりを減らし始めた
 - 実機ログでは `ggggg` のような ASCII 検索で `filter-movies` 詰まりが出ていたが、軽量投影 cache 追加後は検索完了まで進むことを確認した。ASCII 検索の主因は比較方式そのものより `kana / katakana` 派生列の全件生成だったと判断する
@@ -326,13 +343,13 @@
 ### 7.2.2 検証用 worktree / 退避コピーの再発防止
 
 - `HEAD` や commit hash 名の退避コピーを repo 直下へ置くと、SDK 既定取り込みで `.xaml` / `.g.cs` / `.cs` が本体 compile へ混ざり、`IComponentConnector.Connect(int, object)` の重複実装のような壊れ方を起こす。
-- 検証用 worktree は必ず `C:\Users\na6ce\source\repos\IndigoMovieManager-worktree-*` のように sibling ディレクトリへ作る。
+- 検証用 worktree は必ず `%USERPROFILE%\source\repos\IndigoMovieManager-worktree-*` のように sibling ディレクトリへ作る。
 - 退避コピーや検証用フォルダは「使い終わったら削除」を完了条件に含める。
 - `IndigoMovieManager.csproj` 側の `HEAD\**\*` / commit hash フォルダ除外は保険として維持してよいが、正本の再発防止は「repo 直下へ置かない運用」に置く。
 
 - `Views/Main/MainWindow.xaml.cs` の `FilterAndSortAsync(...)` を中心に残っている「少数変更でも全面再評価へ戻る構造」を崩し、一覧 UI を差分反映中心へ寄せる。
 - watch、画像供給、起動、skin 切り替えは個別最適でなく、この軸に沿って進める。
-- 詳細は `C:\Users\na6ce\source\repos\IndigoMovieManager\Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本とする。
+- 詳細は `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本とする。
 - 検索高速化の別リポ検証は継続してよいが、本線へ戻す時は既存検索仕様との整合と fallback 条件を先に固める。
 
 ### 7.3 Phase 4 における `skin` 切り替え DB 方針
@@ -419,14 +436,14 @@ DB 施策で固定する設計ルールは次である。
 
 ## 11. 関連資料
 
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\AI向け_ブランチ方針_ユーザー体感テンポ最優先_2026-04-07.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Thumbnail\Docs\現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Thumbnail\Docs\優先順位表_失敗9件の検証順_2026-04-07.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\UpperTabs\Docs\Implementation Plan_上側タブvisible-first高速化_2026-03-15.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\UpperTabs\Docs\Implementation Plan_ページUpDown引っかかり解消_2026-03-18.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Views\Main\Docs\Implementation Plan_大DB起動段階ロード化_2026-03-17.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Docs\Implementation Plan_下部タブ分割_Phase1_サムネ進捗_2026-03-15.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\Watcher\調査結果_watch_DB管理分離_UI詰まり防止_2026-03-20.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\WhiteBrowserSkin\Docs\調査結果_skin切り替え重さの原因_2026-04-12.md`
-- `C:\Users\na6ce\source\repos\IndigoMovieManager\WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\AI向け_ブランチ方針_ユーザー体感テンポ最優先_2026-04-07.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Thumbnail\Docs\現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Thumbnail\Docs\優先順位表_失敗9件の検証順_2026-04-07.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\UpperTabs\Docs\Implementation Plan_上側タブvisible-first高速化_2026-03-15.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\UpperTabs\Docs\Implementation Plan_ページUpDown引っかかり解消_2026-03-18.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Views\Main\Docs\Implementation Plan_大DB起動段階ロード化_2026-03-17.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\Implementation Plan_下部タブ分割_Phase1_サムネ進捗_2026-03-15.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Watcher\調査結果_watch_DB管理分離_UI詰まり防止_2026-03-20.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\WhiteBrowserSkin\Docs\調査結果_skin切り替え重さの原因_2026-04-12.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`

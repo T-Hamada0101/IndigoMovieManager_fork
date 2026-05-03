@@ -1,5 +1,7 @@
 ﻿using System.ComponentModel;
 
+using System.Threading;
+
 namespace IndigoMovieManager.DB
 {
     /// <summary>
@@ -24,10 +26,11 @@ namespace IndigoMovieManager.DB
         /// </summary>
         public string DBFullPath
         {
-            get => currentDbFullPath;
+            get => Volatile.Read(ref currentDbFullPath);
             set
             {
-                currentDbFullPath = value;
+                // Everything poll などの背後処理からも読むため、DBパスだけは揮発的に共有する。
+                Volatile.Write(ref currentDbFullPath, value);
                 OnPropertyChanged(nameof(DBFullPath));
             }
         }

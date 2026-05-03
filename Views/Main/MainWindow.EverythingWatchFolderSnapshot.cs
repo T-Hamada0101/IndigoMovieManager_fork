@@ -11,6 +11,7 @@ namespace IndigoMovieManager
         private string[] _everythingPollWatchFolderSnapshot = [];
         private string _everythingPollEligibleWatchFolderSnapshotDbPath = "";
         private string[] _everythingPollEligibleWatchFolderSnapshot = [];
+        private readonly object _everythingPollWatchFolderSnapshotSync = new();
 
         // DB切替や監視設定変更までは、watch一覧の再読込を避けて poll 判定を軽く保つ。
         private string[] GetEverythingPollWatchFoldersSnapshot(string dbPath)
@@ -20,15 +21,27 @@ namespace IndigoMovieManager
                 return [];
             }
 
-            if (AreSameMainDbPath(_everythingPollWatchFolderSnapshotDbPath, dbPath))
+            lock (_everythingPollWatchFolderSnapshotSync)
             {
-                return _everythingPollWatchFolderSnapshot;
+                if (AreSameMainDbPath(_everythingPollWatchFolderSnapshotDbPath, dbPath))
+                {
+                    return _everythingPollWatchFolderSnapshot;
+                }
             }
 
             DataTable watchTable = SQLite.GetData(dbPath, "select dir from watch where watch = 1");
-            _everythingPollWatchFolderSnapshot = ExtractEverythingPollWatchFolders(watchTable);
-            _everythingPollWatchFolderSnapshotDbPath = dbPath;
-            return _everythingPollWatchFolderSnapshot;
+            string[] watchFolders = ExtractEverythingPollWatchFolders(watchTable);
+            lock (_everythingPollWatchFolderSnapshotSync)
+            {
+                if (AreSameMainDbPath(_everythingPollWatchFolderSnapshotDbPath, dbPath))
+                {
+                    return _everythingPollWatchFolderSnapshot;
+                }
+
+                _everythingPollWatchFolderSnapshot = watchFolders;
+                _everythingPollWatchFolderSnapshotDbPath = dbPath;
+                return _everythingPollWatchFolderSnapshot;
+            }
         }
 
         // drive 種別や NTFS 判定は毎周やらず、watch 一覧が変わった時だけまとめて評価する。
@@ -39,27 +52,43 @@ namespace IndigoMovieManager
                 return [];
             }
 
-            if (AreSameMainDbPath(_everythingPollEligibleWatchFolderSnapshotDbPath, dbPath))
+            lock (_everythingPollWatchFolderSnapshotSync)
             {
-                return _everythingPollEligibleWatchFolderSnapshot;
+                if (AreSameMainDbPath(_everythingPollEligibleWatchFolderSnapshotDbPath, dbPath))
+                {
+                    return _everythingPollEligibleWatchFolderSnapshot;
+                }
             }
 
             string[] watchFolders = GetEverythingPollWatchFoldersSnapshot(dbPath);
-            _everythingPollEligibleWatchFolderSnapshot = ExtractEverythingEligibleWatchFolders(
+            string[] eligibleWatchFolders = ExtractEverythingEligibleWatchFolders(
                 watchFolders,
                 watchFolder => IsEverythingEligiblePath(watchFolder, out _)
             );
-            _everythingPollEligibleWatchFolderSnapshotDbPath = dbPath;
-            return _everythingPollEligibleWatchFolderSnapshot;
+            lock (_everythingPollWatchFolderSnapshotSync)
+            {
+                if (AreSameMainDbPath(_everythingPollEligibleWatchFolderSnapshotDbPath, dbPath))
+                {
+                    return _everythingPollEligibleWatchFolderSnapshot;
+                }
+
+                _everythingPollEligibleWatchFolderSnapshot = eligibleWatchFolders;
+                _everythingPollEligibleWatchFolderSnapshotDbPath = dbPath;
+                return _everythingPollEligibleWatchFolderSnapshot;
+            }
         }
 
         // 監視設定やDBが変わった時だけ snapshot を捨て、次回 poll で組み直す。
         private void InvalidateEverythingWatchPollWatchFolderSnapshot()
         {
-            _everythingPollWatchFolderSnapshotDbPath = "";
-            _everythingPollWatchFolderSnapshot = [];
-            _everythingPollEligibleWatchFolderSnapshotDbPath = "";
-            _everythingPollEligibleWatchFolderSnapshot = [];
+            lock (_everythingPollWatchFolderSnapshotSync)
+            {
+                _everythingPollWatchFolderSnapshotDbPath = "";
+                _everythingPollWatchFolderSnapshot = [];
+                _everythingPollEligibleWatchFolderSnapshotDbPath = "";
+                _everythingPollEligibleWatchFolderSnapshot = [];
+            }
+
             ResetEverythingWatchPollAdaptiveDelayState();
         }
 

@@ -125,6 +125,50 @@ public sealed class WatchDeferredUiReloadPolicyTests
         Assert.That(result, Is.False);
     }
 
+    [TestCase(@"D:\Db\Main.wb", @"D:\Db\Main.wb", true, 4, 4, "ui-suppressed")]
+    [TestCase(@"D:\Db\Main.wb", @"D:\Db\Main.wb", false, 3, 4, "revision-stale")]
+    [TestCase("", @"D:\Db\Main.wb", false, 4, 4, "db-empty")]
+    [TestCase(@"D:\Db\Other.wb", @"D:\Db\Main.wb", false, 4, 4, "db-changed")]
+    [TestCase(@"D:\Db\Main.wb", @"d:\db\main.wb", false, 4, 4, "apply")]
+    public void ResolveDeferredWatchUiReloadApplyState_適用可否理由を短い札で返す(
+        string currentDbFullPath,
+        string scheduledDbFullPath,
+        bool isWatchSuppressedByUi,
+        int requestRevision,
+        int currentRevision,
+        string expected
+    )
+    {
+        string actual = MainWindow.ResolveDeferredWatchUiReloadApplyState(
+            currentDbFullPath,
+            scheduledDbFullPath,
+            isWatchSuppressedByUi,
+            requestRevision,
+            currentRevision
+        );
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [TestCase(false, 4, 4, "not-pending")]
+    [TestCase(true, 3, 4, "revision-stale")]
+    [TestCase(true, 4, 4, "consumed")]
+    public void ResolveDeferredWatchUiReloadConsumeState_consume可否理由を短い札で返す(
+        bool hasPendingRequest,
+        int requestRevision,
+        int currentRevision,
+        string expected
+    )
+    {
+        string actual = MainWindow.ResolveDeferredWatchUiReloadConsumeState(
+            hasPendingRequest,
+            requestRevision,
+            currentRevision
+        );
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
     [Test]
     public void EvaluateWatchUiReloadPlan_変更なしならskipを返す()
     {
@@ -188,6 +232,29 @@ public sealed class WatchDeferredUiReloadPolicyTests
             Is.EqualTo(MainWindow.WatchUiReloadAction.ApplyImmediate)
         );
         Assert.That(result.UseQueryOnlyReload, Is.False);
+    }
+
+    [TestCase(false, true, false, true, "no-changes")]
+    [TestCase(true, true, true, true, "ui-suppressed")]
+    [TestCase(true, false, false, true, "not-watch")]
+    [TestCase(true, true, false, true, "watch-query-only")]
+    [TestCase(true, true, false, false, "watch-full-fallback")]
+    public void ResolveWatchUiReloadPlanReason_reload判断理由を短い札で返す(
+        bool hasChanges,
+        bool isWatchMode,
+        bool isSuppressed,
+        bool canUseQueryOnlyReload,
+        string expected
+    )
+    {
+        string actual = MainWindow.ResolveWatchUiReloadPlanReason(
+            hasChanges,
+            isWatchMode,
+            isSuppressed,
+            canUseQueryOnlyReload
+        );
+
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
@@ -282,6 +349,7 @@ public sealed class WatchDeferredUiReloadPolicyTests
         SetPrivateField(window, "_watchDeferredUiReloadRevision", 4);
         SetPrivateField(window, "_watchDeferredUiReloadPending", true);
         SetPrivateField(window, "_watchDeferredUiReloadQueryOnly", false);
+        SetPrivateField(window, "_watchDeferredUiReloadPlanReason", "watch-full-fallback");
         SetPrivateField(
             window,
             "_watchDeferredUiReloadChangedMovies",
@@ -320,6 +388,7 @@ public sealed class WatchDeferredUiReloadPolicyTests
         Assert.That(fullReloadCalls[0].IsGetNew, Is.True);
         Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadPending"), Is.False);
         Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadQueryOnly"), Is.False);
+        Assert.That((string)GetPrivateField(window, "_watchDeferredUiReloadPlanReason"), Is.Empty);
         Assert.That(
             (List<MainWindow.WatchChangedMovie>)GetPrivateField(
                 window,
@@ -363,6 +432,10 @@ public sealed class WatchDeferredUiReloadPolicyTests
         Assert.That(filterAndSortCount, Is.EqualTo(0));
         Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadPending"), Is.True);
         Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadQueryOnly"), Is.True);
+        Assert.That(
+            (string)GetPrivateField(window, "_watchDeferredUiReloadPlanReason"),
+            Is.EqualTo("watch-query-only")
+        );
         Assert.That(
             ((List<MainWindow.WatchChangedMovie>)GetPrivateField(
                 window,

@@ -22,6 +22,8 @@ namespace IndigoMovieManager.Tests;
 
 [TestFixture]
 [NonParallelizable]
+[Category("WebView2Real")]
+[Category("MainWindowWebViewSkin")]
 public sealed class MainWindowWebViewSkinIntegrationTests
 {
     private static readonly object UiThreadSync = new();

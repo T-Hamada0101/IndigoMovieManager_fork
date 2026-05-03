@@ -1193,8 +1193,15 @@ namespace IndigoMovieManager
         /// </summary>
         private async Task RunEverythingWatchPollLoopAsync(CancellationToken cts)
         {
-            // 起動直後の初回描画を優先するため、同期前半をUIスレッドへ残さない。
-            await Task.Yield();
+            // 起動直後の初回描画を優先し、以降の周期判定は UI コンテキストへ戻さない。
+            try
+            {
+                await Task.Delay(1, cts).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
             // poll loop の再起動時も、静穏判定は新しい起点から測り直す。
             ResetEverythingWatchPollAdaptiveDelayState();
             while (!cts.IsCancellationRequested)
@@ -1215,7 +1222,8 @@ namespace IndigoMovieManager
                     }
                     else if (ShouldRunEverythingWatchPollPolicy())
                     {
-                        await QueueCheckFolderAsync(CheckMode.Watch, "EverythingPoll");
+                        await QueueCheckFolderAsync(CheckMode.Watch, "EverythingPoll")
+                            .ConfigureAwait(false);
                     }
 
                     int delayMs = ResolveEverythingWatchPollDelayMs(
@@ -1225,9 +1233,9 @@ namespace IndigoMovieManager
                         ),
                         isDeferredByUiSuppression: isDeferredByUiSuppression,
                         isDeferredByUserPriority: isDeferredByUserPriority,
-                        isPlayerPlaybackActive: IsPlaying
+                        isPlayerPlaybackActive: IsPlayerPlaybackActive()
                     );
-                    await Task.Delay(delayMs, cts);
+                    await Task.Delay(delayMs, cts).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -1241,7 +1249,7 @@ namespace IndigoMovieManager
                     );
                     try
                     {
-                        await Task.Delay(1000, cts);
+                        await Task.Delay(1000, cts).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
