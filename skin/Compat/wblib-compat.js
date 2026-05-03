@@ -283,8 +283,21 @@
   }
 
   function requestProfileValue(key, fallbackValue) {
-    return postRequest("getProfile", { key: key }).then(function (value) {
-      var hasPersistedValue = value !== undefined && value !== null && String(value) !== "";
+    return postRequest("getProfile", { key: key }).then(function (response) {
+      var value = response;
+      var hasPersistedValue = false;
+      if (response && typeof response === "object" && !Array.isArray(response)) {
+        value = response.value !== undefined ? response.value : response.Value;
+        hasPersistedValue =
+          response.exists === true ||
+          response.Exists === true ||
+          response.hasValue === true ||
+          response.HasValue === true;
+      } else {
+        // 旧 host は未保存も空文字で返すため、fallback 付き呼び出しでは空文字を未保存扱いにする。
+        hasPersistedValue = value !== undefined && value !== null && String(value) !== "";
+      }
+
       var normalizedValue = hasPersistedValue
         ? value
         : (fallbackValue !== undefined ? fallbackValue : "");

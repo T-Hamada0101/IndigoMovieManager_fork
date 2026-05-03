@@ -1140,7 +1140,10 @@ public sealed class WhiteBrowserSkinApiServiceTests
         Assert.Multiple(() =>
         {
             Assert.That(getProfileResult.Succeeded, Is.True);
-            Assert.That(getProfileResult.Payload, Is.EqualTo("remembered"));
+            WhiteBrowserSkinProfileValueReadResult profileResult =
+                (WhiteBrowserSkinProfileValueReadResult)getProfileResult.Payload;
+            Assert.That(profileResult.Value, Is.EqualTo("remembered"));
+            Assert.That(profileResult.Exists, Is.True);
             Assert.That(readKey, Is.EqualTo("grid.columns"));
 
             Assert.That(writeProfileResult.Succeeded, Is.True);
@@ -1151,6 +1154,47 @@ public sealed class WhiteBrowserSkinApiServiceTests
             Assert.That(changeSkinResult.Succeeded, Is.True);
             Assert.That(changeSkinResult.Payload, Is.EqualTo(true));
             Assert.That(changedSkinName, Is.EqualTo("WhiteBrowserDefaultGrid"));
+        });
+    }
+
+    [Test]
+    public async Task HandleProfileAndSkinApis_空文字保存済みと未保存を区別できる()
+    {
+        WhiteBrowserSkinApiService service = CreateService(
+            [],
+            selectedMovie: null,
+            dbFullPath: Path.Combine(Path.GetTempPath(), "main.wb"),
+            dbName: "main",
+            skinName: "SampleSkin",
+            thumbRoot: Path.Combine(Path.GetTempPath(), "thum"),
+            getProfileValueReadResultAsync: key =>
+                Task.FromResult(
+                    string.Equals(key, "empty.saved", StringComparison.Ordinal)
+                        ? new WhiteBrowserSkinProfileValueReadResult("", true)
+                        : new WhiteBrowserSkinProfileValueReadResult("", false)
+                )
+        );
+
+        WhiteBrowserSkinApiInvocationResult emptySavedResult = await service.HandleAsync(
+            "getProfile",
+            JsonDocument.Parse("""{"key":"empty.saved"}""").RootElement
+        );
+        WhiteBrowserSkinApiInvocationResult missingResult = await service.HandleAsync(
+            "getProfile",
+            JsonDocument.Parse("""{"key":"missing"}""").RootElement
+        );
+
+        WhiteBrowserSkinProfileValueReadResult emptySaved =
+            (WhiteBrowserSkinProfileValueReadResult)emptySavedResult.Payload;
+        WhiteBrowserSkinProfileValueReadResult missing =
+            (WhiteBrowserSkinProfileValueReadResult)missingResult.Payload;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(emptySaved.Value, Is.EqualTo(""));
+            Assert.That(emptySaved.Exists, Is.True);
+            Assert.That(missing.Value, Is.EqualTo(""));
+            Assert.That(missing.Exists, Is.False);
         });
     }
 
@@ -1634,6 +1678,7 @@ public sealed class WhiteBrowserSkinApiServiceTests
         Func<string, Task<bool>>? executeSortAsync = null,
         Func<string, string>? resolveSortId = null,
         Func<string, Task<string>>? getProfileValueAsync = null,
+        Func<string, Task<WhiteBrowserSkinProfileValueReadResult>>? getProfileValueReadResultAsync = null,
         Func<string, string, Task<bool>>? writeProfileValueAsync = null,
         Func<string, Task<bool>>? changeSkinAsync = null,
         Action<string>? trace = null
@@ -1660,6 +1705,7 @@ public sealed class WhiteBrowserSkinApiServiceTests
             executeSortAsync: executeSortAsync,
             resolveSortId: resolveSortId,
             getProfileValueAsync: getProfileValueAsync,
+            getProfileValueReadResultAsync: getProfileValueReadResultAsync,
             writeProfileValueAsync: writeProfileValueAsync,
             changeSkinAsync: changeSkinAsync,
             trace: trace
@@ -1685,6 +1731,7 @@ public sealed class WhiteBrowserSkinApiServiceTests
         Func<string, Task<bool>>? executeSortAsync = null,
         Func<string, string>? resolveSortId = null,
         Func<string, Task<string>>? getProfileValueAsync = null,
+        Func<string, Task<WhiteBrowserSkinProfileValueReadResult>>? getProfileValueReadResultAsync = null,
         Func<string, string, Task<bool>>? writeProfileValueAsync = null,
         Func<string, Task<bool>>? changeSkinAsync = null,
         Action<string>? trace = null
@@ -1716,6 +1763,7 @@ public sealed class WhiteBrowserSkinApiServiceTests
                 ExecuteSortAsync = executeSortAsync ?? (_ => Task.FromResult(false)),
                 ResolveSortId = resolveSortId ?? (sortKey => sortKey ?? ""),
                 GetProfileValueAsync = getProfileValueAsync ?? (_ => Task.FromResult("")),
+                GetProfileValueReadResultAsync = getProfileValueReadResultAsync,
                 WriteProfileValueAsync =
                     writeProfileValueAsync ?? ((_, _) => Task.FromResult(false)),
                 ChangeSkinAsync = changeSkinAsync ?? (_ => Task.FromResult(false)),

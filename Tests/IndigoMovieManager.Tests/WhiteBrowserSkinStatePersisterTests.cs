@@ -47,6 +47,48 @@ public sealed class WhiteBrowserSkinStatePersisterTests
     }
 
     [Test]
+    public void TrySelectProfileValue_空文字保存済みと未保存を区別できる()
+    {
+        string root = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        string dbPath = Path.Combine(root, "main.wb");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            Assert.That(SQLite.TryCreateDatabase(dbPath, out string errorMessage), Is.True, errorMessage);
+            Assert.That(SQLite.TryUpsertProfileTable(dbPath, "Alpha2", "lastfind", ""), Is.True);
+
+            bool emptyExists = SQLite.TrySelectProfileValue(
+                dbPath,
+                "Alpha2",
+                "lastfind",
+                out string emptyValue
+            );
+            bool missingExists = SQLite.TrySelectProfileValue(
+                dbPath,
+                "Alpha2",
+                "missing",
+                out string missingValue
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(emptyExists, Is.True);
+                Assert.That(emptyValue, Is.EqualTo(""));
+                Assert.That(missingExists, Is.False);
+                Assert.That(missingValue, Is.EqualTo(""));
+            });
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Test]
     public async Task RunAsync_同一キー連続要求では最後の値だけ保存する()
     {
         string root = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());

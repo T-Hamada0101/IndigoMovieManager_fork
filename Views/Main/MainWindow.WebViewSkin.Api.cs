@@ -212,6 +212,7 @@ namespace IndigoMovieManager
                     ReadExternalSkinUiState(() => ResolveExternalSkinSortIdOnUiThread(sortKey), ""),
                 ChangeSkinAsync = ChangeExternalSkinAsync,
                 GetProfileValueAsync = GetExternalSkinProfileValueAsync,
+                GetProfileValueReadResultAsync = GetExternalSkinProfileValueReadResultAsync,
                 WriteProfileValueAsync = WriteExternalSkinProfileValueAsync,
                 ResolveThumbUrl = ResolveExternalSkinThumbUrl,
                 Trace = message =>
@@ -506,6 +507,15 @@ namespace IndigoMovieManager
 
         private async Task<string> GetExternalSkinProfileValueAsync(string key)
         {
+            WhiteBrowserSkinProfileValueReadResult result =
+                await GetExternalSkinProfileValueReadResultAsync(key);
+            return result.Value;
+        }
+
+        private async Task<WhiteBrowserSkinProfileValueReadResult> GetExternalSkinProfileValueReadResultAsync(
+            string key
+        )
+        {
             (string DbFullPath, string SkinName, string Key) snapshot =
                 await InvokeExternalSkinUiActionAsync(
                     () =>
@@ -533,7 +543,7 @@ namespace IndigoMovieManager
                 || string.IsNullOrWhiteSpace(snapshot.Key)
             )
             {
-                return "";
+                return new WhiteBrowserSkinProfileValueReadResult("", false);
             }
 
             if (
@@ -545,31 +555,42 @@ namespace IndigoMovieManager
                 )
             )
             {
-                return cachedValue;
+                return new WhiteBrowserSkinProfileValueReadResult(cachedValue, true);
             }
 
             try
             {
                 // UI では必要な状態だけ取り、SQLite 呼び出しはバックグラウンドへ逃がす。
-                string persistedValue = await Task.Run(
+                (bool Exists, string Value) persisted = await Task.Run(
                     () =>
-                        DB.SQLite.SelectProfileValue(
+                    {
+                        bool exists = DB.SQLite.TrySelectProfileValue(
                             snapshot.DbFullPath,
                             snapshot.SkinName,
-                            snapshot.Key
-                        )
+                            snapshot.Key,
+                            out string value
+                        );
+                        return (exists, value);
+                    }
                 );
-                WhiteBrowserSkinProfileValueCache.RecordPersisted(
-                    snapshot.DbFullPath,
-                    snapshot.SkinName,
-                    snapshot.Key,
-                    persistedValue
+                if (persisted.Exists)
+                {
+                    WhiteBrowserSkinProfileValueCache.RecordPersisted(
+                        snapshot.DbFullPath,
+                        snapshot.SkinName,
+                        snapshot.Key,
+                        persisted.Value
+                    );
+                }
+
+                return new WhiteBrowserSkinProfileValueReadResult(
+                    persisted.Value,
+                    persisted.Exists
                 );
-                return persistedValue;
             }
             catch
             {
-                return "";
+                return new WhiteBrowserSkinProfileValueReadResult("", false);
             }
         }
 

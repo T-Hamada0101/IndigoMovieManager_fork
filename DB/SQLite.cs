@@ -940,6 +940,19 @@ namespace IndigoMovieManager.DB
         /// </summary>
         public static string SelectProfileValue(string dbFullPath, string skin, string key)
         {
+            return TrySelectProfileValue(dbFullPath, skin, key, out string value) ? value : "";
+        }
+
+        /// <summary>
+        /// profile テーブルからスキン固有設定を読み、空文字保存と未保存を分けて返す。
+        /// </summary>
+        public static bool TrySelectProfileValue(
+            string dbFullPath,
+            string skin,
+            string key,
+            out string value
+        )
+        {
             try
             {
                 using SQLiteConnection connection = CreateReadOnlyConnection(dbFullPath);
@@ -951,11 +964,19 @@ namespace IndigoMovieManager.DB
                 cmd.Parameters.Add(new SQLiteParameter("@skin", skin ?? ""));
                 cmd.Parameters.Add(new SQLiteParameter("@key", key ?? ""));
                 object result = cmd.ExecuteScalar();
-                return result?.ToString() ?? "";
+                if (result == null || result == DBNull.Value)
+                {
+                    value = "";
+                    return false;
+                }
+
+                value = result.ToString() ?? "";
+                return true;
             }
             catch
             {
-                return "";
+                value = "";
+                return false;
             }
         }
         /// <summary>

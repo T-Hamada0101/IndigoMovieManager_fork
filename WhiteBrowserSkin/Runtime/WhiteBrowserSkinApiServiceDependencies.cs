@@ -60,12 +60,27 @@ namespace IndigoMovieManager.Skin.Runtime
         public Func<string, Task<string>> GetProfileValueAsync { get; init; } =
             static _ => Task.FromResult("");
 
+        public Func<string, Task<WhiteBrowserSkinProfileValueReadResult>> GetProfileValueReadResultAsync { get; init; } =
+            null;
+
         public Func<string, string, Task<bool>> WriteProfileValueAsync { get; init; } =
             static (_, _) => Task.FromResult(false);
 
         public Action<string> Trace { get; init; } = static _ => { };
 
         public Func<string, string> ResolveThumbUrl { get; init; } = static _ => "";
+    }
+
+    public sealed class WhiteBrowserSkinProfileValueReadResult
+    {
+        public WhiteBrowserSkinProfileValueReadResult(string value, bool exists)
+        {
+            Value = value ?? "";
+            Exists = exists;
+        }
+
+        public string Value { get; }
+        public bool Exists { get; }
     }
 
     /// <summary>

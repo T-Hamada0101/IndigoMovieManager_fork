@@ -589,15 +589,25 @@ namespace IndigoMovieManager.Skin.Runtime
                 .ToArray();
         }
 
-        private async Task<string> HandleGetProfileAsync(
+        private async Task<WhiteBrowserSkinProfileValueReadResult> HandleGetProfileAsync(
             JsonElement payload,
             CancellationToken cancellationToken
         )
         {
             string key = GetString(payload, "key", "");
-            string value = await dependencies.GetProfileValueAsync(key);
+            WhiteBrowserSkinProfileValueReadResult result;
+            if (dependencies.GetProfileValueReadResultAsync != null)
+            {
+                result = await dependencies.GetProfileValueReadResultAsync(key);
+            }
+            else
+            {
+                string value = await dependencies.GetProfileValueAsync(key);
+                result = new WhiteBrowserSkinProfileValueReadResult(value, !string.IsNullOrEmpty(value));
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-            return value ?? "";
+            return result ?? new WhiteBrowserSkinProfileValueReadResult("", false);
         }
 
         private async Task<bool> HandleWriteProfileAsync(
