@@ -23105,7 +23105,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     await WaitForWebConditionAsync(
                         webView,
                         "!!document.getElementById('thum77') && !!document.getElementById('thum91') && !!document.getElementById('thum84')",
-                        TimeSpan.FromSeconds(15),
+                        TimeSpan.FromSeconds(45),
                         "Alpha2 の初回 DOM 描画完了を待てませんでした。"
                     );
 

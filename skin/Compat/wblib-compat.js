@@ -282,13 +282,18 @@
     return fallbackValue !== undefined ? fallbackValue : "";
   }
 
-  function requestProfileValue(key) {
+  function requestProfileValue(key, fallbackValue) {
     return postRequest("getProfile", { key: key }).then(function (value) {
+      var hasPersistedValue = value !== undefined && value !== null && String(value) !== "";
+      var normalizedValue = hasPersistedValue
+        ? value
+        : (fallbackValue !== undefined ? fallbackValue : "");
       if (key) {
-        runtimeState.profileCache[key] = value;
+        // 未保存 profile は legacy skin が渡した既定値を正として cache する。
+        runtimeState.profileCache[key] = normalizedValue;
       }
 
-      return value;
+      return normalizedValue;
     });
   }
 
@@ -2354,7 +2359,7 @@
 
     getProfile: function (key, fallbackValue) {
       if (fallbackValue !== undefined) {
-        var request = requestProfileValue(key);
+        var request = requestProfileValue(key, fallbackValue);
         return createThenableObject(
           new String(String(readCachedProfileValue(key, fallbackValue))),
           request
