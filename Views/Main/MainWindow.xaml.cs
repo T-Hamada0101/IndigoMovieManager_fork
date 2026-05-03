@@ -614,6 +614,8 @@ namespace IndigoMovieManager
                 SetThumbnailQueueInputEnabled(false);
                 queueRequestChannel.Writer.TryComplete();
                 _everythingWatchPollCts.Cancel();
+                InvalidateWatcherCreation("window-closing");
+                LogWatcherCreationStateForShutdown("window-closing");
                 StopAndClearFileWatchers();
                 BeginWhiteBrowserSkinStatePersisterShutdown();
                 DebugRuntimeLog.Write(
@@ -1511,6 +1513,8 @@ namespace IndigoMovieManager
             MainVM.DbInfo.CurrentTabIndex = -1;
 
             // 旧FileSystemWatcherを全停止＆Dispose（イベントリーク防止！🛡️）
+            InvalidateWatcherCreation("shutdown-current-db");
+            LogWatcherCreationStateForShutdown("shutdown-current-db");
             StopAndClearFileWatchers();
             ClearDeferredWatchScanStates();
             ClearDeferredWatchWorkByUiSuppression();
@@ -1578,7 +1582,7 @@ namespace IndigoMovieManager
             {
                 try
                 {
-                    w.EnableRaisingEvents = false;
+                    TrySetFileWatcherEnabled(w, enabled: false, "dispose");
                     w.Dispose();
                 }
                 catch (Exception ex)
@@ -1812,11 +1816,19 @@ namespace IndigoMovieManager
         /// </summary>
         private void GetWatchTable(string dbPath, string sql)
         {
+            watchData = GetWatchTableSnapshot(dbPath, sql);
+        }
+
+        private static DataTable GetWatchTableSnapshot(string dbPath, string sql)
+        {
             if (!string.IsNullOrEmpty(dbPath))
             {
-                watchData = GetData(dbPath, sql);
-                WatchTableRowNormalizer.Normalize(watchData);
+                DataTable snapshot = GetData(dbPath, sql);
+                WatchTableRowNormalizer.Normalize(snapshot);
+                return snapshot;
             }
+
+            return null;
         }
 
         /// <summary>

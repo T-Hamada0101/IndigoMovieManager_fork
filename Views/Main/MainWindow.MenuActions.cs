@@ -256,7 +256,7 @@ namespace IndigoMovieManager
                 .ToArray();
             foreach (FileSystemWatcher watcher in targets)
             {
-                watcher.EnableRaisingEvents = enabled;
+                TrySetFileWatcherEnabled(watcher, enabled, "set-enabled");
             }
 
             return targets;
@@ -271,7 +271,34 @@ namespace IndigoMovieManager
 
             foreach (FileSystemWatcher watcher in watchers)
             {
-                watcher.EnableRaisingEvents = true;
+                TrySetFileWatcherEnabled(watcher, enabled: true, "restore");
+            }
+        }
+
+        private static bool TrySetFileWatcherEnabled(
+            FileSystemWatcher watcher,
+            bool enabled,
+            string reason
+        )
+        {
+            if (watcher == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                watcher.EnableRaisingEvents = enabled;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // DB切替や終了と重なって破棄済み watcher を触っても、UI操作の完了自体は壊さない。
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"watcher enable skipped: reason={reason} enabled={enabled} err='{ex.GetType().Name}: {ex.Message}'"
+                );
+                return false;
             }
         }
 

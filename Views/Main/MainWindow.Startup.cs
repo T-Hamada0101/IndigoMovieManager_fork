@@ -248,7 +248,7 @@ namespace IndigoMovieManager
                     CreateWatcher();
                     DebugRuntimeLog.Write(
                         "ui-tempo",
-                        $"startup watcher started: revision={revision} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+                        $"startup watcher creation queued: revision={revision} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
                     );
                 })
             );
@@ -289,7 +289,27 @@ namespace IndigoMovieManager
         // EverythingLite 選択時だけ watch root を背景 rebuild し、初回の provider 同期構築を減らす。
         private void QueueEverythingLiteWatchRootPrewarm()
         {
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return;
+            }
+
             IntegrationMode integrationMode = GetEverythingIntegrationMode();
+            string providerKey = FileIndexProviderFactory.NormalizeProviderKey(
+                Properties.Settings.Default.FileIndexProvider
+            );
+            _ = Task.Run(
+                () => PrewarmEverythingLiteWatchRoots(dbFullPath, integrationMode, providerKey)
+            );
+        }
+
+        private void PrewarmEverythingLiteWatchRoots(
+            string dbFullPath,
+            IntegrationMode integrationMode,
+            string providerKey
+        )
+        {
             if (!_indexProviderFacade.IsIntegrationConfigured(integrationMode))
             {
                 return;
@@ -301,21 +321,28 @@ namespace IndigoMovieManager
                 return;
             }
 
-            string providerKey = FileIndexProviderFactory.NormalizeProviderKey(
-                Properties.Settings.Default.FileIndexProvider
-            );
-            if (!string.Equals(providerKey, FileIndexProviderFactory.ProviderEverythingLite, StringComparison.OrdinalIgnoreCase))
+            if (
+                !string.Equals(
+                    providerKey,
+                    FileIndexProviderFactory.ProviderEverythingLite,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
             {
                 return;
             }
 
-            if (watchData == null || watchData.Rows.Count < 1)
+            DataTable watchTable = GetWatchTableSnapshot(
+                dbFullPath,
+                "SELECT * FROM watch where watch = 1"
+            );
+            if (watchTable == null || watchTable.Rows.Count < 1)
             {
                 return;
             }
 
             HashSet<string> queuedRoots = new(StringComparer.OrdinalIgnoreCase);
-            foreach (DataRow row in watchData.Rows)
+            foreach (DataRow row in watchTable.Rows)
             {
                 string watchRoot = row["dir"]?.ToString() ?? "";
                 if (string.IsNullOrWhiteSpace(watchRoot) || !Path.Exists(watchRoot))
@@ -335,7 +362,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"everythinglite root prewarm queued: count={queuedRoots.Count} db='{MainVM?.DbInfo?.DBFullPath ?? ""}'"
+                    $"everythinglite root prewarm queued: count={queuedRoots.Count} db='{dbFullPath}'"
                 );
             }
         }

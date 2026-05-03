@@ -36,7 +36,7 @@ namespace IndigoMovieManager
                     _watchEventRequests.Enqueue(request);
                     if (_watchEventProcessingTask.IsCompleted)
                     {
-                        _watchEventProcessingTask = ProcessWatchEventQueueAsync();
+                        _watchEventProcessingTask = StartWatchEventQueueRunnerAsync();
                     }
 
                     processingTask = _watchEventProcessingTask;
@@ -58,6 +58,12 @@ namespace IndigoMovieManager
             );
 
             return processingTask;
+        }
+
+        // event queue runner は ThreadPool から起動し、呼び出し元スレッドへ初回処理を残さない。
+        private Task StartWatchEventQueueRunnerAsync()
+        {
+            return Task.Run(ProcessWatchEventQueueAsync);
         }
 
         // Closing開始後は新規イベント受付を止め、現在走っているqueue/taskだけを穏当にdrainする。

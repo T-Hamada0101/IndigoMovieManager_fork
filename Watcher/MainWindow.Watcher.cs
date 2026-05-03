@@ -103,13 +103,19 @@ namespace IndigoMovieManager
             );
 
             // モードに応じた監視設定の取得（自動更新対象のみか、全対象か）
-            if (!TryLoadWatchTableForModeOrWriteFailure(mode, snapshotDbFullPath))
+            if (
+                !TryLoadWatchTableForModeOrWriteFailure(
+                    mode,
+                    snapshotDbFullPath,
+                    out DataTable watchTableForScan
+                )
+            )
             {
                 return;
             }
 
             // DB上の監視フォルダ定義1行ずつ検証していく
-            foreach (DataRow row in watchData.Rows)
+            foreach (DataRow row in watchTableForScan.Rows)
             {
                 // 🔥 DB切り替え検知ガード！途中で別DBに切り替わったら即打ち切り！🛡️
                 if (

@@ -56,6 +56,82 @@ public sealed class UiHangOverlayLifecycleSourceTests
     }
 
     [Test]
+    public void Watcher作成は背景計画の後着をrevisionで捨てる()
+    {
+        string mainWindowSource = GetSourceText(new[] { "Views", "Main", "MainWindow.xaml.cs" })
+            .Replace("\r\n", "\n");
+        string startupSource = GetSourceText(new[] { "Views", "Main", "MainWindow.Startup.cs" })
+            .Replace("\r\n", "\n");
+        string watcherSource = GetSourceText(new[] { "Watcher", "MainWindow.Watcher.cs" })
+            .Replace("\r\n", "\n");
+        string watchScanCoordinatorSource = GetSourceText(
+                new[] { "Watcher", "MainWindow.WatchScanCoordinator.cs" }
+            )
+            .Replace("\r\n", "\n");
+        string watcherRegistrationSource = GetSourceText(
+                new[] { "Watcher", "MainWindow.WatcherRegistration.cs" }
+            )
+            .Replace("\r\n", "\n");
+
+        Assert.That(watcherRegistrationSource, Does.Contain("_watcherCreationRevision"));
+        Assert.That(watcherRegistrationSource, Does.Contain("BuildWatcherCreationPlan("));
+        Assert.That(watcherRegistrationSource, Does.Contain("ApplyWatcherCreationPlan("));
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("int currentRevision = Volatile.Read(ref _watcherCreationRevision)")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("revision != currentRevision")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("watcher create skipped by stale revision")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("applyAvailability = _indexProviderFacade.CheckAvailability(plan.IntegrationMode);")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("TrySetFileWatcherEnabled(item, enabled: true, \"register\")")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Not.Contain("if (!Path.Exists(watchFolder))")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("_watcherCreationActiveTaskCount")
+        );
+        Assert.That(watcherRegistrationSource, Does.Contain("active={activeTaskCount}"));
+        Assert.That(mainWindowSource, Does.Contain("InvalidateWatcherCreation(\"window-closing\")"));
+        Assert.That(
+            mainWindowSource,
+            Does.Contain("InvalidateWatcherCreation(\"shutdown-current-db\")")
+        );
+        Assert.That(
+            watcherSource,
+            Does.Contain("out DataTable watchTableForScan")
+        );
+        Assert.That(watcherSource, Does.Contain("foreach (DataRow row in watchTableForScan.Rows)"));
+        Assert.That(
+            watchScanCoordinatorSource,
+            Does.Contain("out DataTable watchTable")
+        );
+        Assert.That(
+            watchScanCoordinatorSource,
+            Does.Contain("watchTable = GetWatchTableSnapshot(snapshotDbFullPath, sql);")
+        );
+        Assert.That(startupSource, Does.Contain("PrewarmEverythingLiteWatchRoots("));
+        Assert.That(
+            startupSource,
+            Does.Contain("DataTable watchTable = GetWatchTableSnapshot(")
+        );
+        Assert.That(startupSource, Does.Not.Contain("if (watchData == null || watchData.Rows.Count < 1)"));
+    }
+
+    [Test]
     public void NativeOverlayHostはowner付き生成と停止時即hideを持つ()
     {
         string source = GetSourceText(new[] { "Views", "Main", "NativeOverlayHost.cs" });

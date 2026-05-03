@@ -76,6 +76,14 @@
 - `DBInfo.DBFullPath` も `Volatile.Read/Write` 経由へ寄せ、Everything poll が背後側で現在DBパスを読む前提を明示した
 - Everything poll の watch folder snapshot / eligible snapshot は cache 参照と invalidation を同じ lock へ寄せつつ、watch table 読み取りと eligible 判定は lock 外へ逃がし、poll loop 背後化後の共有状態境界を固めた
 - `QueueCheckFolderAsync(...)` は enqueue 後の queue runner を ThreadPool 起動へ寄せ、runner task は 1 本共有にして、UI 操作から入った監視走査でも `CheckFolderAsync(...)` 前半を呼び出し元 UI スレッドへ残しにくくした
+- `CreateWatcher()` は起動後の watcher 作成計画を背景側で組み、watch table 読み込み / Everything availability 判定 / skip 判定を UI から外し、UI には DB 切替ガードと revision 確認後の `FileSystemWatcher` 登録だけを残した
+- watcher 作成計画の `Everything-only` skip は登録直前に availability を再確認し、計画作成後に Everything が落ちた時は `FileSystemWatcher` 登録へ戻すようにした
+- watcher 登録フェーズでは UI 上の `Path.Exists(...)` 再実行を避け、背景計画で確認済みの対象だけを登録する形へ寄せた
+- watcher 作成 task は active count と最新 task 状態を shutdown handoff ログへ残し、終了時に未完了の背景作成があるかを追えるようにした
+- `CheckFolderAsync(...)` の watch table は共有 `watchData` を更新せず、走査ごとのローカル snapshot で回す形へ寄せ、背景走査と UI 表示用データの境界を分けた
+- ファイルコピー / リネーム時の watcher 一時停止復旧は、DB切替や終了で watcher が破棄済みでも例外をログへ閉じ、UI 操作完了を壊さないようにした
+- 起動直後の EverythingLite root prewarm は非同期 watcher apply 後の共有 `watchData` に依存せず、背景側で watch table snapshot を読んで空振りを避ける形へ寄せた
+- `WatcherEventQueue` の runner 起動も ThreadPool へ寄せ、FileSystemWatcher event handler から初回処理の同期前段をさらに外した
 - `Watcher.cs` はさらに、`context 初期化`、`background scan`、`scan pipeline`、`movie loop`、`pending flush`、`folder completion`、`run finish`、`folder failure recovery result` を helper / runtime 側へ寄せ、入口・中盤・終端を段単位で薄くした
 - `Watcher` の flow 制御は `WatchLoopDecision` を共通の戻り値として揃え、`return / break / continue` の判定を helper 経由で追える形へ寄せた
 - さらに `watch folder` 解決、`scan 準備`、`movie loop preparation`、`loop decision await/apply`、`folder phase result`、`run finish` 呼び出しを helper 化し、`CheckFolderAsync(...)` は「フォルダを選ぶ -> scan を準備する -> loop / flush / finish を順に流す」形へ近づいた

@@ -423,12 +423,13 @@ namespace IndigoMovieManager
         private bool TryLoadWatchTableForMode(
             CheckMode mode,
             string snapshotDbFullPath,
+            out DataTable watchTable,
             out string failureMessage
         )
         {
             string sql = ResolveWatchFolderQuerySql(mode);
-            GetWatchTable(snapshotDbFullPath, sql);
-            if (watchData != null)
+            watchTable = GetWatchTableSnapshot(snapshotDbFullPath, sql);
+            if (watchTable != null)
             {
                 failureMessage = "";
                 return true;
@@ -442,10 +443,18 @@ namespace IndigoMovieManager
         // watch テーブル取得失敗時の optional ログまでここで包み、Watcher 側は return 条件だけを見る。
         private bool TryLoadWatchTableForModeOrWriteFailure(
             CheckMode mode,
-            string snapshotDbFullPath
+            string snapshotDbFullPath,
+            out DataTable watchTable
         )
         {
-            if (TryLoadWatchTableForMode(mode, snapshotDbFullPath, out string failureMessage))
+            if (
+                TryLoadWatchTableForMode(
+                    mode,
+                    snapshotDbFullPath,
+                    out watchTable,
+                    out string failureMessage
+                )
+            )
             {
                 return true;
             }
