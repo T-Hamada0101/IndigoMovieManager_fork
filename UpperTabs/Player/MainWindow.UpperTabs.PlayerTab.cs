@@ -13,7 +13,7 @@ namespace IndigoMovieManager
     public partial class MainWindow
     {
         private const int PlayerTabIndex = 7;
-        private const double PlayerTabBottomLayoutWidthThreshold = 1260d;
+        private const int PlayerTabActivationAutoOpenMaxDelayMs = 250;
         private static readonly HashSet<string> WebViewPreferredPlayerExtensions = new(
             System.StringComparer.OrdinalIgnoreCase
         )
@@ -25,7 +25,7 @@ namespace IndigoMovieManager
         };
         private bool _suppressPlayerThumbnailSelectionChanged;
         private bool _suppressPlayerTabActivationAutoOpen;
-        private bool _isPlayerThumbnailCompactViewEnabled;
+        private int _playerTabActivationAutoOpenRevision;
         private bool _hasPendingPlayerPlaybackRequest;
         private int _pendingPlayerStartMilliseconds;
         private bool _pendingPlayerPlayImmediately;
@@ -48,9 +48,7 @@ namespace IndigoMovieManager
 
         private ListView GetUpperTabPlayerList()
         {
-            return _isPlayerThumbnailCompactViewEnabled
-                ? PlayerThumbnailCompactList
-                : PlayerThumbnailList;
+            return PlayerThumbnailList;
         }
 
         private IEnumerable<ListView> GetAllUpperTabPlayerLists()
@@ -58,11 +56,6 @@ namespace IndigoMovieManager
             if (PlayerThumbnailList != null)
             {
                 yield return PlayerThumbnailList;
-            }
-
-            if (PlayerThumbnailCompactList != null)
-            {
-                yield return PlayerThumbnailCompactList;
             }
         }
 
@@ -77,7 +70,15 @@ namespace IndigoMovieManager
         private void SelectUpperTabPlayerAsDefaultView()
         {
             SelectUpperTabByFixedIndex(PlayerTabIndex);
-            SelectFirstUpperTabPlayerItemIfAvailable();
+            _suppressPlayerThumbnailSelectionChanged = true;
+            try
+            {
+                SelectFirstUpperTabPlayerItemIfAvailable();
+            }
+            finally
+            {
+                _suppressPlayerThumbnailSelectionChanged = false;
+            }
         }
 
         private MovieRecords GetSelectedUpperTabPlayerMovieRecord()
@@ -159,21 +160,30 @@ namespace IndigoMovieManager
 
             if (selectionChanged)
             {
-                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "player-view-mode");
+                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "player-selection");
             }
         }
 
         // プレイヤータブ選択時は先頭選択を揃えたうえで、左ペインへ再生内容を同期する。
-        private async void HandleUpperTabPlayerSelectionChanged(
+        private void HandleUpperTabPlayerSelectionChanged(
             Stopwatch selectionStopwatch,
             int tabIndex
         )
         {
             UpdatePlayerTabLayoutMode();
 
-            MovieRecords selectedMovie = RefreshUpperTabExtensionDetailFromCurrentSelection(
-                selectFirstItem: true
-            );
+            MovieRecords selectedMovie;
+            _suppressPlayerThumbnailSelectionChanged = true;
+            try
+            {
+                selectedMovie = RefreshUpperTabExtensionDetailFromCurrentSelection(
+                    selectFirstItem: true
+                );
+            }
+            finally
+            {
+                _suppressPlayerThumbnailSelectionChanged = false;
+            }
             if (selectedMovie == null)
             {
                 selectionStopwatch.Stop();
@@ -196,12 +206,87 @@ namespace IndigoMovieManager
                 return;
             }
 
-            await OpenMovieInPlayerTabAsync(
-                selectedMovie,
-                0,
-                playImmediately: true,
-                mute: false,
-                focusTimeSlider: false
+            QueuePlayerTabActivationAutoOpen(selectedMovie);
+        }
+
+        // タブ表示そのものを先に返し、動画初期化は Dispatcher が落ち着いてから流す。
+        private void QueuePlayerTabActivationAutoOpen(MovieRecords selectedMovie)
+        {
+            if (selectedMovie == null)
+            {
+                return;
+            }
+
+            int revision = ++_playerTabActivationAutoOpenRevision;
+            _ = RunPlayerTabActivationAutoOpenAsync(selectedMovie, revision);
+        }
+
+        private async Task RunPlayerTabActivationAutoOpenAsync(
+            MovieRecords selectedMovie,
+            int revision
+        )
+        {
+            try
+            {
+                await WaitForPlayerDispatcherContextIdleOrDelayAsync();
+                if (
+                    revision != _playerTabActivationAutoOpenRevision
+                    || _suppressPlayerTabActivationAutoOpen
+                    || TabPlayer?.IsSelected != true
+                    || !IsSamePlayerTabAutoOpenMovie(
+                        GetSelectedUpperTabPlayerMovieRecord(),
+                        selectedMovie
+                    )
+                )
+                {
+                    return;
+                }
+
+                await OpenMovieInPlayerTabAsync(
+                    selectedMovie,
+                    0,
+                    playImmediately: true,
+                    mute: false,
+                    focusTimeSlider: false
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"player activation auto-open failed: {ex.GetType().Name} {ex.Message}"
+                );
+            }
+        }
+
+        private static bool IsSamePlayerTabAutoOpenMovie(
+            MovieRecords currentMovie,
+            MovieRecords requestedMovie
+        )
+        {
+            if (ReferenceEquals(currentMovie, requestedMovie))
+            {
+                return true;
+            }
+
+            if (currentMovie == null || requestedMovie == null)
+            {
+                return false;
+            }
+
+            if (
+                currentMovie.Movie_Id > 0
+                && requestedMovie.Movie_Id > 0
+                && currentMovie.Movie_Id == requestedMovie.Movie_Id
+            )
+            {
+                return true;
+            }
+
+            return string.Equals(
+                currentMovie.Movie_Path,
+                requestedMovie.Movie_Path,
+                System.StringComparison.OrdinalIgnoreCase
             );
         }
 
@@ -237,16 +322,6 @@ namespace IndigoMovieManager
         {
             UpdatePlayerTabLayoutMode();
             UpdateManualPlayerViewport();
-        }
-
-        private void PlayerThumbnailSingleColumnButton_Click(object sender, RoutedEventArgs e)
-        {
-            SetPlayerThumbnailCompactViewMode(false);
-        }
-
-        private void PlayerThumbnailCompactGridButton_Click(object sender, RoutedEventArgs e)
-        {
-            SetPlayerThumbnailCompactViewMode(true);
         }
 
         // プレイヤータブ上では一覧選択と再生面を同じ動画へ揃え、手動サムネ導線もここへ寄せる。
@@ -463,6 +538,33 @@ namespace IndigoMovieManager
             }
         }
 
+        private async Task WaitForPlayerDispatcherContextIdleOrDelayAsync()
+        {
+            if (Dispatcher == null || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                Task idleTask = Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle).Task;
+                Task delayTask = Task.Delay(PlayerTabActivationAutoOpenMaxDelayMs);
+                Task completedTask = await Task.WhenAny(idleTask, delayTask);
+                if (ReferenceEquals(completedTask, idleTask))
+                {
+                    await idleTask;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // shutdown 競合時はここで止めず、予約再生を捨てる。
+            }
+            catch (TaskCanceledException)
+            {
+                // Dispatcher 側で中断された待機は安全に捨てる。
+            }
+        }
+
         // Source 差し替えと MediaOpened の間でも、再生要求を落とさず持ち運ぶ。
         private void RememberPendingPlayerPlaybackRequest(
             int startMilliseconds,
@@ -619,6 +721,8 @@ namespace IndigoMovieManager
         // タブを離れたら音だけ残さないよう一旦止め、戻った時は同じ動画を再開しやすくする。
         private void PausePlayerTabPlaybackForBackground()
         {
+            ++_playerTabActivationAutoOpenRevision;
+
             if (_isDetachedPlayerFullscreenActive)
             {
                 return;
@@ -673,7 +777,7 @@ namespace IndigoMovieManager
             return availableWidth > 0d && availableHeight > 0d;
         }
 
-        // 横幅が足りない時は一覧を下へ落とし、プレイヤー面積を優先する。
+        // プレイヤータブは右レール固定に寄せ、Grid風サムネを1系統だけ流す。
         private void UpdatePlayerTabLayoutMode()
         {
             if (
@@ -692,28 +796,6 @@ namespace IndigoMovieManager
             }
 
             PlayerThumbnailHost.Visibility = Visibility.Visible;
-            bool useBottomLayout =
-                PlayerTabLayoutRoot.ActualWidth > 0d
-                && PlayerTabLayoutRoot.ActualWidth < PlayerTabBottomLayoutWidthThreshold;
-
-            if (useBottomLayout)
-            {
-                Grid.SetRow(PlayerSurfaceHost, 0);
-                Grid.SetColumn(PlayerSurfaceHost, 0);
-                Grid.SetColumnSpan(PlayerSurfaceHost, 3);
-                Grid.SetRow(PlayerThumbnailHost, 2);
-                Grid.SetColumn(PlayerThumbnailHost, 0);
-                Grid.SetColumnSpan(PlayerThumbnailHost, 3);
-
-                PlayerTabMainColumn.Width = new GridLength(1d, GridUnitType.Star);
-                PlayerTabGapColumn.Width = new GridLength(0d);
-                PlayerTabSideColumn.Width = new GridLength(0d);
-                PlayerTabTopRow.Height = new GridLength(1d, GridUnitType.Star);
-                PlayerTabGapRow.Height = new GridLength(12d);
-                PlayerTabBottomRow.Height = new GridLength(320d);
-                return;
-            }
-
             Grid.SetRow(PlayerSurfaceHost, 0);
             Grid.SetColumn(PlayerSurfaceHost, 0);
             Grid.SetColumnSpan(PlayerSurfaceHost, 1);
@@ -722,87 +804,11 @@ namespace IndigoMovieManager
             Grid.SetColumnSpan(PlayerThumbnailHost, 1);
 
             PlayerTabMainColumn.Width = new GridLength(1d, GridUnitType.Star);
-            PlayerTabGapColumn.Width = new GridLength(16d);
-            PlayerTabSideColumn.Width = new GridLength(280d);
+            PlayerTabGapColumn.Width = new GridLength(12d);
+            PlayerTabSideColumn.Width = new GridLength(264d);
             PlayerTabTopRow.Height = new GridLength(1d, GridUnitType.Star);
             PlayerTabGapRow.Height = new GridLength(0d);
             PlayerTabBottomRow.Height = new GridLength(0d);
-        }
-
-        // 右側一覧は 1列詳細と 3列小サムネを切り替え、選択中の動画だけは必ず持ち歩く。
-        private void SetPlayerThumbnailCompactViewMode(bool enabled)
-        {
-            if (_isPlayerThumbnailCompactViewEnabled == enabled)
-            {
-                return;
-            }
-
-            _isPlayerThumbnailCompactViewEnabled = enabled;
-
-            if (PlayerThumbnailList != null)
-            {
-                PlayerThumbnailList.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
-            }
-
-            if (PlayerThumbnailCompactList != null)
-            {
-                PlayerThumbnailCompactList.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-            }
-
-            if (PlayerThumbnailSingleColumnButton != null)
-            {
-                PlayerThumbnailSingleColumnButton.IsChecked = !enabled;
-            }
-
-            if (PlayerThumbnailCompactGridButton != null)
-            {
-                PlayerThumbnailCompactGridButton.IsChecked = enabled;
-            }
-
-            MovieRecords selectedMovie = GetSelectedUpperTabPlayerMovieRecord();
-            if (selectedMovie == null)
-            {
-                selectedMovie = PlayerThumbnailList?.SelectedItem as MovieRecords
-                    ?? PlayerThumbnailCompactList?.SelectedItem as MovieRecords;
-            }
-
-            if (selectedMovie == null)
-            {
-                SelectFirstUpperTabPlayerItemIfAvailable();
-                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "player-view-mode");
-                return;
-            }
-
-            _suppressPlayerThumbnailSelectionChanged = true;
-            try
-            {
-                bool activeListSelectionChanged = false;
-                ListView activeList = GetUpperTabPlayerList();
-                foreach (ListView list in GetAllUpperTabPlayerLists())
-                {
-                    if (ReferenceEquals(list.SelectedItem, selectedMovie))
-                    {
-                        continue;
-                    }
-
-                    list.SelectedItem = selectedMovie;
-                    if (ReferenceEquals(list, activeList))
-                    {
-                        activeListSelectionChanged = true;
-                    }
-                }
-
-                if (activeListSelectionChanged)
-                {
-                    GetUpperTabPlayerList()?.ScrollIntoView(selectedMovie);
-                }
-            }
-            finally
-            {
-                _suppressPlayerThumbnailSelectionChanged = false;
-            }
-
-            RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "player-view-mode");
         }
 
         private void SyncPlayerThumbnailSelectionAcrossViews(

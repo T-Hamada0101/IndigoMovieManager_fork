@@ -236,20 +236,30 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void PlayerThumbnailViewMode_同一モード再選択では再スクロールしない()
+    public void PlayerThumbnailRail_Grid風1系統で切替と二重同期を持たない()
     {
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string viewportSource = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
 
+        Assert.That(mainWindowXaml, Does.Contain("x:Name=\"PlayerThumbnailList\""));
+        Assert.That(mainWindowXaml, Does.Contain("<vwp:VirtualizingWrapPanel"));
+        Assert.That(mainWindowXaml, Does.Contain("右レールはGrid風の固定幅だけにして"));
         Assert.That(
             upperTabPlayerSource,
-            Does.Contain("if (_isPlayerThumbnailCompactViewEnabled == enabled)")
+            Does.Contain("return PlayerThumbnailList;")
         );
-        Assert.That(upperTabPlayerSource, Does.Contain("return;"));
-        Assert.That(upperTabPlayerSource, Does.Contain("GetUpperTabPlayerList()?.ScrollIntoView(selectedMovie);"));
         Assert.That(
             upperTabPlayerSource,
-            Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"player-view-mode\");")
+            Does.Contain("プレイヤータブは右レール固定に寄せ、Grid風サムネを1系統だけ流す。")
         );
+        Assert.That(mainWindowXaml, Does.Not.Contain("PlayerThumbnailCompactList"));
+        Assert.That(mainWindowXaml, Does.Not.Contain("PlayerThumbnailSingleColumnButton"));
+        Assert.That(mainWindowXaml, Does.Not.Contain("PlayerThumbnailCompactGridButton"));
+        Assert.That(upperTabPlayerSource, Does.Not.Contain("_isPlayerThumbnailCompactViewEnabled"));
+        Assert.That(upperTabPlayerSource, Does.Not.Contain("SetPlayerThumbnailCompactViewMode"));
+        Assert.That(upperTabPlayerSource, Does.Not.Contain("PlayerTabBottomLayoutWidthThreshold"));
+        Assert.That(viewportSource, Does.Not.Contain("AttachUpperTabScrollViewer(PlayerThumbnailCompactList);"));
     }
 
     [Test]
@@ -323,7 +333,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         );
         Assert.That(
             upperTabPlayerSource,
-            Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"player-view-mode\");")
+            Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"player-selection\");")
         );
     }
 
@@ -352,6 +362,113 @@ public sealed class ManualPlayerResizeHookPolicyTests
             upperTabPlayerSource,
             Does.Contain("await WaitForPlayerDispatcherBackgroundAsync();")
         );
+    }
+
+    [Test]
+    public void PlayerTabActivationAutoOpen_タブ表示後のContextIdleへ遅延する()
+    {
+        // タブ切替は先に完了させ、動画初期化だけを後段へ送って初動の重さを抑える。
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("private int _playerTabActivationAutoOpenRevision;")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("QueuePlayerTabActivationAutoOpen(selectedMovie);")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("private async Task RunPlayerTabActivationAutoOpenAsync(")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("await WaitForPlayerDispatcherContextIdleOrDelayAsync();")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("DispatcherPriority.ContextIdle")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("private const int PlayerTabActivationAutoOpenMaxDelayMs = 250;")
+        );
+        Assert.That(upperTabPlayerSource, Does.Contain("Task.Delay(PlayerTabActivationAutoOpenMaxDelayMs)"));
+        Assert.That(upperTabPlayerSource, Does.Contain("Task.WhenAny(idleTask, delayTask)"));
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("revision != _playerTabActivationAutoOpenRevision")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("TabPlayer?.IsSelected != true")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("!IsSamePlayerTabAutoOpenMovie(")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("currentMovie.Movie_Id == requestedMovie.Movie_Id")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("System.StringComparison.OrdinalIgnoreCase")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("player activation auto-open failed")
+        );
+    }
+
+    [Test]
+    public void HandleUpperTabPlayerSelectionChanged_自動再生を直接awaitしない()
+    {
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string handler = GetMethodBlock(
+            upperTabPlayerSource,
+            "private void HandleUpperTabPlayerSelectionChanged("
+        );
+
+        Assert.That(handler, Does.Contain("QueuePlayerTabActivationAutoOpen(selectedMovie);"));
+        Assert.That(handler, Does.Not.Contain("await OpenMovieInPlayerTabAsync("));
+    }
+
+    [Test]
+    public void PlayerTabActivationAutoOpen_先頭選択のSelectionChanged即再生を抑止する()
+    {
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string defaultViewMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private void SelectUpperTabPlayerAsDefaultView()"
+        );
+        string handler = GetMethodBlock(
+            upperTabPlayerSource,
+            "private void HandleUpperTabPlayerSelectionChanged("
+        );
+
+        Assert.That(defaultViewMethod, Does.Contain("_suppressPlayerThumbnailSelectionChanged = true;"));
+        Assert.That(defaultViewMethod, Does.Contain("SelectFirstUpperTabPlayerItemIfAvailable();"));
+        Assert.That(defaultViewMethod, Does.Contain("_suppressPlayerThumbnailSelectionChanged = false;"));
+        Assert.That(handler, Does.Contain("_suppressPlayerThumbnailSelectionChanged = true;"));
+        Assert.That(
+            handler,
+            Does.Contain("RefreshUpperTabExtensionDetailFromCurrentSelection(")
+        );
+        Assert.That(handler, Does.Contain("_suppressPlayerThumbnailSelectionChanged = false;"));
+    }
+
+    [Test]
+    public void PausePlayerTabPlaybackForBackground_予約自動再生を無効化する()
+    {
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string pauseMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private void PausePlayerTabPlaybackForBackground()"
+        );
+
+        Assert.That(pauseMethod, Does.Contain("++_playerTabActivationAutoOpenRevision;"));
     }
 
     [Test]

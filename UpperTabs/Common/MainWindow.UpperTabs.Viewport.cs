@@ -291,7 +291,6 @@ namespace IndigoMovieManager
             AttachUpperTabScrollViewer(BigList);
             AttachUpperTabScrollViewer(GridList);
             AttachUpperTabScrollViewer(PlayerThumbnailList);
-            AttachUpperTabScrollViewer(PlayerThumbnailCompactList);
             AttachUpperTabScrollViewer(ListDataGrid);
             AttachUpperTabScrollViewer(BigList10);
         }

@@ -694,8 +694,8 @@
                       </Grid.RowDefinitions>
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition x:Name="PlayerTabMainColumn" Width="*" />
-                        <ColumnDefinition x:Name="PlayerTabGapColumn" Width="16" />
-                        <ColumnDefinition x:Name="PlayerTabSideColumn" Width="280" />
+                        <ColumnDefinition x:Name="PlayerTabGapColumn" Width="12" />
+                        <ColumnDefinition x:Name="PlayerTabSideColumn" Width="264" />
                       </Grid.ColumnDefinitions>
 
                       <Border
@@ -916,131 +916,25 @@
                         x:Name="PlayerThumbnailHost"
                         Grid.Row="0"
                         Grid.Column="2"
-                        Padding="8"
+                        Padding="6"
                         Background="{DynamicResource MaterialDesignPaper}"
                         BorderBrush="{DynamicResource MaterialDesignDivider}"
                         BorderThickness="1"
                         CornerRadius="6"
                       >
                         <DockPanel LastChildFill="True">
-                          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                            <DockPanel LastChildFill="False">
-                              <TextBlock
-                                VerticalAlignment="Center"
-                                FontSize="14"
-                                FontWeight="SemiBold"
-                                Foreground="{DynamicResource MaterialDesignBody}"
-                                Text="Grid サムネ"
-                              />
-                              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <ToggleButton
-                                  x:Name="PlayerThumbnailSingleColumnButton"
-                                  Width="32"
-                                  Height="28"
-                                  Margin="18,0,0,0"
-                                  Click="PlayerThumbnailSingleColumnButton_Click"
-                                  IsChecked="True"
-                                  ToolTip="1列表示"
-                                >
-                                  <materialDesign:PackIcon Kind="ViewAgendaOutline" />
-                                </ToggleButton>
-                                <ToggleButton
-                                  x:Name="PlayerThumbnailCompactGridButton"
-                                  Width="32"
-                                  Height="28"
-                                  Margin="18,0,0,0"
-                                  Click="PlayerThumbnailCompactGridButton_Click"
-                                  ToolTip="3列表示"
-                                >
-                                  <materialDesign:PackIcon Kind="ViewGridOutline" />
-                                </ToggleButton>
-                              </StackPanel>
-                            </DockPanel>
-                            <TextBlock
-                              Margin="0,4,0,0"
-                              FontSize="12"
-                              Foreground="{DynamicResource MaterialDesignBody}"
-                              Opacity="0.78"
-                              Text="1列詳細と3列小サムネを切り替えできます"
-                              TextWrapping="Wrap"
-                            />
-                          </StackPanel>
+                          <TextBlock
+                            DockPanel.Dock="Top"
+                            Margin="0,0,0,8"
+                            VerticalAlignment="Center"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource MaterialDesignBody}"
+                            Text="Grid サムネ"
+                          />
 
                           <ListView
                             x:Name="PlayerThumbnailList"
-                            ItemsSource="{Binding FilteredMovieRecs, UpdateSourceTrigger=PropertyChanged}"
-                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                            ScrollViewer.IsDeferredScrollingEnabled="True"
-                            SelectionChanged="PlayerThumbnailList_SelectionChanged"
-                            SelectionMode="Extended"
-                            VirtualizingPanel.IsVirtualizing="True"
-                            VirtualizingPanel.VirtualizationMode="Recycling"
-                          >
-                            <ListView.ItemsPanel>
-                              <ItemsPanelTemplate>
-                                <VirtualizingStackPanel
-                                  IsVirtualizing="True"
-                                  VirtualizationMode="Recycling"
-                                />
-                              </ItemsPanelTemplate>
-                            </ListView.ItemsPanel>
-
-                            <ListView.ItemTemplate>
-                              <DataTemplate>
-                                <Border
-                                  Margin="0,0,0,8"
-                                  Padding="6"
-                                  Background="{DynamicResource MaterialDesignCardBackground}"
-                                  BorderBrush="{DynamicResource MaterialDesignDivider}"
-                                  BorderThickness="1"
-                                  CornerRadius="4"
-                                >
-                                  <StackPanel>
-                                    <Label
-                                      Width="240"
-                                      Height="180"
-                                      Padding="0"
-                                      BorderThickness="0"
-                                      Background="{DynamicResource ThumbImageBackground}"
-                                      ContextMenu="{StaticResource menuContext}"
-                                      MouseDown="Label_MouseDown"
-                                    >
-                                      <Image Stretch="Uniform">
-                                        <Image.Source>
-                                          <MultiBinding
-                                            Converter="{StaticResource upperTabImageSourceConverter}"
-                                            ConverterParameter="{x:Static upperTabsCommon:UpperTabDecodeProfile.GridDecodePixelHeight}"
-                                          >
-                                            <Binding Path="ThumbPathGrid" />
-                                            <Binding Path="IsExists" />
-                                            <Binding Source="{x:Reference PlayerThumbnailList}" Path="IsVisible" />
-                                            <Binding Path="Movie_Path" />
-                                          </MultiBinding>
-                                        </Image.Source>
-                                      </Image>
-                                    </Label>
-                                    <TextBlock
-                                      Margin="0,8,0,0"
-                                      FontSize="12"
-                                      FontWeight="SemiBold"
-                                      Foreground="{DynamicResource MaterialDesignBody}"
-                                      Text="{Binding Movie_Name, UpdateSourceTrigger=PropertyChanged}"
-                                      TextTrimming="CharacterEllipsis"
-                                    />
-                                    <TextBlock
-                                      Margin="0,4,0,0"
-                                      FontSize="11"
-                                      Foreground="{DynamicResource MaterialDesignBody}"
-                                      Opacity="0.78"
-                                      Text="{Binding Movie_Length, UpdateSourceTrigger=PropertyChanged}"
-                                    />
-                                  </StackPanel>
-                                </Border>
-                              </DataTemplate>
-                            </ListView.ItemTemplate>
-                          </ListView>
-                          <ListView
-                            x:Name="PlayerThumbnailCompactList"
                             Width="252"
                             HorizontalAlignment="Left"
                             ItemsSource="{Binding FilteredMovieRecs, UpdateSourceTrigger=PropertyChanged}"
@@ -1052,7 +946,6 @@
                             VirtualizingPanel.IsVirtualizing="True"
                             VirtualizingPanel.ScrollUnit="Pixel"
                             VirtualizingPanel.VirtualizationMode="Recycling"
-                            Visibility="Collapsed"
                           >
                             <ListView.ItemsPanel>
                               <ItemsPanelTemplate>
@@ -1069,7 +962,7 @@
 
                             <ListView.ItemContainerStyle>
                               <Style TargetType="ListViewItem">
-                                <!--  3列表示は固定幅にして、スクロール中の再計算を最小化する。  -->
+                                <!--  右レールはGrid風の固定幅だけにして、切替と再計算を持ち込まない。  -->
                                 <Setter Property="Width" Value="74" />
                                 <Setter Property="Margin" Value="0,0,4,8" />
                                 <Setter Property="Padding" Value="0" />
@@ -1141,7 +1034,7 @@
                                           >
                                             <Binding Path="ThumbPathGrid" />
                                             <Binding Path="IsExists" />
-                                            <Binding Source="{x:Reference PlayerThumbnailCompactList}" Path="IsVisible" />
+                                            <Binding Source="{x:Reference PlayerThumbnailList}" Path="IsVisible" />
                                           </MultiBinding>
                                         </Image.Source>
                                       </Image>
