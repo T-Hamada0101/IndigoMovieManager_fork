@@ -5,6 +5,8 @@ namespace IndigoMovieManager.Skin.Runtime
     /// </summary>
     public sealed class WhiteBrowserSkinApiServiceDependencies
     {
+        public Func<WhiteBrowserSkinApiUiSnapshot> GetUiSnapshot { get; init; } = null;
+
         public Func<IReadOnlyList<MovieRecords>> GetVisibleMovies { get; init; } =
             static () => Array.Empty<MovieRecords>();
 
@@ -69,6 +71,32 @@ namespace IndigoMovieManager.Skin.Runtime
         public Action<string> Trace { get; init; } = static _ => { };
 
         public Func<string, string> ResolveThumbUrl { get; init; } = static _ => "";
+
+        public WhiteBrowserSkinApiUiSnapshot CaptureUiSnapshot()
+        {
+            WhiteBrowserSkinApiUiSnapshot snapshot = GetUiSnapshot?.Invoke();
+            if (snapshot != null)
+            {
+                return snapshot;
+            }
+
+            // 旧依存は互換入口として残し、MainWindow 側の一本化が未接続でも同じ値を組み立てる。
+            return new WhiteBrowserSkinApiUiSnapshot(
+                GetVisibleMovies(),
+                GetCurrentTabIndex(),
+                GetCurrentDbFullPath(),
+                GetCurrentDbName(),
+                GetCurrentSkinName(),
+                GetCurrentSortId(),
+                GetCurrentSortName(),
+                GetCurrentSearchKeyword(),
+                GetRegisteredMovieCount(),
+                GetCurrentFilterTokens(),
+                GetCurrentThumbFolder(),
+                GetCurrentSelectedMovie(),
+                GetCurrentSelectedMovies()
+            );
+        }
     }
 
     public sealed class WhiteBrowserSkinProfileValueReadResult

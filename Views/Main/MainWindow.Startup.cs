@@ -33,6 +33,7 @@ namespace IndigoMovieManager
         private MovieRecordBulkBuildContext? _startupContinuationBulkContext;
         private MovieRecordBulkBuildCache _startupContinuationBulkCache = null!;
         private CancellationToken _startupContinuationCancellationToken;
+        private int _startupSessionRevision;
         private int _startupContinuationRevision;
         private int _startupNextPageIndex = 1;
         private bool _startupHasMorePages;
@@ -84,6 +85,7 @@ namespace IndigoMovieManager
         {
             using IDisposable uiHangScope = TrackUiHangActivity(request.ActivityKind);
             StartupLoadSession session = _startupLoadCoordinator.StartNewSession();
+            _startupSessionRevision = session.Revision;
             _startupFeedIsPartialActive = true;
             _startupFeedLoadedAllPages = false;
             _startupInputReadyLogged = false;
@@ -209,7 +211,6 @@ namespace IndigoMovieManager
 
                         _startupLightServicesStarted = true;
                         ReloadBookmarkTabData();
-                        QueueStartupWatcherCreation(revision);
                         QueueThumbnailSuccessIndexPrewarm();
                         QueueEverythingLiteWatchRootPrewarm();
                         DebugRuntimeLog.Write(
@@ -240,7 +241,12 @@ namespace IndigoMovieManager
                 DispatcherPriority.ApplicationIdle,
                 new Action(() =>
                 {
-                    if (!_startupLoadCoordinator.IsCurrent(revision) || !_startupLightServicesStarted)
+                    if (revision > 0 && !_startupLoadCoordinator.IsCurrent(revision))
+                    {
+                        return;
+                    }
+
+                    if (!_startupLightServicesStarted && !_startupHeavyServicesStarted)
                     {
                         return;
                     }
@@ -259,11 +265,22 @@ namespace IndigoMovieManager
         {
             string dbName = MainVM?.DbInfo?.DBName ?? "";
             string thumbFolder = MainVM?.DbInfo?.ThumbFolder ?? "";
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
             if (string.IsNullOrWhiteSpace(dbName) && string.IsNullOrWhiteSpace(thumbFolder))
             {
                 return;
             }
 
+            _ = Task.Run(() => PrewarmThumbnailSuccessIndexCore(dbName, thumbFolder, dbFullPath));
+        }
+
+        // 起動直後のUI tickを空けるため、成功jpg索引の構築は背景でまとめて進める。
+        private void PrewarmThumbnailSuccessIndexCore(
+            string dbName,
+            string thumbFolder,
+            string dbFullPath
+        )
+        {
             HashSet<string> queuedOutPaths = new(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < StartupThumbnailPrewarmTabIndexes.Length; i++)
             {
@@ -282,7 +299,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"thumbnail index prewarm queued: count={queuedOutPaths.Count} db='{MainVM?.DbInfo?.DBFullPath ?? ""}'"
+                $"thumbnail index prewarm queued: count={queuedOutPaths.Count} db='{dbFullPath}'"
             );
         }
 
@@ -631,6 +648,7 @@ namespace IndigoMovieManager
             _startupHeavyServicesStarted = true;
             SetThumbnailQueueInputEnabled(true);
             EnsureStartupBackgroundTasksRunning(trigger);
+            QueueStartupWatcherCreation(_startupSessionRevision);
             DebugRuntimeLog.TaskStart(nameof(CheckFolderAsync), $"mode=Auto trigger={trigger}");
             _ = QueueCheckFolderAsync(CheckMode.Auto, trigger);
             StartKanaBackfillIfNeeded(trigger);
@@ -647,6 +665,7 @@ namespace IndigoMovieManager
             _startupFeedLoadedAllPages = false;
             _startupLightServicesStarted = false;
             _startupHeavyServicesStarted = false;
+            _startupSessionRevision = 0;
             ClearStartupContinuationState();
 
             DebugRuntimeLog.Write(
@@ -664,6 +683,7 @@ namespace IndigoMovieManager
 
             _startupLoadCoordinator.CancelCurrent();
             _startupFeedIsPartialActive = false;
+            _startupSessionRevision = 0;
             ClearStartupContinuationState();
 
             DebugRuntimeLog.Write(

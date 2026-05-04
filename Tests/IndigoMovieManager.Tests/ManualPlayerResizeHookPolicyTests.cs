@@ -35,8 +35,12 @@ public sealed class ManualPlayerResizeHookPolicyTests
         string source = GetMainWindowPlayerSourceText();
 
         Assert.That(source, Does.Contain("private DispatcherTimer _playerVolumeSaveDebounceTimer;"));
+        Assert.That(source, Does.Contain("private Task _playerVolumeSettingsSaveTask = Task.CompletedTask;"));
         Assert.That(source, Does.Contain("private void QueuePlayerVolumeSettingSave()"));
         Assert.That(source, Does.Contain("private void PlayerVolumeSaveDebounceTimer_Tick("));
+        Assert.That(source, Does.Contain("QueuePlayerVolumeSettingSaveInBackground();"));
+        Assert.That(source, Does.Contain("WaitForPlayerVolumeSettingSaveForShutdown("));
+        Assert.That(source, Does.Contain("TaskScheduler.Default"));
         Assert.That(
             source,
             Does.Contain("Math.Abs(Properties.Settings.Default.PlayerVolume - resolvedVolume) > 0.0001d")
@@ -138,6 +142,30 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(resolveAsyncMethod, Does.Contain("Task.Run("));
         Assert.That(resolveMethod, Does.Contain("MovieInfo movieInfo = new("));
         Assert.That(resolveMethod, Does.Contain("Math.Max(1, (int)movieInfo.FPS)"));
+    }
+
+    [Test]
+    public void PlayMovie_Click_サムネイル再生位置の解析は背景へ逃がす()
+    {
+        string playerSource = GetMainWindowPlayerSourceText();
+        string xamlSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string playMethod = GetMethodBlock(playerSource, "public async void PlayMovie_Click(");
+        string manualMethod = GetMethodBlock(
+            playerSource,
+            "private async void ManualThumbnail_Click("
+        );
+        string resolverMethod = GetMethodBlock(
+            playerSource,
+            "private Task<(int Milliseconds, int Position, bool HasPosition)> ResolveSelectedThumbnailPlaybackPositionAsync("
+        );
+
+        Assert.That(playMethod, Does.Contain("await ResolveSelectedThumbnailPlaybackPositionAsync("));
+        Assert.That(manualMethod, Does.Contain("await ResolveSelectedThumbnailPlaybackPositionAsync("));
+        Assert.That(playMethod, Does.Not.Contain("GetPlayPosition("));
+        Assert.That(manualMethod, Does.Not.Contain("GetPlayPosition("));
+        Assert.That(resolverMethod, Does.Contain("Task.Run(() =>"));
+        Assert.That(xamlSource, Does.Contain("private static bool TryResolveThumbnailPlaybackPosition("));
+        Assert.That(xamlSource, Does.Contain("thumbInfo.GetThumbInfo(thumbPath);"));
     }
 
     [Test]

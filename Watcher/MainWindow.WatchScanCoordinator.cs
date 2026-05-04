@@ -221,12 +221,23 @@ namespace IndigoMovieManager
                 incrementalUiUpdateThreshold,
                 canUseQueryOnlyWatchReload
             );
+            bool hasChanges = newMovieCount > 0;
+            bool isWatchMode = mode == CheckMode.Watch;
+            string planReason = ResolveWatchUiReloadPlanReason(
+                hasChanges,
+                isWatchMode,
+                isSuppressed: false,
+                canUseQueryOnlyReload: nextCanUseQueryOnlyWatchReload
+            );
+            string changedPathFallbackReason = wasDowngradedToFull
+                ? "bulk-watch-batch"
+                : "none";
 
             string downgradedMessage = wasDowngradedToFull
-                ? $"watch final reload downgraded to full: folder='{checkFolder}' reason=bulk-watch-batch new={newMovieCount}"
+                ? $"watch final reload downgraded to full: folder='{checkFolder}' reason=bulk-watch-batch new={newMovieCount} can_query_only_before={canUseQueryOnlyWatchReload} can_query_only_after={nextCanUseQueryOnlyWatchReload} plan_reason={planReason} changed_path_fallback={changedPathFallbackReason}"
                 : "";
             string scanModeMessage =
-                $"scan mode: folder='{checkFolder}' new={newMovieCount} mode={(useIncrementalUiMode ? "small" : "bulk")} threshold={incrementalUiUpdateThreshold}";
+                $"scan mode: folder='{checkFolder}' new={newMovieCount} mode={(useIncrementalUiMode ? "small" : "bulk")} threshold={incrementalUiUpdateThreshold} can_query_only={nextCanUseQueryOnlyWatchReload} plan_reason={planReason} changed_path_fallback={changedPathFallbackReason}";
             return (
                 useIncrementalUiMode,
                 nextCanUseQueryOnlyWatchReload,

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading.Tasks;
 using IndigoMovieManager.Thumbnail.QueueDb;
 
 namespace IndigoMovieManager
@@ -108,7 +109,7 @@ namespace IndigoMovieManager
             }
 
             Properties.Settings.Default.LastMainDbDialogDirectory = resolvedDirectory;
-            Properties.Settings.Default.Save();
+            QueueApplicationSettingsSave("main-db-dialog-directory");
         }
 
         // 切り替え前の見た目保存とメニュー状態調整をまとめて扱う。
@@ -143,7 +144,7 @@ namespace IndigoMovieManager
             if (ShouldRememberLastDocOnSuccessfulDbSwitch(context.Source))
             {
                 Properties.Settings.Default.LastDoc = context.TargetDbFullPath;
-                Properties.Settings.Default.Save();
+                QueueApplicationSettingsSave("main-db-last-doc");
             }
 
             // DBが変わったら、poll用の監視フォルダsnapshotも次回だけ組み直す。
@@ -166,7 +167,22 @@ namespace IndigoMovieManager
                 return;
             }
 
-            string oldQueueDbPath = QueueDbPathResolver.ResolveQueueDbPath(context.CurrentDbFullPath);
+            // 切替完了の体感待ちを減らすため、旧DB掃除はUI外で安全に後追いする。
+            _ = Task.Run(
+                () =>
+                    DiscardPreviousDbPendingThumbnailQueueItemsInBackground(
+                        context.CurrentDbFullPath,
+                        context.TargetDbFullPath
+                    )
+            );
+        }
+
+        private static void DiscardPreviousDbPendingThumbnailQueueItemsInBackground(
+            string currentDbFullPath,
+            string targetDbFullPath
+        )
+        {
+            string oldQueueDbPath = QueueDbPathResolver.ResolveQueueDbPath(currentDbFullPath);
             if (!Path.Exists(oldQueueDbPath))
             {
                 return;
@@ -174,18 +190,18 @@ namespace IndigoMovieManager
 
             try
             {
-                QueueDbService queueDbService = new(context.CurrentDbFullPath);
+                QueueDbService queueDbService = new(currentDbFullPath);
                 int deleted = queueDbService.DeletePending();
                 DebugRuntimeLog.Write(
                     "queue-ops",
-                    $"switch pending discard: deleted={deleted} current='{context.CurrentDbFullPath}' target='{context.TargetDbFullPath}'"
+                    $"switch pending discard: deleted={deleted} current='{currentDbFullPath}' target='{targetDbFullPath}'"
                 );
             }
             catch (Exception ex)
             {
                 DebugRuntimeLog.Write(
                     "queue-ops",
-                    $"switch pending discard failed: current='{context.CurrentDbFullPath}' target='{context.TargetDbFullPath}' err='{ex.GetType().Name}: {ex.Message}'"
+                    $"switch pending discard failed: current='{currentDbFullPath}' target='{targetDbFullPath}' err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }

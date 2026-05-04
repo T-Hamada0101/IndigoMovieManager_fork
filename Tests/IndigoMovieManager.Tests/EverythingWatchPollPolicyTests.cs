@@ -127,6 +127,7 @@ public sealed class EverythingWatchPollPolicyTests
             Assert.That(GetPrivateField<int>(window, "_lastEverythingPollUpdateCount"), Is.EqualTo(0));
             Assert.That(GetPrivateField<int>(window, "_consecutiveCalmEverythingPollCount"), Is.EqualTo(0));
             Assert.That(GetPrivateField<int>(window, "_lastEverythingPollDelayMs"), Is.EqualTo(3000));
+            Assert.That(GetPrivateField<int>(window, "_lastEverythingPollEligibleWatchFolderCount"), Is.EqualTo(0));
             Assert.That(GetPrivateField<long>(window, "_everythingWatchPollLoopStartedTick64"), Is.GreaterThan(0));
         });
     }
@@ -196,6 +197,54 @@ public sealed class EverythingWatchPollPolicyTests
     }
 
     [Test]
+    public void ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped_既知間隔はそのまま返す()
+    {
+        Assert.That(
+            MainWindow.ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped(3000),
+            Is.EqualTo(3000)
+        );
+        Assert.That(
+            MainWindow.ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped(6000),
+            Is.EqualTo(6000)
+        );
+        Assert.That(
+            MainWindow.ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped(9000),
+            Is.EqualTo(9000)
+        );
+        Assert.That(
+            MainWindow.ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped(15000),
+            Is.EqualTo(15000)
+        );
+    }
+
+    [Test]
+    public void ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped_未知の値は基本間隔へ戻す()
+    {
+        Assert.That(
+            MainWindow.ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped(1234),
+            Is.EqualTo(3000)
+        );
+    }
+
+    [Test]
+    public void ResolveEverythingWatchPollDelayMs_queue_probe_skip時は前回間隔を再利用する()
+    {
+        MainWindow window = CreateWindow();
+        SetPrivateField(window, "_lastEverythingPollDelayMs", 15000);
+
+        int delayMs = InvokePrivateInt(
+            window,
+            "ResolveEverythingWatchPollDelayMs",
+            false,
+            false,
+            false,
+            false
+        );
+
+        Assert.That(delayMs, Is.EqualTo(15000));
+    }
+
+    [Test]
     public void ApplyEverythingWatchPollInteractionDelayPolicy_通常時は遅延を変えない()
     {
         int delayMs = MainWindow.ApplyEverythingWatchPollInteractionDelayPolicy(
@@ -245,6 +294,28 @@ public sealed class EverythingWatchPollPolicyTests
         );
 
         Assert.That(delayMs, Is.EqualTo(15000));
+    }
+
+    [Test]
+    public void ApplyEverythingWatchPollEligibilityDelayPolicy_eligible無しならbusy間隔まで延長する()
+    {
+        int delayMs = MainWindow.ApplyEverythingWatchPollEligibilityDelayPolicy(
+            delayMs: 3000,
+            hasEligibleWatchFolders: false
+        );
+
+        Assert.That(delayMs, Is.EqualTo(15000));
+    }
+
+    [Test]
+    public void ApplyEverythingWatchPollEligibilityDelayPolicy_eligible有りなら既存間隔を維持する()
+    {
+        int delayMs = MainWindow.ApplyEverythingWatchPollEligibilityDelayPolicy(
+            delayMs: 3000,
+            hasEligibleWatchFolders: true
+        );
+
+        Assert.That(delayMs, Is.EqualTo(3000));
     }
 
     [Test]

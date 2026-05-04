@@ -159,6 +159,184 @@ public sealed class WhiteBrowserSkinApiServiceTests
     }
 
     [Test]
+    public async Task HandleUpdate_UIスナップショットだけでDTOを作れる()
+    {
+        MovieRecords movie = new()
+        {
+            Movie_Id = 77,
+            Movie_Name = "snapshot.mp4",
+            Movie_Path = @"D:\movie\snapshot.mp4",
+            IsExists = true,
+        };
+        int snapshotReadCount = 0;
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetUiSnapshot = () =>
+                {
+                    snapshotReadCount++;
+                    return new WhiteBrowserSkinApiUiSnapshot(
+                        [movie],
+                        currentTabIndex: 2,
+                        dbFullPath: @"D:\db\main.wb",
+                        dbName: "main",
+                        skinName: "SnapshotSkin",
+                        sortId: "movie_name",
+                        sortName: "Movie Name",
+                        searchKeyword: "snapshot",
+                        registeredMovieCount: 1,
+                        filterTokens: ["snapshot"],
+                        thumbFolder: @"D:\thumb",
+                        selectedMovie: movie,
+                        selectedMovies: [movie]
+                    );
+                },
+                GetVisibleMovies = () => ThrowUnexpectedUiRead<IReadOnlyList<MovieRecords>>(),
+                GetCurrentTabIndex = () => ThrowUnexpectedUiRead<int>(),
+                GetCurrentDbFullPath = () => ThrowUnexpectedUiRead<string>(),
+                GetCurrentThumbFolder = () => ThrowUnexpectedUiRead<string>(),
+                GetCurrentSelectedMovie = () => ThrowUnexpectedUiRead<MovieRecords>(),
+                GetCurrentSelectedMovies = () => ThrowUnexpectedUiRead<IReadOnlyList<MovieRecords>>(),
+                ResolveThumbUrl = _ =>
+                {
+                    movie.Movie_Name = "mutated.mp4";
+                    movie.Movie_Path = @"D:\movie\mutated.mp4";
+                    movie.Tags = "mutated";
+                    return "";
+                },
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "update",
+            JsonDocument.Parse("""{"startIndex":0,"count":1}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        WhiteBrowserSkinUpdateResponse? payload = result.Payload as WhiteBrowserSkinUpdateResponse;
+        Assert.That(payload, Is.Not.Null);
+        WhiteBrowserSkinMovieDto dto = payload!.Items.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshotReadCount, Is.EqualTo(1));
+            Assert.That(dto.MovieId, Is.EqualTo(77));
+            Assert.That(dto.MovieName, Is.EqualTo("snapshot.mp4"));
+            Assert.That(dto.MoviePath, Is.EqualTo(@"D:\movie\snapshot.mp4"));
+            Assert.That(dto.Selected, Is.True);
+            Assert.That(dto.DbIdentity, Is.EqualTo(WhiteBrowserSkinDbIdentity.Build(@"D:\db\main.wb")));
+            Assert.That(dto.RecordKey, Is.EqualTo($"{dto.DbIdentity}:77"));
+        });
+    }
+
+    [Test]
+    public async Task HandleUpdate_DTO生成中に元MovieRecordsが変わっても結果は固定できる()
+    {
+        MovieRecords movie = new()
+        {
+            Movie_Id = 78,
+            Movie_Name = "before.mp4",
+            Movie_Path = @"D:\movie\before.mp4",
+            Score = 10,
+            IsExists = true,
+        };
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetUiSnapshot = () =>
+                    new WhiteBrowserSkinApiUiSnapshot(
+                        [movie],
+                        currentTabIndex: 2,
+                        dbFullPath: @"D:\db\main.wb",
+                        dbName: "main",
+                        skinName: "SnapshotSkin",
+                        sortId: "movie_name",
+                        sortName: "Movie Name",
+                        searchKeyword: "before",
+                        registeredMovieCount: 1,
+                        filterTokens: ["before"],
+                        thumbFolder: @"D:\thumb",
+                        selectedMovie: movie,
+                        selectedMovies: [movie]
+                    ),
+                ResolveThumbUrl = _ =>
+                {
+                    movie.Movie_Name = "after.mp4";
+                    movie.Score = 999;
+                    return "";
+                },
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "update",
+            JsonDocument.Parse("""{"startIndex":0,"count":1}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        WhiteBrowserSkinUpdateResponse? payload = result.Payload as WhiteBrowserSkinUpdateResponse;
+        Assert.That(payload, Is.Not.Null);
+        WhiteBrowserSkinMovieDto dto = payload!.Items.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.MovieId, Is.EqualTo(78));
+            Assert.That(dto.MovieName, Is.EqualTo("before.mp4"));
+            Assert.That(dto.Score, Is.EqualTo(10));
+        });
+    }
+
+    [Test]
+    public async Task HandleUpdate_addOrderはUIスナップショットのSortIdを基準にする()
+    {
+        MovieRecords zeta = new()
+        {
+            Movie_Id = 61,
+            Movie_Name = "zeta.mp4",
+            Movie_Path = @"D:\movie\zeta.mp4",
+            Score = 1,
+        };
+        MovieRecords alpha = new()
+        {
+            Movie_Id = 62,
+            Movie_Name = "alpha.mp4",
+            Movie_Path = @"D:\movie\alpha.mp4",
+            Score = 1,
+        };
+        MovieRecords beta = new()
+        {
+            Movie_Id = 63,
+            Movie_Name = "beta.mp4",
+            Movie_Path = @"D:\movie\beta.mp4",
+            Score = 3,
+        };
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetUiSnapshot = () =>
+                    new WhiteBrowserSkinApiUiSnapshot(
+                        [zeta, alpha, beta],
+                        currentTabIndex: 2,
+                        dbFullPath: @"D:\db\main.wb",
+                        sortId: "7",
+                        thumbFolder: @"D:\thumb"
+                    ),
+                GetVisibleMovies = () => ThrowUnexpectedUiRead<IReadOnlyList<MovieRecords>>(),
+                GetCurrentSortId = () => ThrowUnexpectedUiRead<string>(),
+                ResolveThumbUrl = _ => "",
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult addOrderResult = await service.HandleAsync(
+            "addOrder",
+            JsonDocument.Parse("""{"order":"{movie_name asc}","override":0}""").RootElement
+        );
+
+        Assert.That(addOrderResult.Succeeded, Is.True);
+        WhiteBrowserSkinUpdateResponse payload =
+            (WhiteBrowserSkinUpdateResponse)addOrderResult.Payload;
+        Assert.That(payload.Items.Select(x => x.MovieId), Is.EqualTo(new[] { 62L, 61L, 63L }));
+    }
+
+    [Test]
     public async Task HandleGetInfo_WBメタ付きJpegから寸法を復元できる()
     {
         string root = CreateTempDirectory("imm-webview-api-info");
@@ -166,18 +344,6 @@ public sealed class WhiteBrowserSkinApiServiceTests
         string thumbPath = Path.Combine(thumbRoot, "sample.jpg");
         Directory.CreateDirectory(thumbRoot);
         CreateSampleJpeg(thumbPath);
-        WhiteBrowserThumbInfoSerializer.AppendToJpeg(
-            thumbPath,
-            new ThumbnailSheetSpec
-            {
-                ThumbCount = 4,
-                ThumbWidth = 160,
-                ThumbHeight = 90,
-                ThumbColumns = 2,
-                ThumbRows = 2,
-                CaptureSeconds = [10, 20, 30, 40],
-            }
-        );
 
         MovieRecords movie = new()
         {
@@ -211,8 +377,8 @@ public sealed class WhiteBrowserSkinApiServiceTests
             Assert.That(resolvedDto.MovieId, Is.EqualTo(9));
             Assert.That(resolvedDto.ThumbNaturalWidth, Is.EqualTo(320));
             Assert.That(resolvedDto.ThumbNaturalHeight, Is.EqualTo(240));
-            Assert.That(resolvedDto.ThumbSheetColumns, Is.EqualTo(2));
-            Assert.That(resolvedDto.ThumbSheetRows, Is.EqualTo(2));
+            Assert.That(resolvedDto.ThumbSheetColumns, Is.EqualTo(1));
+            Assert.That(resolvedDto.ThumbSheetRows, Is.EqualTo(1));
             Assert.That(
                 resolvedDto.ThumbRevision,
                 Is.EqualTo(
@@ -222,6 +388,108 @@ public sealed class WhiteBrowserSkinApiServiceTests
                     )
                 )
             );
+        });
+    }
+
+    [Test]
+    public async Task HandleUpdate_CacheOnly時はWBメタから軽く寸法を返せる()
+    {
+        string root = CreateTempDirectory("imm-webview-api-cacheonly-size");
+        string thumbRoot = Path.Combine(root, "thum");
+        string thumbPath = Path.Combine(thumbRoot, "sample.jpg");
+        Directory.CreateDirectory(thumbRoot);
+        CreateSampleJpeg(thumbPath);
+        WhiteBrowserThumbInfoSerializer.AppendToJpeg(
+            thumbPath,
+            new ThumbnailSheetSpec
+            {
+                ThumbCount = 4,
+                ThumbWidth = 160,
+                ThumbHeight = 90,
+                ThumbColumns = 2,
+                ThumbRows = 2,
+                CaptureSeconds = [10, 20, 30, 40],
+            }
+        );
+
+        MovieRecords movie = new()
+        {
+            Movie_Id = 10,
+            Movie_Name = "cache-only.mp4",
+            Movie_Path = Path.Combine(root, "cache-only.mp4"),
+            ThumbPathGrid = thumbPath,
+            IsExists = true,
+        };
+
+        WhiteBrowserSkinApiService service = CreateService(
+            [movie],
+            selectedMovie: null,
+            dbFullPath: Path.Combine(root, "main.wb"),
+            dbName: "main",
+            skinName: "SampleSkin",
+            thumbRoot: thumbRoot
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "update",
+            JsonDocument.Parse("""{"startIndex":0,"count":1}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        WhiteBrowserSkinUpdateResponse payload = (WhiteBrowserSkinUpdateResponse)result.Payload;
+        WhiteBrowserSkinMovieDto dto = payload.Items.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.MovieId, Is.EqualTo(10));
+            Assert.That(dto.ThumbNaturalWidth, Is.EqualTo(320));
+            Assert.That(dto.ThumbNaturalHeight, Is.EqualTo(180));
+            Assert.That(dto.ThumbSheetColumns, Is.EqualTo(2));
+            Assert.That(dto.ThumbSheetRows, Is.EqualTo(2));
+            Assert.That(dto.ThumbRevision, Is.Not.Empty);
+        });
+    }
+
+    [Test]
+    public async Task HandleUpdate_CacheOnly時はWBメタなしなら既定寸法で返せる()
+    {
+        string root = CreateTempDirectory("imm-webview-api-cacheonly-metadata");
+        string thumbRoot = Path.Combine(root, "thum");
+        string thumbPath = Path.Combine(thumbRoot, "sample.jpg");
+        Directory.CreateDirectory(thumbRoot);
+        CreateSampleJpeg(thumbPath);
+        MovieRecords movie = new()
+        {
+            Movie_Id = 12,
+            Movie_Name = "cache-only-metadata.mp4",
+            Movie_Path = Path.Combine(root, "cache-only-metadata.mp4"),
+            ThumbPathGrid = thumbPath,
+            IsExists = true,
+        };
+
+        WhiteBrowserSkinApiService service = CreateService(
+            [movie],
+            selectedMovie: null,
+            dbFullPath: Path.Combine(root, "main.wb"),
+            dbName: "main",
+            skinName: "SampleSkin",
+            thumbRoot: thumbRoot
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "update",
+            JsonDocument.Parse("""{"startIndex":0,"count":1}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        WhiteBrowserSkinUpdateResponse payload = (WhiteBrowserSkinUpdateResponse)result.Payload;
+        WhiteBrowserSkinMovieDto dto = payload.Items.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.MovieId, Is.EqualTo(12));
+            Assert.That(dto.ThumbNaturalWidth, Is.EqualTo(160));
+            Assert.That(dto.ThumbNaturalHeight, Is.EqualTo(120));
+            Assert.That(dto.ThumbSheetColumns, Is.EqualTo(1));
+            Assert.That(dto.ThumbSheetRows, Is.EqualTo(1));
         });
     }
 
@@ -318,6 +586,128 @@ public sealed class WhiteBrowserSkinApiServiceTests
     }
 
     [Test]
+    public async Task HandleGetInfos_movieIds指定はFullSyncで寸法を返せる()
+    {
+        string root = CreateTempDirectory("imm-webview-api-getinfos-fullsync-size");
+        string thumbRoot = Path.Combine(root, "thum");
+        string thumbPath = Path.Combine(thumbRoot, "sample.jpg");
+        Directory.CreateDirectory(thumbRoot);
+        CreateSampleJpeg(thumbPath);
+        WhiteBrowserThumbInfoSerializer.AppendToJpeg(
+            thumbPath,
+            new ThumbnailSheetSpec
+            {
+                ThumbCount = 4,
+                ThumbWidth = 160,
+                ThumbHeight = 90,
+                ThumbColumns = 2,
+                ThumbRows = 2,
+                CaptureSeconds = [10, 20, 30, 40],
+            }
+        );
+
+        MovieRecords movie = new()
+        {
+            Movie_Id = 51,
+            Movie_Name = "fullsync-size.mp4",
+            Movie_Path = Path.Combine(root, "fullsync-size.mp4"),
+            ThumbPathGrid = thumbPath,
+            IsExists = true,
+        };
+        WhiteBrowserSkinApiService service = CreateService(
+            [movie],
+            selectedMovie: null,
+            dbFullPath: Path.Combine(root, "main.wb"),
+            dbName: "main",
+            skinName: "SampleSkin",
+            thumbRoot: thumbRoot
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "getInfos",
+            JsonDocument.Parse("""{"movieIds":[51]}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        WhiteBrowserSkinMovieDto[]? payload = result.Payload as WhiteBrowserSkinMovieDto[];
+        Assert.That(payload, Is.Not.Null);
+        WhiteBrowserSkinMovieDto dto = payload!.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.MovieId, Is.EqualTo(51));
+            Assert.That(dto.ThumbNaturalWidth, Is.EqualTo(320));
+            Assert.That(dto.ThumbNaturalHeight, Is.EqualTo(240));
+            Assert.That(dto.ThumbSheetColumns, Is.EqualTo(2));
+            Assert.That(dto.ThumbSheetRows, Is.EqualTo(2));
+            Assert.That(dto.ThumbRevision, Is.Not.Empty);
+        });
+    }
+
+    [Test]
+    public async Task HandleGetInfos_movieIds指定はFullSyncでも既存キャッシュを再利用できる()
+    {
+        string root = CreateTempDirectory("imm-webview-api-getinfos-fullsync-cache-hit");
+        string thumbRoot = Path.Combine(root, "thum");
+        string thumbPath = Path.Combine(thumbRoot, "sample.jpg");
+        Directory.CreateDirectory(thumbRoot);
+        CreateSampleJpeg(thumbPath);
+        WhiteBrowserThumbInfoSerializer.AppendToJpeg(
+            thumbPath,
+            new ThumbnailSheetSpec
+            {
+                ThumbCount = 4,
+                ThumbWidth = 160,
+                ThumbHeight = 90,
+                ThumbColumns = 2,
+                ThumbRows = 2,
+                CaptureSeconds = [10, 20, 30, 40],
+            }
+        );
+
+        MovieRecords movie = new()
+        {
+            Movie_Id = 52,
+            Movie_Name = "fullsync-cache-hit.mp4",
+            Movie_Path = Path.Combine(root, "fullsync-cache-hit.mp4"),
+            ThumbPathGrid = thumbPath,
+            IsExists = true,
+        };
+        WhiteBrowserSkinApiService service = CreateService(
+            [movie],
+            selectedMovie: null,
+            dbFullPath: Path.Combine(root, "main.wb"),
+            dbName: "main",
+            skinName: "SampleSkin",
+            thumbRoot: thumbRoot
+        );
+
+        // getInfo は FullSync なので、ここでサイズキャッシュを温める。
+        WhiteBrowserSkinApiInvocationResult warmup = await service.HandleAsync(
+            "getInfo",
+            JsonDocument.Parse("""{"movieId":52}""").RootElement
+        );
+        Assert.That(warmup.Succeeded, Is.True);
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "getInfos",
+            JsonDocument.Parse("""{"movieIds":[52]}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        WhiteBrowserSkinMovieDto[]? payload = result.Payload as WhiteBrowserSkinMovieDto[];
+        Assert.That(payload, Is.Not.Null);
+        WhiteBrowserSkinMovieDto dto = payload!.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.MovieId, Is.EqualTo(52));
+            Assert.That(dto.ThumbNaturalWidth, Is.EqualTo(320));
+            Assert.That(dto.ThumbNaturalHeight, Is.EqualTo(240));
+            Assert.That(dto.ThumbSheetColumns, Is.EqualTo(2));
+            Assert.That(dto.ThumbSheetRows, Is.EqualTo(2));
+        });
+    }
+
+    [Test]
     public async Task HandleFocusThum_既存delegateへ委譲できる()
     {
         string root = CreateTempDirectory("imm-webview-api-focus");
@@ -366,6 +756,62 @@ public sealed class WhiteBrowserSkinApiServiceTests
             Assert.That(payload.RootElement.GetProperty("movieId").GetInt64(), Is.EqualTo(11));
             Assert.That(payload.RootElement.GetProperty("id").GetInt64(), Is.EqualTo(11));
             Assert.That(payload.RootElement.GetProperty("selected").GetBoolean(), Is.True);
+        });
+    }
+
+    [Test]
+    public async Task HandleFocusThum_操作後スナップショットのDBと選択状態で返せる()
+    {
+        MovieRecords movie = new()
+        {
+            Movie_Id = 211,
+            Movie_Name = "focus-after.mp4",
+            Movie_Path = @"D:\movie\focus-after.mp4",
+        };
+        string currentDbFullPath = @"D:\db\before.wb";
+        MovieRecords? currentSelectedMovie = null;
+        IReadOnlyList<MovieRecords> currentSelectedMovies = [];
+        IReadOnlyList<MovieRecords> visibleMovies = [movie];
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetVisibleMovies = () => visibleMovies,
+                GetCurrentSortId = () => "",
+                GetCurrentDbFullPath = () => currentDbFullPath,
+                GetUiSnapshot = () =>
+                    new WhiteBrowserSkinApiUiSnapshot(
+                        visibleMovies,
+                        dbFullPath: currentDbFullPath,
+                        selectedMovie: currentSelectedMovie,
+                        selectedMovies: currentSelectedMovies
+                    ),
+                FocusMovieAsync = record =>
+                {
+                    Assert.That(record, Is.SameAs(movie));
+                    currentDbFullPath = @"D:\db\after.wb";
+                    currentSelectedMovie = record;
+                    currentSelectedMovies = [record];
+                    return Task.FromResult(true);
+                },
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "focusThum",
+            JsonDocument.Parse("""{"movieId":211}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        using JsonDocument payload = JsonDocument.Parse(JsonSerializer.Serialize(result.Payload));
+        string afterDbIdentity = WhiteBrowserSkinDbIdentity.Build(@"D:\db\after.wb");
+        Assert.Multiple(() =>
+        {
+            Assert.That(payload.RootElement.GetProperty("selected").GetBoolean(), Is.True);
+            Assert.That(payload.RootElement.GetProperty("focusedMovieId").GetInt64(), Is.EqualTo(211));
+            Assert.That(
+                payload.RootElement.GetProperty("recordKey").GetString(),
+                Is.EqualTo(WhiteBrowserSkinDbIdentity.BuildRecordKey(afterDbIdentity, 211))
+            );
         });
     }
 
@@ -1486,6 +1932,65 @@ public sealed class WhiteBrowserSkinApiServiceTests
     }
 
     [Test]
+    public async Task HandleSelectThum_操作後スナップショットのDBと選択状態で返せる()
+    {
+        MovieRecords movie = new()
+        {
+            Movie_Id = 331,
+            Movie_Name = "select-after.mp4",
+            Movie_Path = @"D:\movie\select-after.mp4",
+        };
+        string currentDbFullPath = @"D:\db\before.wb";
+        MovieRecords? currentSelectedMovie = null;
+        IReadOnlyList<MovieRecords> currentSelectedMovies = [];
+        IReadOnlyList<MovieRecords> visibleMovies = [movie];
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetVisibleMovies = () => visibleMovies,
+                GetCurrentSortId = () => "",
+                GetCurrentDbFullPath = () => currentDbFullPath,
+                GetUiSnapshot = () =>
+                    new WhiteBrowserSkinApiUiSnapshot(
+                        visibleMovies,
+                        dbFullPath: currentDbFullPath,
+                        selectedMovie: currentSelectedMovie,
+                        selectedMovies: currentSelectedMovies
+                    ),
+                SetMovieSelectionAsync = (record, isSelected) =>
+                {
+                    Assert.That(record, Is.SameAs(movie));
+                    Assert.That(isSelected, Is.True);
+                    currentDbFullPath = @"D:\db\after.wb";
+                    currentSelectedMovie = record;
+                    currentSelectedMovies = [record];
+                    return Task.FromResult(true);
+                },
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "selectThum",
+            JsonDocument.Parse("""{"movieId":331,"selected":true}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        using JsonDocument payload = JsonDocument.Parse(JsonSerializer.Serialize(result.Payload));
+        string afterDbIdentity = WhiteBrowserSkinDbIdentity.Build(@"D:\db\after.wb");
+        Assert.Multiple(() =>
+        {
+            Assert.That(payload.RootElement.GetProperty("selectionChanged").GetBoolean(), Is.True);
+            Assert.That(payload.RootElement.GetProperty("focused").GetBoolean(), Is.True);
+            Assert.That(payload.RootElement.GetProperty("focusedMovieId").GetInt64(), Is.EqualTo(331));
+            Assert.That(payload.RootElement.GetProperty("selected").GetBoolean(), Is.True);
+            Assert.That(
+                payload.RootElement.GetProperty("recordKey").GetString(),
+                Is.EqualTo(WhiteBrowserSkinDbIdentity.BuildRecordKey(afterDbIdentity, 331))
+            );
+        });
+    }
+
+    [Test]
     public async Task HandleTagApis_タグ更新delegateへ委譲できる()
     {
         string root = CreateTempDirectory("imm-webview-api-tags");
@@ -1604,6 +2109,86 @@ public sealed class WhiteBrowserSkinApiServiceTests
             );
             Assert.That(movie.Tags, Is.EqualTo(""));
             Assert.That(movie.Tag, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task HandleTagApis_操作後スナップショットのDBとDTO選択状態で返せる()
+    {
+        MovieRecords movie = new()
+        {
+            Movie_Id = 431,
+            Movie_Name = "tag-after.mp4",
+            Movie_Path = @"D:\movie\tag-after.mp4",
+            Tags = "alpha",
+            Tag = ["alpha"],
+        };
+        string currentDbFullPath = @"D:\db\before.wb";
+        MovieRecords? currentSelectedMovie = null;
+        IReadOnlyList<MovieRecords> currentSelectedMovies = [];
+        IReadOnlyList<MovieRecords> visibleMovies = [movie];
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetVisibleMovies = () => visibleMovies,
+                GetCurrentSortId = () => "",
+                GetCurrentDbFullPath = () => currentDbFullPath,
+                GetUiSnapshot = () =>
+                    new WhiteBrowserSkinApiUiSnapshot(
+                        visibleMovies,
+                        dbFullPath: currentDbFullPath,
+                        selectedMovie: currentSelectedMovie,
+                        selectedMovies: currentSelectedMovies
+                    ),
+                MutateMovieTagAsync = (record, tagName, _) =>
+                {
+                    Assert.That(record, Is.SameAs(movie));
+                    Assert.That(tagName, Is.EqualTo("beta"));
+                    MovieRecords replacedMovie = new()
+                    {
+                        Movie_Id = 431,
+                        Movie_Name = "tag-after-replaced.mp4",
+                        Movie_Path = @"D:\movie\tag-after-replaced.mp4",
+                        Tag = ["alpha", "beta"],
+                        Tags = "alpha\nbeta",
+                    };
+                    visibleMovies = [replacedMovie];
+                    currentDbFullPath = @"D:\db\after.wb";
+                    currentSelectedMovie = replacedMovie;
+                    currentSelectedMovies = [replacedMovie];
+                    return Task.FromResult(new WhiteBrowserSkinTagMutationResult(true, true));
+                },
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "addTag",
+            JsonDocument.Parse("""{"movieId":431,"tag":"beta"}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        using JsonDocument payload = JsonDocument.Parse(JsonSerializer.Serialize(result.Payload));
+        string afterDbIdentity = WhiteBrowserSkinDbIdentity.Build(@"D:\db\after.wb");
+        Assert.Multiple(() =>
+        {
+            Assert.That(payload.RootElement.GetProperty("changed").GetBoolean(), Is.True);
+            Assert.That(payload.RootElement.GetProperty("hasTag").GetBoolean(), Is.True);
+            Assert.That(payload.RootElement.GetProperty("selected").GetBoolean(), Is.True);
+            Assert.That(payload.RootElement.GetProperty("focused").GetBoolean(), Is.True);
+            Assert.That(
+                payload.RootElement.GetProperty("recordKey").GetString(),
+                Is.EqualTo(WhiteBrowserSkinDbIdentity.BuildRecordKey(afterDbIdentity, 431))
+            );
+            Assert.That(
+                payload.RootElement.GetProperty("item").GetProperty("DbIdentity").GetString(),
+                Is.EqualTo(afterDbIdentity)
+            );
+            Assert.That(payload.RootElement.GetProperty("item").GetProperty("Selected").GetBoolean(), Is.True);
+            Assert.That(
+                payload.RootElement.GetProperty("item").GetProperty("MovieName").GetString(),
+                Is.EqualTo("tag-after-replaced.mp4")
+            );
+            Assert.That(payload.RootElement.GetProperty("item").GetProperty("Tags")[1].GetString(), Is.EqualTo("beta"));
         });
     }
 
@@ -1800,6 +2385,11 @@ public sealed class WhiteBrowserSkinApiServiceTests
             $"{sourceKind ?? ""}|{normalizedPath}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))
             .ToLowerInvariant();
+    }
+
+    private static T ThrowUnexpectedUiRead<T>()
+    {
+        throw new InvalidOperationException("UI snapshot 化した API で個別 UI 読み取りが呼ばれました。");
     }
 
     private static string NormalizePath(string path)

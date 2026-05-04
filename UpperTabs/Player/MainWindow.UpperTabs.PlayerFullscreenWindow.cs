@@ -240,7 +240,7 @@ namespace IndigoMovieManager
             }
 
             Properties.Settings.Default.DebugLogUiEnabled = true;
-            Properties.Settings.Default.Save();
+            QueueApplicationSettingsSave("player-fullscreen-debug-enable");
             _playerFullscreenTemporarilyEnabledUiDebugLog = true;
         }
 
@@ -252,7 +252,7 @@ namespace IndigoMovieManager
             }
 
             Properties.Settings.Default.DebugLogUiEnabled = _playerFullscreenRestoreUiDebugLogEnabled;
-            Properties.Settings.Default.Save();
+            QueueApplicationSettingsSave("player-fullscreen-debug-restore");
             _playerFullscreenTemporarilyEnabledUiDebugLog = false;
         }
 

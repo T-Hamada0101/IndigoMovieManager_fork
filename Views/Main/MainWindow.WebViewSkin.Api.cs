@@ -16,6 +16,8 @@ namespace IndigoMovieManager
         private WhiteBrowserSkinApiService _externalSkinApiService;
         private readonly WhiteBrowserSkinThumbnailContractService _externalSkinThumbnailContractService =
             new();
+        private readonly object _externalSkinThumbnailCallbackQueueSync = new();
+        private Task _externalSkinThumbnailCallbackQueueTask = Task.CompletedTask;
         private bool _suppressSortComboSelectionChangedHandling;
 
         private void AttachExternalSkinHostApiBridge(WhiteBrowserSkinHostControl hostControl)
@@ -144,18 +146,132 @@ namespace IndigoMovieManager
 
             WhiteBrowserSkinHostControl hostControl =
                 _externalSkinHostApiAttachedControl ?? _externalSkinHostControl;
+            (
+                int CurrentTabIndex,
+                string DbFullPath,
+                string ThumbFolder,
+                long? SelectedMovieId,
+                HashSet<long> SelectedMovieIds
+            ) callbackUiContext = CaptureExternalSkinThumbnailUpdateUiContextOnUiThread();
             if (
                 hostControl == null
                 || GetCurrentExternalSkinDefinition() == null
-                || ResolveExternalSkinApiTabIndexOnUiThread() != updatedTabIndex
+                || callbackUiContext.CurrentTabIndex != updatedTabIndex
             )
             {
                 return;
             }
 
-            WhiteBrowserSkinThumbnailUpdateCallbackPayload payload =
-                BuildExternalSkinThumbnailUpdateCallbackPayload(movie, updatedTabIndex);
-            _ = DispatchExternalSkinThumbnailUpdatedAsync(hostControl, payload, reason);
+            MovieRecords movieSnapshot = CloneExternalSkinThumbnailCallbackMovie(movie);
+
+            QueueExternalSkinThumbnailUpdatedCallback(
+                hostControl,
+                movieSnapshot,
+                updatedTabIndex,
+                callbackUiContext.DbFullPath,
+                callbackUiContext.ThumbFolder,
+                callbackUiContext.SelectedMovieId,
+                callbackUiContext.SelectedMovieIds,
+                reason
+            );
+        }
+
+        private void QueueExternalSkinThumbnailUpdatedCallback(
+            WhiteBrowserSkinHostControl hostControl,
+            MovieRecords movieSnapshot,
+            int updatedTabIndex,
+            string dbFullPath,
+            string thumbFolder,
+            long? selectedMovieId,
+            HashSet<long> selectedMovieIds,
+            string reason
+        )
+        {
+            lock (_externalSkinThumbnailCallbackQueueSync)
+            {
+                Task previousTask = _externalSkinThumbnailCallbackQueueTask;
+                _externalSkinThumbnailCallbackQueueTask = RunExternalSkinThumbnailUpdatedCallbackAfterAsync(
+                    previousTask,
+                    hostControl,
+                    movieSnapshot,
+                    updatedTabIndex,
+                    dbFullPath,
+                    thumbFolder,
+                    selectedMovieId,
+                    selectedMovieIds,
+                    reason
+                );
+            }
+        }
+
+        private async Task RunExternalSkinThumbnailUpdatedCallbackAfterAsync(
+            Task previousTask,
+            WhiteBrowserSkinHostControl hostControl,
+            MovieRecords movieSnapshot,
+            int updatedTabIndex,
+            string dbFullPath,
+            string thumbFolder,
+            long? selectedMovieId,
+            HashSet<long> selectedMovieIds,
+            string reason
+        )
+        {
+            try
+            {
+                if (previousTask != null)
+                {
+                    try
+                    {
+                        await previousTask.ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // 先行 callback の失敗で後続通知を止めない。
+                    }
+                }
+
+                await BuildAndDispatchExternalSkinThumbnailUpdatedAsync(
+                        hostControl,
+                        movieSnapshot,
+                        updatedTabIndex,
+                        dbFullPath,
+                        thumbFolder,
+                        selectedMovieId,
+                        selectedMovieIds,
+                        reason
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "skin-webview",
+                    $"thumbnail callback pipeline failed: movieId='{movieSnapshot?.Movie_Id ?? 0}' err='{ex.GetType().Name}: {ex.Message}' reason={reason ?? ""}"
+                );
+            }
+        }
+
+        private (
+            int CurrentTabIndex,
+            string DbFullPath,
+            string ThumbFolder,
+            long? SelectedMovieId,
+            HashSet<long> SelectedMovieIds
+        ) CaptureExternalSkinThumbnailUpdateUiContextOnUiThread()
+        {
+            MovieRecords selectedMovie = GetSelectedItemByTabIndex();
+            HashSet<long> selectedMovieIds = GetSelectedItemsByTabIndex()
+                ?.Where(x => x != null)
+                .Select(x => x.Movie_Id)
+                .ToHashSet()
+                ?? [];
+            return (
+                ResolveExternalSkinApiTabIndexOnUiThread(),
+                MainVM?.DbInfo?.DBFullPath ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? "",
+                selectedMovie?.Movie_Id,
+                selectedMovieIds
+            );
         }
 
         // MainWindow は UI 状態の読み書きだけを持ち、DTO 組み立ては runtime service へ寄せる。
@@ -163,6 +279,11 @@ namespace IndigoMovieManager
         {
             return new WhiteBrowserSkinApiServiceDependencies
             {
+                GetUiSnapshot = () =>
+                    ReadExternalSkinUiState(
+                        CreateExternalSkinApiUiSnapshotOnUiThread,
+                        WhiteBrowserSkinApiUiSnapshot.Empty
+                    ),
                 GetVisibleMovies = () =>
                     ReadExternalSkinUiState(
                         () =>
@@ -218,6 +339,34 @@ namespace IndigoMovieManager
                 Trace = message =>
                     DebugRuntimeLog.Write("skin-webview", $"js trace: {message ?? ""}"),
             };
+        }
+
+        private WhiteBrowserSkinApiUiSnapshot CreateExternalSkinApiUiSnapshotOnUiThread()
+        {
+            MovieRecords[] visibleMovies =
+                MainVM?.FilteredMovieRecs?.Where(x => x != null).ToArray()
+                ?? Array.Empty<MovieRecords>();
+            MovieRecords selectedMovie = GetSelectedItemByTabIndex();
+            MovieRecords[] selectedMovies =
+                GetSelectedItemsByTabIndex()?.Where(x => x != null).Distinct().ToArray()
+                ?? Array.Empty<MovieRecords>();
+
+            // UI 状態はここで短く固定し、後段の DTO 組み立てを同じ値だけで進められるようにする。
+            return new WhiteBrowserSkinApiUiSnapshot(
+                visibleMovies,
+                ResolveExternalSkinApiTabIndexOnUiThread(),
+                MainVM?.DbInfo?.DBFullPath ?? "",
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.Skin ?? "",
+                MainVM?.DbInfo?.Sort ?? "",
+                ResolveExternalSkinSortNameOnUiThread(),
+                MainVM?.DbInfo?.SearchKeyword ?? "",
+                MainVM?.DbInfo?.RegisteredMovieCount ?? 0,
+                ResolveExternalSkinFilterTokensOnUiThread(),
+                MainVM?.DbInfo?.ThumbFolder ?? "",
+                selectedMovie,
+                selectedMovies
+            );
         }
 
         private async Task<bool> FocusExternalSkinMovieAsync(MovieRecords movie)
@@ -306,30 +455,186 @@ namespace IndigoMovieManager
             }
         }
 
-        private WhiteBrowserSkinThumbnailUpdateCallbackPayload BuildExternalSkinThumbnailUpdateCallbackPayload(
-            MovieRecords movie,
-            int updatedTabIndex
+        private async Task BuildAndDispatchExternalSkinThumbnailUpdatedAsync(
+            WhiteBrowserSkinHostControl hostControl,
+            MovieRecords movieSnapshot,
+            int updatedTabIndex,
+            string dbFullPath,
+            string thumbFolder,
+            long? selectedMovieId,
+            HashSet<long> selectedMovieIds,
+            string reason
         )
         {
-            MovieRecords focusedMovie = GetSelectedItemByTabIndex();
-            HashSet<long> selectedMovieIds = GetSelectedItemsByTabIndex()
-                ?.Where(x => x != null)
-                .Select(x => x.Movie_Id)
-                .ToHashSet()
-                ?? [];
+            if (hostControl == null || movieSnapshot == null)
+            {
+                return;
+            }
+
+            try
+            {
+                bool stillCurrentBeforeBuild = await InvokeExternalSkinUiActionAsync(
+                    () =>
+                        IsExternalSkinThumbnailCallbackStillCurrent(
+                            hostControl,
+                            updatedTabIndex,
+                            dbFullPath
+                        ),
+                    false
+                );
+                if (!stillCurrentBeforeBuild)
+                {
+                    DebugRuntimeLog.Write(
+                        "skin-webview",
+                        $"thumbnail callback skipped before build by stale host/tab/db: movieId='{movieSnapshot.Movie_Id}' reason={reason ?? ""}"
+                    );
+                    return;
+                }
+
+                List<string> externalThumbPaths = [];
+                WhiteBrowserSkinThumbnailUpdateCallbackPayload payload = await Task.Run(() =>
+                    BuildExternalSkinThumbnailUpdateCallbackPayload(
+                        movieSnapshot,
+                        updatedTabIndex,
+                        dbFullPath,
+                        thumbFolder,
+                        selectedMovieId,
+                        selectedMovieIds,
+                        externalThumbPaths
+                    )
+                );
+
+                await InvokeExternalSkinUiTaskAsync(
+                    async () =>
+                    {
+                        if (
+                            !IsExternalSkinThumbnailCallbackStillCurrent(
+                                hostControl,
+                                updatedTabIndex,
+                                dbFullPath
+                            )
+                        )
+                        {
+                            DebugRuntimeLog.Write(
+                                "skin-webview",
+                                $"thumbnail callback skipped by stale host/tab/db: movieId='{payload.MovieId}' reason={reason ?? ""}"
+                            );
+                            return false;
+                        }
+
+                        foreach (string thumbPath in externalThumbPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+                        {
+                            hostControl.RegisterExternalThumbnailPath(thumbPath);
+                        }
+
+                        await DispatchExternalSkinThumbnailUpdatedAsync(hostControl, payload, reason);
+                        return true;
+                    },
+                    false
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "skin-webview",
+                    $"thumbnail callback build failed: movieId='{movieSnapshot.Movie_Id}' err='{ex.GetType().Name}: {ex.Message}' reason={reason ?? ""}"
+                );
+            }
+        }
+
+        private bool IsExternalSkinThumbnailCallbackStillCurrent(
+            WhiteBrowserSkinHostControl hostControl,
+            int updatedTabIndex,
+            string dbFullPath
+        )
+        {
+            return hostControl != null
+                && ReferenceEquals(
+                    hostControl,
+                    _externalSkinHostApiAttachedControl ?? _externalSkinHostControl
+                )
+                && GetCurrentExternalSkinDefinition() != null
+                && ResolveExternalSkinApiTabIndexOnUiThread() == updatedTabIndex
+                && AreSameMainDbPath(MainVM?.DbInfo?.DBFullPath ?? "", dbFullPath ?? "");
+        }
+
+        private WhiteBrowserSkinThumbnailUpdateCallbackPayload BuildExternalSkinThumbnailUpdateCallbackPayload(
+            MovieRecords movie,
+            int updatedTabIndex,
+            string dbFullPath,
+            string thumbFolder,
+            long? selectedMovieId,
+            HashSet<long> selectedMovieIds,
+            List<string> externalThumbPaths
+        )
+        {
             WhiteBrowserSkinThumbnailContractDto contract = _externalSkinThumbnailContractService.Create(
                 movie,
                 new WhiteBrowserSkinThumbnailResolveContext
                 {
-                    DbFullPath = MainVM?.DbInfo?.DBFullPath ?? "",
-                    ManagedThumbnailRootPath = MainVM?.DbInfo?.ThumbFolder ?? "",
+                    DbFullPath = dbFullPath ?? "",
+                    ManagedThumbnailRootPath = thumbFolder ?? "",
                     DisplayTabIndex = updatedTabIndex,
-                    SelectedMovieId = focusedMovie?.Movie_Id,
-                    SelectedMovieIds = selectedMovieIds,
-                    ThumbUrlResolver = ResolveExternalSkinThumbUrl,
+                    SelectedMovieId = selectedMovieId,
+                    SelectedMovieIds = selectedMovieIds ?? [],
+                    ThumbUrlResolver = thumbPath =>
+                        ResolveExternalSkinThumbUrlFromSnapshot(
+                            thumbPath,
+                            thumbFolder,
+                            externalThumbPaths
+                        ),
                 }
             );
             return WhiteBrowserSkinThumbnailUpdateCallbackPayload.Create(contract);
+        }
+
+        private static MovieRecords CloneExternalSkinThumbnailCallbackMovie(MovieRecords movie)
+        {
+            if (movie == null)
+            {
+                return null;
+            }
+
+            // callback の DTO 組み立てで参照する値だけを固定し、UI モデルへの後追い参照を避ける。
+            return new MovieRecords
+            {
+                Movie_Id = movie.Movie_Id,
+                Movie_Name = movie.Movie_Name,
+                Movie_Path = movie.Movie_Path,
+                Movie_Size = movie.Movie_Size,
+                Movie_Length = movie.Movie_Length,
+                IsExists = movie.IsExists,
+                ThumbPathSmall = movie.ThumbPathSmall,
+                ThumbPathBig = movie.ThumbPathBig,
+                ThumbPathGrid = movie.ThumbPathGrid,
+                ThumbPathList = movie.ThumbPathList,
+                ThumbPathBig10 = movie.ThumbPathBig10,
+                ThumbDetail = movie.ThumbDetail,
+            };
+        }
+
+        private static string ResolveExternalSkinThumbUrlFromSnapshot(
+            string thumbPath,
+            string thumbRootPath,
+            List<string> externalThumbPaths
+        )
+        {
+            string thumbUrl = WhiteBrowserSkinThumbnailUrlCodec.BuildThumbUrl(
+                thumbPath,
+                thumbRootPath ?? "",
+                ""
+            );
+            if (string.IsNullOrWhiteSpace(thumbUrl) || !IsExternalSkinExternalThumbUrl(thumbUrl))
+            {
+                return thumbUrl;
+            }
+
+            if (!string.IsNullOrWhiteSpace(thumbPath))
+            {
+                externalThumbPaths?.Add(thumbPath);
+            }
+
+            return thumbUrl;
         }
 
         // 外部 skin のタグ操作も、既存のタグ更新導線と同じ正規化・永続化を通す。
@@ -847,7 +1152,11 @@ namespace IndigoMovieManager
                     return reader();
                 }
 
-                return Dispatcher.Invoke(reader);
+                // skin API からの同期読み取りは必要だが、入力や描画を押しのけない優先度でUIへ渡す。
+                return Dispatcher.Invoke(
+                    reader,
+                    System.Windows.Threading.DispatcherPriority.Background
+                );
             }
             catch
             {

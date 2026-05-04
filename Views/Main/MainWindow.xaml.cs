@@ -246,6 +246,7 @@ namespace IndigoMovieManager
         private int _lastEverythingPollDelayMs = EverythingWatchPollIntervalMs;
         private int _lastEverythingPollUpdateCount;
         private int _consecutiveCalmEverythingPollCount;
+        private int _lastEverythingPollEligibleWatchFolderCount;
 
         private DataTable systemData;
         private DataTable movieData;
@@ -570,7 +571,7 @@ namespace IndigoMovieManager
 
                     Properties.Settings.Default.RecentFiles.Clear();
                     Properties.Settings.Default.RecentFiles.AddRange([.. recentFiles.Reverse()]);
-                    Properties.Settings.Default.Save();
+                    QueueApplicationSettingsSave("main-window-closing");
 
                     ShowUiHangShutdownStatus("終了処理: レイアウトを保存中");
                     SaveDockLayoutToFile(DockLayoutFileName);
@@ -585,6 +586,10 @@ namespace IndigoMovieManager
                         );
                         DeleteHistoryTable(MainVM.DbInfo.DBFullPath, keepHistoryCount);
                     }
+
+                    ShowUiHangShutdownStatus("終了処理: 設定保存を確認中");
+                    WaitForPlayerVolumeSettingSaveForShutdown();
+                    WaitForApplicationSettingsSaveForShutdown("main-window-closing");
                 }
             }
             catch (Exception)
@@ -706,7 +711,8 @@ namespace IndigoMovieManager
                 }
 
                 XmlLayoutSerializer layoutSerializer = new(uxDockingManager);
-                using var reader = new StreamReader(layoutFilePath);
+                // 互換チェックで読んだ文字列をそのまま使い、同一ファイルの再読込を避ける。
+                using var reader = new StringReader(layoutText);
                 layoutSerializer.Deserialize(reader);
                 return true;
             }
@@ -1275,19 +1281,36 @@ namespace IndigoMovieManager
             int delayMs = EverythingWatchPollIntervalMs;
             try
             {
-                int activeCount = 0;
                 if (shouldProbeQueueLoad)
                 {
-                    var queueDbService = ResolveCurrentQueueDbService();
-                    activeCount =
-                        queueDbService?.GetActiveQueueCount(thumbnailQueueOwnerInstanceId) ?? 0;
+                    if (HasEverythingWatchPollEligibleFolders())
+                    {
+                        var queueDbService = ResolveCurrentQueueDbService();
+                        int activeCount =
+                            queueDbService?.GetActiveQueueCount(thumbnailQueueOwnerInstanceId) ?? 0;
+                        delayMs = ResolveEverythingWatchPollDelayFromState(activeCount);
+                    }
+                    else
+                    {
+                        delayMs = ResolveEverythingWatchPollDelayFromState(0);
+                    }
                 }
-                delayMs = ResolveEverythingWatchPollDelayFromState(activeCount);
+                else
+                {
+                    // poll延期中は queue 負荷を読まない代わりに、直前の遅延状態を引き継いで無駄なwake-upを避ける。
+                    delayMs = ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped(
+                        _lastEverythingPollDelayMs
+                    );
+                }
                 delayMs = ApplyEverythingWatchPollInteractionDelayPolicy(
                     delayMs,
                     isDeferredByUiSuppression,
                     isDeferredByUserPriority,
                     isPlayerPlaybackActive
+                );
+                delayMs = ApplyEverythingWatchPollEligibilityDelayPolicy(
+                    delayMs,
+                    HasEverythingWatchPollEligibleFolders()
                 );
             }
             catch (Exception ex)
@@ -1325,12 +1348,17 @@ namespace IndigoMovieManager
             string dbPath = MainVM.DbInfo.DBFullPath;
             if (string.IsNullOrWhiteSpace(dbPath) || !Path.Exists(dbPath))
             {
+                Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
                 return false;
             }
 
             try
             {
                 string[] watchFolders = GetEverythingPollEligibleWatchFoldersSnapshot(dbPath);
+                Volatile.Write(
+                    ref _lastEverythingPollEligibleWatchFolderCount,
+                    watchFolders?.Length ?? 0
+                );
 
                 return ShouldRunEverythingWatchPollPolicy(
                     IsStartupFeedPartialActive,
@@ -1349,6 +1377,7 @@ namespace IndigoMovieManager
                     "watch-check",
                     $"everything poll eligibility failed: {ex.Message}"
                 );
+                Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
             }
 
             return false;
@@ -3071,64 +3100,92 @@ namespace IndigoMovieManager
         /// </summary>
         private int GetPlayPosition(int tabIndex, MovieRecords mv, ref int returnPos)
         {
-            int msec = 0;
-
-            string currentThumbPath;
-            switch (tabIndex)
+            string currentThumbPath = ResolveMovieThumbnailPathByTabIndex(tabIndex, mv);
+            if (
+                TryResolveThumbnailPlaybackPosition(
+                    currentThumbPath,
+                    lbClickPoint,
+                    out int msec,
+                    out int secPos
+                )
+            )
             {
-                case 0:
-                    currentThumbPath = mv.ThumbPathSmall;
-                    break;
-                case 1:
-                    currentThumbPath = mv.ThumbPathBig;
-                    break;
-                case 2:
-                    currentThumbPath = mv.ThumbPathGrid;
-                    break;
-                case 3:
-                    currentThumbPath = mv.ThumbPathList;
-                    break;
-                case 4:
-                    currentThumbPath = mv.ThumbPathBig10;
-                    break;
-                default:
-                    return 0;
+                returnPos = secPos;
+                return msec;
             }
 
-            if (Path.Exists(currentThumbPath))
-            {
-                ThumbInfo thumbInfo = new();
-                thumbInfo.GetThumbInfo(currentThumbPath);
-                if (thumbInfo.IsThumbnail == true)
-                {
-                    List<System.Drawing.Point> points = [];
-                    for (int j = 1; j < thumbInfo.ThumbRows + 1; j++)
-                    for (int i = 1; i < thumbInfo.ThumbColumns + 1; i++)
-                    {
-                        {
-                            var pt = new System.Drawing.Point
-                            {
-                                X = i * thumbInfo.ThumbWidth,
-                                Y = j * thumbInfo.ThumbHeight,
-                            };
-                            points.Add(pt);
-                        }
-                    }
+            return 0;
+        }
 
-                    int secPos = points.Count;
-                    for (int i = 0; i < points.Count; i++)
-                    {
-                        if ((lbClickPoint.X < points[i].X) && (lbClickPoint.Y < points[i].Y))
-                        {
-                            secPos = i;
-                            break;
-                        }
-                    }
-                    msec = thumbInfo.ThumbSec[secPos] * 1000;
-                    returnPos = secPos;
+        // タブとサムネイルパスの対応はここへ集約し、UI側呼び出し元に分岐を散らさない。
+        private static string ResolveMovieThumbnailPathByTabIndex(int tabIndex, MovieRecords mv)
+        {
+            if (mv == null)
+            {
+                return "";
+            }
+
+            return tabIndex switch
+            {
+                0 => mv.ThumbPathSmall,
+                1 => mv.ThumbPathBig,
+                2 => mv.ThumbPathGrid,
+                3 => mv.ThumbPathList,
+                4 => mv.ThumbPathBig10,
+                _ => "",
+            };
+        }
+
+        // サムネイルシート解析はUIスレッド外でも使えるように純粋関数化する。
+        private static bool TryResolveThumbnailPlaybackPosition(
+            string thumbPath,
+            System.Windows.Point clickPoint,
+            out int playbackMilliseconds,
+            out int frameIndex
+        )
+        {
+            playbackMilliseconds = 0;
+            frameIndex = 0;
+
+            if (string.IsNullOrWhiteSpace(thumbPath) || !Path.Exists(thumbPath))
+            {
+                return false;
+            }
+
+            ThumbInfo thumbInfo = new();
+            thumbInfo.GetThumbInfo(thumbPath);
+            if (
+                thumbInfo.IsThumbnail != true
+                || thumbInfo.ThumbRows <= 0
+                || thumbInfo.ThumbColumns <= 0
+                || thumbInfo.ThumbSec == null
+                || thumbInfo.ThumbSec.Count == 0
+            )
+            {
+                return false;
+            }
+
+            int totalCells = thumbInfo.ThumbRows * thumbInfo.ThumbColumns;
+            int selectedIndex = totalCells;
+
+            bool found = false;
+            for (int row = 1; row <= thumbInfo.ThumbRows && !found; row++)
+            for (int column = 1; column <= thumbInfo.ThumbColumns; column++)
+            {
+                int cellBoundaryX = column * thumbInfo.ThumbWidth;
+                int cellBoundaryY = row * thumbInfo.ThumbHeight;
+                if (clickPoint.X < cellBoundaryX && clickPoint.Y < cellBoundaryY)
+                {
+                    selectedIndex = (row - 1) * thumbInfo.ThumbColumns + (column - 1);
+                    found = true;
+                    break;
                 }
             }
-            return msec;
+
+            selectedIndex = Math.Max(0, Math.Min(selectedIndex, thumbInfo.ThumbSec.Count - 1));
+            playbackMilliseconds = thumbInfo.ThumbSec[selectedIndex] * 1000;
+            frameIndex = selectedIndex;
+            return true;
         }
 
         /// <summary>

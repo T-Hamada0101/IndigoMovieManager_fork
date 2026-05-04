@@ -1,6 +1,6 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-05-02
+最終更新日: 2026-05-04
 
 変更概要:
 - `UiHang` native overlay thread の `Create -> Drain -> Run` を `try/finally` で包み、起動直後の例外や stop 競合でも native/fallback window を必ず破棄するようにした
@@ -12,6 +12,8 @@
 - Bookmark 追加時の `MovieInfo` 生成、bookmark フォルダ作成、DB 登録を UI クリック処理から外し、サムネ生成成功後に背景 DB 登録する順へ寄せた
 - Bookmark 削除時の DB 書き込みも UI クリック処理から外し、DB が同じ時だけ一覧 reload する形へ寄せた
 - Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新を UI クリック処理から外し、背景保存へ寄せた
+- Player のサムネイルシート再生位置解析と音量設定 `Save()` も UI クリック/スライダー処理から外し、解析は背景 task、設定保存は debounce 後の直列背景保存へ寄せた
+- MainDB 切替・終了・Player fullscreen debug の `Settings.Save()` は共通の直列背景保存へ寄せ、終了時だけ短時間 drain して取りこぼしと UI 待ちを両立する形にした
 - スコア増減メニューの DB 更新も UI クリック処理から外し、表示値を先に変えて DB 保存は背景へ逃がす形へ寄せた
 - タグメニュー、下部タグ編集タブ、タグチップ削除の DB 更新も背景保存へ寄せ、タグ操作中の UI 待ちを減らした
 - ファイル移動後の `movie_path` DB 更新も背景保存へ寄せ、移動後の表示反映と DB 保存待ちを分離した
@@ -39,11 +41,14 @@
 - `{dup}` と exact tag / notag も LINQ 連鎖を縮小し、特殊検索での列挙回数と allocation を減らした
 - `SearchSidecar` は本線リポから一旦外し、別リポで継続検証する方針へ切り替えた
 - 起動 deferred services の `CreateWatcher()` は `ApplicationIdle` へ 1 拍後ろ倒しし、first-page 直後の UI tick を軽くした
+- 起動 watcher 作成はさらに light services から heavy services 開始時へ移し、first-page 直後は bookmark reload / prewarm だけを先に流して、watch table 読込と監視配備をもう一段後ろへ送った
+- 起動サムネ成功インデックス prewarm も背景 task へ逃がし、first-page 直後の UI tick では同期ファイル走査を始めない形へ寄せた
 - Bookmark 下部タブの再読込は、`bookmark` DB read と `MovieRecords` 生成を background 化し、UI は `ObservableCollection` 反映だけへ寄せた
 - 起動時 auto-open の `system` 先読みをコンストラクタ同期読込から外し、cold start 既定値だけ先に入れて `ContentRendered -> TrySwitchMainDb(...)` へ寄せた
 - watch existing movie で query-only incremental watch 中かつ `file_date / movie_size` 差分または length 未確定の時だけ metadata probe を許し、`ObservedState.MovieLength` を局所更新へ流せるようにした
 - `WatchMainDbMovieSnapshot` に `file_date / movie_size` を追加し、Everything 起点の watch existing movie でも cheap な `DirtyFields` を出せるようにした
 - watch query-only 局所更新で `ObservedState` を source `MovieRecords` へ当て、DB 再読込なしでも `file_date / movie_size` 変更が sort/filter に効くようにした
+- DB 切替後の旧 QueueDB pending 掃除は UI 同期後処理から外し、切替成功後の背景 cleanup として後追いする形へ寄せた
 - `{dup}` 検索中に `Hash` を含む changed movie が来た時は changed-path 局所更新を降ろし、full in-memory filter へ戻して重複グループの出入りを取りこぼさないようにした
 - さらに通常検索では、dirty fields が検索列に無関係な時は現在の一致状態を再利用し、changed-path 局所更新で per-path `FilterMovies(...)` まで省くようにした
 - 空検索では changed movie の種別に関係なく一致判定を省き、watch query-only で per-path `FilterMovies(...)` を完全に避けるようにした
@@ -57,6 +62,7 @@
 - 再読込ボタンは `FilterAndSort(true)` と `Manual scan` を直列化し、その間だけ `Watch / EverythingPoll` を抑止して、全件DB再構築と手動全域走査が同時に走らないようにした
 - さらに `manual-reload` 抑止解除直後の catch-up `Watch` は積まず、直前の `Manual scan` で十分な場面に `watch_zero_diff reconcile` の全量再走査を重ねないようにした
 - 下部 `ThumbnailProgress` タブが非表示の時は snapshot refresh を dirty 記録だけへ寄せ、`CreateThumbAsync` 完了ごとの hidden UI 更新を抑えて `activity=None` の後段負荷を減らし始めた
+- `NoLockImageConverter` は UI スレッド上の画像読込失敗時に `Thread.Sleep(20)` の再試行待ちを行わず、1回失敗で次回描画へ譲る。非 UI スレッドでは従来どおり短い再試行を維持する
 - 下部 `ThumbnailProgress` の初期 snapshot 全走査は背景側で作り、UI には反映だけを返す形へ寄せた
 - UI を含む高速化の抜本改善プランを追加し、P4 を「全面再評価中心から差分反映中心へ変える」軸で補足
 - watch query-only reload に `changed paths` を通し、検索結果集合ベースの局所再評価を追加
@@ -84,6 +90,17 @@
 - ファイルコピー / リネーム時の watcher 一時停止復旧は、DB切替や終了で watcher が破棄済みでも例外をログへ閉じ、UI 操作完了を壊さないようにした
 - 起動直後の EverythingLite root prewarm は非同期 watcher apply 後の共有 `watchData` に依存せず、背景側で watch table snapshot を読んで空振りを避ける形へ寄せた
 - `WatcherEventQueue` の runner 起動も ThreadPool へ寄せ、FileSystemWatcher event handler から初回処理の同期前段をさらに外した
+- 外部 skin API の非 UI スレッド経由の同期 UI 状態読み取りは `DispatcherPriority.Background` へ下げ、戻り値 API の互換を維持しつつ入力・描画を押しのけにくくした
+- 外部 skin API は UI 状態を `WhiteBrowserSkinApiUiSnapshot` として 1 回だけ固定し、`update / getInfo / getInfos / getFindInfo` の DTO 生成で DB パス、thumb folder、選択状態、検索条件、基準 sort を個別再読取しない入口へ寄せた
+- `update / getInfo / getInfos / getFindInfo` は DTO 生成前に必要値だけの `MovieRecords` クローンを作り、途中で UI 側モデルが変わっても 1 応答内の値が揺れにくい形へ進めた
+- `focusThum / selectThum / addTag / removeTag / flipTag` は対象解決では UI 実体 `MovieRecords` を維持し、操作後レスポンスだけを操作後 snapshot と値クローンへ寄せた
+- 外部 skin API の thumbnail size 解決は、WB メタが十分な managed sheet ではメタ値を優先し、不要な同期画像デコードを避ける入口へ寄せた
+- 外部 skin API の thumbnail 解決は `FullSync / CacheOnly` の明示モードを持ち、`getInfo` と ID/recordKey 指定 `getInfos` は詳細精度維持、範囲 bulk `update / getInfos` は cache miss 時に既定寸法へ落として同期画像デコードを避ける形へ寄せた
+- 外部 skin API の thumbnail 更新 callback は、UI スレッドに残す処理を最小 context 取得へ寄せ、DTO 組み立ては UI 外へ逃がしつつ、連続通知の順序逆転を避ける直列 callback queue と fault log を持たせた
+- 外部 skin API の `CacheOnly` stale は、ファイルスタンプ確認で古いサイズ cache を捨て、未キャッシュ時は同期画像 decode へ戻らず WB メタまたは既定寸法へ落とす形へ統一した
+- 外部 skin API の thumbnail サイズ cache は `FullSync / CacheOnly` を分け、`CacheOnly` の WB メタ値が後続 `FullSync` の画像実寸解決を汚染しないようにした。callback も stale host/tab は DTO 構築前に落として、古い通知の重い組み立てを避ける
+- watcher / poll 境界は、Everything 対象 folder が無い周回や queue probe を見送った周回で短周期 wake-up / queue DB 参照へ戻りにくいよう、eligible 状態と前回遅延を使う待機方針へ寄せた
+- `EverythingWatchPollPolicy`、`UiHang` overlay lifecycle、`WatchScanCoordinator`、`WhiteBrowserSkin` API/thumbnail 契約、Player resize hook、startup warm path の source test を追加・拡張し、今回の境界変更をテストで固定した
 - `Watcher.cs` はさらに、`context 初期化`、`background scan`、`scan pipeline`、`movie loop`、`pending flush`、`folder completion`、`run finish`、`folder failure recovery result` を helper / runtime 側へ寄せ、入口・中盤・終端を段単位で薄くした
 - `Watcher` の flow 制御は `WatchLoopDecision` を共通の戻り値として揃え、`return / break / continue` の判定を helper 経由で追える形へ寄せた
 - さらに `watch folder` 解決、`scan 準備`、`movie loop preparation`、`loop decision await/apply`、`folder phase result`、`run finish` 呼び出しを helper 化し、`CheckFolderAsync(...)` は「フォルダを選ぶ -> scan を準備する -> loop / flush / finish を順に流す」形へ近づいた
@@ -289,6 +306,7 @@
 - Bookmark ラベル再生の FPS 取得も `Task.Run` 経由へ寄せ、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした
 - Bookmark reload は成功反映後に dirty を解除し、revision 不一致や DB 切替後着では dirty を消さずに捨てる
 - 起動 deferred services の `CreateWatcher()` は `ApplicationIdle` へ後ろ倒しし、first-page 表示直後の light services を少し薄くした
+- 起動 watcher 作成は heavy services 側へさらに後ろ倒しし、`first-page shown -> light services -> heavy services started` の段差をより明確にした
 - 監視系コードは次の partial へ分割済み
   - `Watcher/MainWindow.WatcherRegistration.cs`
   - `Watcher/MainWindow.WatcherEventQueue.cs`
@@ -302,6 +320,7 @@
 - `CheckFolderAsync` の入口・中盤・終端では、`context 初期化`、`background scan`、`scan pipeline`、`movie loop`、`pending flush`、`final queue flush`、`run finish`、`folder failure recovery result` も helper / runtime 1 呼び出しへ寄せ、`Watcher.cs` 側の直書きと局所 if をさらに減らした
 - 直近では `watch folder` 解決、`PrepareWatchFolderScanAsync(...)`、`TryBeginWatchFolderMovieLoop(...)`、`AwaitAndApplyWatchLoopDecisionAsync(...)`、`TryHandleWatchFolderPhaseResult(...)`、`TryFinishWatchRunAndReturnAsync(...)` を入れ、入口から終端までの flow 判定を同じ形へそろえた
 - WebView Player は動画切り替え時のホスト側音量適用中フラグを持ち、切り替え直後に WebView から来る 100% 既定音量通知を保存しないことで、ユーザー設定音量を維持するようにした
+- Player のサムネイル再生位置解析は `Task.Run` 経由へ寄せ、音量設定の実 `Save()` も debounce 後に背景直列化した。UI 側は値反映だけを先に終え、ファイル I/O をスライダー操作から切り離す
 - watch query-only reload は `ChangedMoviePaths` を deferred reload まで保持し、`RefreshMovieViewFromCurrentSourceAsync(...)` で `FilteredMovieRecs` から changed paths だけ抜き差しして再評価する初手まで入った
 - さらに `WatchChangedMovie(ChangeKind)` を通し、`SourceInserted` / `ViewRepaired` / `DisplayedViewRefresh` は empty search 時に直接復帰できるようになった
 - rename も `WatchChangedMovie(ChangeKind + DirtyFields)` に寄せ、`MovieName / MoviePath / Kana` 変更でも current sort 非依存なら既存順を再利用できるようになった

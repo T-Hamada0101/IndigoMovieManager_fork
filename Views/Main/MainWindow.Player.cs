@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -24,6 +25,8 @@ namespace IndigoMovieManager
         private bool _isPlayerVolumeApplyingToUi;
         private double _currentPlayerVolume = DefaultPlayerVolume;
         private DispatcherTimer _playerVolumeSaveDebounceTimer;
+        private readonly object _playerVolumeSettingsSaveSync = new();
+        private Task _playerVolumeSettingsSaveTask = Task.CompletedTask;
 
         // 保存済み設定が壊れていても、音量は常に 0.0 から 1.0 の安全域へ戻す。
         private static double ClampPlayerVolumeSetting(double volume)
@@ -106,7 +109,10 @@ namespace IndigoMovieManager
             // 保存が必要な入口だけここで畳み、設定ファイルへ直接触る場所を増やさない。
             if (save && Math.Abs(Properties.Settings.Default.PlayerVolume - resolvedVolume) > 0.0001d)
             {
-                Properties.Settings.Default.PlayerVolume = resolvedVolume;
+                lock (_playerVolumeSettingsSaveSync)
+                {
+                    Properties.Settings.Default.PlayerVolume = resolvedVolume;
+                }
                 QueuePlayerVolumeSettingSave();
             }
 
@@ -200,7 +206,67 @@ namespace IndigoMovieManager
                 _playerVolumeSaveDebounceTimer,
                 nameof(_playerVolumeSaveDebounceTimer)
             );
-            Properties.Settings.Default.Save();
+            QueuePlayerVolumeSettingSaveInBackground();
+        }
+
+        // 設定ファイル保存はディスクI/Oなので、UI操作の余韻を邪魔しないよう直列の背景保存へ逃がす。
+        private void QueuePlayerVolumeSettingSaveInBackground()
+        {
+            lock (_playerVolumeSettingsSaveSync)
+            {
+                _playerVolumeSettingsSaveTask = _playerVolumeSettingsSaveTask.ContinueWith(
+                    _ => SavePlayerVolumeSettingInBackground(),
+                    CancellationToken.None,
+                    TaskContinuationOptions.None,
+                    TaskScheduler.Default
+                );
+            }
+        }
+
+        private void SavePlayerVolumeSettingInBackground()
+        {
+            try
+            {
+                lock (_playerVolumeSettingsSaveSync)
+                {
+                    Properties.Settings.Default.Save();
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "player",
+                    $"player volume settings save failed: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+        }
+
+        // 終了直前の音量変更を落とさないよう、shutdown では短時間だけ保存完了を回収する。
+        private void WaitForPlayerVolumeSettingSaveForShutdown(int timeoutMs = 1000)
+        {
+            Task saveTask;
+            lock (_playerVolumeSettingsSaveSync)
+            {
+                saveTask = _playerVolumeSettingsSaveTask;
+            }
+
+            try
+            {
+                if (!saveTask.Wait(Math.Max(0, timeoutMs)))
+                {
+                    DebugRuntimeLog.Write(
+                        "player",
+                        $"player volume settings save drain timeout: timeout_ms={timeoutMs}"
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "player",
+                    $"player volume settings save drain failed: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
         }
 
         // WebView2 のネイティブ音量変更も設定へ戻し、以後の全動画へ同じ値を配る。
@@ -229,7 +295,6 @@ namespace IndigoMovieManager
             }
 
             int msec = 0;
-            int secPos = 0; //ここでは渡す為だけに使ってる。
             string moviePath = "";
             MovieRecords mv = new();
             bool notBookmark = true;
@@ -287,7 +352,14 @@ namespace IndigoMovieManager
                 {
                     if (senderObj.Name == "PlayFromThumb")
                     {
-                        msec = GetPlayPosition(GetCurrentThumbnailActionTabIndex(), mv, ref secPos);
+                        var playbackPosition = await ResolveSelectedThumbnailPlaybackPositionAsync(
+                            GetCurrentThumbnailActionTabIndex(),
+                            mv
+                        );
+                        if (playbackPosition.HasPosition)
+                        {
+                            msec = playbackPosition.Milliseconds;
+                        }
                     }
                 }
             }
@@ -379,6 +451,33 @@ namespace IndigoMovieManager
             MovieInfo movieInfo = new(movieFullPath, true);
             int fps = Math.Max(1, (int)movieInfo.FPS);
             return (int)bookmarkFrame / fps * 1000;
+        }
+
+        // クリック座標に対するサムネイルシート解析はUI外へ逃がし、再生クリックの待ちを減らす。
+        private Task<(int Milliseconds, int Position, bool HasPosition)> ResolveSelectedThumbnailPlaybackPositionAsync(
+            int tabIndex,
+            MovieRecords movie
+        )
+        {
+            string thumbPath = ResolveMovieThumbnailPathByTabIndex(tabIndex, movie);
+            if (string.IsNullOrWhiteSpace(thumbPath))
+            {
+                return Task.FromResult((0, 0, false));
+            }
+
+            System.Windows.Point clickPointSnapshot = lbClickPoint;
+            return Task.Run(() =>
+            {
+                bool resolved = TryResolveThumbnailPlaybackPosition(
+                    thumbPath,
+                    clickPointSnapshot,
+                    out int playbackMilliseconds,
+                    out int position
+                );
+                return resolved
+                    ? (playbackMilliseconds, position, true)
+                    : (0, 0, false);
+            });
         }
 
         // 再生開始後の軽い統計保存もDB I/Oなので、UIクリック処理から外す。
@@ -971,7 +1070,15 @@ namespace IndigoMovieManager
             {
                 if (senderObj.Name == "ManualThumbnail")
                 {
-                    msec = GetPlayPosition(GetCurrentThumbnailActionTabIndex(), mv, ref manualPos);
+                    var playbackPosition = await ResolveSelectedThumbnailPlaybackPositionAsync(
+                        GetCurrentThumbnailActionTabIndex(),
+                        mv
+                    );
+                    if (playbackPosition.HasPosition)
+                    {
+                        msec = playbackPosition.Milliseconds;
+                        manualPos = playbackPosition.Position;
+                    }
                 }
             }
 

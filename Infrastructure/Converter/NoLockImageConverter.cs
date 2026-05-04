@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using IndigoMovieManager.Properties;
 
 namespace IndigoMovieManager.Converter
@@ -19,6 +20,8 @@ namespace IndigoMovieManager.Converter
         internal const int MinImageCacheEntries = 256;
         internal const int MaxImageCacheEntries = 4096;
         internal const int DefaultImageCacheEntries = 1024;
+        internal const int UiThreadBitmapLoadMaxAttempts = 1;
+        internal const int BackgroundBitmapLoadMaxAttempts = 3;
         private const int MinMetadataCacheEntries = 1024;
         private const int MaxMetadataCacheEntries = 16384;
         private static readonly TimeSpan MetadataCacheLifetime = TimeSpan.FromSeconds(5);
@@ -482,7 +485,8 @@ namespace IndigoMovieManager.Converter
 
         private static BitmapSource LoadBitmapNoLock(string filePath, int decodePixelHeight)
         {
-            const int maxAttempts = 3;
+            bool isUiThread = IsCurrentThreadUiThread();
+            int maxAttempts = ResolveBitmapLoadMaxAttempts(isUiThread);
             for (int attempt = 0; attempt < maxAttempts; attempt++)
             {
                 try
@@ -527,15 +531,38 @@ namespace IndigoMovieManager.Converter
                 }
                 catch (IOException) when (attempt < maxAttempts - 1)
                 {
-                    Thread.Sleep(20);
+                    if (!isUiThread)
+                    {
+                        Thread.Sleep(20);
+                    }
                 }
                 catch (UnauthorizedAccessException) when (attempt < maxAttempts - 1)
                 {
-                    Thread.Sleep(20);
+                    if (!isUiThread)
+                    {
+                        Thread.Sleep(20);
+                    }
                 }
             }
 
             return null;
+        }
+
+        // visible-first 優先: UI スレッドでの失敗再試行待機は描画を止めるため、即時失敗で次回描画へ譲る。
+        internal static int ResolveBitmapLoadMaxAttempts(bool isUiThread)
+        {
+            return isUiThread ? UiThreadBitmapLoadMaxAttempts : BackgroundBitmapLoadMaxAttempts;
+        }
+
+        private static bool IsCurrentThreadUiThread()
+        {
+            Dispatcher dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                return false;
+            }
+
+            return dispatcher.CheckAccess();
         }
 
         private static BitmapSource ConvertToGray(BitmapSource source)

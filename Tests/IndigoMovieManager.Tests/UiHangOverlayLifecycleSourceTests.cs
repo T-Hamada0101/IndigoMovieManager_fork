@@ -132,6 +132,111 @@ public sealed class UiHangOverlayLifecycleSourceTests
     }
 
     [Test]
+    public void ExternalSkinApiの非UIスレッド同期読み取りはBackground優先度で渡す()
+    {
+        string source = GetSourceText(new[] { "Views", "Main", "MainWindow.WebViewSkin.Api.cs" })
+            .Replace("\r\n", "\n");
+        string method = ExtractMethod(source, "private T ReadExternalSkinUiState<T>(");
+
+        Assert.That(method, Does.Contain("Dispatcher.CheckAccess()"));
+        Assert.That(method, Does.Contain("return reader();"));
+        Assert.That(method, Does.Contain("Dispatcher.Invoke("));
+        Assert.That(method, Does.Contain("DispatcherPriority.Background"));
+    }
+
+    [Test]
+    public void ExternalSkinThumbnailCallbackはUIスナップショット取得後に背景組み立てする()
+    {
+        string source = GetSourceText(new[] { "Views", "Main", "MainWindow.WebViewSkin.Api.cs" })
+            .Replace("\r\n", "\n");
+        string queueMethod = ExtractMethod(source, "private void TryQueueExternalSkinThumbnailUpdated(");
+        string callbackQueueMethod = ExtractMethod(
+            source,
+            "private void QueueExternalSkinThumbnailUpdatedCallback("
+        );
+        string chainedCallbackMethod = ExtractMethod(
+            source,
+            "private async Task RunExternalSkinThumbnailUpdatedCallbackAfterAsync("
+        );
+        string buildDispatchMethod = ExtractMethod(
+            source,
+            "private async Task BuildAndDispatchExternalSkinThumbnailUpdatedAsync("
+        );
+        string staleCheckMethod = ExtractMethod(
+            source,
+            "private bool IsExternalSkinThumbnailCallbackStillCurrent("
+        );
+        string payloadBuilderMethod = ExtractMethod(
+            source,
+            "private WhiteBrowserSkinThumbnailUpdateCallbackPayload BuildExternalSkinThumbnailUpdateCallbackPayload("
+        );
+        string captureContextMethod = ExtractMethod(
+            source,
+            "CaptureExternalSkinThumbnailUpdateUiContextOnUiThread()\n        {"
+        );
+
+        Assert.That(
+            queueMethod,
+            Does.Contain("callbackUiContext = CaptureExternalSkinThumbnailUpdateUiContextOnUiThread();")
+        );
+        Assert.That(queueMethod, Does.Contain("MovieRecords movieSnapshot = CloneExternalSkinThumbnailCallbackMovie(movie);"));
+        Assert.That(queueMethod, Does.Contain("QueueExternalSkinThumbnailUpdatedCallback("));
+        Assert.That(queueMethod, Does.Contain("callbackUiContext.DbFullPath"));
+        Assert.That(queueMethod, Does.Contain("callbackUiContext.ThumbFolder"));
+        Assert.That(queueMethod, Does.Contain("callbackUiContext.SelectedMovieId"));
+        Assert.That(queueMethod, Does.Contain("callbackUiContext.SelectedMovieIds"));
+        Assert.That(queueMethod, Does.Not.Contain("BuildExternalSkinThumbnailUpdateCallbackPayload("));
+
+        Assert.That(callbackQueueMethod, Does.Contain("lock (_externalSkinThumbnailCallbackQueueSync)"));
+        Assert.That(callbackQueueMethod, Does.Contain("Task previousTask = _externalSkinThumbnailCallbackQueueTask;"));
+        Assert.That(callbackQueueMethod, Does.Contain("_externalSkinThumbnailCallbackQueueTask = RunExternalSkinThumbnailUpdatedCallbackAfterAsync("));
+        Assert.That(chainedCallbackMethod, Does.Contain("await previousTask.ConfigureAwait(false);"));
+        Assert.That(chainedCallbackMethod, Does.Contain("thumbnail callback pipeline failed"));
+
+        Assert.That(captureContextMethod, Does.Contain("GetSelectedItemByTabIndex()"));
+        Assert.That(captureContextMethod, Does.Contain("GetSelectedItemsByTabIndex()"));
+        Assert.That(captureContextMethod, Does.Contain("ResolveExternalSkinApiTabIndexOnUiThread()"));
+        Assert.That(captureContextMethod, Does.Contain("MainVM?.DbInfo?.DBFullPath ?? \"\""));
+        Assert.That(captureContextMethod, Does.Contain("MainVM?.DbInfo?.ThumbFolder ?? \"\""));
+
+        Assert.That(buildDispatchMethod, Does.Contain("await Task.Run(() =>"));
+        Assert.That(
+            buildDispatchMethod,
+            Does.Contain("BuildExternalSkinThumbnailUpdateCallbackPayload(")
+        );
+        Assert.That(
+            buildDispatchMethod,
+            Does.Contain("thumbnail callback skipped before build by stale host/tab/db")
+        );
+        Assert.That(buildDispatchMethod, Does.Contain("await InvokeExternalSkinUiTaskAsync("));
+        Assert.That(buildDispatchMethod, Does.Contain("IsExternalSkinThumbnailCallbackStillCurrent("));
+        Assert.That(buildDispatchMethod, Does.Contain("dbFullPath"));
+        Assert.That(
+            buildDispatchMethod,
+            Does.Contain("hostControl.RegisterExternalThumbnailPath(thumbPath);")
+        );
+        Assert.That(buildDispatchMethod, Does.Contain("thumbnail callback build failed"));
+        Assert.That(buildDispatchMethod, Does.Not.Contain("MainVM?.DbInfo"));
+        Assert.That(buildDispatchMethod, Does.Not.Contain("GetSelectedItemByTabIndex("));
+        Assert.That(buildDispatchMethod, Does.Not.Contain("GetSelectedItemsByTabIndex("));
+        Assert.That(
+            buildDispatchMethod,
+            Does.Contain("await DispatchExternalSkinThumbnailUpdatedAsync(hostControl, payload, reason);")
+        );
+
+        Assert.That(payloadBuilderMethod, Does.Contain("DbFullPath = dbFullPath ?? \"\""));
+        Assert.That(payloadBuilderMethod, Does.Contain("ManagedThumbnailRootPath = thumbFolder ?? \"\""));
+        Assert.That(payloadBuilderMethod, Does.Contain("SelectedMovieId = selectedMovieId"));
+        Assert.That(staleCheckMethod, Does.Contain("string dbFullPath"));
+        Assert.That(staleCheckMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(payloadBuilderMethod, Does.Contain("SelectedMovieIds = selectedMovieIds ?? []"));
+        Assert.That(payloadBuilderMethod, Does.Contain("ResolveExternalSkinThumbUrlFromSnapshot("));
+        Assert.That(payloadBuilderMethod, Does.Not.Contain("MainVM?.DbInfo"));
+        Assert.That(payloadBuilderMethod, Does.Not.Contain("GetSelectedItemByTabIndex("));
+        Assert.That(payloadBuilderMethod, Does.Not.Contain("GetSelectedItemsByTabIndex("));
+    }
+
+    [Test]
     public void NativeOverlayHostはowner付き生成と停止時即hideを持つ()
     {
         string source = GetSourceText(new[] { "Views", "Main", "NativeOverlayHost.cs" });

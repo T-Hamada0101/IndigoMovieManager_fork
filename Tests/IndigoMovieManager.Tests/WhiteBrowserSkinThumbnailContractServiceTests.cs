@@ -242,6 +242,179 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
     }
 
     [Test]
+    public void Create_CacheOnlyは未キャッシュ時もWBメタから軽くサイズを返せる()
+    {
+        string tempRoot = CreateTempDirectory("imm-wbskin-cacheonly-hit");
+        try
+        {
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            string moviePath = Path.Combine(tempRoot, "cover-target.mp4");
+            string thumbPath = Path.Combine(thumbRoot, "cover-target.#hash.jpg");
+            CreateMovieFile(moviePath);
+            CreateManagedThumbnailWithMetadata(
+                thumbPath,
+                width: 360,
+                height: 90,
+                columns: 3,
+                rows: 1,
+                captureSeconds: [12, 34, 56]
+            );
+
+            MovieRecords movie = CreateMovieRecord(moviePath, "cover-target", thumbPath);
+            WhiteBrowserSkinThumbnailResolveContext fullSyncContext = new()
+            {
+                DbFullPath = Path.Combine(tempRoot, "main.wb"),
+                ManagedThumbnailRootPath = thumbRoot,
+                DisplayTabIndex = 0,
+                ResolveMode = WhiteBrowserSkinThumbnailResolveMode.FullSync,
+            };
+            WhiteBrowserSkinThumbnailResolveContext cacheOnlyContext = fullSyncContext with
+            {
+                ResolveMode = WhiteBrowserSkinThumbnailResolveMode.CacheOnly,
+            };
+
+            WhiteBrowserSkinThumbnailContractDto miss = service.Create(movie, cacheOnlyContext);
+            // 1 度 FullSync で確定値を作ると、その後の CacheOnly はキャッシュ値を返せる。
+            _ = service.Create(movie, fullSyncContext);
+            WhiteBrowserSkinThumbnailContractDto hit = service.Create(movie, cacheOnlyContext);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(miss.ThumbNaturalWidth, Is.EqualTo(360));
+                Assert.That(miss.ThumbNaturalHeight, Is.EqualTo(90));
+                Assert.That(miss.ThumbSheetColumns, Is.EqualTo(3));
+                Assert.That(miss.ThumbSheetRows, Is.EqualTo(1));
+                Assert.That(hit.ThumbNaturalWidth, Is.EqualTo(360));
+                Assert.That(hit.ThumbNaturalHeight, Is.EqualTo(90));
+                Assert.That(hit.ThumbSheetColumns, Is.EqualTo(3));
+                Assert.That(hit.ThumbSheetRows, Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(tempRoot);
+        }
+    }
+
+    [Test]
+    public void Create_CacheOnly後のFullSyncは画像実寸で再解決する()
+    {
+        string tempRoot = CreateTempDirectory("imm-wbskin-cacheonly-fullsync");
+        try
+        {
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            string moviePath = Path.Combine(tempRoot, "cover-target.mp4");
+            string thumbPath = Path.Combine(thumbRoot, "cover-target.#hash.jpg");
+            CreateMovieFile(moviePath);
+            CreateManagedThumbnailWithDifferentMetadata(
+                thumbPath,
+                imageWidth: 320,
+                imageHeight: 240,
+                metadataTotalWidth: 360,
+                metadataTotalHeight: 90,
+                columns: 3,
+                rows: 1,
+                captureSeconds: [12, 34, 56]
+            );
+
+            MovieRecords movie = CreateMovieRecord(moviePath, "cover-target", thumbPath);
+            WhiteBrowserSkinThumbnailResolveContext fullSyncContext = new()
+            {
+                DbFullPath = Path.Combine(tempRoot, "main.wb"),
+                ManagedThumbnailRootPath = thumbRoot,
+                DisplayTabIndex = 0,
+                ResolveMode = WhiteBrowserSkinThumbnailResolveMode.FullSync,
+            };
+            WhiteBrowserSkinThumbnailResolveContext cacheOnlyContext = fullSyncContext with
+            {
+                ResolveMode = WhiteBrowserSkinThumbnailResolveMode.CacheOnly,
+            };
+
+            WhiteBrowserSkinThumbnailContractDto cacheOnly = service.Create(movie, cacheOnlyContext);
+            WhiteBrowserSkinThumbnailContractDto fullSync = service.Create(movie, fullSyncContext);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cacheOnly.ThumbNaturalWidth, Is.EqualTo(360));
+                Assert.That(cacheOnly.ThumbNaturalHeight, Is.EqualTo(90));
+                Assert.That(fullSync.ThumbNaturalWidth, Is.EqualTo(320));
+                Assert.That(fullSync.ThumbNaturalHeight, Is.EqualTo(240));
+                Assert.That(fullSync.ThumbSheetColumns, Is.EqualTo(3));
+                Assert.That(fullSync.ThumbSheetRows, Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(tempRoot);
+        }
+    }
+
+    [Test]
+    public void Create_CacheOnlyはサムネ更新後に古いサイズキャッシュを返さない()
+    {
+        string tempRoot = CreateTempDirectory("imm-wbskin-cacheonly-stamp-refresh");
+        try
+        {
+            string thumbRoot = Path.Combine(tempRoot, "thumb");
+            Directory.CreateDirectory(thumbRoot);
+
+            string moviePath = Path.Combine(tempRoot, "cover-target.mp4");
+            string thumbPath = Path.Combine(thumbRoot, "cover-target.#hash.jpg");
+            CreateMovieFile(moviePath);
+            CreateManagedThumbnailWithMetadata(
+                thumbPath,
+                width: 360,
+                height: 90,
+                columns: 3,
+                rows: 1,
+                captureSeconds: [12, 34, 56]
+            );
+
+            MovieRecords movie = CreateMovieRecord(moviePath, "cover-target", thumbPath);
+            WhiteBrowserSkinThumbnailResolveContext context = new()
+            {
+                DbFullPath = Path.Combine(tempRoot, "main.wb"),
+                ManagedThumbnailRootPath = thumbRoot,
+                DisplayTabIndex = 0,
+                ResolveMode = WhiteBrowserSkinThumbnailResolveMode.FullSync,
+            };
+
+            _ = service.Create(movie, context);
+
+            Thread.Sleep(20);
+            CreateManagedThumbnailWithMetadata(
+                thumbPath,
+                width: 320,
+                height: 240,
+                columns: 2,
+                rows: 2,
+                captureSeconds: [10, 20, 30, 40]
+            );
+
+            WhiteBrowserSkinThumbnailContractDto after = service.Create(
+                movie,
+                context with { ResolveMode = WhiteBrowserSkinThumbnailResolveMode.CacheOnly }
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(after.ThumbNaturalWidth, Is.EqualTo(320));
+                Assert.That(after.ThumbNaturalHeight, Is.EqualTo(240));
+                Assert.That(after.ThumbSheetColumns, Is.EqualTo(2));
+                Assert.That(after.ThumbSheetRows, Is.EqualTo(2));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(tempRoot);
+        }
+    }
+
+    [Test]
     public void Create_ERRORマーカーはerror_placeholderになる()
     {
         string tempRoot = CreateTempDirectory("imm-wbskin-error");
@@ -424,6 +597,37 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
                 ThumbCount = captureSeconds?.Length ?? 0,
                 ThumbWidth = Math.Max(1, width / Math.Max(1, columns)),
                 ThumbHeight = Math.Max(1, height / Math.Max(1, rows)),
+                ThumbColumns = Math.Max(1, columns),
+                ThumbRows = Math.Max(1, rows),
+                CaptureSeconds = captureSeconds?.ToList() ?? [],
+            }
+        );
+    }
+
+    private static void CreateManagedThumbnailWithDifferentMetadata(
+        string imagePath,
+        int imageWidth,
+        int imageHeight,
+        int metadataTotalWidth,
+        int metadataTotalHeight,
+        int columns,
+        int rows,
+        int[] captureSeconds
+    )
+    {
+        if (File.Exists(imagePath))
+        {
+            File.Delete(imagePath);
+        }
+
+        CreateSampleImage(imagePath, imageWidth, imageHeight, ImageFormat.Jpeg);
+        WhiteBrowserThumbInfoSerializer.AppendToJpeg(
+            imagePath,
+            new ThumbnailSheetSpec
+            {
+                ThumbCount = captureSeconds?.Length ?? 0,
+                ThumbWidth = Math.Max(1, metadataTotalWidth / Math.Max(1, columns)),
+                ThumbHeight = Math.Max(1, metadataTotalHeight / Math.Max(1, rows)),
                 ThumbColumns = Math.Max(1, columns),
                 ThumbRows = Math.Max(1, rows),
                 CaptureSeconds = captureSeconds?.ToList() ?? [],

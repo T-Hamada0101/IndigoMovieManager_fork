@@ -35,7 +35,8 @@ namespace IndigoMovieManager.Skin.Runtime
             string sourceKind = ResolveSourceKind(movie, resolvedThumbPath);
             WhiteBrowserSkinThumbnailSizeInfo sizeInfo = ResolveSizeInfo(
                 resolvedThumbPath,
-                sourceKind
+                sourceKind,
+                normalizedContext.ResolveMode
             );
             string thumbRevision = BuildThumbRevision(resolvedThumbPath, sourceKind);
 
@@ -205,7 +206,8 @@ namespace IndigoMovieManager.Skin.Runtime
 
         private static WhiteBrowserSkinThumbnailSizeInfo ResolveSizeInfo(
             string resolvedThumbPath,
-            string sourceKind
+            string sourceKind,
+            WhiteBrowserSkinThumbnailResolveMode resolveMode
         )
         {
             if (string.IsNullOrWhiteSpace(resolvedThumbPath))
@@ -214,18 +216,43 @@ namespace IndigoMovieManager.Skin.Runtime
             }
 
             string normalizedThumbPath = NormalizePath(resolvedThumbPath);
-            if (
-                string.IsNullOrWhiteSpace(normalizedThumbPath)
-                || !TryReadSizeInfoFileStamp(normalizedThumbPath, out SizeInfoFileStamp fileStamp)
-            )
+            if (string.IsNullOrWhiteSpace(normalizedThumbPath))
             {
                 return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
             }
 
-            string cacheKey = BuildSizeInfoCacheKey(normalizedThumbPath, sourceKind);
-            if (TryGetCachedSizeInfo(cacheKey, fileStamp, out WhiteBrowserSkinThumbnailSizeInfo cached))
+            string cacheKey = BuildSizeInfoCacheKey(normalizedThumbPath, sourceKind, resolveMode);
+            if (!TryReadSizeInfoFileStamp(normalizedThumbPath, out SizeInfoFileStamp fileStamp))
+            {
+                return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
+            }
+
+            if (
+                TryGetCachedSizeInfo(
+                    cacheKey,
+                    fileStamp,
+                    out WhiteBrowserSkinThumbnailSizeInfo cached
+                )
+            )
             {
                 return cached;
+            }
+
+            if (resolveMode == WhiteBrowserSkinThumbnailResolveMode.CacheOnly)
+            {
+                if (
+                    TryResolveSizeInfoFromThumbnailMetadataFile(
+                        normalizedThumbPath,
+                        sourceKind,
+                        out WhiteBrowserSkinThumbnailSizeInfo metadataSizeInfo
+                    )
+                )
+                {
+                    StoreCachedSizeInfo(cacheKey, fileStamp, metadataSizeInfo);
+                    return metadataSizeInfo;
+                }
+
+                return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
             }
 
             WhiteBrowserSkinThumbnailSizeInfo resolvedSizeInfo = ResolveSizeInfoCore(
@@ -281,6 +308,56 @@ namespace IndigoMovieManager.Skin.Runtime
             return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
         }
 
+        private static bool TryResolveSizeInfoFromThumbnailMetadataFile(
+            string resolvedThumbPath,
+            string sourceKind,
+            out WhiteBrowserSkinThumbnailSizeInfo sizeInfo
+        )
+        {
+            sizeInfo = default;
+            if (!RequiresThumbnailSheetMetadata(sourceKind))
+            {
+                return false;
+            }
+
+            try
+            {
+                ThumbInfo thumbInfo = new();
+                thumbInfo.GetThumbInfo(resolvedThumbPath);
+                return thumbInfo.IsThumbnail
+                    && TryResolveSizeInfoFromThumbnailMetadata(thumbInfo, out sizeInfo);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryResolveSizeInfoFromThumbnailMetadata(
+            ThumbInfo thumbInfo,
+            out WhiteBrowserSkinThumbnailSizeInfo sizeInfo
+        )
+        {
+            sizeInfo = default;
+            if (thumbInfo == null)
+            {
+                return false;
+            }
+
+            int columns = Math.Max(1, thumbInfo.ThumbColumns);
+            int rows = Math.Max(1, thumbInfo.ThumbRows);
+            int totalWidth = thumbInfo.TotalWidth;
+            int totalHeight = thumbInfo.TotalHeight;
+            bool hasGridLayout = columns > 1 || rows > 1 || thumbInfo.ThumbCounts > 1;
+            if (!hasGridLayout || totalWidth <= 0 || totalHeight <= 0)
+            {
+                return false;
+            }
+
+            sizeInfo = new WhiteBrowserSkinThumbnailSizeInfo(totalWidth, totalHeight, columns, rows);
+            return true;
+        }
+
         private static bool RequiresThumbnailSheetMetadata(string sourceKind)
         {
             return string.Equals(
@@ -326,9 +403,13 @@ namespace IndigoMovieManager.Skin.Runtime
             }
         }
 
-        private static string BuildSizeInfoCacheKey(string normalizedThumbPath, string sourceKind)
+        private static string BuildSizeInfoCacheKey(
+            string normalizedThumbPath,
+            string sourceKind,
+            WhiteBrowserSkinThumbnailResolveMode resolveMode
+        )
         {
-            return $"{normalizedThumbPath}|{sourceKind ?? ""}";
+            return $"{normalizedThumbPath}|{sourceKind ?? ""}|{resolveMode}";
         }
 
         private static bool TryGetCachedSizeInfo(

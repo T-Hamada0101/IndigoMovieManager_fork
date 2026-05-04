@@ -30,4 +30,20 @@ public sealed class NoLockImageConverterTests
 
         Assert.That(actual, Is.EqualTo(NoLockImageConverter.DefaultImageCacheEntries));
     }
+
+    [Test]
+    public void 画像読込試行回数はUIスレッドでは1回()
+    {
+        int actual = NoLockImageConverter.ResolveBitmapLoadMaxAttempts(isUiThread: true);
+
+        Assert.That(actual, Is.EqualTo(NoLockImageConverter.UiThreadBitmapLoadMaxAttempts));
+    }
+
+    [Test]
+    public void 画像読込試行回数は非UIスレッドでは3回()
+    {
+        int actual = NoLockImageConverter.ResolveBitmapLoadMaxAttempts(isUiThread: false);
+
+        Assert.That(actual, Is.EqualTo(NoLockImageConverter.BackgroundBitmapLoadMaxAttempts));
+    }
 }

@@ -129,6 +129,35 @@ namespace IndigoMovieManager
             return Math.Max(delayMs, EverythingWatchPollIntervalCalmMs);
         }
 
+        // Everything 対象が無い周回では、queue DB 参照や短周期 wake-up を避ける。
+        internal static int ApplyEverythingWatchPollEligibilityDelayPolicy(
+            int delayMs,
+            bool hasEligibleWatchFolders
+        )
+        {
+            if (delayMs <= 0)
+            {
+                delayMs = EverythingWatchPollIntervalMs;
+            }
+
+            return hasEligibleWatchFolders
+                ? delayMs
+                : Math.Max(delayMs, EverythingWatchPollIntervalBusyMs);
+        }
+
+        // queue 負荷を読まない周回では、直前の既知遅延を使って短周期化を避ける。
+        internal static int ResolveEverythingWatchPollBaseDelayWhenQueueProbeSkipped(int lastDelayMs)
+        {
+            return lastDelayMs switch
+            {
+                EverythingWatchPollIntervalMs => EverythingWatchPollIntervalMs,
+                EverythingWatchPollIntervalMediumMs => EverythingWatchPollIntervalMediumMs,
+                EverythingWatchPollIntervalCalmMs => EverythingWatchPollIntervalCalmMs,
+                EverythingWatchPollIntervalBusyMs => EverythingWatchPollIntervalBusyMs,
+                _ => EverythingWatchPollIntervalMs,
+            };
+        }
+
         // 混雑度と直近の静かさを見て、Everything poll の待機間隔を決める。
         private int ResolveEverythingWatchPollDelayFromState(int queueActiveCount)
         {
@@ -184,7 +213,13 @@ namespace IndigoMovieManager
             Volatile.Write(ref _lastEverythingPollUpdateCount, 0);
             Volatile.Write(ref _consecutiveCalmEverythingPollCount, 0);
             Volatile.Write(ref _lastEverythingPollDelayMs, EverythingWatchPollIntervalMs);
+            Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
             Volatile.Write(ref _everythingWatchPollLoopStartedTick64, Environment.TickCount64);
+        }
+
+        private bool HasEverythingWatchPollEligibleFolders()
+        {
+            return Volatile.Read(ref _lastEverythingPollEligibleWatchFolderCount) > 0;
         }
 
         // poll 起動直後は初期処理とぶつかりやすいため、calm 延長は一定時間後だけ許可する。

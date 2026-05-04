@@ -530,7 +530,14 @@ public sealed class WatchScanCoordinatorPolicyTests
         Assert.That(useIncrementalUiMode, Is.False);
         Assert.That(canUseQueryOnlyWatchReload, Is.False);
         Assert.That(downgradedMessage, Does.Contain("downgraded to full"));
+        Assert.That(downgradedMessage, Does.Contain("plan_reason=watch-full-fallback"));
+        Assert.That(downgradedMessage, Does.Contain("can_query_only_before=True"));
+        Assert.That(downgradedMessage, Does.Contain("can_query_only_after=False"));
+        Assert.That(downgradedMessage, Does.Contain("changed_path_fallback=bulk-watch-batch"));
         Assert.That(scanModeMessage, Does.Contain("mode=bulk"));
+        Assert.That(scanModeMessage, Does.Contain("can_query_only=False"));
+        Assert.That(scanModeMessage, Does.Contain("plan_reason=watch-full-fallback"));
+        Assert.That(scanModeMessage, Does.Contain("changed_path_fallback=bulk-watch-batch"));
     }
 
     [Test]
@@ -553,6 +560,9 @@ public sealed class WatchScanCoordinatorPolicyTests
         Assert.That(canUseQueryOnlyWatchReload, Is.True);
         Assert.That(downgradedMessage, Is.Empty);
         Assert.That(scanModeMessage, Does.Contain("mode=bulk"));
+        Assert.That(scanModeMessage, Does.Contain("plan_reason=not-watch"));
+        Assert.That(scanModeMessage, Does.Contain("can_query_only=True"));
+        Assert.That(scanModeMessage, Does.Contain("changed_path_fallback=none"));
     }
 
     [Test]

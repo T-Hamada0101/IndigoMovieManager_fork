@@ -244,6 +244,9 @@ namespace IndigoMovieManager.Skin.Runtime
 
         public int DisplayTabIndex { get; init; }
 
+        public WhiteBrowserSkinThumbnailResolveMode ResolveMode { get; init; } =
+            WhiteBrowserSkinThumbnailResolveMode.FullSync;
+
         public long? SelectedMovieId { get; init; }
 
         public IReadOnlySet<long> SelectedMovieIds { get; init; }
@@ -253,6 +256,12 @@ namespace IndigoMovieManager.Skin.Runtime
         /// 未指定なら、この side で既定の thum.local URL 変換を使う。
         /// </summary>
         public Func<string, string> ThumbUrlResolver { get; init; }
+    }
+
+    public enum WhiteBrowserSkinThumbnailResolveMode
+    {
+        FullSync,
+        CacheOnly,
     }
 
     /// <summary>
