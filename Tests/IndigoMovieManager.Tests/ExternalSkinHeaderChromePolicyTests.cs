@@ -38,6 +38,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
                 Does.Not.Contain("ExternalSkinMinimalChromePanel.Visibility = Visibility.Visible;")
             );
             Assert.That(xaml, Does.Contain("x:Name=\"MainHeaderStandardChromePanel\""));
+            Assert.That(xaml, Does.Contain("<RowDefinition Height=\"48\" />"));
+            Assert.That(xaml, Does.Contain("x:Name=\"MainHeaderBar\""));
+            Assert.That(xaml, Does.Contain("Grid.Row=\"0\""));
+            Assert.That(xaml, Does.Contain("VerticalAlignment=\"Top\""));
             Assert.That(xaml, Does.Contain("Height=\"36\""));
             Assert.That(xaml, Does.Contain("<ColumnDefinition Width=\"*\" MinWidth=\"0\" />"));
             Assert.That(xaml, Does.Contain("x:Name=\"ExternalSkinMinimalSkinSelector\""));

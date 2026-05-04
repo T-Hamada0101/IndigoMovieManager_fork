@@ -1809,13 +1809,21 @@
         </DockPanel>
       </materialDesign:DrawerHost.LeftDrawerContent>
 
-      <materialDesign:ColorZone
-        x:Name="MainHeaderBar"
-        Padding="10,6"
-        Mode="Custom"
-        Background="{DynamicResource MainHeaderBackground}"
-        Foreground="{DynamicResource MainHeaderForegroundBrush}"
-      >
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="48" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <materialDesign:ColorZone
+          x:Name="MainHeaderBar"
+          Grid.Row="0"
+          Padding="10,6"
+          Mode="Custom"
+          Background="{DynamicResource MainHeaderBackground}"
+          Foreground="{DynamicResource MainHeaderForegroundBrush}"
+          VerticalAlignment="Top"
+        >
         <Grid VerticalAlignment="Center">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -2138,7 +2146,8 @@
             </DockPanel>
           </Grid>
         </Grid>
-      </materialDesign:ColorZone>
+        </materialDesign:ColorZone>
+      </Grid>
     </materialDesign:DrawerHost>
 
     <notifications:NotificationArea
