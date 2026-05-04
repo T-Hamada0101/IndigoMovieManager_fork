@@ -32,6 +32,7 @@
 - 2026-04-24 に `umiFindTreeEve onSkinLeave/onClearAll -> MissingSkin -> #TagInputRelation` も focused 2 件 green を確認し、runtime bridge 側の `umiFindTreeEve` 直列を未固定一覧から外した
 - 2026-04-24 に build 出力 skin 4 本の `tag / thumb -> terminal -> MissingSkin -> success` 直列も focused 16 件 green を確認し、runtime bridge 側の build 出力 skin 直列を未固定一覧から外した
 - 2026-04-24 の計画練り直しで、残りの主戦場を `MainWindow` 実 host の teardown / fail-fast 共通原因、bare `TagInputRelation` の runtime bridge 直列、build 出力 skin 4 本の MainWindow 受け入れ判断へ再編した
+- 2026-05-05 に共通ヘッダーの skin selector 同期を `GetCachedAvailableSkinDefinitions()` へ寄せ、表示同期のたびに `WhiteBrowserSkinCatalogService.Load(...)` の署名確認へ戻らない形へした
 
 ## 1. 結論
 
@@ -323,6 +324,7 @@ skin 名解決や minimal chrome 同期のたびに、catalog を常時総なめ
 - `LoadCore(...)` の定義再利用判定は html metadata 基準へ寄せ、CSS / JS / 画像など非 HTML 資産だけ更新した時も `WhiteBrowserSkinDefinition` を参照再利用できるようにした。focused test で「asset 更新だけなら miss でも definition は再利用される」ことを固定した
 - `WhiteBrowserSkinOrchestrator` の snapshot 構築は loaded definitions ベースへ寄せ、`GetAvailableSkinDefinitions() -> ApplySkinByName(...) -> GetAvailableSkinDefinitions()` の余分な catalog hit を減らした
 - `WhiteBrowserSkinOrchestrator` 経由でも、一覧再取得時に未変更 skin 定義が参照再利用されることを focused test で確認した。MainWindow 相当の利用経路でも、html を触っていない skin まで毎回作り直さない
+- 2026-05-05: 共通ヘッダーの skin selector は初回一覧取得後、表示名同期では Orchestrator の cached snapshot を使う。設定画面は従来どおり `GetAvailableSkinDefinitions()` を使い、外部 skin 追加・HTML 更新の検知線を残す
 - `MainWindow.WebViewSkin` の batch begin / flush ログと合わせ、`skin-webview` と `skin-catalog` を同じ `debug-runtime.log` だけで並べて追える状態にした
 - `skin-webview` の `refresh deferred / queued / batch begin / batch flush` には `batch=btXXXX` と `request=rqXXXX` の短い識別子も載せ、同じ切替単位の流れを 1 本で追いやすくした
 - `request=rqXXXX` は `host prepare begin` / `host navigate failed` / `refresh skipped stale` / `host presentation` にも引き継ぎ、queue された refresh が apply 完了までどう流れたかを追いやすくした

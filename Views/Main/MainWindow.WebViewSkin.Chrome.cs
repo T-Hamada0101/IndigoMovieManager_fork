@@ -60,7 +60,7 @@ namespace IndigoMovieManager
             List<WhiteBrowserSkinDefinition> selectableDefinitions = [];
             if (minimalVisible)
             {
-                foreach (WhiteBrowserSkinDefinition candidate in GetAvailableSkinDefinitions())
+                foreach (WhiteBrowserSkinDefinition candidate in GetCachedAvailableSkinDefinitions())
                 {
                     if (candidate != null)
                     {

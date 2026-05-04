@@ -14,6 +14,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             source,
             "private void ApplyExternalSkinMinimalChromeVisibility("
         );
+        string syncMethod = GetMethodBlock(
+            source,
+            "private void SyncExternalSkinMinimalSkinSelector("
+        );
         string drawerHost = GetXmlElementBlock(
             xaml,
             "<materialDesign:DrawerHost",
@@ -57,6 +61,8 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(xaml, Does.Contain("Width=\"170\""));
             Assert.That(xaml, Does.Contain("MaxWidth=\"420\""));
             Assert.That(xaml, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
+            Assert.That(syncMethod, Does.Contain("GetCachedAvailableSkinDefinitions()"));
+            Assert.That(syncMethod, Does.Not.Contain("GetAvailableSkinDefinitions()"));
         });
     }
 

@@ -81,6 +81,18 @@ namespace IndigoMovieManager.Skin
             return BuildAvailableSkinDefinitionSnapshot();
         }
 
+        public IReadOnlyList<WhiteBrowserSkinDefinition> GetCachedAvailableSkinDefinitions()
+        {
+            if (availableSkinDefinitions.Count < 1)
+            {
+                ReloadAvailableSkinDefinitions();
+            }
+
+            // ヘッダーの表示同期では catalog の署名確認を繰り返さず、
+            // 直近の一覧 snapshot だけを組み直して UI 更新コストを抑える。
+            return BuildAvailableSkinDefinitionSnapshot();
+        }
+
         public string GetCurrentSkinName()
         {
             return NormalizeStoredSkinNameCore(

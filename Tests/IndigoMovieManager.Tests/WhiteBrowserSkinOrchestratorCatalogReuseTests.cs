@@ -52,6 +52,41 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public void CachedAvailableSkinDefinitionsはcatalog署名確認を繰り返さない()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("HeaderCachedGrid");
+        string currentSkinName = "HeaderCachedGrid";
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? ""
+            );
+
+            IReadOnlyList<WhiteBrowserSkinDefinition> first = orchestrator.GetAvailableSkinDefinitions();
+            IReadOnlyList<WhiteBrowserSkinDefinition> cachedFirst =
+                orchestrator.GetCachedAvailableSkinDefinitions();
+            IReadOnlyList<WhiteBrowserSkinDefinition> cachedSecond =
+                orchestrator.GetCachedAvailableSkinDefinitions();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first, Is.SameAs(cachedFirst));
+                Assert.That(cachedFirst, Is.SameAs(cachedSecond));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(1));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadHitCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogSignatureBuildCountForTesting(), Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void ApplySkinByName後にhtml更新が入ると次回一覧取得でcatalog_cacheを再読込する()
     {
         string rootPath = CreateSkinRootWithSingleSkin("ReloadOrchestratorGrid", thumbWidth: 160);
