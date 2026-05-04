@@ -485,6 +485,31 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayerWebViewEnvironmentWarm_起動light_services後に環境だけ先行作成する()
+    {
+        string startupSource = GetMainWindowStartupSourceText();
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string warmMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private async Task WarmPlayerWebViewEnvironmentAfterIdleAsync()"
+        );
+
+        Assert.That(startupSource, Does.Contain("QueuePlayerWebViewEnvironmentWarm();"));
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("private bool _playerWebViewEnvironmentWarmQueued;")
+        );
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("private void QueuePlayerWebViewEnvironmentWarm()")
+        );
+        Assert.That(warmMethod, Does.Contain("await WaitForPlayerDispatcherContextIdleOrDelayAsync();"));
+        Assert.That(warmMethod, Does.Contain("await GetOrCreatePlayerWebViewEnvironmentAsync();"));
+        Assert.That(warmMethod, Does.Not.Contain("EnsureCoreWebView2Async"));
+        Assert.That(warmMethod, Does.Not.Contain("BeginUserPriorityWork(\"player\")"));
+    }
+
+    [Test]
     public void HandleUpperTabPlayerSelectionChanged_自動再生を直接awaitしない()
     {
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
@@ -612,6 +637,11 @@ public sealed class ManualPlayerResizeHookPolicyTests
     private static string GetUpperTabPlayerFullscreenWindowSourceText()
     {
         return GetRepoText("UpperTabs", "Player", "MainWindow.UpperTabs.PlayerFullscreenWindow.cs");
+    }
+
+    private static string GetMainWindowStartupSourceText()
+    {
+        return GetRepoText("Views", "Main", "MainWindow.Startup.cs");
     }
 
     private static string GetRepoText(params string[] relativePathParts)

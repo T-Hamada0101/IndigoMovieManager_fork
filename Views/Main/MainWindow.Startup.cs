@@ -213,6 +213,7 @@ namespace IndigoMovieManager
                         ReloadBookmarkTabData();
                         QueueThumbnailSuccessIndexPrewarm();
                         QueueEverythingLiteWatchRootPrewarm();
+                        QueuePlayerWebViewEnvironmentWarm();
                         DebugRuntimeLog.Write(
                             "ui-tempo",
                             $"startup light services started: revision={revision} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"

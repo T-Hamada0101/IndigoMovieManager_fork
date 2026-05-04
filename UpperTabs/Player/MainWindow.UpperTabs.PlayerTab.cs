@@ -42,6 +42,7 @@ namespace IndigoMovieManager
         private bool _isSyncingDetachedWindowDomFullscreen;
         private Task<CoreWebView2Environment> _playerWebViewEnvironmentTask;
         private DispatcherOperation _playerBackgroundYieldOperation;
+        private bool _playerWebViewEnvironmentWarmQueued;
         private ulong _pendingWebViewNavigationId;
         private string _currentPlayerMoviePath = "";
         private string _currentWebViewPlayerPath = "";
@@ -1176,6 +1177,42 @@ namespace IndigoMovieManager
             {
                 _playerWebViewEnvironmentTask = null;
                 throw;
+            }
+        }
+
+        // Player 初回操作の待ちを減らすため、WebView2 環境だけを先に温める。WebView 本体と再生状態は触らない。
+        private void QueuePlayerWebViewEnvironmentWarm()
+        {
+            if (_playerWebViewEnvironmentWarmQueued)
+            {
+                return;
+            }
+
+            _playerWebViewEnvironmentWarmQueued = true;
+            _ = WarmPlayerWebViewEnvironmentAfterIdleAsync();
+        }
+
+        private async Task WarmPlayerWebViewEnvironmentAfterIdleAsync()
+        {
+            try
+            {
+                await WaitForPlayerDispatcherContextIdleOrDelayAsync();
+                await GetOrCreatePlayerWebViewEnvironmentAsync();
+                DebugRuntimeLog.Write("ui-tempo", "player webview environment warm completed");
+            }
+            catch (WebView2RuntimeNotFoundException ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"player webview environment warm skipped: {ex.GetType().Name} {ex.Message}"
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"player webview environment warm failed: {ex.GetType().Name} {ex.Message}"
+                );
             }
         }
 
