@@ -209,6 +209,34 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void WebViewPlayer_100パーセント通知分岐は既定50パーセントへ戻してから保存する()
+    {
+        string playerSource = GetMainWindowPlayerSourceText();
+        string method = GetMethodBlock(
+            playerSource,
+            "private void SetPlayerVolumeFromWebView(double volume)"
+        );
+        int branchStart = method.IndexOf("if (resolvedVolume >= 1d)", StringComparison.Ordinal);
+        Assert.That(branchStart, Is.GreaterThanOrEqualTo(0));
+
+        int branchReturn = method.IndexOf("return;", branchStart, StringComparison.Ordinal);
+        Assert.That(branchReturn, Is.GreaterThan(branchStart));
+        string defaultVolumeBranch = method.Substring(branchStart, branchReturn - branchStart);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                defaultVolumeBranch,
+                Does.Contain("currentVolume >= 1d ? DefaultPlayerVolume : currentVolume")
+            );
+            Assert.That(defaultVolumeBranch, Does.Contain("fallbackVolume,"));
+            Assert.That(defaultVolumeBranch, Does.Contain("save: true"));
+            Assert.That(defaultVolumeBranch, Does.Contain("pushToWebView: true"));
+            Assert.That(defaultVolumeBranch, Does.Not.Contain("resolvedVolume,"));
+        });
+    }
+
+    [Test]
     public void PlayerThumbnailClick_選択同期でスクロール位置を動かさない()
     {
         string selectionSource = GetMainWindowSelectionSourceText();
