@@ -1659,6 +1659,84 @@ public sealed class MainWindowWebViewSkinIntegrationTests
     }
 
     [Test]
+    public async Task 標準built_in_skin表示中の共通Reloadでは外部skin_host_refreshを積まない()
+    {
+        (
+            string SkinName,
+            int GenerationBeforeReload,
+            int GenerationAfterReload,
+            int HeaderRefreshCompletedCount,
+            int HostPrepareCallCount,
+            Visibility TabsVisibility,
+            Visibility PresenterVisibility,
+            object PresenterContent
+        ) result = await RunOnStaDispatcherAsync(async () =>
+        {
+            using TestEnvironmentScope scope = TestEnvironmentScope.Create();
+            MainWindow window = CreateHiddenMainWindow();
+            int headerRefreshCompletedCount = 0;
+            int hostPrepareCallCount = 0;
+
+            window.ReloadBookmarkTabDataForTesting = () => { };
+            window.FilterAndSortAsyncForTesting = (_, _) => Task.CompletedTask;
+            window.QueueCheckFolderAsyncForTesting = (_, _) => Task.CompletedTask;
+            window.ExternalSkinHostPrepareAsyncForTesting = (_, _) =>
+            {
+                Interlocked.Increment(ref hostPrepareCallCount);
+                return Task.FromResult(true);
+            };
+            window.ExternalSkinRefreshCompletedForTesting = (_, reason, _) =>
+            {
+                if (string.Equals(reason, "header-reload", StringComparison.Ordinal))
+                {
+                    Interlocked.Increment(ref headerRefreshCompletedCount);
+                }
+            };
+
+            try
+            {
+                window.Show();
+                await WaitForDispatcherIdleAsync();
+
+                // 標準 built-in skin 表示を正本にし、外部 host refresh の基準値をここで固定する。
+                window.MainVM.DbInfo.Skin = "DefaultGrid";
+                await WaitForDispatcherIdleAsync();
+
+                int generationBeforeReload = GetExternalSkinRefreshGeneration(window);
+
+                await window.ExecuteHeaderReloadAsync("1", "Header.ReloadButton");
+                await WaitForDispatcherIdleAsync();
+
+                return (
+                    window.MainVM.DbInfo.Skin ?? "",
+                    generationBeforeReload,
+                    GetExternalSkinRefreshGeneration(window),
+                    headerRefreshCompletedCount,
+                    hostPrepareCallCount,
+                    window.Tabs.Visibility,
+                    window.ExternalSkinHostPresenter.Visibility,
+                    window.ExternalSkinHostPresenter.Content
+                );
+            }
+            finally
+            {
+                await CloseWindowAsync(window);
+            }
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.SkinName, Is.EqualTo("DefaultGrid"));
+            Assert.That(result.GenerationAfterReload, Is.EqualTo(result.GenerationBeforeReload));
+            Assert.That(result.HeaderRefreshCompletedCount, Is.EqualTo(0));
+            Assert.That(result.HostPrepareCallCount, Is.EqualTo(0));
+            Assert.That(result.TabsVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.PresenterVisibility, Is.EqualTo(Visibility.Collapsed));
+            Assert.That(result.PresenterContent, Is.Null);
+        });
+    }
+
+    [Test]
     public async Task DB切替で一時overlayを落とし_skin切替では検索連動filterを維持できる()
     {
         await RunOnStaDispatcherAsync<object?>(async () =>
@@ -35893,6 +35971,26 @@ VALUES (
             .ToArray();
     }
 
+    private static int GetExternalSkinRefreshGeneration(MainWindow window)
+    {
+        FieldInfo schedulerField = typeof(MainWindow).GetField(
+            "_externalSkinHostRefreshScheduler",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        ) ?? throw new AssertionException("外部 skin refresh scheduler が見つかりません。");
+        object scheduler =
+            schedulerField.GetValue(window)
+            ?? throw new AssertionException("外部 skin refresh scheduler を取得できませんでした。");
+        PropertyInfo generationProperty =
+            scheduler.GetType().GetProperty(
+                "CurrentGeneration",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+            ) ?? throw new AssertionException("外部 skin refresh generation が見つかりません。");
+        return (int)(
+            generationProperty.GetValue(scheduler)
+            ?? throw new AssertionException("外部 skin refresh generation を取得できませんでした。")
+        );
+    }
+
     private static async Task CloseWindowAsync(MainWindow window)
     {
         if (window == null)
@@ -36191,7 +36289,7 @@ VALUES (
             );
         }
 
-        IndigoMovieManager.Properties.Settings.Default.ThemeMode = "Original";
+        IndigoMovieManager.Properties.Settings.Default.ThemeMode = "Indigo";
         App.ApplyTheme(IndigoMovieManager.Properties.Settings.Default.ThemeMode);
     }
 
