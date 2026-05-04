@@ -1366,7 +1366,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
     }
 
     [Test]
-    public async Task MinimalChromeのGridへ戻るで標準Gridへ復帰できる()
+    public async Task 共通ヘッダーのskin選択ドロップダウンで外部skinからDefaultGridへ復帰できる()
     {
         GridReturnSnapshot result = await RunOnStaDispatcherAsync(async () =>
         {
@@ -1403,7 +1403,12 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                 window.Show();
                 await WaitForDispatcherIdleAsync();
 
-                window.MainVM.DbInfo.Skin = $"MinimalChromeGridReturn_{Guid.NewGuid():N}";
+                WhiteBrowserSkinDefinition externalSkin = GetExternalSkinDefinitions(window).First();
+                Assert.That(
+                    window.ApplySkinByName(externalSkin.Name, persistToCurrentDb: false),
+                    Is.True,
+                    "外部 skin の初回適用に失敗しました。"
+                );
                 await WaitAsync(
                     externalApplied.Task,
                     TimeSpan.FromSeconds(10),
@@ -1411,9 +1416,8 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                 );
                 await WaitForDispatcherIdleAsync();
 
-                window.ExternalSkinBackToGridButton.RaiseEvent(
-                    new RoutedEventArgs(Button.ClickEvent)
-                );
+                // 外部 skin 専用ヘッダーは畳んだまま、共通ヘッダーの selector から Grid へ戻す。
+                window.ExternalSkinMinimalSkinSelector.SelectedValue = "DefaultGrid";
 
                 HostPresentationEvent gridEvent = await WaitAsync(
                     gridApplied.Task,
@@ -1428,7 +1432,9 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     window.Tabs.Visibility,
                     window.ExternalSkinHostPresenter.Visibility,
                     window.MainHeaderStandardChromePanel.Visibility,
-                    window.ExternalSkinMinimalChromePanel.Visibility
+                    window.ExternalSkinMinimalChromePanel.Visibility,
+                    window.ExternalSkinMinimalSkinSelector.Items.Count,
+                    window.ExternalSkinMinimalSkinSelector.SelectedValue?.ToString() ?? ""
                 );
             }
             finally
@@ -1445,6 +1451,8 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             Assert.That(result.PresenterVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Visible));
             Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Collapsed));
+            Assert.That(result.SelectorItemCount, Is.GreaterThanOrEqualTo(1));
+            Assert.That(result.SelectorSelectedValue, Is.EqualTo("DefaultGrid"));
         });
     }
 
@@ -1549,7 +1557,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
     }
 
     [Test]
-    public async Task MinimalChromeのReloadでもhost表示を維持して再準備できる()
+    public async Task 共通ヘッダーのReloadでもhost表示を維持して再準備できる()
     {
         string skinName = "";
         ReloadPresentationSnapshot result = await RunOnStaDispatcherAsync(async () =>
@@ -1582,7 +1590,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                     initialApplied.TrySetResult(appliedEvent);
                 }
 
-                if (string.Equals(reason, "minimal-chrome-reload", StringComparison.Ordinal))
+                if (string.Equals(reason, "header-reload", StringComparison.Ordinal))
                 {
                     reloadedApplied.TrySetResult(appliedEvent);
                 }
@@ -1603,14 +1611,13 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                 );
                 await WaitForDispatcherIdleAsync();
 
-                window.ExternalSkinMinimalReloadButton.RaiseEvent(
-                    new RoutedEventArgs(Button.ClickEvent)
-                );
+                // 実表示では旧 minimal ヘッダーを使わず、共通ヘッダーの再読込を通す。
+                window.ReloadButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 HostPresentationEvent reloadedEvent = await WaitAsync(
                     reloadedApplied.Task,
                     TimeSpan.FromSeconds(10),
-                    "Minimal reload 後の host 再準備完了を待てませんでした。"
+                    "共通ヘッダー再読込後の host 再準備完了を待てませんでした。"
                 );
                 await WaitForDispatcherIdleAsync();
 
@@ -1631,7 +1638,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             Assert.That(result.Snapshot.Applied.HostReady, Is.True);
             Assert.That(
                 result.Snapshot.Applied.Reason,
-                Is.EqualTo("minimal-chrome-reload")
+                Is.EqualTo("header-reload")
             );
             Assert.That(result.Snapshot.TabsVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.Snapshot.PresenterVisibility, Is.EqualTo(Visibility.Visible));
@@ -5215,7 +5222,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
     }
 
     [Test]
-    public async Task TutorialCallbackGrid_fixtureをMainWindow経由でminimal_reloadしても旧DOM残骸を残さず再描画できる()
+    public async Task TutorialCallbackGrid_fixtureをMainWindow共通ヘッダー再読込しても旧DOM残骸を残さず再描画できる()
     {
         string skinRootPath = WhiteBrowserSkinTestData.CreateSkinRootCopyWithCompat(
             ["TutorialCallbackGrid"],
@@ -5280,16 +5287,14 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                         """(() => { document.body.dataset.reloadProbe = "before"; return true; })();"""
                     );
 
-                    window.ExternalSkinMinimalReloadButton.RaiseEvent(
-                        new RoutedEventArgs(Button.ClickEvent)
-                    );
+                    window.ReloadButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     await WaitForDispatcherIdleAsync();
 
                     await WaitForWebConditionAsync(
                         webView,
                         "document.body && !document.body.dataset.reloadProbe && document.querySelectorAll('#view .thum_base').length === 2 && !!document.getElementById('title42') && !!document.getElementById('title84')",
                         TimeSpan.FromSeconds(15),
-                        "TutorialCallbackGrid の minimal reload 後 DOM 再描画完了を待てませんでした。"
+                        "TutorialCallbackGrid の共通ヘッダー再読込後 DOM 再描画完了を待てませんでした。"
                     );
 
                     string[] titles = await ReadJsonStringArrayValueAsync(
@@ -5306,7 +5311,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
                         );
                         Assert.That(
                             window.ExternalSkinMinimalChromePanel.Visibility,
-                            Is.EqualTo(Visibility.Visible)
+                            Is.EqualTo(Visibility.Collapsed)
                         );
                     });
                 }
@@ -36242,7 +36247,9 @@ VALUES (
         Visibility TabsVisibility,
         Visibility PresenterVisibility,
         Visibility StandardChromeVisibility,
-        Visibility MinimalChromeVisibility
+        Visibility MinimalChromeVisibility,
+        int SelectorItemCount,
+        string SelectorSelectedValue
     );
 
     private sealed record ReloadPresentationSnapshot(

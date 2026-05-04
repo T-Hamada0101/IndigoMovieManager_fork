@@ -1895,6 +1895,13 @@ namespace IndigoMovieManager
                     await FilterAndSortAsync(sortId, true);
                 }
 
+                if (GetCurrentExternalSkinDefinition() != null)
+                {
+                    // 共通ヘッダーの再読込でも外部 skin host を明示的に積み直し、旧専用ヘッダー依存を残さない。
+                    await ClearExternalSkinHostBeforeRefreshAsync("header-reload");
+                    QueueExternalSkinHostRefresh("header-reload");
+                }
+
                 // 再読込完了を先に返し、重い全域scanはUIが一息ついてから背後へ回す。
                 ScheduleDeferredManualReloadScan(trigger);
             }
