@@ -37,6 +37,39 @@ namespace IndigoMovieManager
             return hasChanges && isWatchMode && canUseQueryOnlyReload;
         }
 
+        // bulk 候補で一度 full 候補へ落ちても、既存行の軽い属性差分だけなら最終段で query-only へ戻す。
+        internal static bool CanRecoverBulkExistingDirtyOnlyQueryReload(
+            bool allowBulkExistingDirtyOnlyQueryReload,
+            IEnumerable<WatchChangedMovie> changedMovies
+        )
+        {
+            if (!allowBulkExistingDirtyOnlyQueryReload)
+            {
+                return false;
+            }
+
+            WatchMovieDirtyFields safeExistingDirtyFields =
+                WatchMovieDirtyFields.FileDate
+                | WatchMovieDirtyFields.MovieSize
+                | WatchMovieDirtyFields.MovieLength;
+            int changedCount = 0;
+            foreach (WatchChangedMovie changedMovie in changedMovies ?? [])
+            {
+                changedCount++;
+                if (
+                    changedMovie.ChangeKind != WatchMovieChangeKind.None
+                    || changedMovie.DirtyFields == WatchMovieDirtyFields.None
+                    || (changedMovie.DirtyFields & ~safeExistingDirtyFields)
+                        != WatchMovieDirtyFields.None
+                )
+                {
+                    return false;
+                }
+            }
+
+            return changedCount > 0;
+        }
+
         // 遅延実行時には、まだ同じDB向けの最新要求かを確認して stale reload を止める。
         internal static bool CanApplyDeferredWatchUiReload(
             string currentDbFullPath,
@@ -401,6 +434,7 @@ namespace IndigoMovieManager
             CheckMode mode,
             string snapshotDbFullPath,
             bool canUseQueryOnlyReload,
+            bool allowBulkExistingDirtyOnlyQueryReload,
             IReadOnlyList<WatchChangedMovie> changedMovies
         )
         {
@@ -409,6 +443,7 @@ namespace IndigoMovieManager
                 mode,
                 snapshotDbFullPath,
                 canUseQueryOnlyReload,
+                allowBulkExistingDirtyOnlyQueryReload,
                 changedMovies,
                 MainVM?.DbInfo?.Sort ?? ""
             );
@@ -420,6 +455,7 @@ namespace IndigoMovieManager
             CheckMode mode,
             string snapshotDbFullPath,
             bool canUseQueryOnlyReload,
+            bool allowBulkExistingDirtyOnlyQueryReload,
             IReadOnlyList<WatchChangedMovie> changedMovies,
             string currentSort
         )
@@ -429,23 +465,39 @@ namespace IndigoMovieManager
                 IsWatchSuppressedByUi(),
                 isWatchMode
             );
+            bool recoveredQueryOnlyReload =
+                !canUseQueryOnlyReload
+                && CanRecoverBulkExistingDirtyOnlyQueryReload(
+                    allowBulkExistingDirtyOnlyQueryReload,
+                    changedMovies
+                );
+            bool resolvedCanUseQueryOnlyReload =
+                canUseQueryOnlyReload || recoveredQueryOnlyReload;
+            if (recoveredQueryOnlyReload)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"watch query-only recovered: reason=bulk-existing-dirty-only changed_paths={changedMovies?.Count ?? 0}"
+                );
+            }
+
             string planReason = ResolveWatchUiReloadPlanReason(
                 hasChanges,
                 isWatchMode,
                 isSuppressed,
-                canUseQueryOnlyReload
+                resolvedCanUseQueryOnlyReload
             );
             WatchUiReloadPlan reloadPlan = EvaluateWatchUiReloadPlan(
                 hasChanges,
                 isWatchMode,
                 isSuppressed,
-                canUseQueryOnlyReload
+                resolvedCanUseQueryOnlyReload
             );
             if (reloadPlan.Action == WatchUiReloadAction.SkipNoChanges)
             {
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"skip final watch ui reload no changes: mode={mode} db='{snapshotDbFullPath}' can_query_only={canUseQueryOnlyReload} plan_reason={planReason}"
+                    $"skip final watch ui reload no changes: mode={mode} db='{snapshotDbFullPath}' can_query_only={resolvedCanUseQueryOnlyReload} plan_reason={planReason}"
                 );
                 return;
             }
@@ -455,7 +507,7 @@ namespace IndigoMovieManager
                 MarkWatchWorkDeferredWhileSuppressed($"final-reload:{mode}");
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"skip final watch ui reload by suppression: mode={mode} db='{snapshotDbFullPath}' can_query_only={canUseQueryOnlyReload} plan_reason={planReason}"
+                    $"skip final watch ui reload by suppression: mode={mode} db='{snapshotDbFullPath}' can_query_only={resolvedCanUseQueryOnlyReload} plan_reason={planReason}"
                 );
                 return;
             }
@@ -475,7 +527,7 @@ namespace IndigoMovieManager
             CancelDeferredWatchUiReload($"immediate-reload:{mode}");
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={canUseQueryOnlyReload} plan_reason={planReason}"
+                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={resolvedCanUseQueryOnlyReload} plan_reason={planReason}"
             );
             InvokeWatchUiReload(
                 currentSort,

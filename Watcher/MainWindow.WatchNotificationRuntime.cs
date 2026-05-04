@@ -161,7 +161,11 @@ namespace IndigoMovieManager
         }
 
         // strategy 通知と UI reload 診断ログをまとめて処理し、Watcher 側の直列呼び出しを減らす。
-        private (bool UseIncrementalUiMode, bool CanUseQueryOnlyWatchReload)
+        private (
+            bool UseIncrementalUiMode,
+            bool CanUseQueryOnlyWatchReload,
+            bool WasDowngradedToFull
+        )
             HandleWatchScanStrategyAndUiReloadDiagnostics(
                 CheckMode mode,
                 string checkFolder,

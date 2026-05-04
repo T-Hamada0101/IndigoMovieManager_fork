@@ -42,6 +42,7 @@ namespace IndigoMovieManager
             Stopwatch sw = Stopwatch.StartNew();
             bool FolderCheckflg = false;
             List<WatchChangedMovie> changedMoviesForUiReload = [];
+            bool allowBulkExistingDirtyOnlyQueryReload = false;
             int checkedFolderCount = 0;
             int enqueuedCount = 0;
             string checkExt = Properties.Settings.Default.CheckExt;
@@ -174,6 +175,7 @@ namespace IndigoMovieManager
                         FolderScanResult scanResult,
                         useIncrementalUiMode,
                         canUseQueryOnlyWatchReload,
+                        bool wasDowngradedToFull,
                         List<PendingMovieRegistration> pendingNewMovies,
                         _,
                         _,
@@ -203,6 +205,7 @@ namespace IndigoMovieManager
                         currentWatchQueueActiveCount,
                         canUseQueryOnlyWatchReload
                     );
+                    allowBulkExistingDirtyOnlyQueryReload |= wasDowngradedToFull;
 
                     (
                         bool shouldReturnByMovieLoopPreparation,
@@ -400,6 +403,7 @@ namespace IndigoMovieManager
 
                     await HandleWatchFolderFailureTailAsync(checkFolder, e);
                     canUseQueryOnlyWatchReload = false;
+                    allowBulkExistingDirtyOnlyQueryReload = false;
                 }
 
                 (
@@ -446,6 +450,7 @@ namespace IndigoMovieManager
                     snapshotThumbFolder,
                     snapshotTabIndex,
                     canUseQueryOnlyWatchReload,
+                    allowBulkExistingDirtyOnlyQueryReload,
                     changedMoviesForUiReload,
                     snapshotWatchScanScopeStamp,
                     checkedFolderCount,
@@ -502,6 +507,7 @@ namespace IndigoMovieManager
             string snapshotThumbFolder,
             int snapshotTabIndex,
             bool canUseQueryOnlyWatchReload,
+            bool allowBulkExistingDirtyOnlyQueryReload,
             List<WatchChangedMovie> changedMoviesForUiReload,
             long snapshotWatchScanScopeStamp,
             int checkedFolderCount,
@@ -518,6 +524,7 @@ namespace IndigoMovieManager
                 snapshotThumbFolder,
                 snapshotTabIndex,
                 canUseQueryOnlyWatchReload,
+                allowBulkExistingDirtyOnlyQueryReload,
                 changedMoviesForUiReload,
                 snapshotWatchScanScopeStamp,
                 checkedFolderCount,
@@ -855,6 +862,7 @@ namespace IndigoMovieManager
             FolderScanResult ScanResult,
             bool UseIncrementalUiMode,
             bool CanUseQueryOnlyWatchReload,
+            bool WasDowngradedToFull,
             List<PendingMovieRegistration> PendingNewMovies,
             WatchPendingNewMovieFlushContext PendingMovieFlushContext,
             WatchScannedMovieContext ScannedMovieContext,
@@ -890,6 +898,7 @@ namespace IndigoMovieManager
                 FolderScanResult scanResult,
                 bool useIncrementalUiMode,
                 bool updatedCanUseQueryOnlyWatchReload,
+                bool wasDowngradedToFull,
                 long scanBackgroundElapsedMs
             ) = await ExecuteWatchFolderScanPipelineAsync(
                 restrictWatchWorkToVisibleMovies,
@@ -919,7 +928,7 @@ namespace IndigoMovieManager
                 searchKeyword,
                 allowViewConsistencyRepair,
                 useIncrementalUiMode,
-                updatedCanUseQueryOnlyWatchReload,
+                updatedCanUseQueryOnlyWatchReload || wasDowngradedToFull,
                 scanStrategyResult.Strategy,
                 scanStrategyResult.HasIncrementalCursor,
                 allowMissingTabAutoEnqueue,
@@ -939,6 +948,7 @@ namespace IndigoMovieManager
                 scanResult,
                 useIncrementalUiMode,
                 updatedCanUseQueryOnlyWatchReload,
+                wasDowngradedToFull,
                 pendingNewMovies,
                 pendingMovieFlushContext,
                 scannedMovieContext,
@@ -985,6 +995,7 @@ namespace IndigoMovieManager
             FolderScanResult ScanResult,
             bool UseIncrementalUiMode,
             bool CanUseQueryOnlyWatchReload,
+            bool WasDowngradedToFull,
             long ScanBackgroundElapsedMs
         )> ExecuteWatchFolderScanPipelineAsync(
             bool restrictWatchWorkToVisibleMovies,
@@ -1039,7 +1050,8 @@ namespace IndigoMovieManager
 
             (
                 bool useIncrementalUiMode,
-                bool nextCanUseQueryOnlyWatchReload
+                bool nextCanUseQueryOnlyWatchReload,
+                bool wasDowngradedToFull
             ) = HandleWatchScanStrategyAndUiReloadDiagnostics(
                 mode,
                 checkFolder,
@@ -1055,6 +1067,7 @@ namespace IndigoMovieManager
                 scanResult,
                 useIncrementalUiMode,
                 nextCanUseQueryOnlyWatchReload,
+                wasDowngradedToFull,
                 scanBackgroundElapsedMs
             );
         }
@@ -1137,6 +1150,7 @@ namespace IndigoMovieManager
             string snapshotThumbFolder,
             int snapshotTabIndex,
             bool canUseQueryOnlyWatchReload,
+            bool allowBulkExistingDirtyOnlyQueryReload,
             List<WatchChangedMovie> changedMoviesForUiReload,
             long snapshotWatchScanScopeStamp,
             int checkedFolderCount,
@@ -1167,6 +1181,7 @@ namespace IndigoMovieManager
                 snapshotThumbFolder,
                 snapshotTabIndex,
                 canUseQueryOnlyWatchReload,
+                allowBulkExistingDirtyOnlyQueryReload,
                 changedMoviesForUiReload,
                 snapshotWatchScanScopeStamp,
                 checkedFolderCount,
@@ -1184,6 +1199,7 @@ namespace IndigoMovieManager
             string snapshotThumbFolder,
             int snapshotTabIndex,
             bool canUseQueryOnlyWatchReload,
+            bool allowBulkExistingDirtyOnlyQueryReload,
             List<WatchChangedMovie> changedMoviesForUiReload,
             long snapshotWatchScanScopeStamp,
             int checkedFolderCount,
@@ -1197,6 +1213,7 @@ namespace IndigoMovieManager
                 mode,
                 snapshotDbFullPath,
                 canUseQueryOnlyWatchReload,
+                allowBulkExistingDirtyOnlyQueryReload,
                 changedMoviesForUiReload
             );
 

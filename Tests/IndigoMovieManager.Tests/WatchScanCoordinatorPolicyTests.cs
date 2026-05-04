@@ -517,6 +517,7 @@ public sealed class WatchScanCoordinatorPolicyTests
         (
             bool useIncrementalUiMode,
             bool canUseQueryOnlyWatchReload,
+            bool wasDowngradedToFull,
             string downgradedMessage,
             string scanModeMessage
         ) = InvokeResolveWatchScanUiReloadDiagnostics(
@@ -529,6 +530,7 @@ public sealed class WatchScanCoordinatorPolicyTests
 
         Assert.That(useIncrementalUiMode, Is.False);
         Assert.That(canUseQueryOnlyWatchReload, Is.False);
+        Assert.That(wasDowngradedToFull, Is.True);
         Assert.That(downgradedMessage, Does.Contain("downgraded to full"));
         Assert.That(downgradedMessage, Does.Contain("plan_reason=watch-full-fallback"));
         Assert.That(downgradedMessage, Does.Contain("can_query_only_before=True"));
@@ -546,6 +548,7 @@ public sealed class WatchScanCoordinatorPolicyTests
         (
             bool useIncrementalUiMode,
             bool canUseQueryOnlyWatchReload,
+            bool wasDowngradedToFull,
             string downgradedMessage,
             string scanModeMessage
         ) = InvokeResolveWatchScanUiReloadDiagnostics(
@@ -558,6 +561,7 @@ public sealed class WatchScanCoordinatorPolicyTests
 
         Assert.That(useIncrementalUiMode, Is.False);
         Assert.That(canUseQueryOnlyWatchReload, Is.True);
+        Assert.That(wasDowngradedToFull, Is.False);
         Assert.That(downgradedMessage, Is.Empty);
         Assert.That(scanModeMessage, Does.Contain("mode=bulk"));
         Assert.That(scanModeMessage, Does.Contain("plan_reason=not-watch"));
@@ -992,6 +996,7 @@ public sealed class WatchScanCoordinatorPolicyTests
     private static (
         bool UseIncrementalUiMode,
         bool CanUseQueryOnlyWatchReload,
+        bool WasDowngradedToFull,
         string DowngradedMessage,
         string ScanModeMessage
     ) InvokeResolveWatchScanUiReloadDiagnostics(
@@ -1015,7 +1020,7 @@ public sealed class WatchScanCoordinatorPolicyTests
         Assert.That(method, Is.Not.Null);
 
         object mode = Enum.Parse(checkModeType, modeName);
-        return ((bool, bool, string, string))
+        return ((bool, bool, bool, string, string))
             method.Invoke(
                 null,
                 [

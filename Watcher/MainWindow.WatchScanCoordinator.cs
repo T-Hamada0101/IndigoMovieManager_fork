@@ -201,6 +201,7 @@ namespace IndigoMovieManager
         private static (
             bool UseIncrementalUiMode,
             bool CanUseQueryOnlyWatchReload,
+            bool WasDowngradedToFull,
             string DowngradedMessage,
             string ScanModeMessage
         ) ResolveWatchScanUiReloadDiagnostics(
@@ -241,13 +242,18 @@ namespace IndigoMovieManager
             return (
                 useIncrementalUiMode,
                 nextCanUseQueryOnlyWatchReload,
+                wasDowngradedToFull,
                 downgradedMessage,
                 scanModeMessage
             );
         }
 
         // scan mode 診断の解決とログ出力を1入口へ束ね、Watcher 側の直列呼び出しを減らす。
-        private static (bool UseIncrementalUiMode, bool CanUseQueryOnlyWatchReload)
+        private static (
+            bool UseIncrementalUiMode,
+            bool CanUseQueryOnlyWatchReload,
+            bool WasDowngradedToFull
+        )
             ResolveAndWriteWatchScanUiReloadDiagnostics(
                 CheckMode mode,
                 string checkFolder,
@@ -259,6 +265,7 @@ namespace IndigoMovieManager
             (
                 bool useIncrementalUiMode,
                 bool nextCanUseQueryOnlyWatchReload,
+                bool wasDowngradedToFull,
                 string downgradedMessage,
                 string scanModeMessage
             ) = ResolveWatchScanUiReloadDiagnostics(
@@ -269,7 +276,7 @@ namespace IndigoMovieManager
                 canUseQueryOnlyWatchReload
             );
             WriteWatchScanUiReloadDiagnostics(downgradedMessage, scanModeMessage);
-            return (useIncrementalUiMode, nextCanUseQueryOnlyWatchReload);
+            return (useIncrementalUiMode, nextCanUseQueryOnlyWatchReload, wasDowngradedToFull);
         }
 
         // strategy detail 解決と関連ログをまとめ、Watcher 側では走査結果を渡すだけにする。
