@@ -5,7 +5,7 @@
     xmlns:c="clr-namespace:IndigoMovieManager.Converter"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:indigomoviemanager="clr-namespace:IndigoMovieManager"
-    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:materialDesign="clr-namespace:MaterialDesignThemes.Wpf"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Height="160"
     d:DataContext="{d:DesignInstance Type=indigomoviemanager:MovieRecords}"

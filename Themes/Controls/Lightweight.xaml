@@ -1,0 +1,223 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Simple 系は WPF 標準テンプレートに色と密度だけを足し、重い依存を避ける。 -->
+    <Style x:Key="LightweightBaseButtonStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,3" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="LightweightFlatButtonStyle" BasedOn="{StaticResource LightweightBaseButtonStyle}" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style x:Key="LightweightIconButtonStyle" BasedOn="{StaticResource LightweightFlatButtonStyle}" TargetType="Button">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinWidth" Value="32" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="4" />
+    </Style>
+
+    <Style x:Key="LightweightComboBoxStyle" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="LightweightTextBoxStyle" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="LightweightSliderStyle" TargetType="Slider">
+        <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceAltBrush}" />
+    </Style>
+
+    <Style x:Key="LightweightTreeViewStyle" TargetType="TreeView">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource NavigationDrawerBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+    </Style>
+
+    <Style x:Key="LightweightDataGridColumnHeaderStyle" TargetType="DataGridColumnHeader">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceAltBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="Padding" Value="6,3" />
+    </Style>
+
+    <Style x:Key="LightweightDataGridCellStyle" TargetType="DataGridCell">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="Padding" Value="4,2" />
+    </Style>
+
+    <Style x:Key="LightweightDataGridRowStyle" TargetType="DataGridRow">
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+    </Style>
+
+    <Style x:Key="LightweightDataGridRowHeaderStyle" TargetType="DataGridRowHeader">
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceAltBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+    </Style>
+
+    <Style x:Key="LightweightComboBoxItemStyle" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}" />
+        <Setter Property="Padding" Value="6,3" />
+    </Style>
+
+    <Style x:Key="LightweightHamburgerToggleButtonStyle" TargetType="ToggleButton">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource MainHeaderForegroundBrush}" />
+        <Setter Property="Content" Value="☰" />
+    </Style>
+
+    <!-- MaterialDesign 直参照が残る画面も、Simple 側では軽量 style へ落とす。 -->
+    <Style x:Key="MaterialDesignOutlinedButton" BasedOn="{StaticResource LightweightBaseButtonStyle}" TargetType="Button" />
+    <Style x:Key="MaterialDesignFlatButton" BasedOn="{StaticResource LightweightFlatButtonStyle}" TargetType="Button" />
+    <Style x:Key="MaterialDesignIconButton" BasedOn="{StaticResource LightweightIconButtonStyle}" TargetType="Button" />
+    <Style x:Key="MaterialDesignFloatingActionMiniButton" BasedOn="{StaticResource LightweightIconButtonStyle}" TargetType="Button">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="MinWidth" Value="28" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AppAccentForegroundBrush}" />
+    </Style>
+    <Style x:Key="MaterialDesignOutlinedComboBox" BasedOn="{StaticResource LightweightComboBoxStyle}" TargetType="ComboBox" />
+    <Style x:Key="MaterialDesignOutlinedTextBox" BasedOn="{StaticResource LightweightTextBoxStyle}" TargetType="TextBox" />
+    <Style x:Key="MaterialDesignDiscreteSlider" BasedOn="{StaticResource LightweightSliderStyle}" TargetType="Slider" />
+    <Style x:Key="MaterialDesignGroupBox" TargetType="GroupBox">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8" />
+    </Style>
+    <Style x:Key="MaterialDesignTreeView" BasedOn="{StaticResource LightweightTreeViewStyle}" TargetType="TreeView" />
+    <Style x:Key="MaterialDesignDataGridColumnHeader" BasedOn="{StaticResource LightweightDataGridColumnHeaderStyle}" TargetType="DataGridColumnHeader" />
+    <Style x:Key="MaterialDesignDataGridCell" BasedOn="{StaticResource LightweightDataGridCellStyle}" TargetType="DataGridCell" />
+    <Style x:Key="MaterialDesignDataGridRow" BasedOn="{StaticResource LightweightDataGridRowStyle}" TargetType="DataGridRow" />
+    <Style x:Key="MaterialDesignPaperLightButton" BasedOn="{StaticResource LightweightDataGridRowHeaderStyle}" TargetType="DataGridRowHeader" />
+    <Style x:Key="MaterialDesignComboBoxItemStyle" BasedOn="{StaticResource LightweightComboBoxItemStyle}" TargetType="ComboBoxItem" />
+    <Style x:Key="MaterialDesignHamburgerToggleButton" BasedOn="{StaticResource LightweightHamburgerToggleButtonStyle}" TargetType="ToggleButton" />
+
+    <Style x:Key="AppHeaderButtonStyle" BasedOn="{StaticResource LightweightBaseButtonStyle}" TargetType="Button">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="Margin" Value="0,2,0,2" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="AppIconButtonStyle" BasedOn="{StaticResource LightweightIconButtonStyle}" TargetType="Button" />
+    <Style x:Key="AppIconRepeatButtonStyle" TargetType="RepeatButton">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinWidth" Value="32" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style x:Key="AppDrawerButtonStyle" BasedOn="{StaticResource LightweightFlatButtonStyle}" TargetType="Button" />
+    <Style x:Key="AppHamburgerToggleButtonStyle" BasedOn="{StaticResource LightweightHamburgerToggleButtonStyle}" TargetType="ToggleButton" />
+
+    <Style x:Key="AppSearchComboBoxStyle" BasedOn="{StaticResource LightweightComboBoxStyle}" TargetType="ComboBox">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="8,2" />
+    </Style>
+
+    <Style x:Key="AppCompactComboBoxStyle" BasedOn="{StaticResource LightweightComboBoxStyle}" TargetType="ComboBox">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="8,2" />
+    </Style>
+
+    <Style x:Key="AppComboBoxItemStyle" BasedOn="{StaticResource LightweightComboBoxItemStyle}" TargetType="ComboBoxItem" />
+
+    <Style x:Key="AppTextBoxStyle" BasedOn="{StaticResource LightweightTextBoxStyle}" TargetType="TextBox" />
+    <Style x:Key="AppDiscreteSliderStyle" BasedOn="{StaticResource LightweightSliderStyle}" TargetType="Slider" />
+    <Style x:Key="AppTreeViewStyle" BasedOn="{StaticResource LightweightTreeViewStyle}" TargetType="TreeView" />
+    <Style x:Key="AppTabItemStyle" BasedOn="{StaticResource {x:Type TabItem}}" TargetType="TabItem">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="Padding" Value="12,4" />
+    </Style>
+    <Style x:Key="AppDataGridColumnHeaderStyle" BasedOn="{StaticResource LightweightDataGridColumnHeaderStyle}" TargetType="DataGridColumnHeader" />
+    <Style x:Key="AppDataGridCellStyle" BasedOn="{StaticResource LightweightDataGridCellStyle}" TargetType="DataGridCell" />
+    <Style x:Key="AppDataGridRowStyle" BasedOn="{StaticResource LightweightDataGridRowStyle}" TargetType="DataGridRow" />
+
+    <Style x:Key="AppBottomTabButtonStyle" BasedOn="{StaticResource LightweightBaseButtonStyle}" TargetType="Button">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Padding" Value="6,1" />
+        <Setter Property="MinHeight" Value="22" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+    </Style>
+
+    <Style x:Key="HighDensityBottomTabButtonStyle" BasedOn="{StaticResource AppBottomTabButtonStyle}" TargetType="Button" />
+
+    <Style x:Key="BottomTabRootUserControlStyle" TargetType="UserControl">
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource AppTextBrush}" />
+    </Style>
+
+    <Style x:Key="MainHeaderCompactComboBoxStyle" BasedOn="{StaticResource AppCompactComboBoxStyle}" TargetType="ComboBox" />
+    <Style x:Key="MainHeaderSearchBoxStyle" BasedOn="{StaticResource AppSearchComboBoxStyle}" TargetType="ComboBox" />
+    <Style x:Key="MainHeaderButtonStyle" BasedOn="{StaticResource AppHeaderButtonStyle}" TargetType="Button" />
+
+    <Style x:Key="HighDensityBottomTabSummaryTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="HighDensityBottomTabSummaryBorderStyle" TargetType="Border">
+        <Setter Property="Margin" Value="0,0,4,2" />
+        <Setter Property="Padding" Value="5,2" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+    </Style>
+
+    <Style x:Key="HighDensityBottomTabDataGridColumnHeaderStyle" BasedOn="{StaticResource AppDataGridColumnHeaderStyle}" TargetType="DataGridColumnHeader">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="Height" Value="24" />
+    </Style>
+
+    <Style x:Key="HighDensityBottomTabDataGridCellStyle" BasedOn="{StaticResource AppDataGridCellStyle}" TargetType="DataGridCell">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Padding" Value="4,1" />
+    </Style>
+
+    <Style x:Key="HighDensityBottomTabDataGridRowStyle" BasedOn="{StaticResource AppDataGridRowStyle}" TargetType="DataGridRow">
+        <Setter Property="MinHeight" Value="22" />
+        <Setter Property="Height" Value="22" />
+    </Style>
+</ResourceDictionary>

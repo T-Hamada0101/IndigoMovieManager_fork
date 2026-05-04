@@ -13,42 +13,40 @@ namespace IndigoMovieManager
     {
         private bool _isExternalSkinMinimalSkinSelectorSyncing;
 
-        // host chrome は skin の上に被せるのではなく、MainHeader の中で最小シェルへ切り替える。
+        // 外部 skin でもヘッダーは差し替えず、共通ヘッダー上の skin ドロップダウンだけ同期する。
         private void ApplyExternalSkinMinimalChromeVisibility(
             bool hostReady,
             IndigoMovieManager.Skin.WhiteBrowserSkinDefinition definition
         )
         {
-            bool minimalVisible = hostReady && definition?.RequiresWebView2 == true;
+            bool externalSkinVisible = hostReady && definition?.RequiresWebView2 == true;
 
             if (MainHeaderStandardChromePanel != null)
             {
-                MainHeaderStandardChromePanel.Visibility = minimalVisible
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
+                MainHeaderStandardChromePanel.Visibility = Visibility.Visible;
             }
 
             if (ExternalSkinMinimalChromePanel != null)
             {
-                ExternalSkinMinimalChromePanel.Visibility = minimalVisible
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
+                ExternalSkinMinimalChromePanel.Visibility = Visibility.Collapsed;
             }
 
             if (ExternalSkinMinimalSkinNameText != null)
             {
-                string displaySkinName = minimalVisible ? ResolveRequestedSkinName(definition) : "";
+                string displaySkinName = externalSkinVisible
+                    ? ResolveRequestedSkinName(definition)
+                    : GetCurrentSkinName();
                 ExternalSkinMinimalSkinNameText.Text = displaySkinName;
                 ExternalSkinMinimalSkinNameText.ToolTip = displaySkinName;
-                SyncExternalSkinMinimalSkinSelector(minimalVisible, displaySkinName);
+                SyncExternalSkinMinimalSkinSelector(true, displaySkinName);
             }
             else
             {
-                SyncExternalSkinMinimalSkinSelector(minimalVisible, "");
+                SyncExternalSkinMinimalSkinSelector(true, GetCurrentSkinName());
             }
         }
 
-        // 最小 chrome では外部 skin 一覧だけをその場で切り替えられるように保つ。
+        // 共通ヘッダーでは built-in と外部 skin を同じドロップダウンから切り替える。
         private void SyncExternalSkinMinimalSkinSelector(
             bool minimalVisible,
             string displaySkinName
@@ -64,7 +62,7 @@ namespace IndigoMovieManager
             {
                 foreach (WhiteBrowserSkinDefinition candidate in GetAvailableSkinDefinitions())
                 {
-                    if (candidate?.RequiresWebView2 == true)
+                    if (candidate != null)
                     {
                         selectableDefinitions.Add(candidate);
                     }

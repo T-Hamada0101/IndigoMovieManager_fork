@@ -14,8 +14,6 @@ using IndigoMovieManager.Skin.Host;
 using IndigoMovieManager.Skin;
 using IndigoMovieManager.Skin.Runtime;
 using IndigoMovieManager.ViewModels;
-using MaterialDesignColors;
-using MaterialDesignThemes.Wpf;
 using Microsoft.Web.WebView2.Wpf;
 
 namespace IndigoMovieManager.Tests;
@@ -30,6 +28,44 @@ public sealed class MainWindowWebViewSkinIntegrationTests
     private static Thread? uiThread;
     private static Dispatcher? uiDispatcher;
     private static TaskCompletionSource<bool>? uiThreadReady;
+
+    [OneTimeTearDown]
+    public void ShutdownSharedUiThread()
+    {
+        Dispatcher? dispatcher;
+        Thread? thread;
+        lock (UiThreadSync)
+        {
+            dispatcher = uiDispatcher;
+            thread = uiThread;
+        }
+
+        if (dispatcher is null || thread is null)
+        {
+            return;
+        }
+
+        if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+        {
+            // WebView2 を使った共有 UI スレッドは、プロセス終了前に Dispatcher を閉じて
+            // WPF の HWND サブクラス解除を通常の終了順へ流す。
+            dispatcher.BeginInvokeShutdown(DispatcherPriority.ApplicationIdle);
+        }
+
+        if (thread.IsAlive)
+        {
+            thread.Join(TimeSpan.FromSeconds(10));
+        }
+
+        lock (UiThreadSync)
+        {
+            uiDispatcher = null;
+            uiThread = null;
+            uiThreadReady = null;
+        }
+
+        Assert.That(thread.IsAlive, Is.False, "共有 UI Dispatcher を終了できませんでした。");
+    }
 
     [Test]
     public void ResolveExternalSkinRefreshDbKeyForTesting_フルパスから短いDB名を返せる()
@@ -101,8 +137,8 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             Assert.That(result.TabsVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.PresenterVisibility, Is.EqualTo(Visibility.Visible));
             Assert.That(result.PresenterContent, Is.InstanceOf<WhiteBrowserSkinHostControl>());
-            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Collapsed));
-            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.MinimalSkinName, Is.Not.Empty);
         });
     }
@@ -167,8 +203,8 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             Assert.That(result.TabsVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.PresenterVisibility, Is.EqualTo(Visibility.Visible));
             Assert.That(result.PresenterContent, Is.InstanceOf<WhiteBrowserSkinHostControl>());
-            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Collapsed));
-            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.MinimalSkinName, Is.Not.Empty);
         });
     }
@@ -990,7 +1026,7 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             Assert.That(result.TabsVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.PresenterVisibility, Is.EqualTo(Visibility.Visible));
             Assert.That(result.PresenterContent, Is.InstanceOf<WhiteBrowserSkinHostControl>());
-            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.FallbackNoticeVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.FallbackNoticeText, Is.Empty);
         });
@@ -1605,11 +1641,11 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             );
             Assert.That(
                 result.Snapshot.StandardChromeVisibility,
-                Is.EqualTo(Visibility.Collapsed)
+                Is.EqualTo(Visibility.Visible)
             );
             Assert.That(
                 result.Snapshot.MinimalChromeVisibility,
-                Is.EqualTo(Visibility.Visible)
+                Is.EqualTo(Visibility.Collapsed)
             );
             Assert.That(result.Snapshot.MinimalSkinName, Is.EqualTo(skinName));
         });
@@ -2343,8 +2379,8 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             Assert.That(result.TabsVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.PresenterVisibility, Is.EqualTo(Visibility.Visible));
             Assert.That(result.PresenterContent, Is.InstanceOf<WhiteBrowserSkinHostControl>());
-            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Collapsed));
-            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.MinimalSkinName, Is.Not.Empty);
         });
     }
@@ -2429,8 +2465,8 @@ public sealed class MainWindowWebViewSkinIntegrationTests
             Assert.That(result.TabsVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.PresenterVisibility, Is.EqualTo(Visibility.Visible));
             Assert.That(result.PresenterContent, Is.InstanceOf<WhiteBrowserSkinHostControl>());
-            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Collapsed));
-            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.StandardChromeVisibility, Is.EqualTo(Visibility.Visible));
+            Assert.That(result.MinimalChromeVisibility, Is.EqualTo(Visibility.Collapsed));
             Assert.That(result.MinimalSkinName, Is.EqualTo(secondSkinName));
         });
     }
@@ -36139,95 +36175,6 @@ VALUES (
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown,
             };
-            application.Resources.MergedDictionaries.Add(
-                new BundledTheme
-                {
-                    BaseTheme = BaseTheme.Inherit,
-                    PrimaryColor = PrimaryColor.Indigo,
-                    SecondaryColor = SecondaryColor.DeepPurple,
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Button.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.CheckBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ComboBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.DataGrid.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.GroupBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ListView.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Slider.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.TextBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
             application.Resources.MergedDictionaries.Add(
                 new ResourceDictionary
                 {

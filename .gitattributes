@@ -51,6 +51,7 @@
 *.cs      text eol=lf
 *.xaml    text eol=lf
 *.csproj  text eol=lf
+*.settings text eol=lf
 *.md      text eol=lf
 *.yml     text eol=lf
 *.yaml    text eol=lf

@@ -7,7 +7,6 @@ using System.Windows.Threading;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Microsoft.Win32;
-using MaterialDesignThemes.Wpf;
 using Vs2013DarkTheme = AvalonDock.Themes.Vs2013DarkTheme;
 using Vs2013LightTheme = AvalonDock.Themes.Vs2013LightTheme;
 
@@ -19,7 +18,7 @@ namespace IndigoMovieManager
     public partial class App : Application
     {
         private static readonly object FileNotFoundLogLock = new();
-        private static bool? LastAppliedOsSyncDarkTheme;
+        private static bool? LastAppliedSystemAutoDarkTheme;
         private const int DwmaUseImmersiveDarkMode = 20;
         private const int DwmaUseImmersiveDarkModeLegacy = 19;
         private const int DwmaCaptionColor = 35;
@@ -36,6 +35,12 @@ namespace IndigoMovieManager
             "System.Windows.Threading.DispatcherTimer.Start";
         private const string MediaContextCommitStackMarker =
             "System.Windows.Media.MediaContext.CommitChannelAfterNextVSync";
+        internal const string ThemeModeIndigo = "Indigo";
+        internal const string ThemeModeSimpleLight = "SimpleLight";
+        internal const string ThemeModeSimpleDark = "SimpleDark";
+        internal const string ThemeModeSystemAuto = "SystemAuto";
+        private const string LegacyThemeModeOriginal = "Original";
+        private const string LegacyThemeModeOsSync = "OsSync";
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(
@@ -138,13 +143,8 @@ namespace IndigoMovieManager
         }
 #endif
 
-        // StartupUri=MainWindow.xaml により、アプリ起動時は MainWindow が最初に開く。
-        // グローバル初期化が必要になった場合はここへ追記する。
-
         protected override void OnStartup(StartupEventArgs e)
         {
-            base.OnStartup(e);
-
             // 補助 overlay window が一瞬残っても、MainWindow close を終了条件として固定する。
             ShutdownMode = ShutdownMode.OnMainWindowClose;
 
@@ -168,6 +168,12 @@ namespace IndigoMovieManager
 
             // 起動時に保存済みテーマモードを適用する。
             ApplyTheme(IndigoMovieManager.Properties.Settings.Default.ThemeMode);
+
+            base.OnStartup(e);
+
+            // App.xaml はテーマ辞書を起動時に動的適用するため、MainWindow はここで明示的に開く。
+            // XAML 生成前に ApplyTheme を済ませることで、初期 StaticResource 解決を安定させる。
+            ShowMainWindow();
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -197,6 +203,22 @@ namespace IndigoMovieManager
             }
 
             e.Handled = true;
+        }
+
+        private static void ShowMainWindow()
+        {
+            if (Current?.MainWindow is MainWindow existingMainWindow)
+            {
+                existingMainWindow.Show();
+                existingMainWindow.Activate();
+                return;
+            }
+
+            // MainWindow を作ってからアプリの終了条件に紐付ける。
+            var mainWindow = new MainWindow();
+            Current.MainWindow = mainWindow;
+            mainWindow.Show();
+            mainWindow.Activate();
         }
 
         // WPF 内部の render timer 起点だけを狙い撃ちし、他の Win32Exception は握り潰さない。
@@ -281,7 +303,7 @@ namespace IndigoMovieManager
 
         /// <summary>
         /// テーマ用 ResourceDictionary を差し替える。
-        /// "Original" ならオリジナル色、それ以外は OS 連動。
+        /// 旧モードを正規化し、SystemAuto は OS 状態から実際の Profile を決める。
         /// </summary>
         public static void ApplyTheme(string themeMode)
         {
@@ -298,49 +320,68 @@ namespace IndigoMovieManager
                 return;
             }
 
-            // MDIX本体のベーステーマも合わせて切り替え、入力欄の下線や装飾を正しい配色へ戻す。
-            var paletteHelper = new PaletteHelper();
-            Theme materialTheme = paletteHelper.GetTheme();
-            bool isOriginalTheme = string.Equals(
-                themeMode,
-                "Original",
-                StringComparison.OrdinalIgnoreCase
+            var resolvedTheme = ResolveThemeMode(themeMode);
+            if (
+                !string.Equals(
+                    IndigoMovieManager.Properties.Settings.Default.ThemeMode,
+                    resolvedTheme.Mode,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                SaveThemeModeSettingBestEffort(resolvedTheme.Mode, "apply-theme-normalize");
+            }
+
+            var dict = CreateThemeResourceDictionary(resolvedTheme.ProfileMode);
+
+            // 新しい辞書を先に積み、切替途中に DynamicResource の参照先が空になる瞬間を避ける。
+            app.Resources.MergedDictionaries.Add(dict);
+
+            // 既存のテーマ辞書があれば、新しい Profile 以外を後から除去する。
+            var existingThemeDictionaries = app.Resources.MergedDictionaries
+                .Where(d => !ReferenceEquals(d, dict) && IsThemeDictionarySource(d.Source))
+                .ToList();
+            foreach (var existing in existingThemeDictionaries)
+            {
+                app.Resources.MergedDictionaries.Remove(existing);
+            }
+
+            bool useDarkTheme = string.Equals(
+                resolvedTheme.ProfileMode,
+                ThemeModeSimpleDark,
+                StringComparison.Ordinal
             );
-            bool isOsSyncDark = !isOriginalTheme && IsWindowsAppsDarkThemeEnabled();
-            bool useDarkTheme = !isOriginalTheme && isOsSyncDark;
-            LastAppliedOsSyncDarkTheme = isOriginalTheme ? null : isOsSyncDark;
-            materialTheme.SetBaseTheme(useDarkTheme ? BaseTheme.Dark : BaseTheme.Light);
-            paletteHelper.SetTheme(materialTheme);
+            LastAppliedSystemAutoDarkTheme = resolvedTheme.IsSystemAuto ? useDarkTheme : null;
 
-            // 上下タブは AvalonDock と MDIX の両方が噛むため、OS連動時も明示的に合わせる。
+            // 上下タブは AvalonDock のテーマだけ明示的に合わせる。
             app.Resources["AvalonDockTheme"] =
-                isOriginalTheme || !isOsSyncDark ? new Vs2013LightTheme() : new Vs2013DarkTheme();
+                useDarkTheme ? new Vs2013DarkTheme() : new Vs2013LightTheme();
 
-            // 設定画面の文字は、OS連動ダーク時だけ白へ寄せる。
-            bool useLightSettingsForeground = isOsSyncDark;
+            // 設定画面の文字は、実際にダーク Profile を読む時だけ白へ寄せる。
+            bool useLightSettingsForeground = useDarkTheme;
             app.Resources["SettingsForegroundBrush"] = new SolidColorBrush(
                 useLightSettingsForeground ? Colors.White : Colors.Black
             );
 
-            // 左ドロワーは、OS連動では本文色、Original では旧UI相当の indigo を使う。
+            // 左ドロワーは、Indigo では旧UI相当の色、軽量 Profile では本文色へ追従させる。
             app.Resources["LeftDrawerForegroundBrush"] =
-                isOriginalTheme
+                resolvedTheme.IsIndigo
                     ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF303F9F"))
                     : app.TryFindResource("MaterialDesignBody") as Brush
                         ?? new SolidColorBrush(Colors.Black);
 
             // メインヘッダーは背景が暗くなるため、ラベル文字と入力文字を分けて追従させる。
             app.Resources["MainHeaderForegroundBrush"] = new SolidColorBrush(
-                isOriginalTheme || isOsSyncDark ? Colors.White : Colors.Black
+                resolvedTheme.IsIndigo || useDarkTheme ? Colors.White : Colors.Black
             );
             app.Resources["MainHeaderInputForegroundBrush"] = new SolidColorBrush(
-                isOriginalTheme ? Colors.Black : (isOsSyncDark ? Colors.White : Colors.Black)
+                resolvedTheme.IsIndigo ? Colors.Black : (useDarkTheme ? Colors.White : Colors.Black)
             );
             Brush upperTabPanelForegroundBrush =
-                isOriginalTheme
+                resolvedTheme.IsIndigo
                     ? app.TryFindResource(SystemColors.ControlTextBrushKey) as Brush
                         ?? SystemColors.ControlTextBrush
-                    : isOsSyncDark
+                    : useDarkTheme
                         ? new SolidColorBrush(Colors.DarkGray)
                         : app.TryFindResource("MaterialDesignBody") as Brush
                             ?? new SolidColorBrush(Colors.DimGray);
@@ -348,31 +389,115 @@ namespace IndigoMovieManager
             app.Resources["GridTabTitleForegroundBrush"] =
                 new SolidColorBrush(Colors.DarkGray);
 
-            string resourceUri = string.Equals(
-                themeMode, "Original", StringComparison.OrdinalIgnoreCase)
-                ? BuildApplicationResourceUri("Themes/OriginalColors.xaml")
-                : BuildApplicationResourceUri("Themes/OsSyncColors.xaml");
-
-            var dict = new ResourceDictionary { Source = new Uri(resourceUri) };
-
-            // 既存のテーマ辞書があれば先に除去する。
-            var existing = app.Resources.MergedDictionaries.FirstOrDefault(d =>
-                d.Source != null &&
-                (d.Source.ToString().EndsWith("OriginalColors.xaml", StringComparison.OrdinalIgnoreCase) ||
-                 d.Source.ToString().EndsWith("OsSyncColors.xaml", StringComparison.OrdinalIgnoreCase)));
-
-            if (existing != null)
-            {
-                app.Resources.MergedDictionaries.Remove(existing);
-            }
-
-            app.Resources.MergedDictionaries.Add(dict);
-
             // 開いている全ウィンドウのタイトルバーも、テーマ変更に追従させる。
             foreach (Window window in app.Windows)
             {
-                ApplyWindowTitleBarTheme(window, isOriginalTheme, isOsSyncDark);
+                ApplyWindowTitleBarTheme(window, resolvedTheme.IsIndigo, useDarkTheme);
             }
+        }
+
+        private static (
+            string Mode,
+            string ProfileMode,
+            bool IsSystemAuto,
+            bool IsIndigo
+        ) ResolveThemeMode(string themeMode)
+        {
+            string normalizedMode = NormalizeThemeMode(themeMode);
+            if (string.Equals(normalizedMode, ThemeModeSystemAuto, StringComparison.Ordinal))
+            {
+                string profileMode = IsWindowsAppsDarkThemeEnabled()
+                    ? ThemeModeSimpleDark
+                    : ThemeModeSimpleLight;
+                return (normalizedMode, profileMode, true, false);
+            }
+
+            return (
+                normalizedMode,
+                normalizedMode,
+                false,
+                string.Equals(normalizedMode, ThemeModeIndigo, StringComparison.Ordinal)
+            );
+        }
+
+        internal static string NormalizeThemeMode(string themeMode)
+        {
+            string mode = (themeMode ?? "").Trim();
+            if (
+                string.Equals(mode, LegacyThemeModeOriginal, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mode, ThemeModeIndigo, StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return ThemeModeIndigo;
+            }
+
+            if (
+                string.Equals(mode, LegacyThemeModeOsSync, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mode, ThemeModeSystemAuto, StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return ThemeModeSystemAuto;
+            }
+
+            if (string.Equals(mode, ThemeModeSimpleLight, StringComparison.OrdinalIgnoreCase))
+            {
+                return ThemeModeSimpleLight;
+            }
+
+            if (string.Equals(mode, ThemeModeSimpleDark, StringComparison.OrdinalIgnoreCase))
+            {
+                return ThemeModeSimpleDark;
+            }
+
+            return ThemeModeIndigo;
+        }
+
+        internal static void SaveThemeModeSettingBestEffort(string normalizedThemeMode, string reason)
+        {
+            // テーマ移行の保存失敗で起動を止めない。画面上は新しい値を使い、永続化だけ後で復旧できるようログへ閉じる。
+            IndigoMovieManager.Properties.Settings.Default.ThemeMode = NormalizeThemeMode(
+                normalizedThemeMode
+            );
+            try
+            {
+                IndigoMovieManager.Properties.Settings.Default.Save();
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "theme",
+                    $"settings save failed: reason={reason} err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+        }
+
+        private static ResourceDictionary CreateThemeResourceDictionary(string profileMode)
+        {
+            string profileUri = BuildApplicationResourceUri($"Themes/Profiles/{profileMode}.xaml");
+            try
+            {
+                // XAML は App*Style 前提なので、旧色辞書へは戻さず Profile 体系で完結させる。
+                return new ResourceDictionary { Source = new Uri(profileUri) };
+            }
+            catch (Exception) when (!string.Equals(profileMode, ThemeModeIndigo, StringComparison.Ordinal))
+            {
+                // 不意の Profile 読み込み失敗時も、必ず新構成の Indigo へ戻して起動を守る。
+                return new ResourceDictionary
+                {
+                    Source = new Uri(BuildApplicationResourceUri("Themes/Profiles/Indigo.xaml")),
+                };
+            }
+        }
+
+        private static bool IsThemeDictionarySource(Uri source)
+        {
+            if (source == null)
+            {
+                return false;
+            }
+
+            string sourceText = source.ToString();
+            return sourceText.Contains("/Themes/Profiles/", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string BuildApplicationResourceUri(string relativePath)
@@ -391,20 +516,20 @@ namespace IndigoMovieManager
             }
 
             string themeMode = IndigoMovieManager.Properties.Settings.Default.ThemeMode ?? "";
-            bool isOriginalTheme = string.Equals(
-                themeMode,
-                "Original",
-                StringComparison.OrdinalIgnoreCase
+            var resolvedTheme = ResolveThemeMode(themeMode);
+            bool useDarkTheme = string.Equals(
+                resolvedTheme.ProfileMode,
+                ThemeModeSimpleDark,
+                StringComparison.Ordinal
             );
-            bool isOsSyncDark = !isOriginalTheme && IsWindowsAppsDarkThemeEnabled();
-            ApplyWindowTitleBarTheme(window, isOriginalTheme, isOsSyncDark);
+            ApplyWindowTitleBarTheme(window, resolvedTheme.IsIndigo, useDarkTheme);
         }
 
-        // OS連動ダークは標準ダークバー、Originalは固定indigo、それ以外はOS既定へ戻す。
+        // 軽量ダークは標準ダークバー、Indigo は固定 indigo、それ以外は OS 既定へ戻す。
         private static void ApplyWindowTitleBarTheme(
             Window window,
-            bool isOriginalTheme,
-            bool isOsSyncDark
+            bool isIndigoTheme,
+            bool useDarkTheme
         )
         {
             IntPtr hwnd = new WindowInteropHelper(window).Handle;
@@ -413,16 +538,16 @@ namespace IndigoMovieManager
                 return;
             }
 
-            int immersiveDark = !isOriginalTheme && isOsSyncDark ? 1 : 0;
+            int immersiveDark = !isIndigoTheme && useDarkTheme ? 1 : 0;
             if (!TrySetWindowAttribute(hwnd, DwmaUseImmersiveDarkMode, immersiveDark))
             {
                 _ = TrySetWindowAttribute(hwnd, DwmaUseImmersiveDarkModeLegacy, immersiveDark);
             }
 
-            int captionColor = isOriginalTheme
+            int captionColor = isIndigoTheme
                 ? ToColorRef((Color)ColorConverter.ConvertFromString("#FF303F9F"))
                 : DwmaColorDefault;
-            int textColor = isOriginalTheme ? ToColorRef(Colors.White) : DwmaColorDefault;
+            int textColor = isIndigoTheme ? ToColorRef(Colors.White) : DwmaColorDefault;
             _ = TrySetWindowAttribute(hwnd, DwmaCaptionColor, captionColor);
             _ = TrySetWindowAttribute(hwnd, DwmaTextColor, textColor);
 
@@ -444,7 +569,13 @@ namespace IndigoMovieManager
         )
         {
             string themeMode = IndigoMovieManager.Properties.Settings.Default.ThemeMode ?? "";
-            if (string.Equals(themeMode, "Original", StringComparison.OrdinalIgnoreCase))
+            if (
+                !string.Equals(
+                    NormalizeThemeMode(themeMode),
+                    ThemeModeSystemAuto,
+                    StringComparison.Ordinal
+                )
+            )
             {
                 return;
             }
@@ -459,12 +590,15 @@ namespace IndigoMovieManager
             }
 
             bool nextIsDark = IsWindowsAppsDarkThemeEnabled();
-            if (LastAppliedOsSyncDarkTheme.HasValue && LastAppliedOsSyncDarkTheme.Value == nextIsDark)
+            if (
+                LastAppliedSystemAutoDarkTheme.HasValue
+                && LastAppliedSystemAutoDarkTheme.Value == nextIsDark
+            )
             {
                 return;
             }
 
-            Current?.Dispatcher.BeginInvoke(() => ApplyTheme("OsSync"));
+            Current?.Dispatcher.BeginInvoke(() => ApplyTheme(ThemeModeSystemAuto));
         }
 
         private static bool IsWindowsAppsDarkThemeEnabled()

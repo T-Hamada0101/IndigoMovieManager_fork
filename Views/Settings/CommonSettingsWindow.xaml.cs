@@ -20,6 +20,7 @@ namespace IndigoMovieManager
     {
         private bool _isUpperTabImageCacheMaxEntriesSyncing;
         private bool _isSkinSelectorInitializing;
+        private bool _isThemeSelectorInitializing;
 
         // 共通設定画面の初期化。
         // 閉じるイベントで設定保存するため、ここでイベントを接続する。
@@ -45,16 +46,7 @@ namespace IndigoMovieManager
             SyncUpperTabImageCacheMaxEntriesSliderFromSettings();
             InitializeSkinSelector();
 
-            // テーマ設定の初期値を反映する。
-            string currentTheme = IndigoMovieManager.Properties.Settings.Default.ThemeMode;
-            foreach (System.Windows.Controls.ComboBoxItem item in ThemeComboBox.Items)
-            {
-                if (item.Tag?.ToString() == currentTheme)
-                {
-                    ThemeComboBox.SelectedItem = item;
-                    break;
-                }
-            }
+            InitializeThemeSelector();
         }
 
         /// <summary>
@@ -194,6 +186,35 @@ namespace IndigoMovieManager
             RefreshSkinSelector();
         }
 
+        private void InitializeThemeSelector()
+        {
+            // 旧値を新しい4モードへ寄せてから、画面の選択状態へ反映する。
+            string normalizedTheme = App.NormalizeThemeMode(Properties.Settings.Default.ThemeMode);
+            if (Properties.Settings.Default.ThemeMode != normalizedTheme)
+            {
+                App.SaveThemeModeSettingBestEffort(normalizedTheme, "settings-window-initialize");
+            }
+
+            _isThemeSelectorInitializing = true;
+            try
+            {
+                foreach (System.Windows.Controls.ComboBoxItem item in ThemeComboBox.Items)
+                {
+                    if (item.Tag?.ToString() == normalizedTheme)
+                    {
+                        ThemeComboBox.SelectedItem = item;
+                        return;
+                    }
+                }
+
+                ThemeComboBox.SelectedIndex = 0;
+            }
+            finally
+            {
+                _isThemeSelectorInitializing = false;
+            }
+        }
+
         private void RefreshSkinSelector()
         {
             WhiteBrowserSkinOrchestrator skinOrchestrator = GetMainWindowSkinOrchestrator();
@@ -279,14 +300,22 @@ namespace IndigoMovieManager
 
         private void ThemeComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
+            if (_isThemeSelectorInitializing)
+            {
+                return;
+            }
+
             if (ThemeComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string themeTag)
             {
-                if (IndigoMovieManager.Properties.Settings.Default.ThemeMode != themeTag)
+                string normalizedTheme = App.NormalizeThemeMode(themeTag);
+                if (IndigoMovieManager.Properties.Settings.Default.ThemeMode != normalizedTheme)
                 {
-                    IndigoMovieManager.Properties.Settings.Default.ThemeMode = themeTag;
-                    IndigoMovieManager.Properties.Settings.Default.Save();
-                    // アプリ全体に即時反映させる。
-                    App.ApplyTheme(themeTag);
+                    App.SaveThemeModeSettingBestEffort(
+                        normalizedTheme,
+                        "settings-window-selection"
+                    );
+                    // 選択直後に、開いている画面も同じテーマへ流す。
+                    App.ApplyTheme(normalizedTheme);
                 }
             }
         }

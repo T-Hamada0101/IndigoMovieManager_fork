@@ -1,0 +1,59 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:avalonDock="https://github.com/Dirkster99/AvalonDock">
+
+    <!-- SimpleDark は暗い面でも文字と境界が沈まないよう、少し明るい線を置く。 -->
+    <avalonDock:Vs2013DarkTheme x:Key="AvalonDockTheme" />
+
+    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="#FF181A20" />
+    <SolidColorBrush x:Key="AppSurfaceBrush" Color="#FF22252C" />
+    <SolidColorBrush x:Key="AppSurfaceAltBrush" Color="#FF2B2F38" />
+    <SolidColorBrush x:Key="AppBorderBrush" Color="#FF454B57" />
+    <SolidColorBrush x:Key="AppTextBrush" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="AppTextSubtleBrush" Color="#FFB7BEC9" />
+    <SolidColorBrush x:Key="AppAccentBrush" Color="#FF78A6FF" />
+    <SolidColorBrush x:Key="AppAccentForegroundBrush" Color="#FF111318" />
+
+    <SolidColorBrush x:Key="MaterialDesignPaper" Color="#FF181A20" />
+    <SolidColorBrush x:Key="MaterialDesignCardBackground" Color="#FF22252C" />
+    <SolidColorBrush x:Key="MaterialDesignDivider" Color="#FF454B57" />
+    <SolidColorBrush x:Key="MaterialDesignBody" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="MaterialDesignBodyLight" Color="#FFB7BEC9" />
+    <SolidColorBrush x:Key="MaterialDesignBodySecondary" Color="#FFB7BEC9" />
+    <SolidColorBrush x:Key="PrimaryHueMidBrush" Color="#FF78A6FF" />
+    <SolidColorBrush x:Key="PrimaryHueMidForegroundBrush" Color="#FF111318" />
+
+    <SolidColorBrush x:Key="TagBorderBackground" Color="#FF31533C" />
+    <SolidColorBrush x:Key="UpperTabBackground" Color="#FF252A34" />
+    <SolidColorBrush x:Key="UpperTabBackgroundBrush" Color="#FF252A34" />
+    <SolidColorBrush x:Key="ThumbImageBackground" Color="#FF111318" />
+    <SolidColorBrush x:Key="ThumbImageBackgroundBrush" Color="#FF111318" />
+    <SolidColorBrush x:Key="HeaderForeground" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="SearchBoxBackground" Color="#FF2B2F38" />
+    <SolidColorBrush x:Key="SearchBoxForeground" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="SortComboBackground" Color="#FF2B2F38" />
+    <SolidColorBrush x:Key="SortComboForeground" Color="#FFF2F4F8" />
+
+    <SolidColorBrush x:Key="MainHeaderBackground" Color="#FF252A34" />
+    <SolidColorBrush x:Key="MainHeaderBackgroundBrush" Color="#FF252A34" />
+    <SolidColorBrush x:Key="MainHeaderForegroundBrush" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="MainHeaderInputForegroundBrush" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="MainHeaderSearchBoxBackground" Color="#FF2B2F38" />
+    <SolidColorBrush x:Key="MainHeaderSortComboBackground" Color="#FF2B2F38" />
+
+    <SolidColorBrush x:Key="NavigationDrawerBackgroundBrush" Color="#FF22252C" />
+    <SolidColorBrush x:Key="NavigationDrawerForegroundBrush" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="LeftDrawerForegroundBrush" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="UpperTabPanelForegroundBrush" Color="#FFF2F4F8" />
+    <SolidColorBrush x:Key="GridTabTitleForegroundBrush" Color="#FFB7BEC9" />
+    <SolidColorBrush x:Key="SettingsForegroundBrush" Color="#FFF2F4F8" />
+
+    <SolidColorBrush x:Key="PlayerControllerBackground" Color="#FF111318" />
+    <SolidColorBrush x:Key="BadgeIdleBackground" Color="#FF30343D" />
+    <SolidColorBrush x:Key="BadgeThreadActiveBackground" Color="#FF24402E" />
+    <SolidColorBrush x:Key="BadgeThreadActiveBorder" Color="#FF5E8D67" />
+    <SolidColorBrush x:Key="BadgeRescueActiveBackground" Color="#FF4A3030" />
+    <SolidColorBrush x:Key="BadgeRescueActiveBorder" Color="#FFB36A6A" />
+    <Color x:Key="PlayerShadowColor">#FFD39B2A</Color>
+</ResourceDictionary>

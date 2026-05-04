@@ -126,7 +126,7 @@
       <Value Profile="(Default)">FiveByTwo</Value>
     </Setting>
     <Setting Name="ThemeMode" Type="System.String" Scope="User">
-      <Value Profile="(Default)">OsSync</Value>
+      <Value Profile="(Default)">Indigo</Value>
     </Setting>
     <Setting Name="DebugLogWatchEnabled" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>

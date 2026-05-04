@@ -6,7 +6,7 @@
   xmlns:c="clr-namespace:IndigoMovieManager.Converter"
   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
   xmlns:local="clr-namespace:IndigoMovieManager"
-  xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+  xmlns:materialDesign="clr-namespace:MaterialDesignThemes.Wpf"
   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
   xmlns:notifications="clr-namespace:Notification.Wpf.Controls;assembly=Notification.Wpf"
   xmlns:prop="clr-namespace:IndigoMovieManager.Properties"
@@ -58,10 +58,36 @@
     </Style>
     <Style
       x:Key="LeftDrawerButtonStyle"
-      BasedOn="{StaticResource MaterialDesignFlatButton}"
+      BasedOn="{StaticResource AppDrawerButtonStyle}"
       TargetType="Button"
     >
+      <Setter Property="Height" Value="30" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Margin" Value="0,1" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="Normal" />
       <Setter Property="Foreground" Value="{DynamicResource LeftDrawerForegroundBrush}" />
+    </Style>
+    <Style x:Key="LeftDrawerTreeItemStyle" TargetType="TreeViewItem">
+      <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="LeftDrawerTextStyle" TargetType="TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style x:Key="LeftDrawerSeparatorStyle" TargetType="Border">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Margin" Value="0,8" />
+      <Setter Property="Background" Value="{DynamicResource AppBorderBrush}" />
+      <Setter Property="Opacity" Value="0.7" />
     </Style>
     <!--  BoolToVisibilityConverter を追加  -->
     <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
@@ -399,7 +425,7 @@
                     SelectionChanged="Tabs_SelectionChangedAsync"
                   >
                     <TabControl.Resources>
-                      <Style TargetType="TabItem" BasedOn="{StaticResource MaterialDesignTabItem}">
+                      <Style TargetType="TabItem" BasedOn="{StaticResource AppTabItemStyle}">
                         <Setter Property="Height" Value="36" />
                         <Setter Property="Padding" Value="16,6,16,6" />
                       </Style>
@@ -764,7 +790,7 @@
                                 BorderThickness="0"
                                 Click="FR_Click"
                                 Content="{materialDesign:PackIcon Kind=Rewind}"
-                                Style="{StaticResource MaterialDesignIconButton}"
+                                Style="{StaticResource AppIconRepeatButtonStyle}"
                                 ToolTip="戻す"
                               />
                                 <Button
@@ -774,7 +800,7 @@
                                 BorderThickness="0"
                                 Click="Start_Click"
                                 Content="{materialDesign:PackIcon Kind=Play}"
-                                Style="{StaticResource MaterialDesignIconButton}"
+                                Style="{StaticResource AppIconButtonStyle}"
                                 ToolTip="再生"
                               />
                               <RepeatButton
@@ -783,7 +809,7 @@
                                 BorderThickness="0"
                                 Click="FF_Click"
                                 Content="{materialDesign:PackIcon Kind=FastForward}"
-                                Style="{StaticResource MaterialDesignIconButton}"
+                                Style="{StaticResource AppIconRepeatButtonStyle}"
                                 ToolTip="送る"
                               />
                               <Button
@@ -792,7 +818,7 @@
                                 BorderThickness="0"
                                 Click="Pause_Click"
                                 Content="{materialDesign:PackIcon Kind=PauseBox}"
-                                Style="{StaticResource MaterialDesignIconButton}"
+                                Style="{StaticResource AppIconButtonStyle}"
                                 ToolTip="一時停止"
                               />
                               <Button
@@ -801,7 +827,7 @@
                                 BorderThickness="0"
                                 Click="Capture_Click"
                                 Content="{materialDesign:PackIcon Kind=Camera}"
-                                Style="{StaticResource MaterialDesignIconButton}"
+                                Style="{StaticResource AppIconButtonStyle}"
                                 ToolTip="サムネイルの取得"
                               />
                               <Button
@@ -810,7 +836,7 @@
                                 BorderThickness="0"
                                 Click="AddBookmark_Click"
                                 Content="{materialDesign:PackIcon Kind=BookmarkAdd}"
-                                Style="{StaticResource MaterialDesignIconButton}"
+                                Style="{StaticResource AppIconButtonStyle}"
                                 ToolTip="ブックマークの追加"
                               />
                               <Slider
@@ -867,7 +893,7 @@
                                 BorderThickness="1"
                                 Click="Stop_Click"
                                 Content="{materialDesign:PackIcon Kind=Close}"
-                                Style="{StaticResource MaterialDesignIconButton}"
+                                Style="{StaticResource AppIconButtonStyle}"
                                 ToolTip="終了"
                               />
                             </StackPanel>
@@ -1651,191 +1677,134 @@
       IsLeftDrawerOpen="{Binding IsChecked, ElementName=MenuToggleButton}"
     >
       <materialDesign:DrawerHost.LeftDrawerContent>
-        <DockPanel MinWidth="220">
+        <DockPanel
+          Width="208"
+          Background="{DynamicResource NavigationDrawerBackgroundBrush}"
+        >
           <ToggleButton
-            Margin="16"
+            Margin="12,10"
             HorizontalAlignment="Right"
             DockPanel.Dock="Top"
             IsChecked="{Binding IsChecked, ElementName=MenuToggleButton, Mode=TwoWay}"
-            Style="{StaticResource MaterialDesignHamburgerToggleButton}"
+            Style="{StaticResource AppHamburgerToggleButtonStyle}"
           />
 
-          <VirtualizingStackPanel
-            Margin="16,4"
-            VirtualizingPanel.IsVirtualizing="true"
-            VirtualizingPanel.VirtualizationMode="Recycling"
+          <ScrollViewer
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto"
           >
-            <Button
-              x:Name="BtnNew"
-              Margin="9,0,0,0"
-              HorizontalAlignment="Left"
-              Click="BtnNew_Click"
-              Style="{StaticResource LeftDrawerButtonStyle}"
-            >
-              <DockPanel>
-                <materialDesign:PackIcon Kind="FolderAdd" />
-                <TextBlock Margin="10,0" Text="新規作成" />
-              </DockPanel>
-            </Button>
+            <StackPanel Margin="12,0,12,12">
+              <Button
+                x:Name="BtnNew"
+                Click="BtnNew_Click"
+                Content="新規作成"
+                Style="{StaticResource LeftDrawerButtonStyle}"
+              />
 
-            <Button
-              x:Name="BtnOpen"
-              Margin="9,0,0,0"
-              HorizontalAlignment="Left"
-              Click="BtnOpen_Click"
-              Style="{StaticResource LeftDrawerButtonStyle}"
-            >
-              <DockPanel>
-                <materialDesign:PackIcon Kind="FolderOpen" />
-                <TextBlock Margin="10,0" Text="ファイルを開く" />
-              </DockPanel>
-            </Button>
+              <Button
+                x:Name="BtnOpen"
+                Click="BtnOpen_Click"
+                Content="ファイルを開く"
+                Style="{StaticResource LeftDrawerButtonStyle}"
+              />
 
-            <TreeView
-              x:Name="MenuRecent"
-              Margin="0,0,0,0"
-              ItemsSource="{Binding RecentTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-            >
-              <TreeView.Resources>
-                <Style TargetType="TreeViewItem">
-                  <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-                  <Setter Property="VerticalContentAlignment" Value="Center" />
-                  <Setter Property="HorizontalContentAlignment" Value="Center" />
-                </Style>
-              </TreeView.Resources>
+              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
 
-              <TreeView.ItemTemplate>
-                <HierarchicalDataTemplate
-                  DataType="{x:Type local:TreeSource}"
-                  ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
-                >
-                  <Button
-                    Margin="1,0,1,0"
-                    Padding="4,4,0,6"
-                    HorizontalAlignment="Left"
-                    Click="MenuRecentTree_Click"
-                    FontSize="14"
-                    FontWeight="Bold"
-                    Style="{StaticResource LeftDrawerButtonStyle}"
-                    Tag="{Binding Text}"
+              <TreeView
+                x:Name="MenuRecent"
+                ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
+                ItemsSource="{Binding RecentTreeRoot, UpdateSourceTrigger=PropertyChanged}"
+                Style="{StaticResource AppTreeViewStyle}"
+              >
+                <TreeView.ItemTemplate>
+                  <HierarchicalDataTemplate
+                    DataType="{x:Type local:TreeSource}"
+                    ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
+                    ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
                   >
-                    <DockPanel>
-                      <materialDesign:PackIcon VerticalAlignment="Center" Kind="File" />
+                    <Button
+                      Click="MenuRecentTree_Click"
+                      Style="{StaticResource LeftDrawerButtonStyle}"
+                      Tag="{Binding Text}"
+                    >
                       <TextBlock
-                        Margin="10,4,10,2"
-                        VerticalAlignment="Center"
+                        Style="{StaticResource LeftDrawerTextStyle}"
                         Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="{Binding Text}"
                       />
-                    </DockPanel>
-                  </Button>
-                </HierarchicalDataTemplate>
-              </TreeView.ItemTemplate>
-            </TreeView>
+                    </Button>
+                  </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+              </TreeView>
 
-            <TreeView
-              x:Name="MenuConfig"
-              ItemsSource="{Binding ConfigTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-              Style="{StaticResource MaterialDesignTreeView}"
-            >
-              <TreeView.Resources>
-                <Style TargetType="TreeViewItem">
-                  <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-                  <Setter Property="VerticalContentAlignment" Value="Center" />
-                  <Setter Property="HorizontalContentAlignment" Value="Center" />
-                </Style>
-              </TreeView.Resources>
+              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
 
-              <TreeView.ItemTemplate>
-                <HierarchicalDataTemplate
-                  DataType="{x:Type local:TreeSource}"
-                  ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
-                >
-                  <Button
-                    Margin="1,0,1,0"
-                    Padding="4,4,0,6"
-                    HorizontalAlignment="Left"
-                    Click="MenuBtnSettings_Click"
-                    FontSize="14"
-                    FontWeight="Bold"
-                    Style="{StaticResource LeftDrawerButtonStyle}"
-                    Tag="{Binding Text}"
+              <TreeView
+                x:Name="MenuConfig"
+                ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
+                ItemsSource="{Binding ConfigTreeRoot, UpdateSourceTrigger=PropertyChanged}"
+                Style="{StaticResource AppTreeViewStyle}"
+              >
+                <TreeView.ItemTemplate>
+                  <HierarchicalDataTemplate
+                    DataType="{x:Type local:TreeSource}"
+                    ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
+                    ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
                   >
-                    <DockPanel>
-                      <materialDesign:PackIcon
-                        VerticalAlignment="Center"
-                        Kind="{Binding IconKind}"
-                      />
+                    <Button
+                      Click="MenuBtnSettings_Click"
+                      Style="{StaticResource LeftDrawerButtonStyle}"
+                      Tag="{Binding Text}"
+                    >
                       <TextBlock
-                        Margin="10,4,10,2"
-                        VerticalAlignment="Center"
+                        Style="{StaticResource LeftDrawerTextStyle}"
                         Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="{Binding Text}"
                       />
-                    </DockPanel>
-                  </Button>
-                </HierarchicalDataTemplate>
-              </TreeView.ItemTemplate>
-            </TreeView>
+                    </Button>
+                  </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+              </TreeView>
 
-            <TreeView
-              x:Name="MenuTool"
-              ItemsSource="{Binding ToolTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-              Style="{StaticResource MaterialDesignTreeView}"
-            >
-              <TreeView.Resources>
-                <Style TargetType="TreeViewItem">
-                  <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-                  <Setter Property="VerticalContentAlignment" Value="Center" />
-                  <Setter Property="HorizontalContentAlignment" Value="Center" />
-                </Style>
-              </TreeView.Resources>
+              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
 
-              <TreeView.ItemTemplate>
-                <HierarchicalDataTemplate
-                  DataType="{x:Type local:TreeSource}"
-                  ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
-                >
-                  <Button
-                    Margin="1,0,1,0"
-                    Padding="4,4,0,6"
-                    HorizontalAlignment="Left"
-                    Click="MenuBtnTool_Click"
-                    FontSize="14"
-                    FontWeight="Bold"
-                    Style="{StaticResource LeftDrawerButtonStyle}"
-                    Tag="{Binding Text}"
+              <TreeView
+                x:Name="MenuTool"
+                ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
+                ItemsSource="{Binding ToolTreeRoot, UpdateSourceTrigger=PropertyChanged}"
+                Style="{StaticResource AppTreeViewStyle}"
+              >
+                <TreeView.ItemTemplate>
+                  <HierarchicalDataTemplate
+                    DataType="{x:Type local:TreeSource}"
+                    ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
+                    ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
                   >
-                    <DockPanel>
-                      <materialDesign:PackIcon
-                        VerticalAlignment="Center"
-                        Kind="{Binding IconKind}"
-                      />
+                    <Button
+                      Click="MenuBtnTool_Click"
+                      Style="{StaticResource LeftDrawerButtonStyle}"
+                      Tag="{Binding Text}"
+                    >
                       <TextBlock
-                        Margin="10,4,10,2"
-                        VerticalAlignment="Center"
+                        Style="{StaticResource LeftDrawerTextStyle}"
                         Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="{Binding Text}"
                       />
-                    </DockPanel>
-                  </Button>
-                </HierarchicalDataTemplate>
-              </TreeView.ItemTemplate>
-            </TreeView>
+                    </Button>
+                  </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+              </TreeView>
 
-            <Button
-              x:Name="BtnExit"
-              Margin="9,0,0,0"
-              HorizontalAlignment="Left"
-              Click="BtnExit_Click"
-              Style="{StaticResource LeftDrawerButtonStyle}"
-            >
-              <DockPanel>
-                <materialDesign:PackIcon VerticalAlignment="Center" Kind="ExitToApp" />
-                <TextBlock Margin="10,0" VerticalAlignment="Center" Text="終了" />
-              </DockPanel>
-            </Button>
-          </VirtualizingStackPanel>
+              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
+
+              <Button
+                x:Name="BtnExit"
+                Click="BtnExit_Click"
+                Content="終了"
+                Style="{StaticResource LeftDrawerButtonStyle}"
+              />
+            </StackPanel>
+          </ScrollViewer>
         </DockPanel>
       </materialDesign:DrawerHost.LeftDrawerContent>
 
@@ -1846,7 +1815,7 @@
         Background="{DynamicResource MainHeaderBackground}"
         Foreground="{DynamicResource MainHeaderForegroundBrush}"
       >
-        <Grid>
+        <Grid VerticalAlignment="Center">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
@@ -1862,22 +1831,35 @@
             Checked="MenuToggleButton_Checked"
             Unchecked="MenuToggleButton_Unchecked"
             VerticalAlignment="Center"
-            Style="{DynamicResource MaterialDesignHamburgerToggleButton}"
+            Style="{DynamicResource AppHamburgerToggleButtonStyle}"
           />
 
-          <Grid Grid.Column="1">
-            <VirtualizingStackPanel
+          <Grid Grid.Column="1" VerticalAlignment="Center">
+            <Grid
               x:Name="MainHeaderStandardChromePanel"
-              Orientation="Horizontal"
-              VirtualizingPanel.IsVirtualizing="true"
-              VirtualizingPanel.VirtualizationMode="Recycling"
+              Height="36"
+              VerticalAlignment="Center"
             >
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="180" MaxWidth="326" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="0" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
               <ComboBox
                 x:Name="SearchBox"
-                Width="326"
+                Grid.Column="0"
                 Margin="0,0,10,0"
                 Padding="4,3,0,3"
+                HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
+                VerticalAlignment="Center"
                 materialDesign:HintAssist.Hint="検索キーワードを入れて下さい。"
                 materialDesign:HintAssist.IsFloating="True"
                 materialDesign:TextFieldAssist.DecorationVisibility="Hidden"
@@ -1900,12 +1882,12 @@
                 SelectedValuePath="Find_Text"
                 SelectionChanged="SearchBox_SelectionChanged"
                 SelectiveScrollingGrid.SelectiveScrollingOrientation="None"
-                Style="{StaticResource MainHeaderSearchBoxStyle}"
+                Style="{StaticResource AppSearchComboBoxStyle}"
                 Text="{Binding DbInfo.SearchKeyword, UpdateSourceTrigger=PropertyChanged}"
                 TextBoxBase.TextChanged="SearchBox_TextChanged"
               >
                 <ComboBox.ItemContainerStyle>
-                  <Style BasedOn="{StaticResource MaterialDesignComboBoxItemStyle}" TargetType="ComboBoxItem">
+                  <Style BasedOn="{StaticResource AppComboBoxItemStyle}" TargetType="ComboBoxItem">
                     <!--  内容更新時のバインドエラー回避のおまじない。  -->
                     <Setter Property="HorizontalAlignment" Value="Stretch" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -1924,21 +1906,24 @@
               </ComboBox>
               <Button
                 x:Name="BulkTagAssignButton"
+                Grid.Column="1"
                 Margin="0,0,10,0"
                 Click="BulkTagAssignButton_Click"
                 Content="タグ付..."
-                Style="{StaticResource MainHeaderButtonStyle}"
+                Style="{StaticResource AppHeaderButtonStyle}"
                 ToolTip="現在の検索キーワードをタグとして、表示中の動画または選択中の動画へ追加します"
               />
               <Button
                 x:Name="ReloadButton"
+                Grid.Column="2"
                 Click="ReloadButton_Click"
                 Content="再読込"
                 IsDefault="True"
-                Style="{StaticResource MainHeaderButtonStyle}"
+                Style="{StaticResource AppHeaderButtonStyle}"
                 ToolTip="一覧再読込と監視フォルダ更新チェックを実行します"
               />
               <Label
+                Grid.Column="3"
                 Margin="18,0,0,0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -1948,8 +1933,10 @@
               />
               <ComboBox
                 x:Name="ComboSort"
-                Width="200"
+                Grid.Column="4"
+                Width="160"
                 Margin="4,2,4,2"
+                VerticalAlignment="Center"
                 Background="{DynamicResource MainHeaderSortComboBackground}"
                 FontSize="13"
                 DisplayMemberPath="Name"
@@ -1958,9 +1945,42 @@
                 SelectedValue="{Binding DbInfo.Sort}"
                 SelectedValuePath="Id"
                 SelectionChanged="ComboSort_SelectionChanged"
-                Style="{StaticResource MainHeaderCompactComboBoxStyle}"
+                Style="{StaticResource AppCompactComboBoxStyle}"
               />
+              <Label
+                Grid.Column="5"
+                Margin="14,0,0,0"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Content="スキン："
+                FontSize="13"
+                Foreground="{DynamicResource MainHeaderForegroundBrush}"
+              />
+              <Grid Grid.Column="6" VerticalAlignment="Center">
+                <!-- ヘッダーは差し替えず、スキン切替だけを共通ヘッダー上で完結させる。 -->
+                <ComboBox
+                  x:Name="ExternalSkinMinimalSkinSelector"
+                  Width="170"
+                  VerticalAlignment="Center"
+                  Background="{DynamicResource MainHeaderSortComboBackground}"
+                  DisplayMemberPath="Name"
+                  Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
+                  SelectedValuePath="Name"
+                  SelectionChanged="ExternalSkinMinimalSkinSelector_SelectionChanged"
+                  Style="{StaticResource AppCompactComboBoxStyle}"
+                  TextSearch.TextPath="Name"
+                />
+                <TextBlock
+                  x:Name="ExternalSkinMinimalSkinNameText"
+                  VerticalAlignment="Center"
+                  FontSize="13"
+                  Foreground="{DynamicResource MainHeaderForegroundBrush}"
+                  TextTrimming="CharacterEllipsis"
+                  Visibility="Collapsed"
+                />
+              </Grid>
               <TextBlock
+                Grid.Column="7"
                 Margin="18,0,0,0"
                 VerticalAlignment="Center"
                 FontSize="13"
@@ -1972,18 +1992,22 @@
                   Text="{Binding DbInfo.RegisteredMovieCount, Mode=OneWay}"
                 />
               </TextBlock>
-              <Label
+              <TextBlock
                 x:Name="lbDbFullPath"
+                Grid.Column="8"
                 Margin="14,0,0,0"
-                HorizontalAlignment="Center"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Center"
-                Content="{Binding DbInfo.DBFullPath, UpdateSourceTrigger=PropertyChanged}"
                 FontSize="13"
                 Foreground="{DynamicResource MainHeaderForegroundBrush}"
+                Text="{Binding DbInfo.DBFullPath, UpdateSourceTrigger=PropertyChanged}"
+                TextTrimming="CharacterEllipsis"
               />
               <Border
                 x:Name="ExternalSkinFallbackNoticeBorder"
+                Grid.Column="9"
                 Margin="14,0,0,0"
+                MaxWidth="420"
                 Padding="10,4"
                 VerticalAlignment="Center"
                 Background="#26FFB300"
@@ -1992,8 +2016,16 @@
                 CornerRadius="4"
                 Visibility="Collapsed"
               >
-                <StackPanel Orientation="Horizontal">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MinWidth="0" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
                   <materialDesign:PackIcon
+                    Grid.Column="0"
                     Width="16"
                     Height="16"
                     VerticalAlignment="Center"
@@ -2001,6 +2033,7 @@
                   />
                   <TextBlock
                     x:Name="ExternalSkinFallbackNoticeText"
+                    Grid.Column="1"
                     Margin="8,0,0,0"
                     VerticalAlignment="Center"
                     FontSize="12"
@@ -2009,34 +2042,37 @@
                   />
                   <Button
                     x:Name="ExternalSkinFallbackRetryButton"
+                    Grid.Column="2"
                     Margin="10,0,0,0"
                     Padding="8,2"
                     Click="ExternalSkinFallbackRetryButton_Click"
                     Content="再試行"
-                    Style="{StaticResource MainHeaderButtonStyle}"
+                    Style="{StaticResource AppHeaderButtonStyle}"
                   />
                   <Button
                     x:Name="ExternalSkinFallbackOpenRuntimeDownloadButton"
+                    Grid.Column="3"
                     Margin="8,0,0,0"
                     Padding="8,2"
                     Click="ExternalSkinFallbackOpenRuntimeDownloadButton_Click"
                     Content="Runtimeを入手"
-                    Style="{StaticResource MainHeaderButtonStyle}"
+                    Style="{StaticResource AppHeaderButtonStyle}"
                     Visibility="Collapsed"
                   />
                   <Button
                     x:Name="ExternalSkinFallbackOpenLogButton"
+                    Grid.Column="4"
                     Margin="8,0,0,0"
                     Padding="8,2"
                     Click="ExternalSkinFallbackOpenLogButton_Click"
                     Content="ログを開く"
-                    Style="{StaticResource MainHeaderButtonStyle}"
+                    Style="{StaticResource AppHeaderButtonStyle}"
                   />
-                </StackPanel>
+                </Grid>
               </Border>
-            </VirtualizingStackPanel>
+            </Grid>
 
-            <!-- 外部 skin 表示中だけ、host 側は最小シェルへ切り替える。 -->
+            <!-- 互換テスト用の旧最小シェル。実表示では通常ヘッダーを差し替えない。 -->
             <DockPanel
               x:Name="ExternalSkinMinimalChromePanel"
               LastChildFill="True"
@@ -2052,20 +2088,20 @@
                   Margin="0,0,8,0"
                   Click="ExternalSkinMinimalReloadButton_Click"
                   Content="再読込"
-                  Style="{StaticResource MainHeaderButtonStyle}"
+                  Style="{StaticResource AppHeaderButtonStyle}"
                 />
                 <Button
                   x:Name="ExternalSkinBackToGridButton"
                   Margin="0,0,8,0"
                   Click="ExternalSkinBackToGridButton_Click"
                   Content="Gridへ戻る"
-                  Style="{StaticResource MainHeaderButtonStyle}"
+                  Style="{StaticResource AppHeaderButtonStyle}"
                 />
                 <Button
                   x:Name="ExternalSkinMinimalSettingsButton"
                   Click="ExternalSkinMinimalSettingsButton_Click"
                   Content="設定"
-                  Style="{StaticResource MainHeaderButtonStyle}"
+                  Style="{StaticResource AppHeaderButtonStyle}"
                 />
               </StackPanel>
 
@@ -2097,36 +2133,6 @@
                   Foreground="{DynamicResource MainHeaderForegroundBrush}"
                   Text="{Binding DbInfo.DBName, UpdateSourceTrigger=PropertyChanged}"
                 />
-                <Border
-                  Width="1"
-                  Height="18"
-                  Margin="12,0"
-                  VerticalAlignment="Center"
-                  Background="{DynamicResource MainHeaderForegroundBrush}"
-                  Opacity="0.35"
-                />
-                <Grid VerticalAlignment="Center">
-                  <!-- skin 切替はその場で完結させつつ、裏のテキストは既存テスト資産向けに同期を残す。 -->
-                  <ComboBox
-                    x:Name="ExternalSkinMinimalSkinSelector"
-                    Width="170"
-                    Background="{DynamicResource MainHeaderSortComboBackground}"
-                    DisplayMemberPath="Name"
-                    Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
-                    SelectedValuePath="Name"
-                    SelectionChanged="ExternalSkinMinimalSkinSelector_SelectionChanged"
-                    Style="{StaticResource MainHeaderCompactComboBoxStyle}"
-                    TextSearch.TextPath="Name"
-                  />
-                  <TextBlock
-                    x:Name="ExternalSkinMinimalSkinNameText"
-                    VerticalAlignment="Center"
-                    FontSize="13"
-                    Foreground="{DynamicResource MainHeaderForegroundBrush}"
-                    TextTrimming="CharacterEllipsis"
-                    Visibility="Collapsed"
-                  />
-                </Grid>
               </StackPanel>
             </DockPanel>
           </Grid>

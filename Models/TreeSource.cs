@@ -1,4 +1,3 @@
-﻿using MaterialDesignThemes.Wpf;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 
@@ -12,19 +11,12 @@ namespace IndigoMovieManager
         private bool _IsExpanded = true;
         private string _Text = "";
         private TreeSource _Parent = null;
-        private PackIconKind _IconKind = PackIconKind.File;
         private ObservableCollection<TreeSource> _Children = null;
 
         public bool IsExpanded
         {
             get { return _IsExpanded; }
             set { _IsExpanded = value; OnPropertyChanged("IsExpanded"); }
-        }
-
-        public PackIconKind IconKind
-        {
-            get { return _IconKind; }
-            set { _IconKind = value; OnPropertyChanged("IconKind"); }
         }
 
         public string Text

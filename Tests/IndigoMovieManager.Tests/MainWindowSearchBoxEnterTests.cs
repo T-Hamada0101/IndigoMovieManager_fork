@@ -12,8 +12,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using IndigoMovieManager.DB;
 using IndigoMovieManager.ViewModels;
-using MaterialDesignColors;
-using MaterialDesignThemes.Wpf;
 
 namespace IndigoMovieManager.Tests;
 
@@ -1725,95 +1723,6 @@ VALUES (
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown,
             };
-            application.Resources.MergedDictionaries.Add(
-                new BundledTheme
-                {
-                    BaseTheme = BaseTheme.Inherit,
-                    PrimaryColor = PrimaryColor.Indigo,
-                    SecondaryColor = SecondaryColor.DeepPurple,
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Button.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.CheckBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ComboBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.DataGrid.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.GroupBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ListView.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Slider.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
-            application.Resources.MergedDictionaries.Add(
-                new ResourceDictionary
-                {
-                    Source = new Uri(
-                        "pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.TextBox.xaml",
-                        UriKind.Absolute
-                    ),
-                }
-            );
             application.Resources.MergedDictionaries.Add(
                 new ResourceDictionary
                 {
