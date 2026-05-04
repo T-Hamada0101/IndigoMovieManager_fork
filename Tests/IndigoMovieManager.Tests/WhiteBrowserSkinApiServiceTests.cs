@@ -285,6 +285,62 @@ public sealed class WhiteBrowserSkinApiServiceTests
     }
 
     [Test]
+    public async Task HandleAddWhere_UIスナップショット固定後も補助項目で絞れる()
+    {
+        MovieRecords movieA = new()
+        {
+            Movie_Id = 79,
+            Movie_Name = "alpha.mp4",
+            Movie_Path = @"D:\movie\alpha.mp4",
+            Hash = "hash-alpha",
+            Title = "Concert Alpha",
+            IsExists = true,
+        };
+        MovieRecords movieB = new()
+        {
+            Movie_Id = 80,
+            Movie_Name = "beta.mp4",
+            Movie_Path = @"D:\movie\beta.mp4",
+            Hash = "hash-beta",
+            Title = "Concert Beta",
+            IsExists = true,
+        };
+        int snapshotReadCount = 0;
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetUiSnapshot = () =>
+                {
+                    snapshotReadCount++;
+                    return new WhiteBrowserSkinApiUiSnapshot(
+                        [movieA, movieB],
+                        currentTabIndex: 2,
+                        dbFullPath: @"D:\db\main.wb",
+                        dbName: "main",
+                        skinName: "SnapshotSkin",
+                        thumbFolder: @"D:\thumb"
+                    );
+                },
+                GetVisibleMovies = () => ThrowUnexpectedUiRead<IReadOnlyList<MovieRecords>>(),
+                ResolveThumbUrl = _ => "",
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "addWhere",
+            JsonDocument.Parse("""{"where":"hash = 'hash-alpha' and title = 'Concert Alpha'"}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        WhiteBrowserSkinUpdateResponse payload = (WhiteBrowserSkinUpdateResponse)result.Payload;
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshotReadCount, Is.EqualTo(1));
+            Assert.That(payload.Items.Select(x => x.MovieId), Is.EqualTo(new[] { 79L }));
+        });
+    }
+
+    [Test]
     public async Task HandleUpdate_addOrderはUIスナップショットのSortIdを基準にする()
     {
         MovieRecords zeta = new()
@@ -1307,6 +1363,61 @@ public sealed class WhiteBrowserSkinApiServiceTests
     }
 
     [Test]
+    public async Task HandleGetRelation_UIスナップショットだけで近傍タグを返せる()
+    {
+        IReadOnlyList<MovieRecords> visibleMovies =
+        [
+            new MovieRecords
+            {
+                Movie_Id = 84,
+                Movie_Name = "Concert Main.mp4",
+                Movie_Path = @"D:\movie\concert-main.mp4",
+                Tags = ThumbnailTagFormatter.ConvertTagsWithNewLine(["concert", "main"]),
+            },
+            new MovieRecords
+            {
+                Movie_Id = 85,
+                Movie_Name = "Concert Side.mp4",
+                Movie_Path = @"D:\movie\concert-side.mp4",
+                Tags = ThumbnailTagFormatter.ConvertTagsWithNewLine(["concert", "side"]),
+            },
+        ];
+        int snapshotReadCount = 0;
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetUiSnapshot = () =>
+                {
+                    snapshotReadCount++;
+                    return new WhiteBrowserSkinApiUiSnapshot(
+                        visibleMovies,
+                        currentTabIndex: 2,
+                        dbFullPath: @"D:\db\main.wb",
+                        dbName: "main",
+                        skinName: "SnapshotSkin",
+                        thumbFolder: @"D:\thumb"
+                    );
+                },
+                GetVisibleMovies = () => ThrowUnexpectedUiRead<IReadOnlyList<MovieRecords>>(),
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "getRelation",
+            JsonDocument.Parse("""{"title":"Concert Main","limit":1}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        using JsonDocument payload = JsonDocument.Parse(JsonSerializer.Serialize(result.Payload));
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshotReadCount, Is.EqualTo(1));
+            Assert.That(payload.RootElement.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(payload.RootElement[0].GetProperty("id").GetInt64(), Is.EqualTo(85));
+        });
+    }
+
+    [Test]
     public async Task ResetTransientState_addWhereとaddOrderをまとめてクリアできる()
     {
         string root = CreateTempDirectory("imm-webview-api-reset-state");
@@ -2109,6 +2220,69 @@ public sealed class WhiteBrowserSkinApiServiceTests
             );
             Assert.That(movie.Tags, Is.EqualTo(""));
             Assert.That(movie.Tag, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task HandleTagApis_対象未指定時もUIスナップショットの選択から解決できる()
+    {
+        MovieRecords movie = new()
+        {
+            Movie_Id = 411,
+            Movie_Name = "selected-tag.mp4",
+            Movie_Path = @"D:\movie\selected-tag.mp4",
+            Tag = ["alpha"],
+            Tags = "alpha",
+        };
+        int snapshotReadCount = 0;
+        bool mutationCalled = false;
+        WhiteBrowserSkinApiService service = new(
+            new WhiteBrowserSkinApiServiceDependencies
+            {
+                GetUiSnapshot = () =>
+                {
+                    snapshotReadCount++;
+                    return new WhiteBrowserSkinApiUiSnapshot(
+                        [movie],
+                        currentTabIndex: 2,
+                        dbFullPath: @"D:\db\main.wb",
+                        dbName: "main",
+                        skinName: "SnapshotSkin",
+                        thumbFolder: @"D:\thumb",
+                        selectedMovie: movie,
+                        selectedMovies: [movie]
+                    );
+                },
+                GetVisibleMovies = () => ThrowUnexpectedUiRead<IReadOnlyList<MovieRecords>>(),
+                GetCurrentSelectedMovie = () => ThrowUnexpectedUiRead<MovieRecords>(),
+                MutateMovieTagAsync = (record, tagName, mutationMode) =>
+                {
+                    Assert.That(record, Is.SameAs(movie));
+                    Assert.That(tagName, Is.EqualTo("beta"));
+                    Assert.That(mutationMode, Is.EqualTo(WhiteBrowserSkinTagMutationMode.Add));
+                    mutationCalled = true;
+                    movie.Tag = ["alpha", "beta"];
+                    movie.Tags = ThumbnailTagFormatter.ConvertTagsWithNewLine(movie.Tag);
+                    return Task.FromResult(new WhiteBrowserSkinTagMutationResult(true, true));
+                },
+                ResolveThumbUrl = _ => "",
+            }
+        );
+
+        WhiteBrowserSkinApiInvocationResult result = await service.HandleAsync(
+            "addTag",
+            JsonDocument.Parse("""{"tag":"beta"}""").RootElement
+        );
+
+        Assert.That(result.Succeeded, Is.True);
+        using JsonDocument payload = JsonDocument.Parse(JsonSerializer.Serialize(result.Payload));
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshotReadCount, Is.EqualTo(2));
+            Assert.That(mutationCalled, Is.True);
+            Assert.That(payload.RootElement.GetProperty("found").GetBoolean(), Is.True);
+            Assert.That(payload.RootElement.GetProperty("movieId").GetInt64(), Is.EqualTo(411));
+            Assert.That(payload.RootElement.GetProperty("tags")[1].GetString(), Is.EqualTo("beta"));
         });
     }
 

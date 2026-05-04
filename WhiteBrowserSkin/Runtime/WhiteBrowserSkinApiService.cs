@@ -508,7 +508,8 @@ namespace IndigoMovieManager.Skin.Runtime
         {
             string title = GetString(payload, "title", GetString(payload, "query", ""));
             int limit = Math.Max(1, GetInt32(payload, "limit", 20));
-            IReadOnlyList<MovieRecords> visibleMovies = GetVisibleMoviesSnapshot();
+            WhiteBrowserSkinApiUiSnapshot uiSnapshot = CaptureUiSnapshot();
+            IReadOnlyList<MovieRecords> visibleMovies = GetVisibleMoviesSnapshot(uiSnapshot);
 
             string normalizedQuery = NormalizeRelationText(title);
             string[] queryTokens = SplitRelationTokens(normalizedQuery);
@@ -759,7 +760,7 @@ namespace IndigoMovieManager.Skin.Runtime
                 targetContext.DbIdentity,
                 StringComparison.OrdinalIgnoreCase
             )
-                ?? dependencies.GetCurrentSelectedMovie();
+                ?? targetContext.SelectedMovie;
             if (movie == null)
             {
                 return new { found = false };
@@ -928,13 +929,6 @@ namespace IndigoMovieManager.Skin.Runtime
         private WhiteBrowserSkinApiUiSnapshot CaptureUiSnapshot()
         {
             return dependencies.CaptureUiSnapshot() ?? WhiteBrowserSkinApiUiSnapshot.Empty;
-        }
-
-        private IReadOnlyList<MovieRecords> GetVisibleMoviesSnapshot()
-        {
-            IReadOnlyList<MovieRecords> visibleMovies = dependencies.GetVisibleMovies()
-                ?? Array.Empty<MovieRecords>();
-            return ApplyQueryOverlays(visibleMovies, dependencies.GetCurrentSortId());
         }
 
         private IReadOnlyList<MovieRecords> GetVisibleMoviesSnapshot(
@@ -1130,18 +1124,6 @@ namespace IndigoMovieManager.Skin.Runtime
             }
         }
 
-        private WhiteBrowserSkinSelectionSnapshot CreateSelectionSnapshot()
-        {
-            MovieRecords focusedMovie = dependencies.GetCurrentSelectedMovie();
-            IReadOnlyList<MovieRecords> selectedMovies = dependencies.GetCurrentSelectedMovies()
-                ?? Array.Empty<MovieRecords>();
-            HashSet<long> selectedMovieIds = selectedMovies
-                .Where(movie => movie != null)
-                .Select(movie => movie.Movie_Id)
-                .ToHashSet();
-            return new WhiteBrowserSkinSelectionSnapshot(focusedMovie, selectedMovieIds);
-        }
-
         private static WhiteBrowserSkinSelectionSnapshot CreateSelectionSnapshot(
             WhiteBrowserSkinApiUiSnapshot uiSnapshot
         )
@@ -1159,9 +1141,17 @@ namespace IndigoMovieManager.Skin.Runtime
 
         private OperationTargetResolutionContext CaptureOperationTargetResolutionContext()
         {
-            IReadOnlyList<MovieRecords> visibleMovies = GetVisibleMoviesSnapshot();
-            string dbIdentity = WhiteBrowserSkinDbIdentity.Build(dependencies.GetCurrentDbFullPath());
-            return new OperationTargetResolutionContext(visibleMovies, dbIdentity);
+            WhiteBrowserSkinApiUiSnapshot uiSnapshot = CaptureUiSnapshot();
+            IReadOnlyList<MovieRecords> visibleMovies = ApplyQueryOverlays(
+                uiSnapshot.VisibleMovies,
+                uiSnapshot.SortId
+            );
+            string dbIdentity = WhiteBrowserSkinDbIdentity.Build(uiSnapshot.DbFullPath);
+            return new OperationTargetResolutionContext(
+                visibleMovies,
+                dbIdentity,
+                uiSnapshot.SelectedMovie
+            );
         }
 
         private static MovieRecords[] FreezeMoviesForDto(IReadOnlyList<MovieRecords> visibleMovies)
@@ -1189,6 +1179,7 @@ namespace IndigoMovieManager.Skin.Runtime
             {
                 Movie_Id = movie.Movie_Id,
                 Movie_Name = movie.Movie_Name ?? "",
+                Movie_Body = movie.Movie_Body ?? "",
                 Movie_Path = movie.Movie_Path ?? "",
                 Movie_Length = movie.Movie_Length ?? "",
                 Movie_Size = movie.Movie_Size,
@@ -1197,12 +1188,22 @@ namespace IndigoMovieManager.Skin.Runtime
                 Regist_Date = movie.Regist_Date ?? "",
                 Score = movie.Score,
                 View_Count = movie.View_Count,
+                Hash = movie.Hash ?? "",
                 Container = movie.Container ?? "",
                 Video = movie.Video ?? "",
                 Audio = movie.Audio ?? "",
                 Extra = movie.Extra ?? "",
+                Title = movie.Title ?? "",
+                Album = movie.Album ?? "",
                 Artist = movie.Artist ?? "",
+                Grouping = movie.Grouping ?? "",
+                Writer = movie.Writer ?? "",
+                Genre = movie.Genre ?? "",
+                Track = movie.Track ?? "",
+                Camera = movie.Camera ?? "",
+                Create_Time = movie.Create_Time ?? "",
                 Kana = movie.Kana ?? "",
+                Roma = movie.Roma ?? "",
                 Tags = movie.Tags ?? "",
                 Tag =
                     movie.Tag
@@ -1219,7 +1220,10 @@ namespace IndigoMovieManager.Skin.Runtime
                 ThumbPathBig10 = movie.ThumbPathBig10 ?? "",
                 ThumbDetail = movie.ThumbDetail ?? "",
                 ThumbnailErrorMarkerCount = movie.ThumbnailErrorMarkerCount,
+                Drive = movie.Drive ?? "",
+                Dir = movie.Dir ?? "",
                 IsExists = movie.IsExists,
+                Ext = movie.Ext ?? "",
             };
         }
 
@@ -1797,7 +1801,8 @@ namespace IndigoMovieManager.Skin.Runtime
 
         private readonly record struct OperationTargetResolutionContext(
             IReadOnlyList<MovieRecords> VisibleMovies,
-            string DbIdentity
+            string DbIdentity,
+            MovieRecords SelectedMovie
         );
     }
 }
