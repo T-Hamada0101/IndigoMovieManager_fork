@@ -1061,6 +1061,7 @@
                                             <Binding Path="ThumbPathGrid" />
                                             <Binding Path="IsExists" />
                                             <Binding Source="{x:Reference PlayerThumbnailList}" Path="IsVisible" />
+                                            <Binding Path="Movie_Path" />
                                           </MultiBinding>
                                         </Image.Source>
                                       </Image>

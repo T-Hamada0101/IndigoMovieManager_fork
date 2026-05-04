@@ -291,6 +291,40 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayerThumbnailRail_画像BindingへMoviePathを渡してviewport近傍ゲートを効かせる()
+    {
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        int listStart = mainWindowXaml.IndexOf(
+            "x:Name=\"PlayerThumbnailList\"",
+            StringComparison.Ordinal
+        );
+        Assert.That(listStart, Is.GreaterThanOrEqualTo(0));
+
+        int converterIndex = mainWindowXaml.IndexOf(
+            "Converter=\"{StaticResource upperTabImageSourceConverter}\"",
+            listStart,
+            StringComparison.Ordinal
+        );
+        Assert.That(converterIndex, Is.GreaterThan(listStart));
+
+        int bindingEnd = mainWindowXaml.IndexOf("</MultiBinding>", converterIndex, StringComparison.Ordinal);
+        Assert.That(bindingEnd, Is.GreaterThan(converterIndex));
+        string playerThumbnailImageBinding = mainWindowXaml.Substring(
+            converterIndex,
+            bindingEnd - converterIndex
+        );
+
+        // converter の4番目の値へ動画パスを渡し、右レールでも viewport 近傍だけ decode する。
+        Assert.That(playerThumbnailImageBinding, Does.Contain("<Binding Path=\"ThumbPathGrid\" />"));
+        Assert.That(playerThumbnailImageBinding, Does.Contain("<Binding Path=\"IsExists\" />"));
+        Assert.That(
+            playerThumbnailImageBinding,
+            Does.Contain("<Binding Source=\"{x:Reference PlayerThumbnailList}\" Path=\"IsVisible\" />")
+        );
+        Assert.That(playerThumbnailImageBinding, Does.Contain("<Binding Path=\"Movie_Path\" />"));
+    }
+
+    [Test]
     public void PlayerSurface_同一表示状態とサイズは再代入しない()
     {
         string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
