@@ -1111,6 +1111,58 @@ public sealed class WatchDeferredUiReloadPolicyTests
     }
 
     [Test]
+    public void TryBuildChangedMovieRefreshSource_順序再利用時は既存位置を保って差し替える()
+    {
+        MovieRecords alpha = new()
+        {
+            Movie_Path = "Movies\\alpha.mp4",
+            Movie_Name = "alpha.mp4",
+            Movie_Size = 1,
+        };
+        MovieRecords beta = new()
+        {
+            Movie_Path = "Movies\\beta.mp4",
+            Movie_Name = "beta.mp4",
+            Movie_Size = 2,
+        };
+        MovieRecords gamma = new()
+        {
+            Movie_Path = "Movies\\gamma.mp4",
+            Movie_Name = "gamma.mp4",
+            Movie_Size = 3,
+        };
+        int filterCallCount = 0;
+
+        bool result = MainWindow.TryBuildChangedMovieRefreshSource(
+            [alpha, beta, gamma],
+            [alpha, beta, gamma],
+            "movie",
+            "12",
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\beta.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.MovieSize,
+                    new MainWindow.WatchMovieObservedState("2026-04-17 12:34:56", 8)
+                ),
+            ],
+            (movies, keyword) =>
+            {
+                filterCallCount++;
+                return IndigoMovieManager.Infrastructure.SearchService.FilterMovies(movies, keyword);
+            },
+            out MovieRecords[] nextFilteredMovies,
+            out bool canReuseCurrentOrder
+        );
+
+        Assert.That(result, Is.True);
+        Assert.That(filterCallCount, Is.EqualTo(0));
+        Assert.That(nextFilteredMovies, Is.EqualTo([alpha, beta, gamma]));
+        Assert.That(beta.Movie_Size, Is.EqualTo(8));
+        Assert.That(canReuseCurrentOrder, Is.True);
+    }
+
+    [Test]
     public void TryBuildChangedMovieRefreshSource_検索非依存dirtyなら現在不一致の状態も再利用する()
     {
         MovieRecords alpha = new()

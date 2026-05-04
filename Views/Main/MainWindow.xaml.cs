@@ -2366,10 +2366,6 @@ namespace IndigoMovieManager
                     StringComparer.OrdinalIgnoreCase
                 ) ?? new Dictionary<string, MovieRecords>(StringComparer.OrdinalIgnoreCase);
 
-            HashSet<string> changedPathLookup = new(
-                normalizedChangedMovies.Select(x => x.MoviePath),
-                StringComparer.OrdinalIgnoreCase
-            );
             HashSet<string> currentFilteredPathLookup = new(
                 currentFilteredMovies?
                     .Where(movie => movie != null && !string.IsNullOrWhiteSpace(movie.Movie_Path))
@@ -2377,13 +2373,7 @@ namespace IndigoMovieManager
                 StringComparer.OrdinalIgnoreCase
             );
             List<MovieRecords> nextMovies = currentFilteredMovies?
-                .Where(movie =>
-                    movie != null
-                    && (
-                        string.IsNullOrWhiteSpace(movie.Movie_Path)
-                        || !changedPathLookup.Contains(movie.Movie_Path)
-                    )
-                )
+                .Where(movie => movie != null)
                 .ToList() ?? [];
 
             bool canBypassFilterForEmptySearch = string.IsNullOrWhiteSpace(searchKeyword);
@@ -2393,6 +2383,7 @@ namespace IndigoMovieManager
                 string moviePath = changedMovie.MoviePath;
                 if (!sourceByPath.TryGetValue(moviePath, out MovieRecords sourceMovie))
                 {
+                    RemoveMovieByPath(nextMovies, moviePath);
                     continue;
                 }
 
@@ -2410,25 +2401,72 @@ namespace IndigoMovieManager
                         canReuseCurrentSearchState
                             ? wasMatchedBefore
                             : filterMovies([sourceMovie], searchKeyword).Any()
-                    );
+                );
                 if (isMatch)
                 {
                     if (!wasMatchedBefore)
                     {
+                        nextMovies.Add(sourceMovie);
                         shouldReapplySort = true;
                     }
                     else if (DoesCurrentSortDependOnDirtyFields(sortId, changedMovie.DirtyFields))
                     {
                         shouldReapplySort = true;
                     }
+                    else
+                    {
+                        ReplaceMovieByPath(nextMovies, sourceMovie);
+                    }
 
-                    nextMovies.Add(sourceMovie);
+                    if (wasMatchedBefore && shouldReapplySort)
+                    {
+                        ReplaceMovieByPath(nextMovies, sourceMovie);
+                    }
+                }
+                else if (wasMatchedBefore)
+                {
+                    RemoveMovieByPath(nextMovies, moviePath);
                 }
             }
 
             nextFilteredMovies = nextMovies.ToArray();
             canReuseCurrentOrder = !shouldReapplySort;
             return true;
+        }
+
+        private static void ReplaceMovieByPath(List<MovieRecords> movies, MovieRecords sourceMovie)
+        {
+            if (movies == null || sourceMovie == null || string.IsNullOrWhiteSpace(sourceMovie.Movie_Path))
+            {
+                return;
+            }
+
+            int index = movies.FindIndex(movie =>
+                movie != null
+                && string.Equals(
+                    movie.Movie_Path,
+                    sourceMovie.Movie_Path,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            );
+            if (index >= 0)
+            {
+                // 順序を再利用できる変更では、既存位置を保ったまま中身だけ差し替える。
+                movies[index] = sourceMovie;
+            }
+        }
+
+        private static void RemoveMovieByPath(List<MovieRecords> movies, string moviePath)
+        {
+            if (movies == null || string.IsNullOrWhiteSpace(moviePath))
+            {
+                return;
+            }
+
+            movies.RemoveAll(movie =>
+                movie != null
+                && string.Equals(movie.Movie_Path, moviePath, StringComparison.OrdinalIgnoreCase)
+            );
         }
 
         // watch で拾った cheap な観測値だけを現在の行へ当て、DB再読込なしで sort/filter に効かせる。
