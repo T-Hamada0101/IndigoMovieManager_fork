@@ -1,10 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using IndigoMovieManager.ViewModels;
 using IndigoMovieManager.Thumbnail;
+using IndigoMovieManager.Thumbnail.FailureDb;
 using IndigoMovieManager.Thumbnail.QueueDb;
 
 namespace IndigoMovieManager
@@ -17,6 +20,17 @@ namespace IndigoMovieManager
         private int _thumbnailVisibleErrorRescueRequestVersion;
         private IReadOnlyList<string> _activeUpperTabVisibleErrorMoviePathKeysSnapshot =
             Array.Empty<string>();
+        private int _visibleUpperTabThumbnailErrorRescueRunning;
+
+        private readonly record struct VisibleUpperTabThumbnailErrorRescueRequest(
+            ThumbnailErrorRescueRecordSnapshot[] Records,
+            string DbFullPath,
+            string DbName,
+            string ThumbFolder,
+            int TabIndex,
+            int RequestVersion,
+            DateTime PreferredUntilUtc
+        );
 
         /// <summary>
         /// 今開いてるタブの先頭アイテムにカーソルを合わせる！これが俺のスマートなエスコートだ！😎
@@ -39,53 +53,111 @@ namespace IndigoMovieManager
 
         // タブ切替で見つかった error 画像動画は、通常キューへ戻さず救済レーンへ静かに逃がす。
         private async Task EnqueueVisibleUpperTabThumbnailErrorsToRescueAsync(
-            int tabIndex,
-            MovieRecords[] query,
-            int requestVersion
+            VisibleUpperTabThumbnailErrorRescueRequest request
         )
         {
-            if (query == null || query.Length == 0)
+            if (request.Records.Length == 0)
             {
                 return;
             }
 
-            await Task.Delay(ThumbnailVisibleErrorAutoRescueDelayMs);
+            await Task.Delay(ThumbnailVisibleErrorAutoRescueDelayMs).ConfigureAwait(false);
 
-            if (!Dispatcher.CheckAccess())
+            bool canRun = await Dispatcher
+                .InvokeAsync(() => IsVisibleUpperTabThumbnailErrorRescueRequestCurrent(request))
+                .Task.ConfigureAwait(false);
+            if (!canRun)
             {
-                await Dispatcher.InvokeAsync(() => { });
+                return;
             }
 
-            if (
-                GetCurrentUpperTabFixedIndex() != tabIndex
-                || requestVersion != _thumbnailVisibleErrorRescueRequestVersion
-            )
+            if (Interlocked.Exchange(ref _visibleUpperTabThumbnailErrorRescueRunning, 1) == 1)
             {
                 DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"tab enqueue skip: tab={tabIndex} reason=tab_changed queued_error={query.Length}"
+                    "thumbnail-rescue",
+                    $"tab error rescue enqueue skipped: running tab={request.TabIndex} queued_error={request.Records.Length}"
                 );
                 return;
             }
 
-            int queuedCount = 0;
-            DateTime preferredUntilUtc = DateTime.UtcNow.Add(ThumbnailVisibleErrorPreferredDuration);
-            foreach (var item in query)
+            try
             {
-                QueueObj tempObj = new()
+                int queuedCount = await Task
+                    .Run(() => EnqueueVisibleUpperTabThumbnailErrorsToRescueCore(request))
+                    .ConfigureAwait(false);
+
+                await Dispatcher
+                    .InvokeAsync(
+                        () => ApplyVisibleUpperTabThumbnailErrorRescueResult(request, queuedCount),
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _visibleUpperTabThumbnailErrorRescueRunning, 0);
+            }
+        }
+
+        private bool IsVisibleUpperTabThumbnailErrorRescueRequestCurrent(
+            VisibleUpperTabThumbnailErrorRescueRequest request
+        )
+        {
+            bool current =
+                !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished
+                && GetCurrentUpperTabFixedIndex() == request.TabIndex
+                && request.RequestVersion == _thumbnailVisibleErrorRescueRequestVersion
+                && AreSameMainDbPath(request.DbFullPath, MainVM?.DbInfo?.DBFullPath ?? "");
+            if (!current)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"tab enqueue skip: tab={request.TabIndex} reason=tab_changed queued_error={request.Records.Length}"
+                );
+            }
+
+            return current;
+        }
+
+        private int EnqueueVisibleUpperTabThumbnailErrorsToRescueCore(
+            VisibleUpperTabThumbnailErrorRescueRequest request
+        )
+        {
+            if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+            {
+                return 0;
+            }
+
+            ThumbnailFailureDbService failureDbService = CreateThumbnailErrorFailureDbService(
+                request.DbFullPath
+            );
+            int queuedCount = 0;
+            foreach (ThumbnailErrorRescueRecordSnapshot record in request.Records)
+            {
+                if (IsThumbnailErrorVisiblePromotionShutdownStarted())
                 {
-                    MovieId = item.Movie_Id,
-                    MovieFullPath = item.Movie_Path,
-                    Hash = item.Hash,
-                    Tabindex = tabIndex,
+                    break;
+                }
+
+                QueueObj queueObj = new()
+                {
+                    MovieId = record.MovieId,
+                    MovieFullPath = record.MoviePath,
+                    Hash = record.Hash,
+                    Tabindex = request.TabIndex,
                     Priority = ThumbnailQueuePriority.Preferred,
                 };
                 if (
-                    TryEnqueueThumbnailDisplayErrorRescueJob(
-                        tempObj,
+                    TryEnqueueThumbnailErrorRescueSnapshotJob(
+                        queueObj,
+                        request.DbFullPath,
+                        failureDbService,
+                        request.DbName,
+                        request.ThumbFolder,
                         reason: "tab-error-placeholder",
                         requiresIdle: true,
-                        priorityUntilUtc: preferredUntilUtc
+                        priorityUntilUtc: request.PreferredUntilUtc
                     )
                 )
                 {
@@ -93,10 +165,28 @@ namespace IndigoMovieManager
                 }
             }
 
+            return queuedCount;
+        }
+
+        private void ApplyVisibleUpperTabThumbnailErrorRescueResult(
+            VisibleUpperTabThumbnailErrorRescueRequest request,
+            int queuedCount
+        )
+        {
+            if (!IsVisibleUpperTabThumbnailErrorRescueRequestCurrent(request))
+            {
+                return;
+            }
+
             DebugRuntimeLog.Write(
                 "thumbnail-rescue",
-                $"tab error rescue enqueue end: tab={tabIndex} queued_error={queuedCount}"
+                $"tab error rescue enqueue end: tab={request.TabIndex} queued_error={queuedCount}"
             );
+            if (queuedCount > 0)
+            {
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
+            }
         }
 
         // visible range の placeholder だけを差分で拾い、今見えている ERROR へ優先を付ける。
@@ -138,10 +228,41 @@ namespace IndigoMovieManager
             }
 
             int requestVersion = ++_thumbnailVisibleErrorRescueRequestVersion;
-            _ = EnqueueVisibleUpperTabThumbnailErrorsToRescueAsync(
+            VisibleUpperTabThumbnailErrorRescueRequest request =
+                CaptureVisibleUpperTabThumbnailErrorRescueRequest(
+                    tabIndex,
+                    visibleErrorMovies,
+                    requestVersion
+                );
+            _ = EnqueueVisibleUpperTabThumbnailErrorsToRescueAsync(request);
+        }
+
+        private VisibleUpperTabThumbnailErrorRescueRequest CaptureVisibleUpperTabThumbnailErrorRescueRequest(
+            int tabIndex,
+            MovieRecords[] visibleErrorMovies,
+            int requestVersion
+        )
+        {
+            ThumbnailErrorRescueRecordSnapshot[] records = (visibleErrorMovies ?? [])
+                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Movie_Path))
+                .Select(x =>
+                    new ThumbnailErrorRescueRecordSnapshot(
+                        x.Movie_Id,
+                        x.Movie_Path,
+                        x.Hash ?? "",
+                        [tabIndex]
+                    )
+                )
+                .ToArray();
+
+            return new VisibleUpperTabThumbnailErrorRescueRequest(
+                records,
+                MainVM?.DbInfo?.DBFullPath ?? "",
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? "",
                 tabIndex,
-                visibleErrorMovies,
-                requestVersion
+                requestVersion,
+                DateTime.UtcNow.Add(ThumbnailVisibleErrorPreferredDuration)
             );
         }
 

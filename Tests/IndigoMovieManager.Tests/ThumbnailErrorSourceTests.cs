@@ -228,6 +228,62 @@ public sealed class ThumbnailErrorSourceTests
         Assert.That(method, Does.Contain("IsThumbnailErrorVisiblePromotionShutdownStarted()"));
     }
 
+    [Test]
+    public void UpperTab可視Error投入はUI上で同期救済投入を実行しない()
+    {
+        string source = GetRepoText("BottomTabs", "Common", "MainWindow.BottomTabs.Common.cs");
+        string method = ExtractMethod(
+            source,
+            "private async Task EnqueueVisibleUpperTabThumbnailErrorsToRescueAsync("
+        );
+
+        Assert.That(method, Does.Contain("Task.Delay("));
+        Assert.That(method, Does.Contain("IsVisibleUpperTabThumbnailErrorRescueRequestCurrent("));
+        Assert.That(method, Does.Contain(".Run(() => EnqueueVisibleUpperTabThumbnailErrorsToRescueCore(request))"));
+        Assert.That(method, Does.Not.Contain("TryEnqueueThumbnailDisplayErrorRescueJob("));
+        Assert.That(method, Does.Not.Contain("TryDeleteThumbnailErrorMarker("));
+        Assert.That(method, Does.Not.Contain("ResolveCurrentThumbnailFailureDbService("));
+        Assert.That(method, Does.Not.Contain("HasFailureHistory("));
+    }
+
+    [Test]
+    public void UpperTab可視Error投入はSnapshotを背景投入しDB一致時だけ反映する()
+    {
+        string source = GetRepoText("BottomTabs", "Common", "MainWindow.BottomTabs.Common.cs");
+        string captureMethod = ExtractMethod(
+            source,
+            "private VisibleUpperTabThumbnailErrorRescueRequest CaptureVisibleUpperTabThumbnailErrorRescueRequest("
+        );
+        string coreMethod = ExtractMethod(
+            source,
+            "private int EnqueueVisibleUpperTabThumbnailErrorsToRescueCore("
+        );
+        string enqueueMethod = ExtractMethod(
+            source,
+            "private async Task EnqueueVisibleUpperTabThumbnailErrorsToRescueAsync("
+        );
+        string applyMethod = ExtractMethod(
+            source,
+            "private void ApplyVisibleUpperTabThumbnailErrorRescueResult("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool IsVisibleUpperTabThumbnailErrorRescueRequestCurrent("
+        );
+        Assert.That(captureMethod, Does.Contain("MainVM?.DbInfo?.DBFullPath ?? \"\""));
+        Assert.That(captureMethod, Does.Contain("new ThumbnailErrorRescueRecordSnapshot("));
+        Assert.That(coreMethod, Does.Contain("IsThumbnailErrorVisiblePromotionShutdownStarted()"));
+        Assert.That(coreMethod, Does.Contain("CreateThumbnailErrorFailureDbService("));
+        Assert.That(coreMethod, Does.Contain("TryEnqueueThumbnailErrorRescueSnapshotJob("));
+        Assert.That(coreMethod, Does.Contain("reason: \"tab-error-placeholder\""));
+        Assert.That(coreMethod, Does.Not.Contain("MainVM"));
+        Assert.That(enqueueMethod, Does.Contain("DispatcherPriority.Background"));
+        Assert.That(applyMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(applyMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(guardMethod, Does.Contain("GetCurrentUpperTabFixedIndex()"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);

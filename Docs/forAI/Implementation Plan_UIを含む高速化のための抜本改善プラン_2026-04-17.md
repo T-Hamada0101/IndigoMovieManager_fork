@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- 上側タブの可視 ERROR 自動投入は UI 上で救済投入入口を直接回さず、可視 `MovieRecords` を DB 情報付き snapshot に固めてから、marker 削除 / FailureDb 確認 / queue 投入を背景側で実行する形へ寄せた。背景 core でも `AreSameMainDbPath` guard を通し、DB 切替後着と shutdown 中の要求は捨てる
 - `TryEnqueueThumbnailDisplayErrorRescueJob` と下部 `ThumbnailError` 可視行優先投入は、通常キューへ戻す可能性がある `tab-error-placeholder` の時だけ FailureDb 履歴を読み、可視行自動投入などでは不要な履歴 read を避けるようにした
 - 下部 `ThumbnailError` の一覧クリアは UI クリック処理で marker 削除 / FailureDb 削除を直接行わず、対象 snapshot を背景削除へ渡して DB 一致 guard 後に一覧更新だけ戻す形へ寄せた
 - 下部 `ThumbnailError` の可視行優先投入は UI timer 上で marker 削除 / FailureDb 履歴確認 / queue 投入を直接実行せず、可視行 snapshot を背景 single-flight へ渡して完了後に DB 一致 guard 付きで snapshot 更新だけ戻す形へ寄せた
