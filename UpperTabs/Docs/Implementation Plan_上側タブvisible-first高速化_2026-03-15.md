@@ -11,6 +11,7 @@
 - Phase 3 の先行実装として、DB スキーマ変更なしの `lease-time resolver` 方式を導入した。
 - active tab の `visible -> near-visible` 順で `MoviePathKey` を組み立て、`QueueDbService.GetPendingAndLease(...)` の `ORDER BY CASE` へ流す形にした。
 - `preferredMoviePathKeysResolver` は UI 要素を直接読まず、UI スレッドで更新した snapshot を返す形に寄せた。
+- `preferredMoviePathKeysResolver` の snapshot は未初期化 / viewport 未計測と空確定を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、preferred 対象キーが空と確定した場合だけ off-screen 更新を通さない。
 - `FilteredMovieRecs` は毎回 `Clear + Add` せず、共通 prefix / suffix を残して差し替える形へ寄せた。
 - filter / sort の no-op 時は `Refresh()` と viewport 再計算を飛ばし、不要な UI 揺れを減らした。
 - sort-only で要素集合が同じ時は、`List(DataGrid)` タブに限って `Remove/Insert` より `ObservableCollection.Move(...)` を優先して並び替える形へ寄せた。
@@ -119,6 +120,7 @@
 実施内容:
 - DB スキーマ変更は行わず、lease 時に visible-first を解決する。
 - 現在の `TabIndex` 優先に加え、同一 tab 内で `visible -> near-visible -> background` の順に `MoviePathKey` を渡す。
+- preferred 対象キーが空と確定した時は、対象外の off-screen 画像更新を通さない。ただし snapshot 未初期化時や `UpperTabVisibleRange.Empty` の未計測時は互換として従来どおり許可し、初期表示前の過剰抑止を避ける。
 - `QueueDbService.GetPendingAndLease(...)` の `ORDER BY CASE` で、同一 tab 内の取得順だけを寄せる。
 - 既存の `ThumbPanelPos` は流用しない。
 

@@ -71,6 +71,7 @@
 - さらに `Header.ReloadButton:deferred` の `Manual scan` 実行中も `missing-thumb rescue` を止め、遅延scan完了直後に救済が雪崩れないようにした
 - さらに `manual-reload` 開始時に watch scan scope を進め、走行中の `Auto / Watch` scan を stale 扱いで早めに畳むようにした
 - さらにプレーヤータブ右側一覧の画像バインドは、active tab 判定だけでなく viewport の可視・近傍キーにも通し、再読込直後の off-screen `image cache hit` 雪崩を減らす方向へ寄せた
+- Player 右レール / visible-first 画像供給では、preferred 対象キーが空と確定した場合は off-screen 画像更新を通さない。未初期化状態や `UpperTabVisibleRange.Empty` の未計測状態は互換として従来どおり許可し、初期化前の表示欠落を避ける。
 - 下部 `ThumbnailProgress` タブが非表示の時は snapshot refresh を即時 UI 更新せず dirty 記録だけへ寄せ、サムネ成功直後の hidden progress 更新が `activity=None` を増やす経路を細くし始めた
 - 下部 `ThumbnailProgress` の初期 snapshot 全走査は UI 初期表示から外し、背景作成後に UI へ反映する形へ寄せた
 - `SearchSidecar` は本線リポから一旦外し、別リポで継続検証する方針へ切り替えた
@@ -353,6 +354,7 @@
 実施内容:
 - `NoLockImageConverter` の metadata cache を viewport 連動で活かし、表示候補の先読みと無効化を分ける。
 - visible range 外の decode をより後ろへ倒し、可視範囲だけ即時 decode する。
+- Player 右レール / visible-first の preferred 対象キーは、「未初期化 / viewport 未計測」と「空と確定」を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、空と確定した後だけ off-screen 更新を止める。
 - 画像存在確認と file stamp 取得を、converter 個別呼び出しから `ThumbnailStampCache` 相当へ寄せる。
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。
 - Player / UpperTabs の追加・ fullscreen・表示切替は、watch / thumbnail / skin の背後処理と同時に走っても UI スレッドを長く掴まない形へ寄せる。

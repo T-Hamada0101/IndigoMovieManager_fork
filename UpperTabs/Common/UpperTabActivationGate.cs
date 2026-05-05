@@ -11,6 +11,7 @@ namespace IndigoMovieManager.UpperTabs.Common
         private static readonly object PreferredMoviePathKeysGate = new();
         private static readonly HashSet<string> PreferredMoviePathKeys =
             new(StringComparer.OrdinalIgnoreCase);
+        private static bool HasPreferredMoviePathKeysSnapshot;
 
         public static bool ShouldApplyImageUpdate(object isSelectedValue)
         {
@@ -40,7 +41,8 @@ namespace IndigoMovieManager.UpperTabs.Common
 
             lock (PreferredMoviePathKeysGate)
             {
-                return PreferredMoviePathKeys.Count < 1
+                // Clear 直後は viewport 未計測として従来互換で通し、空 snapshot が確定した時だけ止める。
+                return !HasPreferredMoviePathKeysSnapshot
                     || PreferredMoviePathKeys.Contains(moviePathKey);
             }
         }
@@ -52,9 +54,11 @@ namespace IndigoMovieManager.UpperTabs.Common
                 PreferredMoviePathKeys.Clear();
                 if (moviePathKeys == null)
                 {
+                    HasPreferredMoviePathKeysSnapshot = false;
                     return;
                 }
 
+                HasPreferredMoviePathKeysSnapshot = true;
                 foreach (string moviePathKey in moviePathKeys)
                 {
                     if (string.IsNullOrWhiteSpace(moviePathKey))
@@ -72,6 +76,7 @@ namespace IndigoMovieManager.UpperTabs.Common
             lock (PreferredMoviePathKeysGate)
             {
                 PreferredMoviePathKeys.Clear();
+                HasPreferredMoviePathKeysSnapshot = false;
             }
         }
     }

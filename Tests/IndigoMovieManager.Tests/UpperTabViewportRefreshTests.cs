@@ -30,4 +30,29 @@ public sealed class UpperTabViewportRefreshTests
 
         Assert.That(actual, Is.False);
     }
+
+    [Test]
+    public void Empty範囲はpreferredキーsnapshotを公開しない()
+    {
+        bool actual = IndigoMovieManager.MainWindow.ShouldPublishPreferredMoviePathKeysSnapshot(
+            IndigoMovieManager.UpperTabs.Common.UpperTabVisibleRange.Empty
+        );
+
+        Assert.That(actual, Is.False);
+    }
+
+    [Test]
+    public void 可視範囲がある場合だけpreferredキーsnapshotを公開する()
+    {
+        bool actual = IndigoMovieManager.MainWindow.ShouldPublishPreferredMoviePathKeysSnapshot(
+            IndigoMovieManager.UpperTabs.Common.UpperTabVisibleRange.Create(
+                firstVisibleIndex: 0,
+                lastVisibleIndex: 2,
+                totalCount: 10,
+                overscanItemCount: 1
+            )
+        );
+
+        Assert.That(actual, Is.True);
+    }
 }

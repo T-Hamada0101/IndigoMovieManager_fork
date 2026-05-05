@@ -130,6 +130,13 @@ namespace IndigoMovieManager
             return true;
         }
 
+        internal static bool ShouldPublishPreferredMoviePathKeysSnapshot(
+            UpperTabVisibleRange visibleRange
+        )
+        {
+            return visibleRange.HasVisibleItems;
+        }
+
         private void ClearUpperTabVisibleRange()
         {
             _activeUpperTabVisibleRange = UpperTabVisibleRange.Empty;
@@ -543,7 +550,14 @@ namespace IndigoMovieManager
             _activeUpperTabVisibleRange = nextRange;
             _preferredVisibleMoviePathKeysSnapshot = nextPreferredMoviePathKeys;
             _preferredVisibleMoviePathKeysSourceRevision = _upperTabViewportSourceRevision;
-            UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys);
+            if (ShouldPublishPreferredMoviePathKeysSnapshot(nextRange))
+            {
+                UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys);
+                return;
+            }
+
+            // Empty range は未計測の瞬間も含むため、空確定として全画像を落とさない。
+            UpperTabActivationGate.ClearPreferredMoviePathKeys();
         }
 
         // viewport 計測不能時の後始末とログを 1 か所へ寄せ、早期 return を読みやすくする。

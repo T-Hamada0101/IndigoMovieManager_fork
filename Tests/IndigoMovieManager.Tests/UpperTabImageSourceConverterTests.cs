@@ -47,6 +47,51 @@ public sealed class UpperTabImageSourceConverterTests
     }
 
     [Test]
+    public void 可視近傍の空集合が確定した場合はMoviePath付き画像更新を通さない()
+    {
+        // viewport 評価後に対象なしが確定した時は、Movie_Path 付きの再評価を止める。
+        UpperTabActivationGate.UpdatePreferredMoviePathKeys([]);
+
+        bool actual = UpperTabActivationGate.ShouldApplyImageUpdate(
+            true,
+            Path.Combine("movies", "hidden.mp4")
+        );
+
+        Assert.That(actual, Is.False);
+    }
+
+    [Test]
+    public void Clear直後の未初期化状態では互換のためMoviePath付き画像更新を通す()
+    {
+        // Clear は未初期化へ戻す入口なので、既存画面の初回表示互換を優先して通す。
+        UpperTabActivationGate.UpdatePreferredMoviePathKeys(
+            [QueueDbPathResolver.CreateMoviePathKey(Path.Combine("movies", "visible.mp4"))]
+        );
+        UpperTabActivationGate.ClearPreferredMoviePathKeys();
+
+        bool actual = UpperTabActivationGate.ShouldApplyImageUpdate(
+            true,
+            Path.Combine("movies", "hidden.mp4")
+        );
+
+        Assert.That(actual, Is.True);
+    }
+
+    [Test]
+    public void Null更新は未初期化状態としてMoviePath付き画像更新を通す()
+    {
+        // null は snapshot なしとして扱い、空確定と混ぜない。
+        UpperTabActivationGate.UpdatePreferredMoviePathKeys(null);
+
+        bool actual = UpperTabActivationGate.ShouldApplyImageUpdate(
+            true,
+            Path.Combine("movies", "hidden.mp4")
+        );
+
+        Assert.That(actual, Is.True);
+    }
+
+    [Test]
     public void 非アクティブ時のconverterはUnsetValueを返す()
     {
         UpperTabImageSourceConverter converter = new();

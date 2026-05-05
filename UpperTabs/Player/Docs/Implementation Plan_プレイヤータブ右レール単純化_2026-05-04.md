@@ -9,6 +9,7 @@
 - 2026-05-04: 右レールを `PlayerThumbnailList` 1 系統の `VirtualizingWrapPanel` 表示へ統一し、詳細 1 列表示、切り替えボタン、`PlayerThumbnailCompactList`、下段レイアウト閾値を削除した
 - 2026-05-04: Player タブ選択時の自動再生は `DispatcherPriority.ContextIdle` または短い上限待ちの後へ遅延し、タブ表示と選択同期を先に返すようにした
 - 2026-05-05: 右レールの選択同期では、抑止中・非表示中の `SelectionChanged` から詳細/タグ更新を走らせず、表示中 Player の必要最小更新だけを明示的に行うようにした
+- 2026-05-05: 右レールの visible-first 画像供給では、preferred 対象キーが空と確定した場合は off-screen 画像更新を通さず、未初期化状態や viewport 未計測状態だけ互換として従来どおり許可する方針を固定した
 
 ## 1. 目的
 
@@ -33,6 +34,7 @@
 - 右レールは「選ぶ」だけに寄せる。動画名は短い補助表示までに留め、長さや説明テキストは原則置かない。
 - `PlayerThumbnailList` / `PlayerThumbnailCompactList` の 2 系統状態を 1 系統へ畳み、選択同期 helper は単一リスト前提へ薄化する。
 - プレイヤータブのサムネイル解決は引き続き `Grid` 扱いに正規化し、`ResolvePlayerTabGridProxyTabIndex(...)` の考え方は維持する。
+- 右レールの画像供給は preferred 対象キーの状態を分ける。未初期化や viewport 未計測なら従来互換で off-screen 更新を許可し、空と確定した後は off-screen 更新を通さず可視・近傍の描画を優先する。
 - 左プレイヤー、WebView2 / MediaElement fallback、音量保存、fullscreen、手動サムネイル作成導線には触れない。
 - DB write、サムネイル生成、Watcher、Queue、skin API へ影響を広げない。
 - 実装時コメントは、日本語で処理の流れが分かるものだけ残す。単純化で不要になった説明コメントは削る。
@@ -93,6 +95,7 @@
 - 右レールで別動画をクリックした時、WebView2 対象拡張子と MediaElement fallback 対象拡張子の両方で再生開始できること。
 - 右レールの連続クリックで UI が固まらず、`debug-runtime.log` の `tab change end` が極端に悪化しないこと。
 - 右レールのスクロールでサムネイルが遅延表示されても、画像 decode が表示中項目へ限定されること。
+- preferred 対象キーが空と確定した状態では off-screen 画像更新が走らず、未初期化状態や viewport 未計測状態では従来互換の表示更新が維持されること。
 - 狭幅時も右固定レールのまま、左プレイヤー、サムネイル一覧、操作バーが重ならないこと。
 - コンテキストメニュー、手動サムネイル取得、ブックマーク追加、音量保存、fullscreen が退行していないこと。
 - `git diff --check` で空白エラーがないこと。
