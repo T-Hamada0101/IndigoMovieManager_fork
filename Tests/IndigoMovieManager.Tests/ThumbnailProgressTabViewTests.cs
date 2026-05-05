@@ -6,8 +6,30 @@ using System.Windows;
 namespace IndigoMovieManager.Tests;
 
 [NonParallelizable]
+[Apartment(ApartmentState.STA)]
 public sealed class ThumbnailProgressTabViewTests
 {
+    private bool hadApplication;
+    private ResourceDictionary? originalApplicationResources;
+    private ResourceDictionarySnapshot? originalResourceSnapshot;
+
+    [SetUp]
+    public void SetUp()
+    {
+        hadApplication = Application.Current is not null;
+        originalApplicationResources = Application.Current?.Resources;
+        originalResourceSnapshot =
+            originalApplicationResources is null
+                ? null
+                : ResourceDictionarySnapshot.Capture(originalApplicationResources);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        RestoreApplicationResources();
+    }
+
     [Test]
     [Apartment(ApartmentState.STA)]
     public void ThumbnailProgressTabView_単体生成で例外を投げない()
@@ -80,5 +102,69 @@ public sealed class ThumbnailProgressTabViewTests
             }
         );
         return resources;
+    }
+
+    private void RestoreApplicationResources()
+    {
+        if (Application.Current is null)
+        {
+            return;
+        }
+
+        if (hadApplication && originalApplicationResources is not null)
+        {
+            Application.Current.Resources = originalApplicationResources;
+            originalResourceSnapshot?.Restore(originalApplicationResources);
+            return;
+        }
+
+        // テスト中に初めて Application を作った場合も、次のテストへ辞書を残さない。
+        Application.Current.Resources = new ResourceDictionary();
+    }
+
+    private sealed class ResourceDictionarySnapshot
+    {
+        private readonly KeyValuePair<object, object>[] values;
+        private readonly ResourceDictionary[] mergedDictionaries;
+
+        private ResourceDictionarySnapshot(
+            KeyValuePair<object, object>[] values,
+            ResourceDictionary[] mergedDictionaries
+        )
+        {
+            this.values = values;
+            this.mergedDictionaries = mergedDictionaries;
+        }
+
+        public static ResourceDictionarySnapshot Capture(ResourceDictionary dictionary)
+        {
+            // UserControl 生成中に Resources が汚れても、fixture 外へ持ち越さない。
+            KeyValuePair<object, object>[] values = dictionary.Keys
+                .Cast<object>()
+                .Select(key => new KeyValuePair<object, object>(key, dictionary[key]))
+                .ToArray();
+            ResourceDictionary[] mergedDictionaries = dictionary.MergedDictionaries.ToArray();
+            return new ResourceDictionarySnapshot(values, mergedDictionaries);
+        }
+
+        public void Restore(ResourceDictionary dictionary)
+        {
+            foreach (object key in dictionary.Keys.Cast<object>().ToArray())
+            {
+                dictionary.Remove(key);
+            }
+
+            dictionary.MergedDictionaries.Clear();
+
+            foreach (KeyValuePair<object, object> value in values)
+            {
+                dictionary[value.Key] = value.Value;
+            }
+
+            foreach (ResourceDictionary mergedDictionary in mergedDictionaries)
+            {
+                dictionary.MergedDictionaries.Add(mergedDictionary);
+            }
+        }
     }
 }

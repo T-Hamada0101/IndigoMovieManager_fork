@@ -12,6 +12,11 @@ namespace IndigoMovieManager.Tests;
 [Apartment(ApartmentState.STA)]
 public sealed class ThemeModeTests
 {
+    private string originalThemeMode = "";
+    private bool hadApplication;
+    private ResourceDictionary? originalApplicationResources;
+    private ResourceDictionarySnapshot? originalResourceSnapshot;
+
     private static readonly string[] ValidThemeModes =
     [
         "Indigo",
@@ -65,6 +70,25 @@ public sealed class ThemeModeTests
         "AppHamburgerToggleButtonStyle",
         "AppDiscreteSliderStyle",
     ];
+
+    [SetUp]
+    public void SetUp()
+    {
+        originalThemeMode = IndigoMovieManager.Properties.Settings.Default.ThemeMode ?? "";
+        hadApplication = Application.Current is not null;
+        originalApplicationResources = Application.Current?.Resources;
+        originalResourceSnapshot =
+            originalApplicationResources is null
+                ? null
+                : ResourceDictionarySnapshot.Capture(originalApplicationResources);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        RestoreApplicationResources();
+        RestoreThemeModeSetting();
+    }
 
     [TestCase("Original", "Indigo")]
     [TestCase("original", "Indigo")]
@@ -391,5 +415,93 @@ public sealed class ThemeModeTests
     {
         string path = Path.Combine([FindRepositoryRoot(), .. relativePathParts]);
         return File.ReadAllText(path);
+    }
+
+    private void RestoreApplicationResources()
+    {
+        if (Application.Current is null)
+        {
+            return;
+        }
+
+        if (hadApplication && originalApplicationResources is not null)
+        {
+            Application.Current.Resources = originalApplicationResources;
+            originalResourceSnapshot?.Restore(originalApplicationResources);
+            return;
+        }
+
+        // テスト中に初めて Application を作った場合も、次のテストへテーマ辞書を残さない。
+        Application.Current.Resources = new ResourceDictionary();
+    }
+
+    private void RestoreThemeModeSetting()
+    {
+        if (
+            string.Equals(
+                IndigoMovieManager.Properties.Settings.Default.ThemeMode,
+                originalThemeMode,
+                StringComparison.Ordinal
+            )
+        )
+        {
+            return;
+        }
+
+        IndigoMovieManager.Properties.Settings.Default.ThemeMode = originalThemeMode;
+        try
+        {
+            IndigoMovieManager.Properties.Settings.Default.Save();
+        }
+        catch
+        {
+            // 設定保存失敗は、テスト本体の成否と切り分ける。
+        }
+    }
+
+    private sealed class ResourceDictionarySnapshot
+    {
+        private readonly KeyValuePair<object, object>[] values;
+        private readonly ResourceDictionary[] mergedDictionaries;
+
+        private ResourceDictionarySnapshot(
+            KeyValuePair<object, object>[] values,
+            ResourceDictionary[] mergedDictionaries
+        )
+        {
+            this.values = values;
+            this.mergedDictionaries = mergedDictionaries;
+        }
+
+        public static ResourceDictionarySnapshot Capture(ResourceDictionary dictionary)
+        {
+            // ApplyTheme は同じ Resources へキーも辞書も足すため、戻せる粒度で控える。
+            KeyValuePair<object, object>[] values = dictionary.Keys
+                .Cast<object>()
+                .Select(key => new KeyValuePair<object, object>(key, dictionary[key]))
+                .ToArray();
+            ResourceDictionary[] mergedDictionaries = dictionary.MergedDictionaries.ToArray();
+            return new ResourceDictionarySnapshot(values, mergedDictionaries);
+        }
+
+        public void Restore(ResourceDictionary dictionary)
+        {
+            foreach (object key in dictionary.Keys.Cast<object>().ToArray())
+            {
+                dictionary.Remove(key);
+            }
+
+            dictionary.MergedDictionaries.Clear();
+
+            foreach (KeyValuePair<object, object> value in values)
+            {
+                dictionary[value.Key] = value.Value;
+            }
+
+            foreach (ResourceDictionary mergedDictionary in mergedDictionaries)
+            {
+                dictionary.MergedDictionaries.Add(mergedDictionary);
+            }
+        }
     }
 }
