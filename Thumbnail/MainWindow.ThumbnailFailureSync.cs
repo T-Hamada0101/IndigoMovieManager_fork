@@ -28,6 +28,15 @@ namespace IndigoMovieManager
         private static readonly TimeSpan ThumbnailFailureSyncPeriodicInterval = TimeSpan.FromSeconds(
             5
         );
+
+        internal readonly record struct RescuedThumbnailUiApplyResult(
+            int AppliedCount,
+            bool AppliedToSelectedRecord
+        )
+        {
+            public bool AppliedToUi => AppliedCount > 0;
+        }
+
         private readonly object thumbnailFailureDbServiceLock = new();
         private ThumbnailFailureDbService currentThumbnailFailureDbService;
         private string currentThumbnailFailureDbMainDbFullPath = "";
@@ -234,6 +243,7 @@ namespace IndigoMovieManager
 
                 int reflectedCount = 0;
                 int requeuedCount = 0;
+                bool rescuedAppliedToSelectedRecord = false;
 
                 foreach (ThumbnailFailureRecord rescuedRecord in rescuedRecords)
                 {
@@ -263,11 +273,13 @@ namespace IndigoMovieManager
                         continue;
                     }
 
-                    bool appliedToUi = await ApplyRescuedThumbnailRecordToUiAsync(
+                    RescuedThumbnailUiApplyResult applyResult = await ApplyRescuedThumbnailRecordToUiAsync(
                             rescuedRecord,
                             cts
                         )
                         .ConfigureAwait(false);
+                    bool appliedToUi = applyResult.AppliedToUi;
+                    rescuedAppliedToSelectedRecord |= applyResult.AppliedToSelectedRecord;
                     if (
                         !isThumbnailQueueInputEnabled
                         || Dispatcher.HasShutdownStarted
@@ -318,7 +330,14 @@ namespace IndigoMovieManager
                         .InvokeAsync(() =>
                         {
                             InvalidateThumbnailErrorRecords(refreshIfVisible: true);
-                            Refresh();
+                            if (
+                                ShouldRefreshMainViewAfterRescuedSync(
+                                    rescuedAppliedToSelectedRecord
+                                )
+                            )
+                            {
+                                Refresh();
+                            }
                             RequestThumbnailProgressSnapshotRefresh();
                         }, DispatcherPriority.Normal, cts)
                         .Task.ConfigureAwait(false);
@@ -520,14 +539,14 @@ namespace IndigoMovieManager
         }
 
         // UI側の成功反映を rescued 行にも使い回し、通常生成と同じ見え方へ揃える。
-        private async Task<bool> ApplyRescuedThumbnailRecordToUiAsync(
+        private async Task<RescuedThumbnailUiApplyResult> ApplyRescuedThumbnailRecordToUiAsync(
             ThumbnailFailureRecord record,
             CancellationToken cts
         )
         {
             if (record == null || !CanReflectRescuedThumbnailRecord(record))
             {
-                return false;
+                return default;
             }
 
             if (
@@ -536,17 +555,19 @@ namespace IndigoMovieManager
                 || Dispatcher.HasShutdownFinished
             )
             {
-                return false;
+                return default;
             }
 
             long resolvedMovieId = 0;
             _ = TryResolveMovieIdentityFromDb(record.MoviePath, out resolvedMovieId, out _);
 
             int appliedCount = 0;
+            bool appliedToSelectedRecord = false;
             MovieRecords updatedMovie = null;
             await Dispatcher
                 .InvokeAsync(() =>
                 {
+                    MovieRecords selectedMovie = GetSelectedItemByTabIndex();
                     IEnumerable<MovieRecords> targets = MainVM?.MovieRecs?.Where(x =>
                             IsSameMovieForFailureRecord(x, record, resolvedMovieId)
                         )
@@ -556,6 +577,11 @@ namespace IndigoMovieManager
                         if (TryApplyThumbnailPathToMovieRecord(item, record.TabIndex, record.OutputThumbPath))
                         {
                             appliedCount++;
+                            appliedToSelectedRecord |= IsSameMovieForFailureRecord(
+                                selectedMovie,
+                                record,
+                                resolvedMovieId
+                            );
                             updatedMovie ??= item;
                         }
                     }
@@ -571,7 +597,15 @@ namespace IndigoMovieManager
                 );
             }
 
-            return appliedCount > 0;
+            return new RescuedThumbnailUiApplyResult(appliedCount, appliedToSelectedRecord);
+        }
+
+        // rescued sync の汎用反映では、選択中に当たった時だけ詳細を含む Refresh へ進める。
+        internal static bool ShouldRefreshMainViewAfterRescuedSync(
+            bool appliedToSelectedRecord
+        )
+        {
+            return appliedToSelectedRecord;
         }
 
         // 手動救済成功時だけは periodic sync を待たず、対象行へ直接サムネ反映を試す。
@@ -603,8 +637,10 @@ namespace IndigoMovieManager
                 if (record != null)
                 {
                     record.OutputThumbPath = normalizedOutputThumbPath;
-                    bool appliedToUi = await ApplyRescuedThumbnailRecordToUiAsync(record, cts)
+                    RescuedThumbnailUiApplyResult applyResult =
+                        await ApplyRescuedThumbnailRecordToUiAsync(record, cts)
                         .ConfigureAwait(false);
+                    bool appliedToUi = applyResult.AppliedToUi;
                     if (appliedToUi)
                     {
                         await Dispatcher

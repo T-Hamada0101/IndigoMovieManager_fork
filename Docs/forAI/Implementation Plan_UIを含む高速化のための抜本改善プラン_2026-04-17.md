@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- rescued sync 完了時の `Refresh()` は、対象が選択中レコードへ反映された時だけに絞り、FailureDb / progress 更新は維持したまま一覧全体の再評価を減らすようにした
 - fallback 起動でも `ThumbnailProgress` snapshot を直接更新せず、通常起動と同じ coalesce 済みの予約経路へ合流するようにした
 - shutdown drain は watch queue / created pipeline に加えて check-folder queue runner も同じ500ms deadline内で待ち、終了時の走査残留をログ名付きで追えるようにした
 - `ContentRendered` 直後の `ThumbnailProgress` snapshot 直更新を外し、first-page 後の startup light services から既存 coalesce 経路へ予約する形にした
@@ -282,6 +283,7 @@
 - UI スレッド上の DB read/write、catalog scan、file metadata、decode、collection 全差し替えを見つけたら、まず snapshot / queue / background read へ分離する。
 - preferred サムネ生成成功後も、対象 `MovieRecords` へ直接 path 反映できた場合は `FilterAndSort(..., true)` へ戻さず、forced rebind と visible refresh を優先する。
 - manual rescue 即時反映も同じ基準に寄せ、直接反映できた成功では後段 full reload を予約しない。
+- rescued sync の定期反映では FailureDb / progress 更新を維持しつつ、選択中レコードへ当たった時だけ `Refresh()` を許可する。
 - `fire-and-forget` で逃がすだけにせず、bounded drain、timeout ログ、fault ログを持つ scheduler / persister / queue へ寄せる。
 - `Watcher.cs` の薄化は、UI thread 滞在、queue 境界、shutdown 境界、観測性の改善につながる場合だけ進める。
 

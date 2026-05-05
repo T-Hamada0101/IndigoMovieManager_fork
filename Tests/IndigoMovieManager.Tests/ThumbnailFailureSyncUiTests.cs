@@ -1,5 +1,6 @@
 using IndigoMovieManager;
 using IndigoMovieManager.Thumbnail;
+using System.IO;
 
 namespace IndigoMovieManager.Tests;
 
@@ -124,5 +125,118 @@ public sealed class ThumbnailFailureSyncUiTests
             ),
             Is.True
         );
+    }
+
+    [Test]
+    public void RescuedThumbnailUiApplyResult_AppliedCountが1以上ならUi反映済み()
+    {
+        MainWindow.RescuedThumbnailUiApplyResult nonSelectedApplied = new(
+            AppliedCount: 1,
+            AppliedToSelectedRecord: false
+        );
+        MainWindow.RescuedThumbnailUiApplyResult selectedApplied = new(
+            AppliedCount: 1,
+            AppliedToSelectedRecord: true
+        );
+        MainWindow.RescuedThumbnailUiApplyResult notApplied = new(
+            AppliedCount: 0,
+            AppliedToSelectedRecord: false
+        );
+
+        Assert.That(nonSelectedApplied.AppliedToUi, Is.True);
+        Assert.That(nonSelectedApplied.AppliedToSelectedRecord, Is.False);
+        Assert.That(selectedApplied.AppliedToUi, Is.True);
+        Assert.That(selectedApplied.AppliedToSelectedRecord, Is.True);
+        Assert.That(notApplied.AppliedToUi, Is.False);
+    }
+
+    [Test]
+    public void ShouldRefreshMainViewAfterRescuedSync_選択中へ反映された時だけTrue()
+    {
+        Assert.That(
+            MainWindow.ShouldRefreshMainViewAfterRescuedSync(appliedToSelectedRecord: true),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.ShouldRefreshMainViewAfterRescuedSync(appliedToSelectedRecord: false),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void RescuedSync完了時はRefreshだけ選択中反映で絞る()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
+            .Replace("\r\n", "\n");
+        string syncMethod = ExtractMethod(
+            source,
+            "private async Task TrySyncRescuedThumbnailRecordsAsync("
+        );
+
+        int invalidateIndex = syncMethod.IndexOf(
+            "InvalidateThumbnailErrorRecords(refreshIfVisible: true);",
+            StringComparison.Ordinal
+        );
+        int policyIndex = syncMethod.IndexOf(
+            "ShouldRefreshMainViewAfterRescuedSync(",
+            StringComparison.Ordinal
+        );
+        int refreshIndex = syncMethod.IndexOf("Refresh();", policyIndex, StringComparison.Ordinal);
+        int progressIndex = syncMethod.IndexOf(
+            "RequestThumbnailProgressSnapshotRefresh();",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(invalidateIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(policyIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(refreshIndex, Is.GreaterThan(policyIndex));
+        Assert.That(progressIndex, Is.GreaterThan(refreshIndex));
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        while (current != null)
+        {
+            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return string.Empty;
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int braceStart = source.IndexOf('{', start);
+        Assert.That(braceStart, Is.GreaterThanOrEqualTo(0));
+
+        int depth = 0;
+        for (int index = braceStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の終端を解決できませんでした。");
+        return string.Empty;
     }
 }
