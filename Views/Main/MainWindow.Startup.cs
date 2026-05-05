@@ -608,6 +608,8 @@ namespace IndigoMovieManager
             CancelStartupFeed("startup-fallback");
             StartStartupHeavyServicesIfNeeded("StartupFallback");
             ReloadBookmarkTabData();
+            // fallback 起動でも通常起動と同じ遅延予約へ合流し、初期表示の置き去りを防ぐ。
+            QueueStartupThumbnailProgressSnapshotRefresh();
             FilterAndSort(sortId, true);
             CreateWatcher();
         }

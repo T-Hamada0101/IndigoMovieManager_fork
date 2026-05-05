@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- fallback 起動でも `ThumbnailProgress` snapshot を直接更新せず、通常起動と同じ coalesce 済みの予約経路へ合流するようにした
 - shutdown drain は watch queue / created pipeline に加えて check-folder queue runner も同じ500ms deadline内で待ち、終了時の走査残留をログ名付きで追えるようにした
 - `ContentRendered` 直後の `ThumbnailProgress` snapshot 直更新を外し、first-page 後の startup light services から既存 coalesce 経路へ予約する形にした
 - 検索確定時のサムネ常駐再起動は、検索結果反映と先頭選択の後へ送り、検索完了導線を先に通すようにした
@@ -351,6 +352,7 @@
 - `CreateWatcher()`、bookmark reload、tag / queue warm path を UI 入力可能後へ順次開始する。
 - `OpenDatafile(...)` 後に必要な同期仕事をさらに削り、「表示」「操作可能」「常駐起動完了」を別イベントとして扱う。
 - `ThumbnailProgress` snapshot は `ContentRendered` 直後に直接作らず、first-page 後の startup light services から既存の coalesce 経路へ予約する。
+- fallback 起動も `QueueStartupThumbnailProgressSnapshotRefresh()` へ合流し、直接更新を増やさずに進捗表示の置き去りを抑える。
 - warm start 用の補助 cache を使う場合も `LocalAppData` 配下に限定し、壊れても DB fallback に戻せる形を守る。
 - `Everything poll` は watch folder 一覧の snapshot と eligible 判定再利用を前提にし、DB 切替や監視フォルダ編集時だけ invalidation する。通常周回では毎回 `watch` テーブルと同一 path の eligibility を掘り直さない。
 

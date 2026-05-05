@@ -59,6 +59,33 @@ public sealed class MainWindowUiIoDeferralSourceTests
     }
 
     [Test]
+    public void Fallback起動でもThumbnailProgressSnapshot更新を予約する()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
+        string fallbackMethod = ExtractMethod(
+            source,
+            "private void FallbackToLegacyStartupLoad(string sortId, int revision)"
+        );
+
+        Assert.That(fallbackMethod, Does.Contain("QueueStartupThumbnailProgressSnapshotRefresh();"));
+        Assert.That(fallbackMethod, Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(fallbackMethod, Does.Not.Contain("UpdateThumbnailProgressSnapshotUi();"));
+
+        int reloadIndex = fallbackMethod.IndexOf("ReloadBookmarkTabData();", StringComparison.Ordinal);
+        int queueIndex = fallbackMethod.IndexOf(
+            "QueueStartupThumbnailProgressSnapshotRefresh();",
+            StringComparison.Ordinal
+        );
+        int filterIndex = fallbackMethod.IndexOf("FilterAndSort(sortId, true);", StringComparison.Ordinal);
+        int queueCallCount =
+            fallbackMethod.Split("QueueStartupThumbnailProgressSnapshotRefresh();").Length - 1;
+
+        Assert.That(queueCallCount, Is.EqualTo(1));
+        Assert.That(reloadIndex, Is.LessThan(queueIndex));
+        Assert.That(queueIndex, Is.LessThan(filterIndex));
+    }
+
+    [Test]
     public void レイアウト復元は検証済みテキストを再利用し二重読込しない()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
