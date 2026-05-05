@@ -23,6 +23,7 @@ namespace IndigoMovieManager
         private const int ThumbnailProgressUiIntervalMs = 500;
         private const int ThumbnailProgressSnapshotVisibleCoalesceMs = 120;
         private const int ThumbnailProgressSnapshotFallbackIntervalMs = 3000;
+        private const int ThumbnailProgressRescueWorkerSnapshotRefreshIntervalMs = 1000;
         private static readonly TimeSpan ThumbnailProgressTransientRescueWorkerDuration =
             TimeSpan.FromSeconds(5);
 
@@ -46,6 +47,16 @@ namespace IndigoMovieManager
         private int _thumbnailProgressLastAppliedLogicalCoreCount = -1;
         private string _thumbnailProgressLastAppliedRescueWorkerSignature = "";
         private string _thumbnailProgressLastAppliedManualRescueWorkerSignature = "";
+        private readonly object _thumbnailProgressRescueWorkerSnapshotSyncRoot = new();
+        private ThumbnailProgressWorkerSnapshot _thumbnailProgressCachedRescueWorkerSnapshot;
+        private string _thumbnailProgressCachedRescueWorkerSignature = "";
+        private string _thumbnailProgressCachedRescueWorkerMainDbFullPath = "";
+        private string _thumbnailProgressCachedRescueWorkerDbName = "";
+        private string _thumbnailProgressCachedRescueWorkerThumbFolder = "";
+        private ThumbnailProgressRescueWorkerSnapshotRequest _thumbnailProgressPendingRescueWorkerSnapshotRequest;
+        private int _thumbnailProgressRescueWorkerSnapshotRefreshRunning;
+        private int _thumbnailProgressRescueWorkerSnapshotRefreshRequested;
+        private long _thumbnailProgressRescueWorkerSnapshotRefreshNextAllowedUtcTicks;
         private readonly object _thumbnailProgressTransientRescueWorkerSyncRoot = new();
         private string _thumbnailProgressTransientRescueWorkerMoviePath = "";
         private string _thumbnailProgressTransientRescueWorkerStatusText = "";
@@ -871,8 +882,9 @@ namespace IndigoMovieManager
 
             ThumbnailProgressRuntimeSnapshot runtimeSnapshot =
                 _thumbnailProgressRuntime.CreateSnapshot();
+            RequestThumbnailProgressRescueWorkerSnapshotRefresh();
             ThumbnailProgressWorkerSnapshot rescueWorkerSnapshot =
-                ResolveThumbnailProgressRescueWorkerSnapshot(out string rescueWorkerSignature);
+                ResolveCachedThumbnailProgressRescueWorkerSnapshot(out string rescueWorkerSignature);
             ThumbnailProgressWorkerSnapshot manualRescueWorkerSnapshot =
                 ResolveManualThumbnailProgressRescueWorkerSnapshot(
                     out string manualRescueWorkerSignature
@@ -939,62 +951,372 @@ namespace IndigoMovieManager
             );
         }
 
-        // rescue exe が書いた FailureDb を読み、右パネル用の1枚へ整形する。
-        private ThumbnailProgressWorkerSnapshot ResolveThumbnailProgressRescueWorkerSnapshot(
+        // UI反映ではDBやファイルを触らず、背景更新済みの救済worker表示だけ読む。
+        private ThumbnailProgressWorkerSnapshot ResolveCachedThumbnailProgressRescueWorkerSnapshot(
             out string signature
         )
         {
-            signature = "";
-            ThumbnailFailureDbService failureDbService = ResolveCurrentThumbnailFailureDbService();
-            if (failureDbService == null)
+            ThumbnailProgressRescueWorkerSnapshotRequest request =
+                CaptureThumbnailProgressRescueWorkerSnapshotRequest();
+            lock (_thumbnailProgressRescueWorkerSnapshotSyncRoot)
             {
-                return null;
-            }
-
-            try
-            {
-                DateTime nowUtc = DateTime.UtcNow;
-                ThumbnailFailureRecord record = failureDbService.GetLatestRescueDisplayRecord(nowUtc);
                 if (
-                    ShouldDeleteStaleMainFailureRecord(
-                        record,
-                        MainVM?.DbInfo?.DBName ?? "",
-                        MainVM?.DbInfo?.ThumbFolder ?? ""
+                    AreSameMainDbPath(
+                        _thumbnailProgressCachedRescueWorkerMainDbFullPath,
+                        request.MainDbFullPath
+                    )
+                    && string.Equals(
+                        _thumbnailProgressCachedRescueWorkerDbName,
+                        request.DbName,
+                        StringComparison.Ordinal
+                    )
+                    && string.Equals(
+                        _thumbnailProgressCachedRescueWorkerThumbFolder,
+                        request.ThumbFolder,
+                        StringComparison.OrdinalIgnoreCase
                     )
                 )
                 {
-                    // 成功jpgがある stale 行をここで1件だけ掃除し、起動直後の救済中残像を抑える。
-                    int deletedCount = failureDbService.DeleteMainFailureRecords(
-                    [
-                        (record.MoviePathKey ?? "", record.TabIndex),
-                    ]
-                    );
-                    if (deletedCount > 0)
+                    signature = _thumbnailProgressCachedRescueWorkerSignature;
+                    return _thumbnailProgressCachedRescueWorkerSnapshot;
+                }
+            }
+
+            signature = "";
+            return null;
+        }
+
+        // rescue exe が書いた FailureDb は背景で読み、UI tick へ同期I/Oを戻さない。
+        private void RequestThumbnailProgressRescueWorkerSnapshotRefresh()
+        {
+            if (!IsThumbnailProgressUiEnabled())
+            {
+                return;
+            }
+
+            ThumbnailProgressRescueWorkerSnapshotRequest request =
+                CaptureThumbnailProgressRescueWorkerSnapshotRequest();
+            if (!request.HasMainDb)
+            {
+                ClearCachedThumbnailProgressRescueWorkerSnapshot();
+                return;
+            }
+
+            lock (_thumbnailProgressRescueWorkerSnapshotSyncRoot)
+            {
+                _thumbnailProgressPendingRescueWorkerSnapshotRequest = request;
+            }
+
+            long nowUtcTicks = DateTime.UtcNow.Ticks;
+            long nextAllowedUtcTicks = Interlocked.Read(
+                ref _thumbnailProgressRescueWorkerSnapshotRefreshNextAllowedUtcTicks
+            );
+            if (nextAllowedUtcTicks > nowUtcTicks && HasCachedThumbnailProgressRescueWorkerSnapshot(request))
+            {
+                return;
+            }
+
+            if (
+                Interlocked.CompareExchange(
+                    ref _thumbnailProgressRescueWorkerSnapshotRefreshRunning,
+                    1,
+                    0
+                )
+                != 0
+            )
+            {
+                _ = Interlocked.Exchange(
+                    ref _thumbnailProgressRescueWorkerSnapshotRefreshRequested,
+                    1
+                );
+                return;
+            }
+
+            _ = Interlocked.Exchange(
+                ref _thumbnailProgressRescueWorkerSnapshotRefreshNextAllowedUtcTicks,
+                nowUtcTicks
+                    + TimeSpan.FromMilliseconds(
+                        ThumbnailProgressRescueWorkerSnapshotRefreshIntervalMs
+                    ).Ticks
+            );
+            _ = RunThumbnailProgressRescueWorkerSnapshotRefreshAsync(request);
+        }
+
+        private async Task RunThumbnailProgressRescueWorkerSnapshotRefreshAsync(
+            ThumbnailProgressRescueWorkerSnapshotRequest request
+        )
+        {
+            try
+            {
+                ThumbnailProgressRescueWorkerSnapshotRequest currentRequest = request;
+                while (currentRequest.HasMainDb)
+                {
+                    ThumbnailProgressRescueWorkerSnapshotResult result =
+                        await Task.Run(
+                                () => LoadThumbnailProgressRescueWorkerSnapshotCore(currentRequest)
+                            )
+                            .ConfigureAwait(false);
+
+                    if (
+                        Dispatcher == null
+                        || Dispatcher.HasShutdownStarted
+                        || Dispatcher.HasShutdownFinished
+                    )
                     {
-                        RequestThumbnailErrorSnapshotRefresh();
-                        record = failureDbService.GetLatestRescueDisplayRecord(nowUtc);
+                        return;
+                    }
+
+                    await Dispatcher
+                        .InvokeAsync(
+                            () =>
+                                ApplyThumbnailProgressRescueWorkerSnapshotResult(
+                                    currentRequest,
+                                    result
+                                ),
+                            DispatcherPriority.Background
+                        )
+                        .Task
+                        .ConfigureAwait(false);
+
+                    if (
+                        Interlocked.Exchange(
+                            ref _thumbnailProgressRescueWorkerSnapshotRefreshRequested,
+                            0
+                        )
+                        != 1
+                    )
+                    {
+                        break;
+                    }
+
+                    lock (_thumbnailProgressRescueWorkerSnapshotSyncRoot)
+                    {
+                        currentRequest = _thumbnailProgressPendingRescueWorkerSnapshotRequest;
                     }
                 }
-
-                if (record == null)
-                {
-                    return null;
-                }
-
-                ThumbnailProgressRescueWorkerExtra extra =
-                    ParseThumbnailProgressRescueWorkerExtra(record.ExtraJson);
-                ThumbnailProgressWorkerSnapshot snapshot =
-                    BuildThumbnailProgressRescueWorkerSnapshot(record, extra, nowUtc);
-                signature = BuildThumbnailProgressRescueWorkerSignature(record, snapshot);
-                return snapshot;
             }
             catch (Exception ex)
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"rescue snapshot read failed: {ex.Message}"
+                    $"rescue snapshot background refresh failed: {ex.Message}"
                 );
-                return null;
+            }
+            finally
+            {
+                _ = Interlocked.Exchange(
+                    ref _thumbnailProgressRescueWorkerSnapshotRefreshRunning,
+                    0
+                );
+                if (
+                    Interlocked.CompareExchange(
+                        ref _thumbnailProgressRescueWorkerSnapshotRefreshRequested,
+                        0,
+                        0
+                    )
+                    == 1
+                    && Interlocked.CompareExchange(
+                        ref _thumbnailProgressRescueWorkerSnapshotRefreshRunning,
+                        1,
+                        0
+                    )
+                        == 0
+                )
+                {
+                    _ = Interlocked.Exchange(
+                        ref _thumbnailProgressRescueWorkerSnapshotRefreshRequested,
+                        0
+                    );
+                    ThumbnailProgressRescueWorkerSnapshotRequest nextRequest;
+                    lock (_thumbnailProgressRescueWorkerSnapshotSyncRoot)
+                    {
+                        nextRequest = _thumbnailProgressPendingRescueWorkerSnapshotRequest;
+                    }
+
+                    _ = RunThumbnailProgressRescueWorkerSnapshotRefreshAsync(nextRequest);
+                }
+            }
+        }
+
+        private static ThumbnailProgressRescueWorkerSnapshotResult LoadThumbnailProgressRescueWorkerSnapshotCore(
+            ThumbnailProgressRescueWorkerSnapshotRequest request
+        )
+        {
+            if (!request.HasMainDb)
+            {
+                return new ThumbnailProgressRescueWorkerSnapshotResult(null, "", false);
+            }
+
+            ThumbnailFailureDbService failureDbService =
+                new(request.MainDbFullPath);
+            DateTime nowUtc = DateTime.UtcNow;
+            ThumbnailFailureRecord record = failureDbService.GetLatestRescueDisplayRecord(nowUtc);
+            bool deletedStaleRecord = false;
+            if (
+                ShouldDeleteStaleMainFailureRecord(
+                    record,
+                    request.DbName,
+                    request.ThumbFolder
+                )
+            )
+            {
+                // 成功jpgがある stale 行は背景で1件だけ掃除し、UI表示では残像を読まない。
+                int deletedCount = failureDbService.DeleteMainFailureRecords(
+                [
+                    (record.MoviePathKey ?? "", record.TabIndex),
+                ]
+                );
+                deletedStaleRecord = deletedCount > 0;
+                if (deletedStaleRecord)
+                {
+                    record = failureDbService.GetLatestRescueDisplayRecord(nowUtc);
+                }
+            }
+
+            if (record == null)
+            {
+                return new ThumbnailProgressRescueWorkerSnapshotResult(
+                    null,
+                    "",
+                    deletedStaleRecord
+                );
+            }
+
+            ThumbnailProgressRescueWorkerExtra extra =
+                ParseThumbnailProgressRescueWorkerExtra(record.ExtraJson);
+            bool outputThumbExists =
+                string.Equals(record.Status, "rescued", StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(record.OutputThumbPath)
+                && File.Exists(record.OutputThumbPath);
+            ThumbnailProgressWorkerSnapshot snapshot =
+                BuildThumbnailProgressRescueWorkerSnapshot(
+                    record,
+                    extra,
+                    nowUtc,
+                    outputThumbExists
+                );
+            string signature = BuildThumbnailProgressRescueWorkerSignature(record, snapshot);
+            return new ThumbnailProgressRescueWorkerSnapshotResult(
+                snapshot,
+                signature,
+                deletedStaleRecord
+            );
+        }
+
+        private void ApplyThumbnailProgressRescueWorkerSnapshotResult(
+            ThumbnailProgressRescueWorkerSnapshotRequest request,
+            ThumbnailProgressRescueWorkerSnapshotResult result
+        )
+        {
+            if (!IsCurrentThumbnailProgressRescueWorkerSnapshotRequest(request))
+            {
+                return;
+            }
+
+            bool changed;
+            lock (_thumbnailProgressRescueWorkerSnapshotSyncRoot)
+            {
+                changed =
+                    !string.Equals(
+                        _thumbnailProgressCachedRescueWorkerSignature,
+                        result.Signature ?? "",
+                        StringComparison.Ordinal
+                    )
+                    || !AreSameMainDbPath(
+                        _thumbnailProgressCachedRescueWorkerMainDbFullPath,
+                        request.MainDbFullPath ?? ""
+                    )
+                    || !string.Equals(
+                        _thumbnailProgressCachedRescueWorkerDbName,
+                        request.DbName ?? "",
+                        StringComparison.Ordinal
+                    )
+                    || !string.Equals(
+                        _thumbnailProgressCachedRescueWorkerThumbFolder,
+                        request.ThumbFolder ?? "",
+                        StringComparison.OrdinalIgnoreCase
+                    );
+
+                _thumbnailProgressCachedRescueWorkerSnapshot = result.Snapshot;
+                _thumbnailProgressCachedRescueWorkerSignature = result.Signature ?? "";
+                _thumbnailProgressCachedRescueWorkerMainDbFullPath = request.MainDbFullPath ?? "";
+                _thumbnailProgressCachedRescueWorkerDbName = request.DbName ?? "";
+                _thumbnailProgressCachedRescueWorkerThumbFolder = request.ThumbFolder ?? "";
+            }
+
+            if (result.DeletedStaleRecord)
+            {
+                RequestThumbnailErrorSnapshotRefresh();
+            }
+
+            if (changed || result.DeletedStaleRecord)
+            {
+                RequestThumbnailProgressSnapshotRefresh();
+            }
+        }
+
+        private ThumbnailProgressRescueWorkerSnapshotRequest CaptureThumbnailProgressRescueWorkerSnapshotRequest()
+        {
+            return new ThumbnailProgressRescueWorkerSnapshotRequest(
+                MainVM?.DbInfo?.DBFullPath ?? "",
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? ""
+            );
+        }
+
+        private bool IsCurrentThumbnailProgressRescueWorkerSnapshotRequest(
+            ThumbnailProgressRescueWorkerSnapshotRequest request
+        )
+        {
+            return AreSameMainDbPath(
+                    MainVM?.DbInfo?.DBFullPath ?? "",
+                    request.MainDbFullPath
+                )
+                && string.Equals(
+                    MainVM?.DbInfo?.DBName ?? "",
+                    request.DbName,
+                    StringComparison.Ordinal
+                )
+                && string.Equals(
+                    MainVM?.DbInfo?.ThumbFolder ?? "",
+                    request.ThumbFolder,
+                    StringComparison.OrdinalIgnoreCase
+                );
+        }
+
+        private bool HasCachedThumbnailProgressRescueWorkerSnapshot(
+            ThumbnailProgressRescueWorkerSnapshotRequest request
+        )
+        {
+            lock (_thumbnailProgressRescueWorkerSnapshotSyncRoot)
+            {
+                return AreSameMainDbPath(
+                        _thumbnailProgressCachedRescueWorkerMainDbFullPath,
+                        request.MainDbFullPath
+                    )
+                    && string.Equals(
+                        _thumbnailProgressCachedRescueWorkerDbName,
+                        request.DbName,
+                        StringComparison.Ordinal
+                    )
+                    && string.Equals(
+                        _thumbnailProgressCachedRescueWorkerThumbFolder,
+                        request.ThumbFolder,
+                        StringComparison.OrdinalIgnoreCase
+                    );
+            }
+        }
+
+        private void ClearCachedThumbnailProgressRescueWorkerSnapshot()
+        {
+            lock (_thumbnailProgressRescueWorkerSnapshotSyncRoot)
+            {
+                _thumbnailProgressCachedRescueWorkerSnapshot = null;
+                _thumbnailProgressCachedRescueWorkerSignature = "";
+                _thumbnailProgressCachedRescueWorkerMainDbFullPath = "";
+                _thumbnailProgressCachedRescueWorkerDbName = "";
+                _thumbnailProgressCachedRescueWorkerThumbFolder = "";
+                _thumbnailProgressPendingRescueWorkerSnapshotRequest = default;
             }
         }
 
@@ -1118,7 +1440,8 @@ namespace IndigoMovieManager
         private static ThumbnailProgressWorkerSnapshot BuildThumbnailProgressRescueWorkerSnapshot(
             ThumbnailFailureRecord record,
             ThumbnailProgressRescueWorkerExtra extra,
-            DateTime nowUtc
+            DateTime nowUtc,
+            bool outputThumbExists
         )
         {
             (string statusText, bool isActive) = ResolveThumbnailProgressRescueWorkerStatus(
@@ -1131,7 +1454,7 @@ namespace IndigoMovieManager
                 ? record?.OutputThumbPath ?? ""
                 : "";
             string previewImagePath = !string.IsNullOrWhiteSpace(outputThumbPath)
-                && File.Exists(outputThumbPath)
+                && outputThumbExists
                     ? outputThumbPath
                     : "";
 
@@ -1631,6 +1954,43 @@ namespace IndigoMovieManager
 
             value = default;
             return false;
+        }
+
+        private readonly struct ThumbnailProgressRescueWorkerSnapshotRequest
+        {
+            public ThumbnailProgressRescueWorkerSnapshotRequest(
+                string mainDbFullPath,
+                string dbName,
+                string thumbFolder
+            )
+            {
+                MainDbFullPath = mainDbFullPath?.Trim() ?? "";
+                DbName = dbName?.Trim() ?? "";
+                ThumbFolder = thumbFolder?.Trim() ?? "";
+            }
+
+            public string MainDbFullPath { get; }
+            public string DbName { get; }
+            public string ThumbFolder { get; }
+            public bool HasMainDb => !string.IsNullOrWhiteSpace(MainDbFullPath);
+        }
+
+        private readonly struct ThumbnailProgressRescueWorkerSnapshotResult
+        {
+            public ThumbnailProgressRescueWorkerSnapshotResult(
+                ThumbnailProgressWorkerSnapshot snapshot,
+                string signature,
+                bool deletedStaleRecord
+            )
+            {
+                Snapshot = snapshot;
+                Signature = signature ?? "";
+                DeletedStaleRecord = deletedStaleRecord;
+            }
+
+            public ThumbnailProgressWorkerSnapshot Snapshot { get; }
+            public string Signature { get; }
+            public bool DeletedStaleRecord { get; }
         }
 
         private sealed class ThumbnailProgressRescueWorkerExtra

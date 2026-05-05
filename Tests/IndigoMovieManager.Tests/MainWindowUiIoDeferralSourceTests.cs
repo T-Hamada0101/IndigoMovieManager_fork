@@ -86,6 +86,56 @@ public sealed class MainWindowUiIoDeferralSourceTests
     }
 
     [Test]
+    public void ThumbnailProgressUi反映は救済workerのDBとファイルIOを直接実行しない()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "ThumbnailProgress",
+            "MainWindow.BottomTab.ThumbnailProgress.cs"
+        );
+        string updateMethod = ExtractMethod(
+            source,
+            "private void UpdateThumbnailProgressSnapshotUi("
+        );
+
+        Assert.That(updateMethod, Does.Contain("ResolveCachedThumbnailProgressRescueWorkerSnapshot("));
+        Assert.That(updateMethod, Does.Not.Contain("ResolveThumbnailProgressRescueWorkerSnapshot("));
+        Assert.That(updateMethod, Does.Not.Contain("ResolveCurrentThumbnailFailureDbService("));
+        Assert.That(updateMethod, Does.Not.Contain("GetLatestRescueDisplayRecord("));
+        Assert.That(updateMethod, Does.Not.Contain("DeleteMainFailureRecords("));
+        Assert.That(updateMethod, Does.Not.Contain("File.Exists("));
+    }
+
+    [Test]
+    public void ThumbnailProgress救済workerSnapshotは背景で読みDB一致時だけ反映する()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "ThumbnailProgress",
+            "MainWindow.BottomTab.ThumbnailProgress.cs"
+        );
+        string runMethod = ExtractMethod(
+            source,
+            "private async Task RunThumbnailProgressRescueWorkerSnapshotRefreshAsync("
+        );
+        string applyMethod = ExtractMethod(
+            source,
+            "private void ApplyThumbnailProgressRescueWorkerSnapshotResult("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool IsCurrentThumbnailProgressRescueWorkerSnapshotRequest("
+        );
+
+        Assert.That(runMethod, Does.Contain("Task.Run("));
+        Assert.That(runMethod, Does.Contain("LoadThumbnailProgressRescueWorkerSnapshotCore("));
+        Assert.That(applyMethod, Does.Contain("IsCurrentThumbnailProgressRescueWorkerSnapshotRequest("));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(applyMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(applyMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+    }
+
+    [Test]
     public void レイアウト復元は検証済みテキストを再利用し二重読込しない()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
