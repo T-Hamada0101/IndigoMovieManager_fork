@@ -85,6 +85,67 @@ public sealed class ThumbnailErrorSourceTests
         Assert.That(source, Does.Not.Contain("FailureDbService { get; init; }"));
     }
 
+    [Test]
+    public void TryPromoteVisibleThumbnailErrorRecordsはUI上で同期投入とFailureDbを触らない()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string method = ExtractMethod(
+            source,
+            "private void TryPromoteVisibleThumbnailErrorRecords()"
+        );
+
+        Assert.That(method, Does.Contain("CaptureThumbnailErrorVisiblePromotionRequest("));
+        Assert.That(method, Does.Contain("TryQueueThumbnailErrorVisiblePromotion("));
+        Assert.That(method, Does.Not.Contain("EnqueueThumbnailErrorRecordsToRescue("));
+        Assert.That(method, Does.Not.Contain("RunThumbnailErrorBulkRescueAsync("));
+        Assert.That(method, Does.Not.Contain("TryEnqueueThumbnailDisplayErrorRescueJob("));
+        Assert.That(method, Does.Not.Contain("TryDeleteThumbnailErrorMarker("));
+        Assert.That(method, Does.Not.Contain("ResolveCurrentThumbnailFailureDbService("));
+        Assert.That(method, Does.Not.Contain("DeleteMainFailureRecords("));
+        Assert.That(method, Does.Not.Contain("HasFailureHistory("));
+    }
+
+    [Test]
+    public void ThumbnailError可視行優先投入は背景で実行しDB一致時だけUIへ戻す()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string requestMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorVisiblePromotionRequest CaptureThumbnailErrorVisiblePromotionRequest("
+        );
+        string queueMethod = ExtractMethod(
+            source,
+            "private bool TryQueueThumbnailErrorVisiblePromotion("
+        );
+        string runMethod = ExtractMethod(
+            source,
+            "private async Task RunThumbnailErrorVisiblePromotionAsync("
+        );
+        string coreMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorBulkRescueResult EnqueueThumbnailErrorRecordSnapshotsToRescue("
+        );
+        string applyMethod = ExtractMethod(
+            source,
+            "private void ApplyThumbnailErrorVisiblePromotionResult("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool IsThumbnailErrorVisiblePromotionRequestCurrent("
+        );
+
+        Assert.That(requestMethod, Does.Contain("MainVM?.DbInfo?.DBFullPath ?? \"\""));
+        Assert.That(queueMethod, Does.Contain("Interlocked.CompareExchange"));
+        Assert.That(runMethod, Does.Contain(".Run(() => EnqueueThumbnailErrorRecordSnapshotsToRescue(request))"));
+        Assert.That(coreMethod, Does.Contain("CreateThumbnailErrorFailureDbService("));
+        Assert.That(coreMethod, Does.Not.Contain("MainVM"));
+        Assert.That(applyMethod, Does.Contain("IsThumbnailErrorVisiblePromotionRequestCurrent("));
+        Assert.That(guardMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(applyMethod, Does.Contain("QueuedTabCount > 0"));
+        Assert.That(applyMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);

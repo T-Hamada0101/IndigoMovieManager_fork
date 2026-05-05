@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- 下部 `ThumbnailError` の可視行優先投入は UI timer 上で marker 削除 / FailureDb 履歴確認 / queue 投入を直接実行せず、可視行 snapshot を背景 single-flight へ渡して完了後に DB 一致 guard 付きで snapshot 更新だけ戻す形へ寄せた
 - 下部 `ThumbnailError` の 1 秒 timer は pending rescue 判定で FailureDb を UI 上から直接読まず、背景 single-flight の DB パス付き cache を参照する形へ寄せた
 - 下部 `ThumbnailError` の snapshot 集計は FailureDbService 生成も背景側へ寄せ、DB 切替後着は `AreSameMainDbPath` guard で捨てるようにした
 - `ThemeModeTests` / `ThumbnailProgressTabViewTests` は `Application.Current.Resources` と `ThemeMode` 設定値をテストごとに復元し、テーマ辞書の後続テスト汚染を抑えるようにした

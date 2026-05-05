@@ -24,11 +24,31 @@ namespace IndigoMovieManager
             int QueuedTabCount
         );
 
+        private readonly record struct ThumbnailErrorRescueRecordSnapshot(
+            long MovieId,
+            string MoviePath,
+            string Hash,
+            int[] FailedTabIndices
+        );
+
+        private readonly record struct ThumbnailErrorVisiblePromotionRequest(
+            ThumbnailErrorRescueRecordSnapshot[] Records,
+            string DbFullPath,
+            string DbName,
+            string ThumbFolder,
+            string Reason,
+            bool RequiresIdle,
+            ThumbnailQueuePriority Priority,
+            DateTime? PriorityUntilUtc
+        );
+
         private const int ThumbnailErrorTabIndex = 5;
         private static readonly int[] ThumbnailErrorTargetTabIndices = [0, 1, 2, 3, 4, 99];
         private int _thumbnailErrorRecordsDirty = 1;
         private int _thumbnailErrorRefreshRunning;
         private int _thumbnailErrorBulkRescueRunning;
+        private int _thumbnailErrorVisiblePromotionRunning;
+        private int _thumbnailErrorVisiblePromotionRequested;
 
         // 一覧更新で ERROR 系の集計が古くなった時だけ印を付ける。
         // 上側の救済タブは手動更新前提なので、選択中でも自動再集計は走らせない。
@@ -1264,7 +1284,16 @@ namespace IndigoMovieManager
             }
 
             List<ThumbnailErrorRecordViewModel> visibleRecords = GetVisibleThumbnailErrorRecords();
-            List<string> nextViewportKeys = BuildThumbnailErrorViewportPriorityKeys(visibleRecords);
+            DateTime nowUtc = DateTime.UtcNow;
+            ThumbnailErrorVisiblePromotionRequest request =
+                CaptureThumbnailErrorVisiblePromotionRequest(
+                    visibleRecords,
+                    reason: "error-tab-visible",
+                    requiresIdle: true,
+                    priority: ThumbnailQueuePriority.Preferred,
+                    priorityUntilUtc: nowUtc.Add(ThumbnailVisibleErrorPreferredDuration)
+                );
+            List<string> nextViewportKeys = BuildThumbnailErrorViewportPriorityKeys(request.Records);
             if (nextViewportKeys.Count < 1)
             {
                 _thumbnailErrorPreferredViewportKeysSnapshot = Array.Empty<string>();
@@ -1272,7 +1301,6 @@ namespace IndigoMovieManager
                 return;
             }
 
-            DateTime nowUtc = DateTime.UtcNow;
             bool viewportChanged = !AreMoviePathKeyListsEqual(
                 _thumbnailErrorPreferredViewportKeysSnapshot,
                 nextViewportKeys
@@ -1285,27 +1313,317 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (!TryQueueThumbnailErrorVisiblePromotion(request))
+            {
+                return;
+            }
+
             _thumbnailErrorPreferredViewportKeysSnapshot = nextViewportKeys;
             _thumbnailErrorViewportPriorityLastUtc = nowUtc;
-            ThumbnailErrorBulkRescueResult promotedResult = EnqueueThumbnailErrorRecordsToRescue(
-                visibleRecords,
-                reason: "error-tab-visible",
-                requiresIdle: true,
-                priority: ThumbnailQueuePriority.Preferred,
-                priorityUntilUtc: nowUtc.Add(ThumbnailVisibleErrorPreferredDuration)
+        }
+
+        private ThumbnailErrorVisiblePromotionRequest CaptureThumbnailErrorVisiblePromotionRequest(
+            IEnumerable<ThumbnailErrorRecordViewModel> records,
+            string reason,
+            bool requiresIdle,
+            ThumbnailQueuePriority priority,
+            DateTime? priorityUntilUtc
+        )
+        {
+            ThumbnailErrorRescueRecordSnapshot[] snapshots =
+                CaptureThumbnailErrorRescueRecordSnapshots(records);
+            return new ThumbnailErrorVisiblePromotionRequest(
+                snapshots,
+                MainVM?.DbInfo?.DBFullPath ?? "",
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? "",
+                reason,
+                requiresIdle,
+                priority,
+                priorityUntilUtc
             );
+        }
+
+        private bool TryQueueThumbnailErrorVisiblePromotion(
+            ThumbnailErrorVisiblePromotionRequest request
+        )
+        {
+            if (request.Records.Length < 1 || string.IsNullOrWhiteSpace(request.DbFullPath))
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _thumbnailErrorVisiblePromotionRunning, 1, 0) != 0)
+            {
+                Interlocked.Exchange(ref _thumbnailErrorVisiblePromotionRequested, 1);
+                return false;
+            }
+
+            Interlocked.Exchange(ref _thumbnailErrorVisiblePromotionRequested, 0);
+            _ = RunThumbnailErrorVisiblePromotionAsync(request);
+            return true;
+        }
+
+        private async Task RunThumbnailErrorVisiblePromotionAsync(
+            ThumbnailErrorVisiblePromotionRequest request
+        )
+        {
+            try
+            {
+                ThumbnailErrorBulkRescueResult promotedResult = await Task
+                    .Run(() => EnqueueThumbnailErrorRecordSnapshotsToRescue(request))
+                    .ConfigureAwait(false);
+
+                if (
+                    Dispatcher == null
+                    || Dispatcher.HasShutdownStarted
+                    || Dispatcher.HasShutdownFinished
+                )
+                {
+                    return;
+                }
+
+                await Dispatcher
+                    .InvokeAsync(
+                        () => ApplyThumbnailErrorVisiblePromotionResult(request, promotedResult),
+                        System.Windows.Threading.DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-error-tab",
+                    $"error tab visible promotion failed: {ex.Message}"
+                );
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _thumbnailErrorVisiblePromotionRunning, 0);
+                if (
+                    Interlocked.CompareExchange(
+                        ref _thumbnailErrorVisiblePromotionRequested,
+                        0,
+                        0
+                    )
+                    == 1
+                    && Dispatcher != null
+                    && !Dispatcher.HasShutdownStarted
+                    && !Dispatcher.HasShutdownFinished
+                )
+                {
+                    Interlocked.Exchange(ref _thumbnailErrorVisiblePromotionRequested, 0);
+                    _ = Dispatcher.BeginInvoke(
+                        System.Windows.Threading.DispatcherPriority.Background,
+                        new Action(TryPromoteVisibleThumbnailErrorRecords)
+                    );
+                }
+            }
+        }
+
+        private void ApplyThumbnailErrorVisiblePromotionResult(
+            ThumbnailErrorVisiblePromotionRequest request,
+            ThumbnailErrorBulkRescueResult promotedResult
+        )
+        {
+            if (!IsThumbnailErrorVisiblePromotionRequestCurrent(request.DbFullPath))
+            {
+                return;
+            }
+
             if (promotedResult.QueuedTabCount > 0)
             {
                 RequestThumbnailErrorSnapshotRefresh();
             }
         }
 
-        private static List<string> BuildThumbnailErrorViewportPriorityKeys(
+        private bool IsThumbnailErrorVisiblePromotionRequestCurrent(string dbFullPath)
+        {
+            return !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished
+                && AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? "");
+        }
+
+        private ThumbnailErrorBulkRescueResult EnqueueThumbnailErrorRecordSnapshotsToRescue(
+            ThumbnailErrorVisiblePromotionRequest request
+        )
+        {
+            if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-error-tab",
+                    "error tab visible promote skipped: shutdown"
+                );
+                return new ThumbnailErrorBulkRescueResult(0, 0, 0);
+            }
+
+            ThumbnailFailureDbService failureDbService = CreateThumbnailErrorFailureDbService(
+                request.DbFullPath
+            );
+            return EnqueueThumbnailErrorRecordSnapshotsToRescue(
+                request.Records,
+                request.DbFullPath,
+                failureDbService,
+                request.DbName,
+                request.ThumbFolder,
+                request.Reason,
+                request.RequiresIdle,
+                request.Priority,
+                request.PriorityUntilUtc
+            );
+        }
+
+        private ThumbnailErrorBulkRescueResult EnqueueThumbnailErrorRecordSnapshotsToRescue(
+            IEnumerable<ThumbnailErrorRescueRecordSnapshot> records,
+            string dbFullPath,
+            ThumbnailFailureDbService failureDbService,
+            string dbName,
+            string thumbFolder,
+            string reason,
+            bool requiresIdle,
+            ThumbnailQueuePriority priority,
+            DateTime? priorityUntilUtc
+        )
+        {
+            int movieCount = 0;
+            int queuedCount = 0;
+            int acceptedMovieCount = 0;
+
+            foreach (ThumbnailErrorRescueRecordSnapshot record in records ?? [])
+            {
+                if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+                {
+                    break;
+                }
+
+                movieCount++;
+                bool acceptedForMovie = false;
+                foreach (int tabIndex in record.FailedTabIndices ?? [])
+                {
+                    if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+                    {
+                        break;
+                    }
+
+                    QueueObj queueObj = new()
+                    {
+                        MovieId = record.MovieId,
+                        MovieFullPath = record.MoviePath,
+                        Hash = record.Hash,
+                        Tabindex = tabIndex,
+                        Priority = priority,
+                    };
+
+                    if (
+                        TryEnqueueThumbnailErrorRescueSnapshotJob(
+                            queueObj,
+                            dbFullPath,
+                            failureDbService,
+                            dbName,
+                            thumbFolder,
+                            reason: $"{reason}:{GetThumbnailTabDisplayName(tabIndex)}",
+                            requiresIdle: requiresIdle,
+                            priorityUntilUtc: priorityUntilUtc
+                        )
+                    )
+                    {
+                        queuedCount++;
+                        acceptedForMovie = true;
+                    }
+                }
+
+                if (acceptedForMovie)
+                {
+                    acceptedMovieCount++;
+                }
+            }
+
+            DebugRuntimeLog.Write(
+                "thumbnail-error-tab",
+                $"error tab rescue enqueue end: reason={reason} movie_count={movieCount} accepted_movies={acceptedMovieCount} queued={queuedCount}"
+            );
+            return new ThumbnailErrorBulkRescueResult(movieCount, acceptedMovieCount, queuedCount);
+        }
+
+        private bool TryEnqueueThumbnailErrorRescueSnapshotJob(
+            QueueObj queueObj,
+            string dbFullPath,
+            ThumbnailFailureDbService failureDbService,
+            string dbName,
+            string thumbFolder,
+            string reason,
+            bool requiresIdle,
+            DateTime? priorityUntilUtc
+        )
+        {
+            if (queueObj == null)
+            {
+                return false;
+            }
+
+            if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+            {
+                return false;
+            }
+
+            TryDeleteThumbnailErrorMarker(
+                ResolveThumbnailOutPath(queueObj.Tabindex, dbName ?? "", thumbFolder ?? ""),
+                queueObj.MovieFullPath
+            );
+
+            if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+            {
+                return false;
+            }
+
+            string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
+                queueObj.MovieFullPath
+            );
+            bool hasFailureHistory =
+                failureDbService?.HasFailureHistory(moviePathKey, queueObj.Tabindex) == true;
+
+            if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+            {
+                return false;
+            }
+
+            if (ShouldPreferNormalQueueForDisplayError(reason, hasFailureHistory))
+            {
+                QueueObj preferredQueueObj = CloneQueueObj(queueObj);
+                preferredQueueObj.Priority = ThumbnailQueuePriority.Preferred;
+                bool queued = TryEnqueueThumbnailJob(preferredQueueObj);
+                DebugRuntimeLog.Write(
+                    "thumbnail-rescue-request",
+                    queued
+                        ? $"display error rerouted to normal queue: path='{preferredQueueObj.MovieFullPath}' tab={preferredQueueObj.Tabindex} reason={reason}"
+                        : $"display error normal queue enqueue failed: path='{preferredQueueObj.MovieFullPath}' tab={preferredQueueObj.Tabindex} reason={reason}"
+                );
+                return queued;
+            }
+
+            if (IsThumbnailErrorVisiblePromotionShutdownStarted())
+            {
+                return false;
+            }
+
+            return TryEnqueueThumbnailRescueJob(
+                queueObj,
+                requiresIdle: requiresIdle,
+                reason: reason,
+                priorityUntilUtc: priorityUntilUtc
+            );
+        }
+
+        private bool IsThumbnailErrorVisiblePromotionShutdownStarted()
+        {
+            return Dispatcher == null || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished;
+        }
+
+        private static ThumbnailErrorRescueRecordSnapshot[] CaptureThumbnailErrorRescueRecordSnapshots(
             IEnumerable<ThumbnailErrorRecordViewModel> records
         )
         {
-            List<string> keys = [];
-            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+            List<ThumbnailErrorRescueRecordSnapshot> snapshots = [];
             foreach (ThumbnailErrorRecordViewModel record in records ?? [])
             {
                 if (record == null)
@@ -1313,8 +1631,46 @@ namespace IndigoMovieManager
                     continue;
                 }
 
+                string moviePath = record.MoviePath ?? record.MovieRecord?.Movie_Path ?? "";
+                if (string.IsNullOrWhiteSpace(moviePath))
+                {
+                    continue;
+                }
+
+                int[] failedTabIndices = (record.FailedTabIndices ?? []).Distinct().ToArray();
+                if (failedTabIndices.Length < 1)
+                {
+                    continue;
+                }
+
+                snapshots.Add(
+                    new ThumbnailErrorRescueRecordSnapshot(
+                        record.MovieId,
+                        moviePath,
+                        record.MovieRecord?.Hash ?? "",
+                        failedTabIndices
+                    )
+                );
+            }
+
+            return snapshots.ToArray();
+        }
+
+        private static List<string> BuildThumbnailErrorViewportPriorityKeys(
+            IEnumerable<ThumbnailErrorRescueRecordSnapshot> records
+        )
+        {
+            List<string> keys = [];
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+            foreach (ThumbnailErrorRescueRecordSnapshot record in records ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(record.MoviePath))
+                {
+                    continue;
+                }
+
                 string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
-                    record.MoviePath ?? record.MovieRecord?.Movie_Path ?? ""
+                    record.MoviePath
                 );
                 foreach (int tabIndex in record.FailedTabIndices ?? [])
                 {
