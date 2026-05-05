@@ -212,6 +212,7 @@ namespace IndigoMovieManager
                         _startupLightServicesStarted = true;
                         ReloadBookmarkTabData();
                         QueueThumbnailSuccessIndexPrewarm();
+                        QueueStartupThumbnailProgressSnapshotRefresh();
                         QueueEverythingLiteWatchRootPrewarm();
                         QueuePlayerWebViewEnvironmentWarm();
                         DebugRuntimeLog.Write(
@@ -233,6 +234,12 @@ namespace IndigoMovieManager
                     $"startup deferred services failed: revision={revision} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
+        }
+
+        private void QueueStartupThumbnailProgressSnapshotRefresh()
+        {
+            // first-page 表示後の軽サービスで、進捗 snapshot を既存のcoalesce経路へ合流させる。
+            RequestThumbnailProgressSnapshotRefresh();
         }
 
         // 起動直後の first-page 表示を優先し、watcher 作成は UI が一息ついてから始める。

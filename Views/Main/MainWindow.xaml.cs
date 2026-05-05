@@ -492,7 +492,6 @@ namespace IndigoMovieManager
                 }
 
                 EnsureThumbnailProgressUiTimerRunning();
-                UpdateThumbnailProgressSnapshotUi();
                 TryStartInitialThumbnailFailureSync();
             }
             catch (Exception)
