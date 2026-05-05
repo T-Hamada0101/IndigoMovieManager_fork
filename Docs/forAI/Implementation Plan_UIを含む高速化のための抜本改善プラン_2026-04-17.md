@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- 検索欄を空へ戻す導線も検索正本へ合流し、一覧反映と先頭選択を先に通してからサムネ常駐再起動へ進む順に揃えた
 - rescued sync 完了時の `Refresh()` は、対象が選択中レコードへ反映された時だけに絞り、FailureDb / progress 更新は維持したまま一覧全体の再評価を減らすようにした
 - fallback 起動でも `ThumbnailProgress` snapshot を直接更新せず、通常起動と同じ coalesce 済みの予約経路へ合流するようにした
 - shutdown drain は watch queue / created pipeline に加えて check-folder queue runner も同じ500ms deadline内で待ち、終了時の走査残留をログ名付きで追えるようにした
@@ -89,6 +90,7 @@
 - 検索窓のインクリメント検索は、常時即時実行ではなく `0.5s debounce` で通常時だけ戻し、起動時部分ロード・IME変換中・途中構文では Enter 確定へ寄せる
 - さらに検索確定中は `user priority` スコープで `Auto / Watch` の再走査、`watch_zero_diff reconcile`、`missing-thumb rescue` を defer し、検索完了を背後処理より先に通す
 - さらに検索確定時のサムネ常駐再起動は、検索結果反映と先頭選択の後へ置き、検索結果表示を先に返す
+- 検索欄を空へ戻す解除導線も同じ検索正本へ寄せ、旧来の `RestartThumbnailTask()` 先行を戻さない
 - さらに検索詰まりの切り分け用に、`FilterAndSortAsync(...)` の観測点を `db-reload / source-apply / filter-movies / sort-movies / replace-filtered` まで分解し、実機ログだけで hot path を断定できるようにした
 - さらに通常検索の比較は、ASCII 系検索語だけ `OrdinalIgnoreCase` の軽い比較へ寄せ、日本語など非 ASCII を含む語は従来どおり `CurrentCultureIgnoreCase` を維持して `filter-movies` の hot path を軽くし始めた
 - さらに ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / Roma` だけを見る軽量投影 cache を使い、`kana / katakana` 派生列の全件生成を避けて `filter-movies` の詰まりを減らし始めた

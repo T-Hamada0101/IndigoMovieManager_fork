@@ -158,10 +158,8 @@ namespace IndigoMovieManager
                 if (string.IsNullOrEmpty(text))
                 {
                     CancelIncrementalSearchDebounce();
-                    // 検索解除で一覧を即時に戻す時だけ、従来どおりサムネ常駐を再起動して競合を避ける。
-                    RestartThumbnailTask();
-                    FilterAndSort(MainVM.DbInfo.Sort, IsStartupFeedPartialActive);
-                    SelectFirstItem();
+                    // 検索解除も検索正本へ合流し、一覧反映を先に返してからサムネ常駐を再起動する。
+                    _ = ExecuteSearchKeywordAsync(text, false);
                     return;
                 }
 

@@ -109,6 +109,20 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(lostFocusMethod, Does.Not.Contain("SearchHistoryService.RecordSearchUsage("));
     }
 
+    [Test]
+    public void SearchBox_TextChangedの検索解除は検索正本へ合流する()
+    {
+        string searchSource = GetRepoText("Views", "Main", "MainWindow.Search.cs");
+        string textChangedMethod = GetMethodBlock(
+            searchSource,
+            "private void SearchBox_TextChanged("
+        );
+
+        Assert.That(textChangedMethod, Does.Contain("ExecuteSearchKeywordAsync(text, false);"));
+        Assert.That(textChangedMethod, Does.Not.Contain("RestartThumbnailTask();"));
+        Assert.That(textChangedMethod, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, IsStartupFeedPartialActive);"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
