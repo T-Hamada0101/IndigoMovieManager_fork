@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- 詳細サムネ側の表示更新は、UI 上で既存 jpg 走査、ERROR marker 確認、FailureDb open rescue 確認、未生成通常キュー投入、ERROR 救済投入を直接行わず、選択行と DB 情報を snapshot に固定して背景確認し、DB 一致・選択一致・shutdown guard 後に `ThumbDetail` と下部 ERROR/進捗 snapshot 更新だけ戻す形へ寄せた
 - 上側タブの可視 ERROR 自動投入は UI 上で救済投入入口を直接回さず、可視 `MovieRecords` を DB 情報付き snapshot に固めてから、marker 削除 / FailureDb 確認 / queue 投入を背景側で実行する形へ寄せた。背景 core でも `AreSameMainDbPath` guard を通し、DB 切替後着と shutdown 中の要求は捨てる
 - `TryEnqueueThumbnailDisplayErrorRescueJob` と下部 `ThumbnailError` 可視行優先投入は、通常キューへ戻す可能性がある `tab-error-placeholder` の時だけ FailureDb 履歴を読み、可視行自動投入などでは不要な履歴 read を避けるようにした
 - 下部 `ThumbnailError` の一覧クリアは UI クリック処理で marker 削除 / FailureDb 削除を直接行わず、対象 snapshot を背景削除へ渡して DB 一致 guard 後に一覧更新だけ戻す形へ寄せた

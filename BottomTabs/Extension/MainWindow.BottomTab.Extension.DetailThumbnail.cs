@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Threading;
 using IndigoMovieManager.Converter;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.FailureDb;
@@ -11,6 +14,31 @@ namespace IndigoMovieManager
     {
         private const int ExtensionDetailThumbnailTabIndex = 99;
         private const string ExtensionDetailPlaceholderFileName = "errorGrid.jpg";
+        private int _extensionDetailThumbnailRequestVersion;
+        private readonly record struct ExtensionDetailThumbnailSnapshotRequest(
+            MovieRecords Record,
+            long MovieId,
+            string MoviePath,
+            string MovieBody,
+            string Hash,
+            bool IsExists,
+            string DbFullPath,
+            string DbName,
+            string ThumbFolder,
+            int RequestVersion,
+            bool EnqueueIfMissing,
+            bool AllowAutoRescue
+        );
+
+        private readonly record struct ExtensionDetailThumbnailSnapshotResult(
+            string ExistingThumbnailPath,
+            string ExpectedThumbnailPath,
+            bool HasErrorMarker,
+            bool HasOpenRescueRequest,
+            bool QueuedMissingCreate,
+            bool QueuedAutoRescue
+        );
+
         private static readonly string[] DetailLayoutFolderNames = [
             ThumbnailLayoutProfileResolver.DetailStandard.FolderName,
             ThumbnailLayoutProfileResolver.DetailWhiteBrowser.FolderName,
@@ -64,62 +92,14 @@ namespace IndigoMovieManager
             );
         }
 
-        private void PrepareExtensionDetailThumbnail(MovieRecords record, bool enqueueIfMissing)
+        private void PrepareExtensionDetailThumbnail(
+            MovieRecords record,
+            bool enqueueIfMissing,
+            bool allowAutoRescue = false
+        )
         {
             if (record == null)
             {
-                return;
-            }
-
-            string existingThumbnailPath = ResolveExistingExtensionDetailThumbnailPath(record);
-            if (!string.IsNullOrWhiteSpace(existingThumbnailPath))
-            {
-                if (
-                    !string.Equals(
-                        record.ThumbDetail,
-                        existingThumbnailPath,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-                {
-                    record.ThumbDetail = existingThumbnailPath;
-                }
-
-                return;
-            }
-
-            if (HasExtensionDetailErrorMarker(record))
-            {
-                string placeholderPath = GetExtensionDetailPlaceholderPath();
-                if (
-                    !string.Equals(
-                        record.ThumbDetail,
-                        placeholderPath,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-                {
-                    record.ThumbDetail = placeholderPath;
-                }
-
-                return;
-            }
-
-            if (HasOpenExtensionDetailRescueRequest(record))
-            {
-                string placeholderPath = GetExtensionDetailPlaceholderPath();
-                if (
-                    !string.Equals(
-                        record.ThumbDetail,
-                        placeholderPath,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-                {
-                    // 救済待ち/救済中は通常キューへ戻さず、詳細はエラーplaceholderのまま待機する。
-                    record.ThumbDetail = placeholderPath;
-                }
-
                 return;
             }
 
@@ -137,12 +117,11 @@ namespace IndigoMovieManager
                 record.ThumbDetail = expectedThumbnailPath;
             }
 
-            if (!enqueueIfMissing || !record.IsExists)
-            {
-                return;
-            }
-
-            TryEnqueueMissingExtensionDetailThumbnailManualCreate(record);
+            QueueExtensionDetailThumbnailSnapshotRefresh(
+                record,
+                enqueueIfMissing,
+                allowAutoRescue
+            );
         }
 
         private void EnsureActiveExtensionDetailThumbnail(MovieRecords record)
@@ -153,9 +132,16 @@ namespace IndigoMovieManager
             }
 
             // 詳細タブで今見せる画像が無ければ、その場で現在選択モードの作成要求まで進める。
-            PrepareExtensionDetailThumbnail(record, enqueueIfMissing: true);
-            EnsureMissingDetailThumbnailCreation(record);
-            TryAutoRescueExtensionDetailThumbnail(record);
+            PrepareExtensionDetailThumbnail(
+                record,
+                enqueueIfMissing: true,
+                allowAutoRescue: false
+            );
+            QueueExtensionDetailThumbnailSnapshotRefresh(
+                record,
+                enqueueIfMissing: true,
+                allowAutoRescue: true
+            );
         }
 
         private void EnsureMissingDetailThumbnailCreation(MovieRecords record)
@@ -170,24 +156,11 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (HasOpenExtensionDetailRescueRequest(record))
-            {
-                return;
-            }
-
-            string expectedThumbnailPath = BuildExpectedExtensionDetailThumbnailPath(record);
-            if (string.IsNullOrWhiteSpace(expectedThumbnailPath))
-            {
-                return;
-            }
-
-            if (Path.Exists(expectedThumbnailPath))
-            {
-                return;
-            }
-
-            // 既存の再試行待ちとは重複しても落ちないように、明示的な最優先要求として再投入。
-            TryEnqueueMissingExtensionDetailThumbnailManualCreate(record);
+            QueueExtensionDetailThumbnailSnapshotRefresh(
+                record,
+                enqueueIfMissing: true,
+                allowAutoRescue: false
+            );
         }
 
         internal void ReevaluateActiveExtensionDetailThumbnail()
@@ -207,44 +180,249 @@ namespace IndigoMovieManager
             RefreshActiveExtensionDetailTab(record);
         }
 
-        private void TryAutoRescueExtensionDetailThumbnail(MovieRecords record)
+        private void QueueExtensionDetailThumbnailSnapshotRefresh(
+            MovieRecords record,
+            bool enqueueIfMissing,
+            bool allowAutoRescue
+        )
         {
-            if (record == null || !IsThumbnailErrorPlaceholderPath(record.ThumbDetail))
+            ExtensionDetailThumbnailSnapshotRequest request =
+                CaptureExtensionDetailThumbnailSnapshotRequest(
+                    record,
+                    enqueueIfMissing,
+                    allowAutoRescue
+                );
+            if (string.IsNullOrWhiteSpace(request.MoviePath))
             {
                 return;
             }
 
-            if (HasOpenExtensionDetailRescueRequest(record))
+            _ = RunExtensionDetailThumbnailSnapshotRefreshAsync(request);
+        }
+
+        private ExtensionDetailThumbnailSnapshotRequest CaptureExtensionDetailThumbnailSnapshotRequest(
+            MovieRecords record,
+            bool enqueueIfMissing,
+            bool allowAutoRescue
+        )
+        {
+            if (record == null)
             {
-                return;
+                return default;
             }
 
-            _ = TryEnqueueThumbnailDisplayErrorRescueJob(
-                new QueueObj
-                {
-                    MovieId = record.Movie_Id,
-                    MovieFullPath = record.Movie_Path,
-                    Hash = record.Hash,
-                    Tabindex = ExtensionDetailThumbnailTabIndex,
-                    Priority = ThumbnailQueuePriority.Preferred,
-                },
-                reason: "detail-error-placeholder",
-                requiresIdle: false
+            int requestVersion = Interlocked.Increment(
+                ref _extensionDetailThumbnailRequestVersion
+            );
+            return new ExtensionDetailThumbnailSnapshotRequest(
+                record,
+                record.Movie_Id,
+                record.Movie_Path ?? "",
+                record.Movie_Body ?? "",
+                record.Hash ?? "",
+                record.IsExists,
+                MainVM?.DbInfo?.DBFullPath ?? "",
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? "",
+                requestVersion,
+                enqueueIfMissing,
+                allowAutoRescue
             );
         }
 
-        private string ResolveExistingExtensionDetailThumbnailPath(MovieRecords record)
+        private async Task RunExtensionDetailThumbnailSnapshotRefreshAsync(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
+        {
+            try
+            {
+                ExtensionDetailThumbnailSnapshotResult result = await Task
+                    .Run(() => LoadExtensionDetailThumbnailSnapshotCore(request))
+                    .ConfigureAwait(false);
+
+                if (IsExtensionDetailThumbnailShutdownStarted())
+                {
+                    return;
+                }
+
+                await Dispatcher
+                    .InvokeAsync(
+                        () => ApplyExtensionDetailThumbnailSnapshotResult(request, result),
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"detail thumbnail background check failed: path='{request.MoviePath}' err='{ex.Message}'"
+                );
+            }
+        }
+
+        private ExtensionDetailThumbnailSnapshotResult LoadExtensionDetailThumbnailSnapshotCore(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
+        {
+            if (!IsExtensionDetailThumbnailRequestCurrentForBackground(request))
+            {
+                return default;
+            }
+
+            string existingThumbnailPath = ResolveExistingExtensionDetailThumbnailPath(request);
+            string expectedThumbnailPath = BuildExpectedExtensionDetailThumbnailPath(request);
+            bool hasErrorMarker = HasExtensionDetailErrorMarker(request);
+            bool hasOpenRescueRequest = HasOpenExtensionDetailRescueRequest(request);
+            bool expectedExists = !string.IsNullOrWhiteSpace(expectedThumbnailPath)
+                && Path.Exists(expectedThumbnailPath);
+
+            bool queuedMissingCreate = false;
+            if (
+                request.EnqueueIfMissing
+                && request.IsExists
+                && string.IsNullOrWhiteSpace(existingThumbnailPath)
+                && !expectedExists
+                && !hasErrorMarker
+                && !hasOpenRescueRequest
+                && IsExtensionDetailThumbnailRequestCurrentForBackground(request)
+            )
+            {
+                // 既存確認後にまだ無ければ、UIではなく背景側から明示要求を積む。
+                queuedMissingCreate = TryEnqueueMissingExtensionDetailThumbnailManualCreate(
+                    request
+                );
+            }
+
+            bool queuedAutoRescue = false;
+            if (
+                request.AllowAutoRescue
+                && hasErrorMarker
+                && !hasOpenRescueRequest
+                && IsExtensionDetailThumbnailRequestCurrentForBackground(request)
+            )
+            {
+                // ERROR marker 起点の救済判定も背景側へ寄せ、UI tick ではFailureDbを読まない。
+                queuedAutoRescue = TryEnqueueExtensionDetailThumbnailRescue(request);
+            }
+
+            return new ExtensionDetailThumbnailSnapshotResult(
+                existingThumbnailPath,
+                expectedThumbnailPath,
+                hasErrorMarker,
+                hasOpenRescueRequest,
+                queuedMissingCreate,
+                queuedAutoRescue
+            );
+        }
+
+        private void ApplyExtensionDetailThumbnailSnapshotResult(
+            ExtensionDetailThumbnailSnapshotRequest request,
+            ExtensionDetailThumbnailSnapshotResult result
+        )
+        {
+            if (!IsExtensionDetailThumbnailSnapshotRequestCurrent(request))
+            {
+                return;
+            }
+
+            string nextThumbDetail = result.ExistingThumbnailPath;
+            if (string.IsNullOrWhiteSpace(nextThumbDetail))
+            {
+                nextThumbDetail = result.HasErrorMarker || result.HasOpenRescueRequest
+                    ? GetExtensionDetailPlaceholderPath()
+                    : result.ExpectedThumbnailPath;
+            }
+
+            if (
+                !string.IsNullOrWhiteSpace(nextThumbDetail)
+                && !string.Equals(
+                    request.Record.ThumbDetail,
+                    nextThumbDetail,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                // 背景確認の採用は最後にUIへ戻し、表示モデルだけを短く更新する。
+                request.Record.ThumbDetail = nextThumbDetail;
+            }
+
+            if (result.QueuedMissingCreate || result.QueuedAutoRescue)
+            {
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
+            }
+
+            if (IsExtensionTabVisibleOrSelected())
+            {
+                RefreshActiveExtensionDetailTab(request.Record);
+            }
+        }
+
+        private bool IsExtensionDetailThumbnailSnapshotRequestCurrent(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
+        {
+            return !IsExtensionDetailThumbnailShutdownStarted()
+                && request.RequestVersion == Volatile.Read(
+                    ref _extensionDetailThumbnailRequestVersion
+                )
+                && AreSameMainDbPath(request.DbFullPath, MainVM?.DbInfo?.DBFullPath ?? "")
+                && IsSameExtensionDetailThumbnailRecord(GetSelectedItemByTabIndex(), request);
+        }
+
+        private bool IsExtensionDetailThumbnailRequestCurrentForBackground(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
+        {
+            return !IsExtensionDetailThumbnailShutdownStarted()
+                && request.RequestVersion == Volatile.Read(
+                    ref _extensionDetailThumbnailRequestVersion
+                )
+                && AreSameMainDbPath(request.DbFullPath, MainVM?.DbInfo?.DBFullPath ?? "");
+        }
+
+        private bool IsExtensionDetailThumbnailShutdownStarted()
+        {
+            return Dispatcher == null || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished;
+        }
+
+        private static bool IsSameExtensionDetailThumbnailRecord(
+            MovieRecords record,
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
         {
             if (record == null)
+            {
+                return false;
+            }
+
+            if (request.MovieId > 0 && record.Movie_Id == request.MovieId)
+            {
+                return true;
+            }
+
+            return string.Equals(
+                record.Movie_Path,
+                request.MoviePath,
+                StringComparison.OrdinalIgnoreCase
+            );
+        }
+
+        private string ResolveExistingExtensionDetailThumbnailPath(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
+        {
+            if (string.IsNullOrWhiteSpace(request.MoviePath))
             {
                 return "";
             }
 
-            foreach (string outPath in EnumerateExtensionDetailCandidateOutPaths())
+            foreach (string outPath in EnumerateExtensionDetailCandidateOutPaths(request))
             {
                 string thumbnailPath = ResolveExistingExtensionDetailThumbnailPathByOutPath(
                     outPath,
-                    record
+                    request
                 );
                 if (!string.IsNullOrWhiteSpace(thumbnailPath))
                 {
@@ -255,15 +433,24 @@ namespace IndigoMovieManager
             return "";
         }
 
-        private IEnumerable<string> EnumerateExtensionDetailCandidateOutPaths()
+        private IEnumerable<string> EnumerateExtensionDetailCandidateOutPaths(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
         {
             List<string> candidates = [];
             HashSet<string> unique = new(StringComparer.OrdinalIgnoreCase);
-            string currentOutPath = ResolveCurrentThumbnailOutPath(ExtensionDetailThumbnailTabIndex);
+            string currentOutPath = ResolveThumbnailOutPath(
+                ExtensionDetailThumbnailTabIndex,
+                request.DbName,
+                request.ThumbFolder
+            );
             AddCandidatePath(candidates, unique, currentOutPath);
 
-            string configuredThumbRoot =
-                ResolveCurrentThumbnailRoot();
+            string configuredThumbRoot = ResolveRuntimeThumbnailRoot(
+                request.DbFullPath,
+                request.DbName,
+                request.ThumbFolder
+            );
             if (!string.IsNullOrWhiteSpace(configuredThumbRoot))
             {
                 AddCandidatePath(candidates, unique, configuredThumbRoot);
@@ -337,30 +524,30 @@ namespace IndigoMovieManager
 
         private string ResolveExistingExtensionDetailThumbnailPathByOutPath(
             string outPath,
-            MovieRecords record
+            ExtensionDetailThumbnailSnapshotRequest request
         )
         {
-            if (record == null || string.IsNullOrWhiteSpace(outPath))
+            if (string.IsNullOrWhiteSpace(request.MoviePath) || string.IsNullOrWhiteSpace(outPath))
             {
                 return "";
             }
 
             string thumbnailPath = ThumbnailPathResolver.BuildThumbnailPath(
                 outPath,
-                record.Movie_Path,
-                record.Hash
+                request.MoviePath,
+                request.Hash
             );
             if (Path.Exists(thumbnailPath))
             {
                 return thumbnailPath;
             }
 
-            if (!string.IsNullOrWhiteSpace(record.Movie_Body))
+            if (!string.IsNullOrWhiteSpace(request.MovieBody))
             {
                 string legacyThumbnailPath = ThumbnailPathResolver.BuildThumbnailPath(
                     outPath,
-                    record.Movie_Body,
-                    record.Hash
+                    request.MovieBody,
+                    request.Hash
                 );
                 if (Path.Exists(legacyThumbnailPath))
                 {
@@ -371,7 +558,7 @@ namespace IndigoMovieManager
             if (
                 ThumbnailPathResolver.TryFindExistingSuccessThumbnailPath(
                     outPath,
-                    record.Movie_Path,
+                    request.MoviePath,
                     out string existingByMoviePath
                 )
             )
@@ -380,10 +567,10 @@ namespace IndigoMovieManager
             }
 
             if (
-                !string.IsNullOrWhiteSpace(record.Movie_Body)
+                !string.IsNullOrWhiteSpace(request.MovieBody)
                 && ThumbnailPathResolver.TryFindExistingSuccessThumbnailPath(
                     outPath,
-                    record.Movie_Body,
+                    request.MovieBody,
                     out string existingByMovieBody
                 )
             )
@@ -394,7 +581,7 @@ namespace IndigoMovieManager
             if (
                 TryFindExistingSuccessThumbnailPathByBodyScan(
                     outPath,
-                    record.Movie_Path,
+                    request.MoviePath,
                     out string scannedByMoviePath
                 )
             )
@@ -403,10 +590,10 @@ namespace IndigoMovieManager
             }
 
             if (
-                !string.IsNullOrWhiteSpace(record.Movie_Body)
+                !string.IsNullOrWhiteSpace(request.MovieBody)
                 && TryFindExistingSuccessThumbnailPathByBodyScan(
                     outPath,
-                    record.Movie_Body,
+                    request.MovieBody,
                     out string scannedByMovieBody
                 )
             )
@@ -416,7 +603,7 @@ namespace IndigoMovieManager
 
             if (
                 ThumbnailSourceImagePathResolver.TryResolveSameNameThumbnailSourceImagePath(
-                    record.Movie_Path,
+                    request.MoviePath,
                     out string sourceImagePath
                 )
             )
@@ -513,35 +700,45 @@ namespace IndigoMovieManager
             }
         }
 
-        private bool HasExtensionDetailErrorMarker(MovieRecords record)
+        private bool HasExtensionDetailErrorMarker(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
         {
-            if (record == null || string.IsNullOrWhiteSpace(record.Movie_Path))
+            if (string.IsNullOrWhiteSpace(request.MoviePath))
             {
                 return false;
             }
 
             string errorMarkerPath = ThumbnailPathResolver.BuildErrorMarkerPath(
-                ResolveCurrentThumbnailOutPath(ExtensionDetailThumbnailTabIndex),
-                record.Movie_Path
+                ResolveThumbnailOutPath(
+                    ExtensionDetailThumbnailTabIndex,
+                    request.DbName,
+                    request.ThumbFolder
+                ),
+                request.MoviePath
             );
             return Path.Exists(errorMarkerPath);
         }
 
-        private bool HasOpenExtensionDetailRescueRequest(MovieRecords record)
+        private bool HasOpenExtensionDetailRescueRequest(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
         {
-            if (record == null || string.IsNullOrWhiteSpace(record.Movie_Path))
+            if (string.IsNullOrWhiteSpace(request.MoviePath))
             {
                 return false;
             }
 
-            ThumbnailFailureDbService failureDbService = ResolveCurrentThumbnailFailureDbService();
+            ThumbnailFailureDbService failureDbService = CreateThumbnailErrorFailureDbService(
+                request.DbFullPath
+            );
             if (failureDbService == null)
             {
                 return false;
             }
 
             string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
-                record.Movie_Path
+                request.MoviePath
             );
             return failureDbService.HasOpenRescueRequest(
                 moviePathKey,
@@ -563,6 +760,26 @@ namespace IndigoMovieManager
             );
         }
 
+        private string BuildExpectedExtensionDetailThumbnailPath(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
+        {
+            if (string.IsNullOrWhiteSpace(request.MoviePath))
+            {
+                return "";
+            }
+
+            return ThumbnailPathResolver.BuildThumbnailPath(
+                ResolveThumbnailOutPath(
+                    ExtensionDetailThumbnailTabIndex,
+                    request.DbName,
+                    request.ThumbFolder
+                ),
+                request.MoviePath,
+                request.Hash
+            );
+        }
+
         private static string GetExtensionDetailPlaceholderPath()
         {
             return Path.Combine(
@@ -572,29 +789,62 @@ namespace IndigoMovieManager
             );
         }
 
-        private void TryEnqueueMissingExtensionDetailThumbnailManualCreate(MovieRecords record)
+        private bool TryEnqueueMissingExtensionDetailThumbnailManualCreate(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
         {
-            if (record == null || !record.IsExists)
+            if (!request.IsExists || string.IsNullOrWhiteSpace(request.MoviePath))
             {
-                return;
+                return false;
             }
 
-            string expectedThumbnailPath = BuildExpectedExtensionDetailThumbnailPath(record);
+            string expectedThumbnailPath = BuildExpectedExtensionDetailThumbnailPath(request);
             NoLockImageConverter.InvalidateFilePath(expectedThumbnailPath);
 
-            // ここで必要なのは「既存サムネ差し替え用 manual」ではなく、
-            // 明示要求として通常生成を優先投入する経路。
-            // tab=99 は上側タブ gate を受けないので、そのまま preferred で即投入する。
-            _ = TryEnqueueThumbnailJob(
+            // 詳細サムネの不足作成は、背景確認後に preferred として通常キューへ積む。
+            return TryEnqueueThumbnailJob(
                 new QueueObj
                 {
-                    MovieId = record.Movie_Id,
-                    MovieFullPath = record.Movie_Path,
-                    Hash = record.Hash,
+                    MovieId = request.MovieId,
+                    MovieFullPath = request.MoviePath,
+                    Hash = request.Hash,
                     Tabindex = ExtensionDetailThumbnailTabIndex,
                     Priority = ThumbnailQueuePriority.Preferred,
                 },
                 bypassDebounce: true
+            );
+        }
+
+        private bool TryEnqueueExtensionDetailThumbnailRescue(
+            ExtensionDetailThumbnailSnapshotRequest request
+        )
+        {
+            if (string.IsNullOrWhiteSpace(request.MoviePath))
+            {
+                return false;
+            }
+
+            ThumbnailFailureDbService failureDbService = CreateThumbnailErrorFailureDbService(
+                request.DbFullPath
+            );
+            QueueObj queueObj = new()
+            {
+                MovieId = request.MovieId,
+                MovieFullPath = request.MoviePath,
+                Hash = request.Hash,
+                Tabindex = ExtensionDetailThumbnailTabIndex,
+                Priority = ThumbnailQueuePriority.Preferred,
+            };
+
+            return TryEnqueueThumbnailErrorRescueSnapshotJob(
+                queueObj,
+                request.DbFullPath,
+                failureDbService,
+                request.DbName,
+                request.ThumbFolder,
+                reason: "detail-error-placeholder",
+                requiresIdle: false,
+                priorityUntilUtc: null
             );
         }
     }

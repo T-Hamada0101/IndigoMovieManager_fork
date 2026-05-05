@@ -136,6 +136,87 @@ public sealed class MainWindowUiIoDeferralSourceTests
     }
 
     [Test]
+    public void 詳細サムネUI入口は同期IOとFailureDbを直接踏まない()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "Extension",
+            "MainWindow.BottomTab.Extension.DetailThumbnail.cs"
+        );
+        string prepareMethod = ExtractMethod(
+            source,
+            "private void PrepareExtensionDetailThumbnail("
+        );
+        string ensureMissingMethod = ExtractMethod(
+            source,
+            "private void EnsureMissingDetailThumbnailCreation("
+        );
+
+        Assert.That(prepareMethod, Does.Contain("QueueExtensionDetailThumbnailSnapshotRefresh("));
+        Assert.That(prepareMethod, Does.Not.Contain("ResolveExistingExtensionDetailThumbnailPath("));
+        Assert.That(prepareMethod, Does.Not.Contain("HasExtensionDetailErrorMarker("));
+        Assert.That(prepareMethod, Does.Not.Contain("HasOpenExtensionDetailRescueRequest("));
+        Assert.That(prepareMethod, Does.Not.Contain("TryEnqueueMissingExtensionDetailThumbnailManualCreate("));
+        Assert.That(prepareMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(prepareMethod, Does.Not.Contain("Directory.Exists("));
+        Assert.That(prepareMethod, Does.Not.Contain("ResolveCurrentThumbnailFailureDbService("));
+
+        Assert.That(ensureMissingMethod, Does.Contain("QueueExtensionDetailThumbnailSnapshotRefresh("));
+        Assert.That(ensureMissingMethod, Does.Not.Contain("HasOpenExtensionDetailRescueRequest("));
+        Assert.That(ensureMissingMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(ensureMissingMethod, Does.Not.Contain("TryEnqueueMissingExtensionDetailThumbnailManualCreate("));
+    }
+
+    [Test]
+    public void 詳細サムネ確認は背景で実行しDB一致時だけUIへ戻す()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "Extension",
+            "MainWindow.BottomTab.Extension.DetailThumbnail.cs"
+        );
+        string runMethod = ExtractMethod(
+            source,
+            "private async Task RunExtensionDetailThumbnailSnapshotRefreshAsync("
+        );
+        string coreMethod = ExtractMethod(
+            source,
+            "private ExtensionDetailThumbnailSnapshotResult LoadExtensionDetailThumbnailSnapshotCore("
+        );
+        string applyMethod = ExtractMethod(
+            source,
+            "private void ApplyExtensionDetailThumbnailSnapshotResult("
+        );
+        string captureMethod = ExtractMethod(
+            source,
+            "private ExtensionDetailThumbnailSnapshotRequest CaptureExtensionDetailThumbnailSnapshotRequest("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool IsExtensionDetailThumbnailSnapshotRequestCurrent("
+        );
+        string shutdownMethod = ExtractMethod(
+            source,
+            "private bool IsExtensionDetailThumbnailShutdownStarted()"
+        );
+
+        Assert.That(runMethod, Does.Contain(".Run(() => LoadExtensionDetailThumbnailSnapshotCore("));
+        Assert.That(runMethod, Does.Contain("DispatcherPriority.Background"));
+        Assert.That(coreMethod, Does.Contain("ResolveExistingExtensionDetailThumbnailPath(request)"));
+        Assert.That(coreMethod, Does.Contain("HasOpenExtensionDetailRescueRequest(request)"));
+        Assert.That(coreMethod, Does.Contain("TryEnqueueMissingExtensionDetailThumbnailManualCreate("));
+        Assert.That(coreMethod, Does.Contain("TryEnqueueExtensionDetailThumbnailRescue("));
+        Assert.That(coreMethod, Does.Not.Contain("MainVM"));
+        Assert.That(captureMethod, Does.Contain("MainVM?.DbInfo?.DBFullPath ?? \"\""));
+        Assert.That(captureMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(captureMethod, Does.Not.Contain("Directory.Exists("));
+        Assert.That(applyMethod, Does.Contain("IsExtensionDetailThumbnailSnapshotRequestCurrent("));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(guardMethod, Does.Contain("GetSelectedItemByTabIndex()"));
+        Assert.That(shutdownMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+    }
+
+    [Test]
     public void レイアウト復元は検証済みテキストを再利用し二重読込しない()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
