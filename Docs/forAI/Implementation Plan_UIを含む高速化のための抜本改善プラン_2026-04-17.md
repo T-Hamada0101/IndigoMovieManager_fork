@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- Created watch event の ready 待機は shutdown 開始後に短い分割待機で抜け、created detached pipeline が bounded drain 後に残り続けないようにした
 - Player 右レールの `SelectionChanged` は抑止中・非表示中に詳細/タグ更新を走らせず、選択同期中の二重 UI 更新を避けるようにした
 - preferred サムネ生成成功時、対象 `MovieRecords` へ直接反映できた場合は後段の `FilterAndSort(..., true)` を省き、forced rebind と visible refresh で止めるようにした
 - Player 右レール / visible-first 画像供給では、preferred key 更新後に full reload へ戻さず、軽い revision / trigger で実現済み画像 Binding を再評価させる方針を固定した
@@ -319,6 +320,7 @@
 
 実施内容:
 - `FileSystemWatcher` 入力停止、watch event queue complete、created ready pipeline drain、Everything poll 停止を順序付きで扱う。
+- Created ready 待機は通常時の retry 契約を保ちつつ、shutdown 開始後は短い分割待機で stale skip し、detached task を残さない。
 - Everything poll loop は UI コンテキストへ戻らない待機を使い、周期判定を UI tick と競合させない。
 - low-update 時の poll interval 延長を、初期処理が落ち着いた後だけ有効化する。
 - `watch folder snapshot` と eligible 判定 cache の invalidation 条件を、DB 切替 / watch folder 編集 / settings 変更へ限定する。

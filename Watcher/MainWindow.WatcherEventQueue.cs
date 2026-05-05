@@ -76,6 +76,14 @@ namespace IndigoMovieManager
             }
         }
 
+        private bool IsWatchEventShutdownRequested()
+        {
+            lock (_watchEventRequestSync)
+            {
+                return _watchEventShutdownRequested;
+            }
+        }
+
         // shutdown 中は watch queue -> created ready の順で、合計500ms以内だけ待機する。
         private void DrainWatchEventPipelinesForShutdown()
         {
@@ -274,6 +282,15 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (IsWatchEventShutdownRequested())
+            {
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"created event skipped by shutdown: '{fullPath}'"
+                );
+                return;
+            }
+
             if (IsWatchSuppressedByUi())
             {
                 MarkWatchWorkDeferredWhileSuppressed($"created:{fullPath}");
@@ -314,13 +331,22 @@ namespace IndigoMovieManager
             await QueueCheckFolderAsync(CheckMode.Watch, $"created:{fullPath}");
         }
 
-        // コピー中ファイルは最大10回待機し、watch ハンドラ外で準備完了を確認する。
-        private static async Task<bool> WaitForWatchCreatedFileReadyAsync(string fullPath)
+        // コピー中ファイルは最大10回待機し、終了時は短い刻みで抜けてshutdownを詰まらせない。
+        private async Task<bool> WaitForWatchCreatedFileReadyAsync(string fullPath)
         {
             const int maxRetry = 10;
             int retry = 0;
             while (retry < maxRetry)
             {
+                if (IsWatchEventShutdownRequested())
+                {
+                    DebugRuntimeLog.Write(
+                        "watch",
+                        $"created ready wait skipped by shutdown: '{fullPath}' retry={retry}"
+                    );
+                    return false;
+                }
+
                 try
                 {
                     using var stream = File.Open(
@@ -333,12 +359,45 @@ namespace IndigoMovieManager
                 }
                 catch (IOException)
                 {
-                    await Task.Delay(1000);
+                    bool shouldContinue = await DelayWatchCreatedReadyRetryAsync(
+                        fullPath,
+                        retry
+                    );
+                    if (!shouldContinue)
+                    {
+                        return false;
+                    }
+
                     retry++;
                 }
             }
 
             return false;
+        }
+
+        private async Task<bool> DelayWatchCreatedReadyRetryAsync(string fullPath, int retry)
+        {
+            const int retryDelayMs = 1000;
+            const int shutdownCheckSliceMs = 100;
+            int remainingDelayMs = retryDelayMs;
+
+            while (remainingDelayMs > 0)
+            {
+                if (IsWatchEventShutdownRequested())
+                {
+                    DebugRuntimeLog.Write(
+                        "watch",
+                        $"created ready wait skipped by shutdown: '{fullPath}' retry={retry}"
+                    );
+                    return false;
+                }
+
+                int delayMs = Math.Min(shutdownCheckSliceMs, remainingDelayMs);
+                await Task.Delay(delayMs);
+                remainingDelayMs -= delayMs;
+            }
+
+            return true;
         }
 
         private enum WatchEventKind

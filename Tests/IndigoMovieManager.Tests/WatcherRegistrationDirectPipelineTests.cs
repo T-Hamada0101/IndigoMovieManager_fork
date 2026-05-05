@@ -937,6 +937,67 @@ public sealed class WatcherRegistrationDirectPipelineTests
         }
     }
 
+    [Test]
+    public async Task QueueWatchEventAsync_Created_ready待機中のshutdownはdetached処理を短く畳む()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        string createdMoviePath = Path.Combine(tempRoot, "shutdown-waiting-created.mp4");
+        await File.WriteAllBytesAsync(createdMoviePath, [0x1]);
+        FileStream? createdMovieLock = null;
+
+        try
+        {
+            // lock中のcreatedを作り、shutdownがready待機を短く畳むことを観測する。
+            createdMovieLock = new FileStream(
+                createdMoviePath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None
+            );
+
+            MainWindow window = CreateMainWindow("%USERPROFILE%\\Db\\main.wb", currentTabIndex: 2);
+            int queueCheckRequestedCount = 0;
+            window.QueueCheckFolderAsyncRequestedForTesting = (_, _) => queueCheckRequestedCount++;
+
+            MethodInfo queueMethod = GetQueueWatchEventAsyncRequestMethod();
+            Task queueRunnerTask = (Task)queueMethod.Invoke(
+                window,
+                [CreateCreatedWatchEventRequest(createdMoviePath), "watch-created-shutdown"]
+            )!;
+            await queueRunnerTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Task detachedCreatedTask = GetPrivateField<Task>(
+                window,
+                "_watchCreatedEventProcessingTask"
+            );
+            Assert.That(detachedCreatedTask.IsCompleted, Is.False);
+
+            MethodInfo beginShutdownMethod = typeof(MainWindow).GetMethod(
+                "BeginWatchEventQueueShutdownForClosing",
+                BindingFlags.Instance | BindingFlags.NonPublic
+            )!;
+            beginShutdownMethod.Invoke(window, null);
+
+            await detachedCreatedTask.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(detachedCreatedTask.IsCompleted, Is.True);
+                Assert.That(queueCheckRequestedCount, Is.EqualTo(0));
+                Assert.That(GetPrivateField<bool>(window, "_hasPendingCheckFolderRequest"), Is.False);
+            });
+        }
+        finally
+        {
+            createdMovieLock?.Dispose();
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static MainWindow CreateMainWindow(string dbFullPath, int currentTabIndex)
     {
         MainWindow window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));

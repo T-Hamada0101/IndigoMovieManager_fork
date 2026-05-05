@@ -1,8 +1,9 @@
 # AI向け 引き継ぎ Watcher責務分離 UI詰まり防止 2026-03-20
 
-最終更新日: 2026-03-20
+最終更新日: 2026-05-05
 
 変更概要:
+- Created watch event の ready 待機は shutdown 開始後に短い分割待機で抜け、detached task が終了時に残り続けないようにした
 - `Watcher` 周辺の責務分離を、次のAIがそのまま継続できるよう整理した
 - `watch event queue` 化から `WatchScanCoordinator` 抽出までの到達点を固定した
 - `watch` 多発時の詰まりを抑えるための境界条件、件数平準化、左ドロワー抑制を追記した
@@ -23,6 +24,7 @@
 - `Created` は直接 MainDB登録せず、`QueueCheckFolderAsync(CheckMode.Watch, ...)` へ合流済み
 - `Renamed` は rename 要求キュー経由で単一ランナー処理へ変更済み
 - `FileChanged` / `FileRenamed` は共通 `watch event queue` に積み、イベントハンドラから重い処理を外した
+- `Created` の ready 待機は detached pipeline のまま維持し、shutdown 開始後は短い分割待機で stale skip して drain 後の残留を避ける
 
 ### 2.2 `Watcher` partial 分割
 
