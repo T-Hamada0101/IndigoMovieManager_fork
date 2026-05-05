@@ -777,7 +777,8 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkNormalRetryRunning, 0);
-                Refresh();
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
             }
         }
 
@@ -848,7 +849,8 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkNormalRetryRunning, 0);
-                Refresh();
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
             }
         }
 
@@ -1216,7 +1218,8 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkBlackRetryRunning, 0);
-                Refresh();
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
             }
         }
 
@@ -1282,7 +1285,8 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkBlackRetryRunning, 0);
-                Refresh();
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
             }
         }
 
@@ -1464,7 +1468,8 @@ namespace IndigoMovieManager
                 finally
                 {
                     Mouse.OverrideCursor = null;
-                    Refresh();
+                    RequestThumbnailErrorSnapshotRefresh();
+                    RequestThumbnailProgressSnapshotRefresh();
                 }
             }
             finally

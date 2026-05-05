@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- Rescue タブの通常再試行 / 黒背景救済 retry / index repair dispatch 後は `Refresh()` で詳細再構築せず、下部エラー/進捗 snapshot 予約だけへ置き換えた
 - preferred / manual rescue の即時サムネ成功で対象 `MovieRecords` へ直接反映済みなら、詳細再構築の `Refresh()` も省き、未反映時だけ保険として実行するようにした
 - Rescue 一覧サムネは `NoLockImageConverter` へ decode height 18 を渡し、行サムネの cache miss 時にフルサイズ decode へ戻りにくくした
 - preferred / manual rescue の即時サムネ成功で対象 `MovieRecords` へ直接反映済みなら、viewport 再計測ではなく preferred key revision だけで画像 Binding を再評価するようにした
