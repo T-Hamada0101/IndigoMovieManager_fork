@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- 通常上側タブ Small / Big / Grid / List / Big10 の画像 Binding も `Movie_Path` と preferred key revision を受け取り、off-screen 画像再評価を Player 右レールと同じ gate で抑えるようにした
 - watch query-only 局所更新の changed path lookup は、`sourceMovies` / current filtered 全件を辞書化せず、変更対象 path だけを保持する形へ寄せた
 - Created watch event の ready 待機は shutdown 開始後に短い分割待機で抜け、created detached pipeline が bounded drain 後に残り続けないようにした
 - Player 右レールの `SelectionChanged` は抑止中・非表示中に詳細/タグ更新を走らせず、選択同期中の二重 UI 更新を避けるようにした
@@ -361,6 +362,7 @@
 - `NoLockImageConverter` の metadata cache を viewport 連動で活かし、表示候補の先読みと無効化を分ける。
 - visible range 外の decode をより後ろへ倒し、可視範囲だけ即時 decode する。
 - Player 右レール / visible-first の preferred 対象キーは、「未初期化 / viewport 未計測」と「空と確定」を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、空と確定した後だけ off-screen 更新を止める。
+- 通常上側タブの画像 Binding も Player 右レールと同じ preferred key gate / revision trigger を通し、active tab 内の off-screen decode を増やさない。
 - preferred key 更新後は、右レール全体の再構築や full reload ではなく、可視範囲 snapshot の軽い revision 更新、または Binding 用 trigger だけで実現済み画像 Binding を再評価する。既に `MovieRecords` へ path 反映できている画像を、一覧の全面再評価で揺らさない。
 - 画像存在確認と file stamp 取得を、converter 個別呼び出しから `ThumbnailStampCache` 相当へ寄せる。
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。

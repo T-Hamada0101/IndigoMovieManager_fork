@@ -110,6 +110,32 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(converterSource, Does.Not.Contain("values[4]"));
     }
 
+    [TestCase("SmallList", "ThumbPathSmall")]
+    [TestCase("BigList", "ThumbPathBig")]
+    [TestCase("GridList", "ThumbPathGrid")]
+    [TestCase("ListDataGrid", "ThumbPathList")]
+    [TestCase("BigList10", "ThumbPathBig10")]
+    public void 通常上側タブ画像MultiBindingもpreferredキーrevisionをtriggerとして渡す(
+        string listName,
+        string thumbnailPathProperty
+    )
+    {
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string imageBinding = GetImageBindingAfterElementName(mainWindowXaml, listName);
+
+        Assert.That(imageBinding, Does.Contain($"<Binding Path=\"{thumbnailPathProperty}\" />"));
+        Assert.That(imageBinding, Does.Contain("<Binding Path=\"IsExists\" />"));
+        Assert.That(
+            imageBinding,
+            Does.Contain($"<Binding Source=\"{{x:Reference {listName}}}\" Path=\"IsVisible\" />")
+        );
+        Assert.That(imageBinding, Does.Contain("<Binding Path=\"Movie_Path\" />"));
+        Assert.That(
+            imageBinding,
+            Does.Contain("<Binding Source=\"{x:Reference window}\" Path=\"UpperTabPreferredMoviePathKeysRevision\" />")
+        );
+    }
+
     private static string GetPlayerThumbnailImageBinding(string mainWindowXaml)
     {
         int listStart = mainWindowXaml.IndexOf(
@@ -124,6 +150,26 @@ public sealed class UpperTabViewportRefreshTests
             StringComparison.Ordinal
         );
         Assert.That(converterIndex, Is.GreaterThan(listStart));
+
+        int bindingEnd = mainWindowXaml.IndexOf("</MultiBinding>", converterIndex, StringComparison.Ordinal);
+        Assert.That(bindingEnd, Is.GreaterThan(converterIndex));
+        return mainWindowXaml.Substring(converterIndex, bindingEnd - converterIndex);
+    }
+
+    private static string GetImageBindingAfterElementName(string mainWindowXaml, string elementName)
+    {
+        int elementStart = mainWindowXaml.IndexOf(
+            $"x:Name=\"{elementName}\"",
+            StringComparison.Ordinal
+        );
+        Assert.That(elementStart, Is.GreaterThanOrEqualTo(0), $"{elementName} が見つかりません。");
+
+        int converterIndex = mainWindowXaml.IndexOf(
+            "Converter=\"{StaticResource upperTabImageSourceConverter}\"",
+            elementStart,
+            StringComparison.Ordinal
+        );
+        Assert.That(converterIndex, Is.GreaterThan(elementStart));
 
         int bindingEnd = mainWindowXaml.IndexOf("</MultiBinding>", converterIndex, StringComparison.Ordinal);
         Assert.That(bindingEnd, Is.GreaterThan(converterIndex));
