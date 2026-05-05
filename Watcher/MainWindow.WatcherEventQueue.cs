@@ -84,7 +84,7 @@ namespace IndigoMovieManager
             }
         }
 
-        // shutdown 中は watch queue -> created ready の順で、合計500ms以内だけ待機する。
+        // shutdown 中は watch queue -> created ready -> check-folder runner を合計500ms以内だけ待機する。
         private void DrainWatchEventPipelinesForShutdown()
         {
             const int shutdownDrainBudgetMs = 500;
@@ -97,6 +97,11 @@ namespace IndigoMovieManager
             WaitWatchPipelineTaskForShutdown(
                 () => _watchCreatedEventProcessingTask,
                 "watch-created-pipeline",
+                deadlineTick
+            );
+            WaitWatchPipelineTaskForShutdown(
+                GetCheckFolderQueueRunnerTaskForShutdown,
+                "check-folder-queue-runner",
                 deadlineTick
             );
         }

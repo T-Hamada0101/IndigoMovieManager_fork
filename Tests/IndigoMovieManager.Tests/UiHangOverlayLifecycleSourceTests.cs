@@ -25,7 +25,7 @@ public sealed class UiHangOverlayLifecycleSourceTests
     }
 
     [Test]
-    public void MainWindow_Closingはwatcher入力停止後にwatch_queueとcreated_pipelineを待つ()
+    public void MainWindow_Closingはwatcher入力停止後にwatch_queueとcreated_pipelineとcheck_folder_runnerを待つ()
     {
         string mainWindowSource = GetSourceText(new[] { "Views", "Main", "MainWindow.xaml.cs" })
             .Replace("\r\n", "\n");
@@ -52,6 +52,18 @@ public sealed class UiHangOverlayLifecycleSourceTests
         Assert.That(
             watcherQueueSource,
             Does.Contain("WaitWatchPipelineTaskForShutdown(")
+        );
+        Assert.That(
+            watcherQueueSource,
+            Does.Contain("GetCheckFolderQueueRunnerTaskForShutdown")
+        );
+        Assert.That(
+            watcherQueueSource,
+            Does.Contain("\"check-folder-queue-runner\"")
+        );
+        Assert.That(
+            watcherQueueSource,
+            Does.Contain("long deadlineTick = Environment.TickCount64 + shutdownDrainBudgetMs;")
         );
     }
 

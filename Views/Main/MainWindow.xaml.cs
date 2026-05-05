@@ -624,8 +624,8 @@ namespace IndigoMovieManager
                 ShowUiHangShutdownStatus("終了処理: 後始末を実行中(4/5): 監視ポーリング停止待機");
                 WaitBackgroundTaskForShutdown(_everythingWatchPollTask, "everything-poll");
 
-                ShowUiHangShutdownStatus("終了処理: 後始末を実行中(5/5): watch created ready停止待機");
-                // Created ready待機は queue 側と連携して短時間だけdrainし、終了境界の取りこぼしを減らす。
+                ShowUiHangShutdownStatus("終了処理: 後始末を実行中(5/5): watch/check-folder停止待機");
+                // watch queue / Created ready / check-folder runner を同じ短時間drainにまとめる。
                 DrainWatchEventPipelinesForShutdown();
 
                 ShowUiHangShutdownStatus("終了処理: 後始末を実行中: rescue worker を停止中");

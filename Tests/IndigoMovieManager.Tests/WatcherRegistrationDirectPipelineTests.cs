@@ -998,6 +998,34 @@ public sealed class WatcherRegistrationDirectPipelineTests
         }
     }
 
+    [Test]
+    public async Task DrainWatchEventPipelinesForShutdownはcheckFolderRunnerも共通deadline内で待つ()
+    {
+        MainWindow window = CreateMainWindow("%USERPROFILE%\\Db\\main.wb", currentTabIndex: 2);
+        TaskCompletionSource<object?> runnerGate = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        SetPrivateField(window, "_checkFolderQueueRunnerTask", runnerGate.Task);
+
+        MethodInfo drainMethod = typeof(MainWindow).GetMethod(
+            "DrainWatchEventPipelinesForShutdown",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
+        Assert.That(drainMethod, Is.Not.Null);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        Task drainTask = Task.Run(() => drainMethod.Invoke(window, null));
+
+        // runnerを未完了のまま置き、shutdown drain がcheck-folder runnerを素通りしないことを観測する。
+        await Task.Delay(150);
+        Assert.That(drainTask.IsCompleted, Is.False);
+
+        runnerGate.SetResult(null);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)));
+    }
+
     private static MainWindow CreateMainWindow(string dbFullPath, int currentTabIndex)
     {
         MainWindow window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));

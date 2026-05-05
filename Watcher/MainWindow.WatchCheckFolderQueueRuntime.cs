@@ -127,6 +127,14 @@ namespace IndigoMovieManager
             }
         }
 
+        private Task GetCheckFolderQueueRunnerTaskForShutdown()
+        {
+            lock (_checkFolderRequestSync)
+            {
+                return _checkFolderQueueRunnerTask ?? Task.CompletedTask;
+            }
+        }
+
         private bool TryRejectQueueCheckFolderRequestForShutdown(CheckMode mode, string trigger)
         {
             bool isShutdownRequested;

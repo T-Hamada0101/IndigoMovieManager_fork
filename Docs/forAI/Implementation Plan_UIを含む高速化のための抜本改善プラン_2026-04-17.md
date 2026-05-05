@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- shutdown drain は watch queue / created pipeline に加えて check-folder queue runner も同じ500ms deadline内で待ち、終了時の走査残留をログ名付きで追えるようにした
 - `ContentRendered` 直後の `ThumbnailProgress` snapshot 直更新を外し、first-page 後の startup light services から既存 coalesce 経路へ予約する形にした
 - 検索確定時のサムネ常駐再起動は、検索結果反映と先頭選択の後へ送り、検索完了導線を先に通すようにした
 - 通常上側タブ Small / Big / Grid / List / Big10 の画像 Binding も `Movie_Path` と preferred key revision を受け取り、off-screen 画像再評価を Player 右レールと同じ gate で抑えるようにした
@@ -327,6 +328,7 @@
 実施内容:
 - `FileSystemWatcher` 入力停止、watch event queue complete、created ready pipeline drain、Everything poll 停止を順序付きで扱う。
 - Created ready 待機は通常時の retry 契約を保ちつつ、shutdown 開始後は短い分割待機で stale skip し、detached task を残さない。
+- check-folder queue runner も同じ shutdown drain deadline 内で待ち、追加の500ms待機を増やさず `check-folder-queue-runner` として timeout / fault を追えるようにする。
 - Everything poll loop は UI コンテキストへ戻らない待機を使い、周期判定を UI tick と競合させない。
 - low-update 時の poll interval 延長を、初期処理が落ち着いた後だけ有効化する。
 - `watch folder snapshot` と eligible 判定 cache の invalidation 条件を、DB 切替 / watch folder 編集 / settings 変更へ限定する。
