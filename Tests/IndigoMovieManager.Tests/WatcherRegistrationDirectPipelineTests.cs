@@ -360,6 +360,9 @@ public sealed class WatcherRegistrationDirectPipelineTests
             };
             mainVm.MovieRecs = [renamedMovie];
 
+            // uninitialized MainWindow でも rename の完了境界まで実経路で進めるよう、mutation facade だけ補う。
+            SetPrivateField(window, "_mainDbMovieMutationFacade", new MainDbMovieMutationFacade());
+
             SemaphoreSlim checkFolderRunLock = new(0, 1);
             SetPrivateField(window, "_checkFolderRunLock", checkFolderRunLock);
 
@@ -394,6 +397,9 @@ public sealed class WatcherRegistrationDirectPipelineTests
                 TimeSpan.FromSeconds(5),
                 "created ready待ち中に rename の更新が進みませんでした。"
             );
+
+            await renamedQueueTask.WaitAsync(TimeSpan.FromSeconds(5));
+            await createdQueueTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.That(createdQueueTask.IsCompleted, Is.True);
             Assert.That(renamedQueueTask.IsCompleted, Is.True);
