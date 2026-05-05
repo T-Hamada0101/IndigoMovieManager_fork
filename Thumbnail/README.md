@@ -74,9 +74,9 @@
 - 複数選択や一括救済は従来どおり bulk 側を維持し、単動画だけを体感優先で前へ出す。
 - `manual` slot は起動ログに合わせて、右下 `ProgressArea` へ小さな進捗 popup を出す。
 - `manual` slot の success ログでは、periodic sync を待たず対象タブのサムネ差し替えを先に試みる。
-- `manual` slot の success 即時反映では、main tab 側の表示中サムネもその場で再読込する。
-- `Preferred` のユーザー明示作成成功でも、main tab 側の表示中サムネをその場で再読込する。
-- それでも届かない表示があるため、明示成功後は短いデバウンス付きで `Reload` 相当の一覧再構築も後段で1回流す。
+- `manual` slot の success 即時反映では、対象 `MovieRecords` へ直接反映できた場合は forced rebind と visible refresh で止める。
+- `Preferred` のユーザー明示作成成功でも、対象 `MovieRecords` へ直接反映できた場合は main tab 側の後段 reload を省く。
+- 対象行へ直接反映できない場合だけ、短いデバウンス付きで `Reload` 相当の一覧再構築を後段で1回流す。
 - `インデックス再構築` だけは別扱いで、`FailureDb` に積まず `--direct-index-repair` で worker を直接起動する。
 - direct index repair は元動画を別名 repair して終了し、成功時は repaired 側の新パスを stdout と popup に返す。
 

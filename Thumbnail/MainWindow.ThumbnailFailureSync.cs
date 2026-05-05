@@ -619,9 +619,17 @@ namespace IndigoMovieManager
                                     RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess(
                                         "manual-rescue-immediate-reflect"
                                     );
-                                    RequestMainTabFullReloadAfterThumbnailSuccess(
-                                        "manual-rescue-immediate-reflect"
-                                    );
+                                    if (
+                                        ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                                            shouldRefreshVisibleUi: true,
+                                            appliedDirectlyToMainMovie: appliedToUi
+                                        )
+                                    )
+                                    {
+                                        RequestMainTabFullReloadAfterThumbnailSuccess(
+                                            "manual-rescue-immediate-reflect"
+                                        );
+                                    }
                                 },
                                 DispatcherPriority.Normal,
                                 cts

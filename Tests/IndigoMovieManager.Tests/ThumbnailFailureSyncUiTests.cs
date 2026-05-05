@@ -110,5 +110,19 @@ public sealed class ThumbnailFailureSyncUiTests
             ),
             Is.False
         );
+        Assert.That(
+            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                shouldRefreshVisibleUi: true,
+                appliedDirectlyToMainMovie: true
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                shouldRefreshVisibleUi: true,
+                appliedDirectlyToMainMovie: false
+            ),
+            Is.True
+        );
     }
 }

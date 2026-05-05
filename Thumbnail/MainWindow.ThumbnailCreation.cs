@@ -519,7 +519,18 @@ namespace IndigoMovieManager
             bool appliedDirectlyToMainMovie
         )
         {
-            return ShouldRefreshVisibleThumbnailUiAfterCreate(queueObj)
+            return ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                ShouldRefreshVisibleThumbnailUiAfterCreate(queueObj),
+                appliedDirectlyToMainMovie
+            );
+        }
+
+        internal static bool ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            bool shouldRefreshVisibleUi,
+            bool appliedDirectlyToMainMovie
+        )
+        {
+            return shouldRefreshVisibleUi
                 && !appliedDirectlyToMainMovie;
         }
 
