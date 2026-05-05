@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- 検索確定時のサムネ常駐再起動は、検索結果反映と先頭選択の後へ送り、検索完了導線を先に通すようにした
 - 通常上側タブ Small / Big / Grid / List / Big10 の画像 Binding も `Movie_Path` と preferred key revision を受け取り、off-screen 画像再評価を Player 右レールと同じ gate で抑えるようにした
 - watch query-only 局所更新の changed path lookup は、`sourceMovies` / current filtered 全件を辞書化せず、変更対象 path だけを保持する形へ寄せた
 - Created watch event の ready 待機は shutdown 開始後に短い分割待機で抜け、created detached pipeline が bounded drain 後に残り続けないようにした
@@ -83,6 +84,7 @@
 - 本線の検索 hot path は、sidecar を使わず既存 `SearchService` 正本のまま `MovieRecords` 単位 cache で軽量化する方針へ寄せた
 - 検索窓のインクリメント検索は、常時即時実行ではなく `0.5s debounce` で通常時だけ戻し、起動時部分ロード・IME変換中・途中構文では Enter 確定へ寄せる
 - さらに検索確定中は `user priority` スコープで `Auto / Watch` の再走査、`watch_zero_diff reconcile`、`missing-thumb rescue` を defer し、検索完了を背後処理より先に通す
+- さらに検索確定時のサムネ常駐再起動は、検索結果反映と先頭選択の後へ置き、検索結果表示を先に返す
 - さらに検索詰まりの切り分け用に、`FilterAndSortAsync(...)` の観測点を `db-reload / source-apply / filter-movies / sort-movies / replace-filtered` まで分解し、実機ログだけで hot path を断定できるようにした
 - さらに通常検索の比較は、ASCII 系検索語だけ `OrdinalIgnoreCase` の軽い比較へ寄せ、日本語など非 ASCII を含む語は従来どおり `CurrentCultureIgnoreCase` を維持して `filter-movies` の hot path を軽くし始めた
 - さらに ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / Roma` だけを見る軽量投影 cache を使い、`kana / katakana` 派生列の全件生成を避けて `filter-movies` の詰まりを減らし始めた

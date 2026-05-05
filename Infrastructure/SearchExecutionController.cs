@@ -59,11 +59,11 @@ namespace IndigoMovieManager.Infrastructure
             try
             {
                 setSearchKeyword(normalizedText);
-                restartThumbnailTask();
                 // 検索実行後の再描画は注入側に委ね、通常時は query-only、
                 // 起動直後の部分ロード中だけ full reload へ切り替えられるようにする。
                 await refreshSearchResultsAsync(getSortId());
                 selectFirstItem();
+                restartThumbnailTask();
                 return true;
             }
             finally
