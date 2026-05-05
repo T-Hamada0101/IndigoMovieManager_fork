@@ -89,7 +89,7 @@
                                 Background="{DynamicResource ThumbImageBackground}">
                                 <Image
                                     Stretch="Uniform"
-                                    Source="{Binding ThumbnailPath, Converter={StaticResource noLockImageConverter}}" />
+                                    Source="{Binding ThumbnailPath, Converter={StaticResource noLockImageConverter}, ConverterParameter=18}" />
                             </Border>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>

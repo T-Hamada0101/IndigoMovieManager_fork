@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- Rescue 一覧サムネは `NoLockImageConverter` へ decode height 18 を渡し、行サムネの cache miss 時にフルサイズ decode へ戻りにくくした
 - preferred / manual rescue の即時サムネ成功で対象 `MovieRecords` へ直接反映済みなら、viewport 再計測ではなく preferred key revision だけで画像 Binding を再評価するようにした
 - Rescue 履歴パネルは選択変更時に UI スレッドで FailureDb を同期読込せず、履歴読込と整形を背景へ逃がして revision 一致時だけ反映するようにした
 - Created watch event の同一パス連続投入は ready 待ち pipeline で1本へ圧縮し、同じファイルのコピー待ちを重複して直列に積まないようにした
