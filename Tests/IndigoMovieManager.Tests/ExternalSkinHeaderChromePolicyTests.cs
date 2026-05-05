@@ -76,6 +76,39 @@ public sealed class ExternalSkinHeaderChromePolicyTests
         });
     }
 
+    [Test]
+    public void 外部skin明示reloadはcatalog再確認をAsync経路で行う()
+    {
+        string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string orchestratorSource = GetRepoText("WhiteBrowserSkin", "WhiteBrowserSkinOrchestrator.cs");
+        string mainWindowSkinSource = GetRepoText("WhiteBrowserSkin", "MainWindow.Skin.cs");
+        string refreshMethod = GetMethodBlock(
+            refreshSource,
+            "private async Task RefreshExternalSkinHostPresentationAsync("
+        );
+        string asyncDefinitionMethod = GetMethodBlock(
+            refreshSource,
+            "private async Task<WhiteBrowserSkinDefinition> GetCurrentExternalSkinDefinitionAsync("
+        );
+        string orchestratorAsyncMethod = GetMethodBlock(
+            orchestratorSource,
+            "public async Task<WhiteBrowserSkinDefinition> RefreshCurrentSkinDefinitionAsync("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refreshMethod, Does.Contain("await GetCurrentExternalSkinDefinitionAsync("));
+            Assert.That(refreshMethod, Does.Contain("forceCatalogRefresh:"));
+            Assert.That(refreshMethod, Does.Not.Contain("GetCurrentExternalSkinDefinition("));
+            Assert.That(asyncDefinitionMethod, Does.Contain("await RefreshCurrentExternalSkinDefinitionAsync()"));
+            Assert.That(mainWindowSkinSource, Does.Contain("RefreshCurrentSkinDefinitionAsync()"));
+            Assert.That(orchestratorAsyncMethod, Does.Contain("await Task.Run(() => WhiteBrowserSkinCatalogService.Load(skinRootPath))"));
+            Assert.That(orchestratorAsyncMethod, Does.Contain("availableSkinDefinitions = loadedDefinitions;"));
+            Assert.That(orchestratorAsyncMethod, Does.Contain("activeSkinDefinition ="));
+            Assert.That(orchestratorAsyncMethod, Does.Not.Contain("ApplySkinByName("));
+        });
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);

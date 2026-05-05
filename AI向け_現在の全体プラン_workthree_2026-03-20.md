@@ -286,6 +286,7 @@
 - `WhiteBrowserSkinCatalogService.Load(...)` は root 単位 cache と signature 再読込判定を追加済み
 - `skin` 選択 UI 由来の built-in skin 解決は既存 snapshot を優先し、外部 skin は同名更新・削除検知を優先して catalog 再走査へ戻す形にした
 - `header-reload` / `minimal-chrome-reload` / `fallback-notice-retry` では現在外部 skin 定義を明示再確認し、同名 HTML/config 更新や削除を reload 導線で拾う
+- 明示 reload の現在外部 skin 定義再確認は async 経路へ移し、catalog load の I/O だけを background 化して UI 側の host prepare 前滞在を減らした
 - `skin` 保存系は `WhiteBrowserSkinStatePersister` を追加し、`system.skin` / `profile.LastUpperTab` / API profile write を単一ライターへ寄せた
 - `MainWindow` 起点の `system` 保存のうち、`sort` と個別設定 (`thum` / `bookmark` / `keepHistory` / `playerPrg` / `playerParam`) も同じ persister 優先へ寄せた
 - `Watcher` の `last_sync` 保存も同じ persister 優先へ寄せ、通常運用の `system` 直書きをさらに縮小した

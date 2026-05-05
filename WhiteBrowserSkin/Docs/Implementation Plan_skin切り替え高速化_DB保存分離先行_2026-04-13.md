@@ -35,6 +35,7 @@
 - 2026-05-05 に共通ヘッダーの skin selector 同期を `GetCachedAvailableSkinDefinitions()` へ寄せ、表示同期のたびに `WhiteBrowserSkinCatalogService.Load(...)` の署名確認へ戻らない形へした
 - 2026-05-05 に `ApplySkinByName(...)` の built-in skin 名解決を cached-first にし、Grid へ戻るだけの操作では catalog 署名確認へ戻らない形へした。外部 skin は同名 HTML/config 更新や削除検知を優先し、従来どおり再確認する
 - 2026-05-05 に `header-reload` / `minimal-chrome-reload` / `fallback-notice-retry` では現在外部 skin 定義を明示的に再確認し、同名 HTML/config 更新や削除を reload 導線で拾えるようにした
+- 2026-05-05 に明示 reload の現在外部 skin 定義再確認を async 経路へ移し、`WhiteBrowserSkinCatalogService.Load(...)` だけを背景で実行してから UI 側で snapshot を採用する形へした。reload の鮮度は維持しつつ、host prepare 前の UI スレッド滞在を減らす
 
 ## 1. 結論
 
@@ -329,6 +330,7 @@ skin 名解決や minimal chrome 同期のたびに、catalog を常時総なめ
 - 2026-05-05: 共通ヘッダーの skin selector は初回一覧取得後、表示名同期では Orchestrator の cached snapshot を使う。設定画面は従来どおり `GetAvailableSkinDefinitions()` を使い、外部 skin 追加・HTML 更新の検知線を残す
 - 2026-05-05: `ApplySkinByName(...)` は既存 snapshot にある built-in skin だけ cached definition を使い、`ResolveInitialTabStateNameForSkin(...)` と `SelectUpperTabDefaultViewBySkinName(...)` は従来どおり通す。外部 skin は同名更新・削除・missing 遷移を隠さないよう catalog を再確認する
 - 2026-05-05: 明示 reload 系 reason (`header-reload` / `minimal-chrome-reload` / `fallback-notice-retry`) は `RefreshCurrentSkinDefinition()` で現在外部 skin 定義を再読込してから host prepare へ進む。通常 refresh や tag mutation ではこの強制再確認を行わない
+- 2026-05-05: 明示 reload 系 reason は `RefreshCurrentSkinDefinitionAsync()` を通り、catalog load の I/O だけを background へ逃がす。Orchestrator の `availableSkinDefinitions` / `activeSkinDefinition` 更新と host prepare は従来どおり UI 側へ戻してから行い、タブ復元や persist は発火させない
 - `MainWindow.WebViewSkin` の batch begin / flush ログと合わせ、`skin-webview` と `skin-catalog` を同じ `debug-runtime.log` だけで並べて追える状態にした
 - `skin-webview` の `refresh deferred / queued / batch begin / batch flush` には `batch=btXXXX` と `request=rqXXXX` の短い識別子も載せ、同じ切替単位の流れを 1 本で追いやすくした
 - `request=rqXXXX` は `host prepare begin` / `host navigate failed` / `refresh skipped stale` / `host presentation` にも引き継ぎ、queue された refresh が apply 完了までどう流れたかを追いやすくした

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using IndigoMovieManager.Skin;
 
 namespace IndigoMovieManager
@@ -63,6 +64,11 @@ namespace IndigoMovieManager
         internal WhiteBrowserSkinDefinition RefreshCurrentSkinDefinition()
         {
             return GetSkinOrchestrator().RefreshCurrentSkinDefinition();
+        }
+
+        internal Task<WhiteBrowserSkinDefinition> RefreshCurrentSkinDefinitionAsync()
+        {
+            return GetSkinOrchestrator().RefreshCurrentSkinDefinitionAsync();
         }
 
         public string GetCurrentSkinName()

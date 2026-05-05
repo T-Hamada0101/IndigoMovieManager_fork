@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using IndigoMovieManager.Skin;
 using IndigoMovieManager.Skin.Runtime;
 
@@ -224,6 +225,59 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public async Task RefreshCurrentSkinDefinitionAsyncは同名外部skinのhtml更新を再読込する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("RefreshSameExternalAsync", thumbWidth: 144);
+        string htmlPath = Path.Combine(rootPath, "RefreshSameExternalAsync", "RefreshSameExternalAsync.htm");
+        string currentSkinName = "RefreshSameExternalAsync";
+        List<string> selectedTabs = [];
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? "")
+            );
+
+            WhiteBrowserSkinDefinition first = orchestrator.GetCurrentSkinDefinition();
+            File.WriteAllText(
+                htmlPath,
+                """
+                <html>
+                <body>
+                  <div id="config">
+                    thum-width : 288;
+                    thum-height : 120;
+                    thum-column : 1;
+                    thum-row : 1;
+                  </div>
+                </body>
+                </html>
+                """
+            );
+            File.SetLastWriteTimeUtc(htmlPath, DateTime.UtcNow.AddSeconds(1));
+
+            WhiteBrowserSkinDefinition refreshed =
+                await orchestrator.RefreshCurrentSkinDefinitionAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.Config.ThumbWidth, Is.EqualTo(144));
+                Assert.That(refreshed.Config.ThumbWidth, Is.EqualTo(288));
+                Assert.That(refreshed.IsMissing, Is.False);
+                Assert.That(selectedTabs, Is.Empty);
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(2));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void RefreshCurrentSkinDefinitionは削除済み外部skinをmissingへ更新する()
     {
         string rootPath = CreateSkinRootWithSingleSkin("RefreshDeletedExternal");
@@ -249,6 +303,44 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
             {
                 Assert.That(first.IsMissing, Is.False);
                 Assert.That(refreshed.Name, Is.EqualTo("RefreshDeletedExternal"));
+                Assert.That(refreshed.IsMissing, Is.True);
+                Assert.That(refreshed.RequiresWebView2, Is.True);
+                Assert.That(selectedTabs, Is.Empty);
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
+    public async Task RefreshCurrentSkinDefinitionAsyncは削除済み外部skinをmissingへ更新する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("RefreshDeletedExternalAsync");
+        string skinDirectoryPath = Path.Combine(rootPath, "RefreshDeletedExternalAsync");
+        string currentSkinName = "RefreshDeletedExternalAsync";
+        List<string> selectedTabs = [];
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? "")
+            );
+
+            WhiteBrowserSkinDefinition first = orchestrator.GetCurrentSkinDefinition();
+            Directory.Delete(skinDirectoryPath, recursive: true);
+
+            WhiteBrowserSkinDefinition refreshed =
+                await orchestrator.RefreshCurrentSkinDefinitionAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.IsMissing, Is.False);
+                Assert.That(refreshed.Name, Is.EqualTo("RefreshDeletedExternalAsync"));
                 Assert.That(refreshed.IsMissing, Is.True);
                 Assert.That(refreshed.RequiresWebView2, Is.True);
                 Assert.That(selectedTabs, Is.Empty);

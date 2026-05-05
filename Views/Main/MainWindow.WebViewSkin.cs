@@ -307,7 +307,7 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                externalSkinDefinition = GetCurrentExternalSkinDefinition(
+                externalSkinDefinition = await GetCurrentExternalSkinDefinitionAsync(
                     forceCatalogRefresh: ShouldRefreshExternalSkinDefinitionForReason(reason)
                 );
                 externalSkinActive = externalSkinDefinition != null;
@@ -435,10 +435,38 @@ namespace IndigoMovieManager
             bool forceCatalogRefresh = false
         )
         {
+            if (forceCatalogRefresh)
+            {
+                return RefreshCurrentExternalSkinDefinition();
+            }
+
+            WhiteBrowserSkinDefinition currentDefinition = GetSkinOrchestrator().GetCurrentSkinDefinition();
+            return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
+        }
+
+        private async Task<WhiteBrowserSkinDefinition> GetCurrentExternalSkinDefinitionAsync(
+            bool forceCatalogRefresh = false
+        )
+        {
+            if (forceCatalogRefresh)
+            {
+                return await RefreshCurrentExternalSkinDefinitionAsync();
+            }
+
             WhiteBrowserSkinDefinition currentDefinition =
-                forceCatalogRefresh
-                    ? RefreshCurrentSkinDefinition()
-                    : GetSkinOrchestrator().GetCurrentSkinDefinition();
+                GetSkinOrchestrator().GetCurrentSkinDefinition();
+            return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
+        }
+
+        private WhiteBrowserSkinDefinition RefreshCurrentExternalSkinDefinition()
+        {
+            WhiteBrowserSkinDefinition currentDefinition = RefreshCurrentSkinDefinition();
+            return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
+        }
+
+        private async Task<WhiteBrowserSkinDefinition> RefreshCurrentExternalSkinDefinitionAsync()
+        {
+            WhiteBrowserSkinDefinition currentDefinition = await RefreshCurrentSkinDefinitionAsync();
             return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
         }
 

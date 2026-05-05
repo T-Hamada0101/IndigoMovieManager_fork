@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using IndigoMovieManager.Skin.Runtime;
 using static IndigoMovieManager.DB.SQLite;
 
@@ -112,6 +113,23 @@ namespace IndigoMovieManager.Skin
 
             // 明示 reload 用の定義再確認だけを行う。
             // タブ復元や保存は ApplySkinByName(...) 側の責務として残し、reload で表示状態を動かさない。
+            string currentSkinName = GetCurrentSkinName();
+            activeSkinDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(
+                    availableSkinDefinitions,
+                    currentSkinName
+                )
+                ?? CreateMissingExternalDefinition(currentSkinName);
+            return activeSkinDefinition;
+        }
+
+        public async Task<WhiteBrowserSkinDefinition> RefreshCurrentSkinDefinitionAsync()
+        {
+            IReadOnlyList<WhiteBrowserSkinDefinition> loadedDefinitions =
+                await Task.Run(() => WhiteBrowserSkinCatalogService.Load(skinRootPath));
+            availableSkinDefinitions = loadedDefinitions;
+
+            // 明示 reload の catalog 読み直しは背景で済ませ、UI 側は最新 snapshot の採用だけにする。
             string currentSkinName = GetCurrentSkinName();
             activeSkinDefinition =
                 WhiteBrowserSkinCatalogService.TryResolveExactByName(
