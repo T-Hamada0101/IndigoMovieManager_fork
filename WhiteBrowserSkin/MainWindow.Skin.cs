@@ -60,6 +60,11 @@ namespace IndigoMovieManager
             return GetSkinOrchestrator().GetCachedAvailableSkinDefinitions();
         }
 
+        internal WhiteBrowserSkinDefinition RefreshCurrentSkinDefinition()
+        {
+            return GetSkinOrchestrator().RefreshCurrentSkinDefinition();
+        }
+
         public string GetCurrentSkinName()
         {
             return GetSkinOrchestrator().GetCurrentSkinName();

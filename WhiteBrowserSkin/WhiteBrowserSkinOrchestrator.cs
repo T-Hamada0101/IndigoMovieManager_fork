@@ -106,6 +106,22 @@ namespace IndigoMovieManager.Skin
             return ResolveCurrentDefinition();
         }
 
+        public WhiteBrowserSkinDefinition RefreshCurrentSkinDefinition()
+        {
+            ReloadAvailableSkinDefinitions();
+
+            // 明示 reload 用の定義再確認だけを行う。
+            // タブ復元や保存は ApplySkinByName(...) 側の責務として残し、reload で表示状態を動かさない。
+            string currentSkinName = GetCurrentSkinName();
+            activeSkinDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(
+                    availableSkinDefinitions,
+                    currentSkinName
+                )
+                ?? CreateMissingExternalDefinition(currentSkinName);
+            return activeSkinDefinition;
+        }
+
         public bool ApplySkinByName(string skinName, bool persistToCurrentDb = true)
         {
             WhiteBrowserSkinDefinition definition = ResolveDefinitionByName(skinName);

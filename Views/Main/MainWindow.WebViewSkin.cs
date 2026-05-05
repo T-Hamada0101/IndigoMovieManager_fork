@@ -307,7 +307,9 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                externalSkinDefinition = GetCurrentExternalSkinDefinition();
+                externalSkinDefinition = GetCurrentExternalSkinDefinition(
+                    forceCatalogRefresh: ShouldRefreshExternalSkinDefinitionForReason(reason)
+                );
                 externalSkinActive = externalSkinDefinition != null;
                 if (
                     TrySkipStaleExternalSkinRefresh(
@@ -429,11 +431,22 @@ namespace IndigoMovieManager
         }
 
         // 外部 skin 判定は Orchestrator の解決結果を使い、MainWindow 直判定を増やさない。
-        private WhiteBrowserSkinDefinition GetCurrentExternalSkinDefinition()
+        private WhiteBrowserSkinDefinition GetCurrentExternalSkinDefinition(
+            bool forceCatalogRefresh = false
+        )
         {
             WhiteBrowserSkinDefinition currentDefinition =
-                GetSkinOrchestrator().GetCurrentSkinDefinition();
+                forceCatalogRefresh
+                    ? RefreshCurrentSkinDefinition()
+                    : GetSkinOrchestrator().GetCurrentSkinDefinition();
             return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
+        }
+
+        private static bool ShouldRefreshExternalSkinDefinitionForReason(string reason)
+        {
+            return string.Equals(reason, "header-reload", StringComparison.Ordinal)
+                || string.Equals(reason, "minimal-chrome-reload", StringComparison.Ordinal)
+                || string.Equals(reason, "fallback-notice-retry", StringComparison.Ordinal);
         }
 
         private void ApplyExternalSkinHostVisibility(

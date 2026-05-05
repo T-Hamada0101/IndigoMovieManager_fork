@@ -172,6 +172,95 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public void RefreshCurrentSkinDefinitionは同名外部skinのhtml更新を再読込する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("RefreshSameExternal", thumbWidth: 160);
+        string htmlPath = Path.Combine(rootPath, "RefreshSameExternal", "RefreshSameExternal.htm");
+        string currentSkinName = "RefreshSameExternal";
+        List<string> selectedTabs = [];
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? "")
+            );
+
+            WhiteBrowserSkinDefinition first = orchestrator.GetCurrentSkinDefinition();
+            File.WriteAllText(
+                htmlPath,
+                """
+                <html>
+                <body>
+                  <div id="config">
+                    thum-width : 224;
+                    thum-height : 120;
+                    thum-column : 1;
+                    thum-row : 1;
+                  </div>
+                </body>
+                </html>
+                """
+            );
+            File.SetLastWriteTimeUtc(htmlPath, DateTime.UtcNow.AddSeconds(1));
+
+            WhiteBrowserSkinDefinition refreshed = orchestrator.RefreshCurrentSkinDefinition();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.Config.ThumbWidth, Is.EqualTo(160));
+                Assert.That(refreshed.Config.ThumbWidth, Is.EqualTo(224));
+                Assert.That(refreshed.IsMissing, Is.False);
+                Assert.That(selectedTabs, Is.Empty);
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(2));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
+    public void RefreshCurrentSkinDefinitionは削除済み外部skinをmissingへ更新する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("RefreshDeletedExternal");
+        string skinDirectoryPath = Path.Combine(rootPath, "RefreshDeletedExternal");
+        string currentSkinName = "RefreshDeletedExternal";
+        List<string> selectedTabs = [];
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? "")
+            );
+
+            WhiteBrowserSkinDefinition first = orchestrator.GetCurrentSkinDefinition();
+            Directory.Delete(skinDirectoryPath, recursive: true);
+
+            WhiteBrowserSkinDefinition refreshed = orchestrator.RefreshCurrentSkinDefinition();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.IsMissing, Is.False);
+                Assert.That(refreshed.Name, Is.EqualTo("RefreshDeletedExternal"));
+                Assert.That(refreshed.IsMissing, Is.True);
+                Assert.That(refreshed.RequiresWebView2, Is.True);
+                Assert.That(selectedTabs, Is.Empty);
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void CachedAvailableSkinDefinitionsはcatalog署名確認を繰り返さない()
     {
         string rootPath = CreateSkinRootWithSingleSkin("HeaderCachedGrid");

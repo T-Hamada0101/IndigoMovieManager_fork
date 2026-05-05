@@ -395,6 +395,7 @@
 - current definition 解決、tab state 解決、persist request、host refresh request を trace 単位で分離する。
 - catalog load は起動時 snapshot と変更検知に寄せ、単純な apply で掘り直さない条件を増やす。
 - built-in skin への単純な apply は既存 snapshot を優先して解決し、外部 skin は同名更新・削除検知を優先して catalog load へ戻す。
+- 外部 skin の明示 reload は現在定義を再確認し、同名 HTML/config 更新や削除を host prepare 前に拾う。
 - `SelectProfileValue(...)` を cold path に閉じ込め、session cache と persisted 値の責務差を明示する。
 
 完了条件:

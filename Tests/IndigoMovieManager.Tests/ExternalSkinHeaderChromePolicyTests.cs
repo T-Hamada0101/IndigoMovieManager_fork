@@ -9,6 +9,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     public void 外部skinでも共通ヘッダーを表示し最小ヘッダーを畳む()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Chrome.cs");
+        string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
         string xaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         string method = GetMethodBlock(
             source,
@@ -17,6 +18,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
         string syncMethod = GetMethodBlock(
             source,
             "private void SyncExternalSkinMinimalSkinSelector("
+        );
+        string refreshMethod = GetMethodBlock(
+            refreshSource,
+            "private async Task RefreshExternalSkinHostPresentationAsync("
         );
         string drawerHost = GetXmlElementBlock(
             xaml,
@@ -63,6 +68,11 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(xaml, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
             Assert.That(syncMethod, Does.Contain("GetCachedAvailableSkinDefinitions()"));
             Assert.That(syncMethod, Does.Not.Contain("GetAvailableSkinDefinitions()"));
+            Assert.That(refreshMethod, Does.Contain("ShouldRefreshExternalSkinDefinitionForReason(reason)"));
+            Assert.That(refreshMethod, Does.Contain("forceCatalogRefresh:"));
+            Assert.That(refreshSource, Does.Contain("\"header-reload\""));
+            Assert.That(refreshSource, Does.Contain("\"minimal-chrome-reload\""));
+            Assert.That(refreshSource, Does.Contain("\"fallback-notice-retry\""));
         });
     }
 
