@@ -1489,6 +1489,84 @@ public sealed class WatchDeferredUiReloadPolicyTests
         Assert.That(canReuseCurrentOrder, Is.False);
     }
 
+    [Test]
+    public void BuildChangedSourceMovieLookup_changedPathだけを辞書化し重複pathは後勝ちにする()
+    {
+        MovieRecords firstAlpha = new()
+        {
+            Movie_Path = "Movies\\alpha.mp4",
+            Movie_Name = "alpha-old.mp4",
+        };
+        MovieRecords beta = new()
+        {
+            Movie_Path = "Movies\\beta.mp4",
+            Movie_Name = "beta.mp4",
+        };
+        MovieRecords lastAlpha = new()
+        {
+            Movie_Path = "MOVIES\\ALPHA.mp4",
+            Movie_Name = "alpha-new.mp4",
+        };
+
+        Dictionary<string, MovieRecords> lookup = MainWindow.BuildChangedSourceMovieLookup(
+            [firstAlpha, beta, lastAlpha],
+            [
+                new MainWindow.WatchChangedMovie(
+                    "movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.MovieName
+                ),
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(lookup, Has.Count.EqualTo(1));
+            Assert.That(lookup.TryGetValue("Movies\\alpha.mp4", out MovieRecords? actual), Is.True);
+            Assert.That(actual, Is.SameAs(lastAlpha));
+            Assert.That(lookup.ContainsKey(beta.Movie_Path), Is.False);
+        });
+    }
+
+    [Test]
+    public void TryBuildChangedMovieRefreshSource_sourceに無いchangedPathだけを削除し非changed行は残す()
+    {
+        MovieRecords alpha = new()
+        {
+            Movie_Path = "Movies\\alpha.mp4",
+            Movie_Name = "alpha.mp4",
+        };
+        MovieRecords beta = new()
+        {
+            Movie_Path = "Movies\\beta.mp4",
+            Movie_Name = "beta.mp4",
+        };
+
+        bool result = MainWindow.TryBuildChangedMovieRefreshSource(
+            [alpha],
+            [alpha, beta],
+            "",
+            "12",
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\beta.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.MovieName
+                ),
+            ],
+            IndigoMovieManager.Infrastructure.SearchService.FilterMovies,
+            out MovieRecords[] nextFilteredMovies,
+            out bool canReuseCurrentOrder
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.True);
+            Assert.That(nextFilteredMovies, Is.EqualTo([alpha]));
+            Assert.That(canReuseCurrentOrder, Is.True);
+        });
+    }
+
     [TestCase("no-changed-movies")]
     [TestCase("filter-unavailable")]
     public void TryBuildChangedMovieRefreshSourceWithReason_局所更新できない理由を返す(

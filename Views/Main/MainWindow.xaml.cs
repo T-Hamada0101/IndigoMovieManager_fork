@@ -2357,18 +2357,19 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            Dictionary<string, MovieRecords> sourceByPath = sourceMovies?
-                .Where(movie => movie != null && !string.IsNullOrWhiteSpace(movie.Movie_Path))
-                .GroupBy(movie => movie.Movie_Path, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group.Last(),
-                    StringComparer.OrdinalIgnoreCase
-                ) ?? new Dictionary<string, MovieRecords>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> changedPathLookup = BuildChangedMoviePathLookup(normalizedChangedMovies);
+            Dictionary<string, MovieRecords> sourceByPath = BuildChangedSourceMovieLookup(
+                sourceMovies,
+                changedPathLookup
+            );
 
             HashSet<string> currentFilteredPathLookup = new(
                 currentFilteredMovies?
-                    .Where(movie => movie != null && !string.IsNullOrWhiteSpace(movie.Movie_Path))
+                    .Where(movie =>
+                        movie != null
+                        && !string.IsNullOrWhiteSpace(movie.Movie_Path)
+                        && changedPathLookup.Contains(movie.Movie_Path)
+                    )
                     .Select(movie => movie.Movie_Path) ?? [],
                 StringComparer.OrdinalIgnoreCase
             );
@@ -2432,6 +2433,59 @@ namespace IndigoMovieManager
             nextFilteredMovies = nextMovies.ToArray();
             canReuseCurrentOrder = !shouldReapplySort;
             return true;
+        }
+
+        internal static Dictionary<string, MovieRecords> BuildChangedSourceMovieLookup(
+            IEnumerable<MovieRecords> sourceMovies,
+            IEnumerable<WatchChangedMovie> changedMovies
+        )
+        {
+            return BuildChangedSourceMovieLookup(
+                sourceMovies,
+                BuildChangedMoviePathLookup(changedMovies)
+            );
+        }
+
+        private static HashSet<string> BuildChangedMoviePathLookup(
+            IEnumerable<WatchChangedMovie> changedMovies
+        )
+        {
+            return new HashSet<string>(
+                changedMovies?
+                    .Where(changedMovie => !string.IsNullOrWhiteSpace(changedMovie.MoviePath))
+                    .Select(changedMovie => changedMovie.MoviePath) ?? [],
+                StringComparer.OrdinalIgnoreCase
+            );
+        }
+
+        private static Dictionary<string, MovieRecords> BuildChangedSourceMovieLookup(
+            IEnumerable<MovieRecords> sourceMovies,
+            HashSet<string> changedPathLookup
+        )
+        {
+            Dictionary<string, MovieRecords> sourceByPath = new(StringComparer.OrdinalIgnoreCase);
+            if (changedPathLookup.Count < 1 || sourceMovies == null)
+            {
+                return sourceByPath;
+            }
+
+            foreach (MovieRecords movie in sourceMovies)
+            {
+                if (movie == null || string.IsNullOrWhiteSpace(movie.Movie_Path))
+                {
+                    continue;
+                }
+
+                if (!changedPathLookup.Contains(movie.Movie_Path))
+                {
+                    continue;
+                }
+
+                // 同一pathが複数ある場合は、従来の GroupBy(...).Last() と同じく後勝ちにする。
+                sourceByPath[movie.Movie_Path] = movie;
+            }
+
+            return sourceByPath;
         }
 
         private static void ReplaceMovieByPath(List<MovieRecords> movies, MovieRecords sourceMovie)

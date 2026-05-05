@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- watch query-only 局所更新の changed path lookup は、`sourceMovies` / current filtered 全件を辞書化せず、変更対象 path だけを保持する形へ寄せた
 - Created watch event の ready 待機は shutdown 開始後に短い分割待機で抜け、created detached pipeline が bounded drain 後に残り続けないようにした
 - Player 右レールの `SelectionChanged` は抑止中・非表示中に詳細/タグ更新を走らせず、選択同期中の二重 UI 更新を避けるようにした
 - preferred サムネ生成成功時、対象 `MovieRecords` へ直接反映できた場合は後段の `FilterAndSort(..., true)` を省き、forced rebind と visible refresh で止めるようにした
@@ -301,6 +302,7 @@
 - watch / rescue / manual reload の反映を「追加」「削除」「更新」「順位変更」に分ける。
 - `FilterAndSort(..., true)` を watch の既定終端から外し、小規模変更は差分 apply を既定にする。
 - watch query-only では `MovieRecs` 全件を毎回 `FilterMovies(...)` に通さず、`changed paths` だけを再評価して `ReplaceFilteredMovieRecs(...)` へ渡す経路を育てる。
+- changed path 局所更新の lookup も、全件辞書化ではなく変更対象 path だけを保持し、少数変更時の allocation を変更件数寄りへ寄せる。
 - 検索等のユーザー要求中は、watch full / bulk reload、zero-diff reconcile、rescue、thumbnail などが完了を妨げないよう後ろへ逃がす。
 - 全面再評価が必要な条件だけを明示する。
   - sort key 変更
