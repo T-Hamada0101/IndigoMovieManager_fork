@@ -241,6 +241,18 @@ namespace IndigoMovieManager.Skin
 
         private WhiteBrowserSkinDefinition ResolveDefinitionByName(string skinName)
         {
+            WhiteBrowserSkinDefinition cachedDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(
+                    availableSkinDefinitions,
+                    skinName
+                );
+            if (cachedDefinition?.IsBuiltIn == true)
+            {
+                // built-in skin 定義は不変なので、一覧 snapshot から即解決して
+                // Grid へ戻るだけの操作で catalog 署名確認へ戻らない。
+                return cachedDefinition;
+            }
+
             ReloadAvailableSkinDefinitions();
             return WhiteBrowserSkinCatalogService.TryResolveExactByName(
                 availableSkinDefinitions,

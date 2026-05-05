@@ -1,6 +1,6 @@
 # Implementation Plan: skin切り替え高速化 DB保存分離先行 2026-04-13
 
-最終更新日: 2026-04-24
+最終更新日: 2026-05-05
 
 変更概要:
 - 全体プラン見直しを受けて、`skin` 切り替え高速化の中で DB を「先頭の決定打」ではなく「第2群の土台施策」として位置づけ直した
@@ -33,6 +33,7 @@
 - 2026-04-24 に build 出力 skin 4 本の `tag / thumb -> terminal -> MissingSkin -> success` 直列も focused 16 件 green を確認し、runtime bridge 側の build 出力 skin 直列を未固定一覧から外した
 - 2026-04-24 の計画練り直しで、残りの主戦場を `MainWindow` 実 host の teardown / fail-fast 共通原因、bare `TagInputRelation` の runtime bridge 直列、build 出力 skin 4 本の MainWindow 受け入れ判断へ再編した
 - 2026-05-05 に共通ヘッダーの skin selector 同期を `GetCachedAvailableSkinDefinitions()` へ寄せ、表示同期のたびに `WhiteBrowserSkinCatalogService.Load(...)` の署名確認へ戻らない形へした
+- 2026-05-05 に `ApplySkinByName(...)` の built-in skin 名解決を cached-first にし、Grid へ戻るだけの操作では catalog 署名確認へ戻らない形へした。外部 skin は同名 HTML/config 更新や削除検知を優先し、従来どおり再確認する
 
 ## 1. 結論
 
@@ -325,6 +326,7 @@ skin 名解決や minimal chrome 同期のたびに、catalog を常時総なめ
 - `WhiteBrowserSkinOrchestrator` の snapshot 構築は loaded definitions ベースへ寄せ、`GetAvailableSkinDefinitions() -> ApplySkinByName(...) -> GetAvailableSkinDefinitions()` の余分な catalog hit を減らした
 - `WhiteBrowserSkinOrchestrator` 経由でも、一覧再取得時に未変更 skin 定義が参照再利用されることを focused test で確認した。MainWindow 相当の利用経路でも、html を触っていない skin まで毎回作り直さない
 - 2026-05-05: 共通ヘッダーの skin selector は初回一覧取得後、表示名同期では Orchestrator の cached snapshot を使う。設定画面は従来どおり `GetAvailableSkinDefinitions()` を使い、外部 skin 追加・HTML 更新の検知線を残す
+- 2026-05-05: `ApplySkinByName(...)` は既存 snapshot にある built-in skin だけ cached definition を使い、`ResolveInitialTabStateNameForSkin(...)` と `SelectUpperTabDefaultViewBySkinName(...)` は従来どおり通す。外部 skin は同名更新・削除・missing 遷移を隠さないよう catalog を再確認する
 - `MainWindow.WebViewSkin` の batch begin / flush ログと合わせ、`skin-webview` と `skin-catalog` を同じ `debug-runtime.log` だけで並べて追える状態にした
 - `skin-webview` の `refresh deferred / queued / batch begin / batch flush` には `batch=btXXXX` と `request=rqXXXX` の短い識別子も載せ、同じ切替単位の流れを 1 本で追いやすくした
 - `request=rqXXXX` は `host prepare begin` / `host navigate failed` / `refresh skipped stale` / `host presentation` にも引き継ぎ、queue された refresh が apply 完了までどう流れたかを追いやすくした
