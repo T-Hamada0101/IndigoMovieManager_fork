@@ -161,6 +161,10 @@ namespace IndigoMovieManager
 
             if (selectionChanged)
             {
+                // 抑止中の選択同期では SelectionChanged 側を走らせないため、
+                // 表示中 Player の詳細だけここで最小更新する。
+                ShowExtensionDetail(record);
+                ShowTagEditor(record);
                 RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "player-selection");
             }
         }
@@ -296,7 +300,6 @@ namespace IndigoMovieManager
             SelectionChangedEventArgs e
         )
         {
-            List_SelectionChanged(sender, e);
             if (_suppressPlayerThumbnailSelectionChanged || TabPlayer?.IsSelected != true)
             {
                 return;
@@ -305,9 +308,11 @@ namespace IndigoMovieManager
             MovieRecords selectedMovie = GetSelectedUpperTabPlayerMovieRecord();
             if (selectedMovie == null)
             {
+                List_SelectionChanged(sender, e);
                 return;
             }
 
+            List_SelectionChanged(sender, e);
             SyncPlayerThumbnailSelectionAcrossViews(sender as ListView, selectedMovie);
 
             await OpenMovieInPlayerTabAsync(

@@ -1,6 +1,6 @@
 # Implementation Plan: プレイヤータブ右レール単純化 (2026-05-04)
 
-最終更新日: 2026-05-04
+最終更新日: 2026-05-05
 
 変更概要:
 - プレイヤータブ右レールを「再生対象を選ぶための軽い一覧」へ再定義する
@@ -8,6 +8,7 @@
 - 既存の `Grid` サムネイル資産、選択同期、再生開始導線は維持し、WhiteBrowser DB とサムネイル保存先は変更しない
 - 2026-05-04: 右レールを `PlayerThumbnailList` 1 系統の `VirtualizingWrapPanel` 表示へ統一し、詳細 1 列表示、切り替えボタン、`PlayerThumbnailCompactList`、下段レイアウト閾値を削除した
 - 2026-05-04: Player タブ選択時の自動再生は `DispatcherPriority.ContextIdle` または短い上限待ちの後へ遅延し、タブ表示と選択同期を先に返すようにした
+- 2026-05-05: 右レールの選択同期では、抑止中・非表示中の `SelectionChanged` から詳細/タグ更新を走らせず、表示中 Player の必要最小更新だけを明示的に行うようにした
 
 ## 1. 目的
 
@@ -62,6 +63,7 @@
 - `PlayerThumbnailList_SelectionChanged(...)` は、選択された 1 件を左プレイヤーへ開く流れだけにする。
 - `SelectUpperTabPlayerMovieRecord(...)` は単一リスト選択と必要時の `ScrollIntoView(...)` だけへ縮める。
 - 完了: `RequestUpperTabVisibleRangeRefresh(..., reason: "player-view-mode")` は表示モード廃止に合わせて削除した。
+- 完了: `PlayerThumbnailList_SelectionChanged(...)` は、抑止中や Player 非表示中なら詳細/タグ更新へ進まない。抑止付きの選択同期で詳細が必要な場合は `SyncUpperTabPlayerSelection(...)` 側で表示中 Player の最小更新だけ行う。
 
 ### Phase 4: レイアウト分岐を見直す
 

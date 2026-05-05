@@ -400,6 +400,40 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayerThumbnailSelectionChanged_抑止中と非表示中は詳細更新を走らせない()
+    {
+        // Player 右レールの選択同期では、裏側の SelectionChanged から詳細/タグ更新を二重起動しない。
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string handler = GetMethodBlock(
+            upperTabPlayerSource,
+            "private async void PlayerThumbnailList_SelectionChanged("
+        );
+        string syncMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private void SyncUpperTabPlayerSelection("
+        );
+
+        int guardIndex = handler.IndexOf(
+            "if (_suppressPlayerThumbnailSelectionChanged || TabPlayer?.IsSelected != true)",
+            StringComparison.Ordinal
+        );
+        int listSelectionIndex = handler.IndexOf("List_SelectionChanged(sender, e);", StringComparison.Ordinal);
+        int nullSelectionIndex = handler.IndexOf("if (selectedMovie == null)", StringComparison.Ordinal);
+        int nullSelectionListIndex = handler.IndexOf(
+            "List_SelectionChanged(sender, e);",
+            nullSelectionIndex,
+            StringComparison.Ordinal
+        );
+
+        Assert.That(guardIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(listSelectionIndex, Is.GreaterThan(guardIndex));
+        Assert.That(nullSelectionIndex, Is.GreaterThan(guardIndex));
+        Assert.That(nullSelectionListIndex, Is.GreaterThan(nullSelectionIndex));
+        Assert.That(syncMethod, Does.Contain("ShowExtensionDetail(record);"));
+        Assert.That(syncMethod, Does.Contain("ShowTagEditor(record);"));
+    }
+
+    [Test]
     public void PlayerDispatcherBackgroundWait_同時待機は1本へ畳む()
     {
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
