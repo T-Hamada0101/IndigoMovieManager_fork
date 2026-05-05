@@ -164,6 +164,23 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
+    public void ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess_直接反映済みならFalse()
+    {
+        Assert.That(
+            MainWindow.ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(
+                appliedDirectlyToMainMovie: true
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(
+                appliedDirectlyToMainMovie: false
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
     public void RescuedSync完了時はRefreshだけ選択中反映で絞る()
     {
         string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")

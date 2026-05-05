@@ -443,7 +443,8 @@ namespace IndigoMovieManager
                             if (ShouldRefreshVisibleThumbnailUiAfterCreate(queueObj))
                             {
                                 RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess(
-                                    "preferred-create-success"
+                                    "preferred-create-success",
+                                    updatedMovie != null
                                 );
                                 if (
                                     ShouldRequestMainTabFullReloadAfterThumbnailSuccess(

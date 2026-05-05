@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- preferred / manual rescue の即時サムネ成功で対象 `MovieRecords` へ直接反映済みなら、viewport 再計測ではなく preferred key revision だけで画像 Binding を再評価するようにした
 - Rescue 履歴パネルは選択変更時に UI スレッドで FailureDb を同期読込せず、履歴読込と整形を背景へ逃がして revision 一致時だけ反映するようにした
 - Created watch event の同一パス連続投入は ready 待ち pipeline で1本へ圧縮し、同じファイルのコピー待ちを重複して直列に積まないようにした
 - 検索欄を空へ戻す導線も検索正本へ合流し、一覧反映と先頭選択を先に通してからサムネ常駐再起動へ進む順に揃えた
@@ -380,6 +381,7 @@
 - Player 右レール / visible-first の preferred 対象キーは、「未初期化 / viewport 未計測」と「空と確定」を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、空と確定した後だけ off-screen 更新を止める。
 - 通常上側タブの画像 Binding も Player 右レールと同じ preferred key gate / revision trigger を通し、active tab 内の off-screen decode を増やさない。
 - preferred key 更新後は、右レール全体の再構築や full reload ではなく、可視範囲 snapshot の軽い revision 更新、または Binding 用 trigger だけで実現済み画像 Binding を再評価する。既に `MovieRecords` へ path 反映できている画像を、一覧の全面再評価で揺らさない。
+- preferred / manual rescue の即時成功も、直接反映済みなら viewport 再計測を省き、preferred key revision だけを進める。
 - 画像存在確認と file stamp 取得を、converter 個別呼び出しから `ThumbnailStampCache` 相当へ寄せる。
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。
 - Player / UpperTabs の追加・ fullscreen・表示切替は、watch / thumbnail / skin の背後処理と同時に走っても UI スレッドを長く掴まない形へ寄せる。

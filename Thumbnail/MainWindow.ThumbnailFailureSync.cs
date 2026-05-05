@@ -653,7 +653,8 @@ namespace IndigoMovieManager
                                         normalizedOutputThumbPath
                                     );
                                     RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess(
-                                        "manual-rescue-immediate-reflect"
+                                        "manual-rescue-immediate-reflect",
+                                        appliedToUi
                                     );
                                     if (
                                         ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
@@ -862,13 +863,34 @@ namespace IndigoMovieManager
         }
 
         // 即時成功を画面へ見せる時は、一覧・詳細・可視範囲の再評価を同じ拍で流す。
-        private void RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess(string reason)
+        private void RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess(
+            string reason,
+            bool appliedDirectlyToMainMovie
+        )
         {
             InvalidateThumbnailErrorRecords(refreshIfVisible: true);
             Refresh();
-            RequestUpperTabVisibleRangeRefresh(immediate: true, reason: reason ?? "");
+            if (
+                ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(
+                    appliedDirectlyToMainMovie
+                )
+            )
+            {
+                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: reason ?? "");
+            }
+            else
+            {
+                RefreshUpperTabPreferredMoviePathKeysRevision();
+            }
             RequestThumbnailErrorSnapshotRefresh();
             RequestThumbnailProgressSnapshotRefresh();
+        }
+
+        internal static bool ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(
+            bool appliedDirectlyToMainMovie
+        )
+        {
+            return !appliedDirectlyToMainMovie;
         }
 
         // 画像差し替えだけで届かない表示は、Reload 相当の再構築を短く圧縮して後段で1回だけ流す。
