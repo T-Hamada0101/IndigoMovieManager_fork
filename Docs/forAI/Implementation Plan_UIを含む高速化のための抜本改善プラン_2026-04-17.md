@@ -4,6 +4,7 @@
 
 変更概要:
 - Player 右レールの `SelectionChanged` は抑止中・非表示中に詳細/タグ更新を走らせず、選択同期中の二重 UI 更新を避けるようにした
+- preferred サムネ生成成功時、対象 `MovieRecords` へ直接反映できた場合は後段の `FilterAndSort(..., true)` を省き、forced rebind と visible refresh で止めるようにした
 - `UiHang` native overlay thread の `Create -> Drain -> Run` を `try/finally` で包み、起動直後の例外や stop 競合でも native/fallback window を必ず破棄するようにした
 - `UiHang` overlay thread の終了時クリアは thread / dispatcher の一致確認つきにし、Stop timeout 後の再 Start 状態を古い thread が消さないようにした
 - `UiHang` overlay thread 内の例外は `overlay thread failed` としてログに閉じ、本体プロセスへ波及させないようにした
@@ -267,6 +268,7 @@
 実施内容:
 - `Search / page / Player / tab` 操作中は、`Auto / Watch`、`watch_zero_diff reconcile`、rescue、thumbnail progress、poll を必要に応じて defer する。
 - UI スレッド上の DB read/write、catalog scan、file metadata、decode、collection 全差し替えを見つけたら、まず snapshot / queue / background read へ分離する。
+- preferred サムネ生成成功後も、対象 `MovieRecords` へ直接 path 反映できた場合は `FilterAndSort(..., true)` へ戻さず、forced rebind と visible refresh を優先する。
 - `fire-and-forget` で逃がすだけにせず、bounded drain、timeout ログ、fault ログを持つ scheduler / persister / queue へ寄せる。
 - `Watcher.cs` の薄化は、UI thread 滞在、queue 境界、shutdown 境界、観測性の改善につながる場合だけ進める。
 

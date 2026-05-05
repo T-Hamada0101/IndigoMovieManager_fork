@@ -82,4 +82,33 @@ public sealed class ThumbnailFailureSyncUiTests
         Assert.That(MainWindow.ShouldRefreshVisibleThumbnailUiAfterCreate(normal), Is.False);
         Assert.That(MainWindow.ShouldRefreshVisibleThumbnailUiAfterCreate(null), Is.False);
     }
+
+    [Test]
+    public void ShouldRequestMainTabFullReloadAfterThumbnailSuccess_直接反映済みならFalseを返す()
+    {
+        QueueObj preferred = new() { Priority = ThumbnailQueuePriority.Preferred };
+        QueueObj normal = new() { Priority = ThumbnailQueuePriority.Normal };
+
+        Assert.That(
+            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                preferred,
+                appliedDirectlyToMainMovie: true
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                preferred,
+                appliedDirectlyToMainMovie: false
+            ),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                normal,
+                appliedDirectlyToMainMovie: false
+            ),
+            Is.False
+        );
+    }
 }

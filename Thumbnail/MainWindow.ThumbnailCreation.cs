@@ -445,9 +445,17 @@ namespace IndigoMovieManager
                                 RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess(
                                     "preferred-create-success"
                                 );
-                                RequestMainTabFullReloadAfterThumbnailSuccess(
-                                    "preferred-create-success"
-                                );
+                                if (
+                                    ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                                        queueObj,
+                                        updatedMovie != null
+                                    )
+                                )
+                                {
+                                    RequestMainTabFullReloadAfterThumbnailSuccess(
+                                        "preferred-create-success"
+                                    );
+                                }
                             }
 
                             if (updatedMovie != null)
@@ -502,6 +510,17 @@ namespace IndigoMovieManager
         internal static bool ShouldRefreshVisibleThumbnailUiAfterCreate(QueueObj queueObj)
         {
             return queueObj != null && ThumbnailQueuePriorityHelper.IsPreferred(queueObj.Priority);
+        }
+
+        // 対象 MovieRecords へ直接反映できた時は forced rebind と visible refresh で足りる。
+        // main 一覧に対象が見つからない時だけ、最後の保険として Reload 相当へ戻す。
+        internal static bool ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            QueueObj queueObj,
+            bool appliedDirectlyToMainMovie
+        )
+        {
+            return ShouldRefreshVisibleThumbnailUiAfterCreate(queueObj)
+                && !appliedDirectlyToMainMovie;
         }
 
         private bool ShouldSkipThumbnailUiReflection(CancellationToken cts)
