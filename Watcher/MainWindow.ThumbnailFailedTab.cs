@@ -183,9 +183,9 @@ namespace IndigoMovieManager
             return new ThumbnailErrorRefreshContext
             {
                 Movies = MainVM?.MovieRecs?.ToArray() ?? [],
+                DbFullPath = MainVM?.DbInfo?.DBFullPath ?? "",
                 DbName = MainVM?.DbInfo?.DBName ?? "",
                 ThumbFolder = MainVM?.DbInfo?.ThumbFolder ?? "",
-                FailureDbService = ResolveCurrentThumbnailFailureDbService(),
             };
         }
 
@@ -211,6 +211,20 @@ namespace IndigoMovieManager
                     .InvokeAsync(
                         () =>
                         {
+                            if (
+                                Dispatcher.HasShutdownStarted
+                                || Dispatcher.HasShutdownFinished
+                                || !AreSameMainDbPath(
+                                    context.DbFullPath,
+                                    MainVM?.DbInfo?.DBFullPath ?? ""
+                                )
+                            )
+                            {
+                                // 背景集計の後着は現在DBへ混ぜず、次の要求で新DBの snapshot を作り直す。
+                                Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);
+                                return;
+                            }
+
                             bool markerCountChanged = ApplyThumbnailErrorSortMarkerCounts(
                                 context.Movies,
                                 result.Items
@@ -273,8 +287,11 @@ namespace IndigoMovieManager
             ThumbnailErrorRefreshContext context
         )
         {
+            ThumbnailFailureDbService failureDbService = CreateThumbnailErrorFailureDbService(
+                context.DbFullPath
+            );
             Dictionary<string, ThumbnailFailureRecord> latestFailureRecordsByKey =
-                LoadLatestThumbnailErrorRecordsByKey(context.FailureDbService);
+                LoadLatestThumbnailErrorRecordsByKey(failureDbService);
             Dictionary<int, ThumbnailErrorTabScanSnapshot> tabScanSnapshots =
                 BuildThumbnailErrorTabScanSnapshots(context.DbName, context.ThumbFolder);
             HashSet<int> markerInferenceTabIndices = BuildThumbnailErrorMarkerInferenceTabIndices(
@@ -298,6 +315,18 @@ namespace IndigoMovieManager
                 .ToArray();
 
             return new ThumbnailErrorRefreshResult { Items = items };
+        }
+
+        private static ThumbnailFailureDbService CreateThumbnailErrorFailureDbService(
+            string dbFullPath
+        )
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return null;
+            }
+
+            return new ThumbnailFailureDbService(dbFullPath);
         }
 
         // 下段タブ非表示でも Sort=28 中だけは marker 件数を追従させる。
@@ -596,9 +625,9 @@ namespace IndigoMovieManager
         private sealed class ThumbnailErrorRefreshContext
         {
             public MovieRecords[] Movies { get; init; } = [];
+            public string DbFullPath { get; init; } = "";
             public string DbName { get; init; } = "";
             public string ThumbFolder { get; init; } = "";
-            public ThumbnailFailureDbService FailureDbService { get; init; }
         }
 
         private sealed class ThumbnailErrorRefreshResult

@@ -3,6 +3,8 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- 下部 `ThumbnailError` の 1 秒 timer は pending rescue 判定で FailureDb を UI 上から直接読まず、背景 single-flight の DB パス付き cache を参照する形へ寄せた
+- 下部 `ThumbnailError` の snapshot 集計は FailureDbService 生成も背景側へ寄せ、DB 切替後着は `AreSameMainDbPath` guard で捨てるようにした
 - `ThemeModeTests` / `ThumbnailProgressTabViewTests` は `Application.Current.Resources` と `ThemeMode` 設定値をテストごとに復元し、テーマ辞書の後続テスト汚染を抑えるようにした
 - `ThumbnailProgressTabView` の単体生成テストは MaterialDesign 本体へ戻さず、軽量 `Indigo` profile 辞書をテスト中だけ適用して共通 style 解決を固定した
 - 下部 `ThumbnailProgress` の救済workerカードは UI tick 上で FailureDb / `File.Exists` を読まず、背景 single-flight で作った cache を DB 一致 guard 後に反映する形へ寄せた

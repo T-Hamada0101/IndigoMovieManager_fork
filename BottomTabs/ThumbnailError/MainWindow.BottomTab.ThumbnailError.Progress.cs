@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 using IndigoMovieManager.BottomTabs.ThumbnailError;
 using IndigoMovieManager.Thumbnail.FailureDb;
@@ -16,6 +17,10 @@ namespace IndigoMovieManager
         private int _thumbnailErrorRefreshQueued;
         private int _thumbnailErrorRefreshRequested;
         private int _thumbnailErrorUiDirtyWhileHidden;
+        private int _thumbnailErrorPendingRescueWorkCached;
+        private int _thumbnailErrorPendingRescueWorkRefreshRunning;
+        private int _thumbnailErrorPendingRescueWorkRefreshRequested;
+        private string _thumbnailErrorPendingRescueWorkCachedDbFullPath = "";
         private IReadOnlyList<string> _thumbnailErrorPreferredViewportKeysSnapshot =
             Array.Empty<string>();
         private DateTime _thumbnailErrorViewportPriorityLastUtc = DateTime.MinValue;
@@ -235,8 +240,154 @@ namespace IndigoMovieManager
                 return true;
             }
 
-            ThumbnailFailureDbService failureDbService = ResolveCurrentThumbnailFailureDbService();
-            return failureDbService != null && failureDbService.HasPendingRescueWork(DateTime.UtcNow);
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            RequestThumbnailErrorPendingRescueWorkRefresh(dbFullPath);
+            return HasCachedThumbnailErrorPendingRescueWork(dbFullPath);
+        }
+
+        // UI tick では前回の軽量 cache だけを見て、FailureDb の実読込は背景へ逃がす。
+        private void RequestThumbnailErrorPendingRescueWorkRefresh(string dbFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                ClearThumbnailErrorPendingRescueWorkCache();
+                return;
+            }
+
+            if (
+                Interlocked.CompareExchange(
+                    ref _thumbnailErrorPendingRescueWorkRefreshRunning,
+                    1,
+                    0
+                )
+                != 0
+            )
+            {
+                Interlocked.Exchange(ref _thumbnailErrorPendingRescueWorkRefreshRequested, 1);
+                return;
+            }
+
+            Interlocked.Exchange(ref _thumbnailErrorPendingRescueWorkRefreshRequested, 0);
+            _ = RunThumbnailErrorPendingRescueWorkRefreshAsync(dbFullPath);
+        }
+
+        private async Task RunThumbnailErrorPendingRescueWorkRefreshAsync(string dbFullPath)
+        {
+            try
+            {
+                string currentDbFullPath = dbFullPath ?? "";
+                if (string.IsNullOrWhiteSpace(currentDbFullPath))
+                {
+                    return;
+                }
+
+                bool hasPendingRescueWork = await Task
+                    .Run(() => LoadThumbnailErrorPendingRescueWorkCore(currentDbFullPath))
+                    .ConfigureAwait(false);
+
+                if (
+                    Dispatcher == null
+                    || Dispatcher.HasShutdownStarted
+                    || Dispatcher.HasShutdownFinished
+                )
+                {
+                    return;
+                }
+
+                await Dispatcher
+                    .InvokeAsync(
+                        () =>
+                            ApplyThumbnailErrorPendingRescueWorkResult(
+                                currentDbFullPath,
+                                hasPendingRescueWork
+                            ),
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-error-tab",
+                    $"pending rescue cache refresh failed: {ex.Message}"
+                );
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _thumbnailErrorPendingRescueWorkRefreshRunning, 0);
+                if (
+                    Interlocked.CompareExchange(
+                        ref _thumbnailErrorPendingRescueWorkRefreshRequested,
+                        0,
+                        0
+                    )
+                    == 1
+                    && Dispatcher != null
+                    && !Dispatcher.HasShutdownStarted
+                    && !Dispatcher.HasShutdownFinished
+                )
+                {
+                    Interlocked.Exchange(ref _thumbnailErrorPendingRescueWorkRefreshRequested, 0);
+                    _ = Dispatcher.BeginInvoke(
+                        DispatcherPriority.Background,
+                        new Action(
+                            () =>
+                                RequestThumbnailErrorPendingRescueWorkRefresh(
+                                    MainVM?.DbInfo?.DBFullPath ?? ""
+                                )
+                        )
+                    );
+                }
+            }
+        }
+
+        private static bool LoadThumbnailErrorPendingRescueWorkCore(string dbFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return false;
+            }
+
+            ThumbnailFailureDbService failureDbService = new(dbFullPath);
+            return failureDbService.HasPendingRescueWork(DateTime.UtcNow);
+        }
+
+        private void ApplyThumbnailErrorPendingRescueWorkResult(
+            string dbFullPath,
+            bool hasPendingRescueWork
+        )
+        {
+            if (
+                Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+                || !AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? "")
+            )
+            {
+                return;
+            }
+
+            _thumbnailErrorPendingRescueWorkCachedDbFullPath = dbFullPath ?? "";
+            Interlocked.Exchange(
+                ref _thumbnailErrorPendingRescueWorkCached,
+                hasPendingRescueWork ? 1 : 0
+            );
+            if (hasPendingRescueWork && IsThumbnailErrorTabActiveCached())
+            {
+                // pending を検出した時だけ、次の表示 snapshot を予約して一覧の残像を短くする。
+                RequestThumbnailErrorSnapshotRefresh();
+            }
+        }
+
+        private bool HasCachedThumbnailErrorPendingRescueWork(string dbFullPath)
+        {
+            return Volatile.Read(ref _thumbnailErrorPendingRescueWorkCached) == 1
+                && AreSameMainDbPath(_thumbnailErrorPendingRescueWorkCachedDbFullPath, dbFullPath);
+        }
+
+        private void ClearThumbnailErrorPendingRescueWorkCache()
+        {
+            _thumbnailErrorPendingRescueWorkCachedDbFullPath = "";
+            Interlocked.Exchange(ref _thumbnailErrorPendingRescueWorkCached, 0);
         }
 
         private void ClearThumbnailErrorInactiveUiState()
