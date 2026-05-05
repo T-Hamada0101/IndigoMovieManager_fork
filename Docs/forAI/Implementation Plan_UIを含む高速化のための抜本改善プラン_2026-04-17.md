@@ -3,6 +3,8 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- `TryEnqueueThumbnailDisplayErrorRescueJob` と下部 `ThumbnailError` 可視行優先投入は、通常キューへ戻す可能性がある `tab-error-placeholder` の時だけ FailureDb 履歴を読み、可視行自動投入などでは不要な履歴 read を避けるようにした
+- 下部 `ThumbnailError` の一覧クリアは UI クリック処理で marker 削除 / FailureDb 削除を直接行わず、対象 snapshot を背景削除へ渡して DB 一致 guard 後に一覧更新だけ戻す形へ寄せた
 - 下部 `ThumbnailError` の可視行優先投入は UI timer 上で marker 削除 / FailureDb 履歴確認 / queue 投入を直接実行せず、可視行 snapshot を背景 single-flight へ渡して完了後に DB 一致 guard 付きで snapshot 更新だけ戻す形へ寄せた
 - 下部 `ThumbnailError` の 1 秒 timer は pending rescue 判定で FailureDb を UI 上から直接読まず、背景 single-flight の DB パス付き cache を参照する形へ寄せた
 - 下部 `ThumbnailError` の snapshot 集計は FailureDbService 生成も背景側へ寄せ、DB 切替後着は `AreSameMainDbPath` guard で捨てるようにした

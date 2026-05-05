@@ -547,12 +547,17 @@ namespace IndigoMovieManager
                 queueObj.MovieFullPath
             );
 
-            ThumbnailFailureDbService failureDbService = ResolveCurrentThumbnailFailureDbService();
-            string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
-                queueObj.MovieFullPath
-            );
-            bool hasFailureHistory =
-                failureDbService?.HasFailureHistory(moviePathKey, queueObj.Tabindex) == true;
+            bool hasFailureHistory = false;
+            if (ShouldReadFailureHistoryForDisplayError(reason))
+            {
+                ThumbnailFailureDbService failureDbService = ResolveCurrentThumbnailFailureDbService();
+                string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
+                    queueObj.MovieFullPath
+                );
+                hasFailureHistory =
+                    failureDbService?.HasFailureHistory(moviePathKey, queueObj.Tabindex) == true;
+            }
+
             if (ShouldPreferNormalQueueForDisplayError(reason, hasFailureHistory))
             {
                 QueueObj preferredQueueObj = CloneQueueObj(queueObj);
@@ -574,6 +579,12 @@ namespace IndigoMovieManager
                 priorityUntilUtc: priorityUntilUtc,
                 useDedicatedManualWorkerSlot: useDedicatedManualWorkerSlot
             );
+        }
+
+        // 通常キューへ戻す可能性がある上側 placeholder 初回だけ FailureDb 履歴を確認する。
+        internal static bool ShouldReadFailureHistoryForDisplayError(string reason)
+        {
+            return string.Equals(reason, "tab-error-placeholder", StringComparison.Ordinal);
         }
 
         // 上側 placeholder 起点の初回だけは、救済workerへ送る前に通常レーンの優先再試行を先に試す。

@@ -42,6 +42,19 @@ namespace IndigoMovieManager
             DateTime? PriorityUntilUtc
         );
 
+        private readonly record struct ThumbnailErrorClearRequest(
+            ThumbnailErrorRescueRecordSnapshot[] Records,
+            string DbFullPath,
+            string DbName,
+            string ThumbFolder
+        );
+
+        private readonly record struct ThumbnailErrorClearResult(
+            int VisibleCount,
+            int DeletedMarkerCount,
+            int DeletedFailureCount
+        );
+
         private const int ThumbnailErrorTabIndex = 5;
         private static readonly int[] ThumbnailErrorTargetTabIndices = [0, 1, 2, 3, 4, 99];
         private int _thumbnailErrorRecordsDirty = 1;
@@ -49,6 +62,7 @@ namespace IndigoMovieManager
         private int _thumbnailErrorBulkRescueRunning;
         private int _thumbnailErrorVisiblePromotionRunning;
         private int _thumbnailErrorVisiblePromotionRequested;
+        private int _thumbnailErrorClearRunning;
 
         // 一覧更新で ERROR 系の集計が古くなった時だけ印を付ける。
         // 上側の救済タブは手動更新前提なので、選択中でも自動再集計は走らせない。
@@ -1576,11 +1590,15 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
-                queueObj.MovieFullPath
-            );
-            bool hasFailureHistory =
-                failureDbService?.HasFailureHistory(moviePathKey, queueObj.Tabindex) == true;
+            bool hasFailureHistory = false;
+            if (ShouldReadFailureHistoryForDisplayError(reason))
+            {
+                string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
+                    queueObj.MovieFullPath
+                );
+                hasFailureHistory =
+                    failureDbService?.HasFailureHistory(moviePathKey, queueObj.Tabindex) == true;
+            }
 
             if (IsThumbnailErrorVisiblePromotionShutdownStarted())
             {
@@ -1770,9 +1788,10 @@ namespace IndigoMovieManager
         }
 
         // 表示中の ERROR マーカーと FailureDb 行をまとめて消し、一覧を空にする。
-        private void ClearThumbnailErrorListButton_Click(object sender, RoutedEventArgs e)
+        private async void ClearThumbnailErrorListButton_Click(object sender, RoutedEventArgs e)
         {
-            ThumbnailErrorRecordViewModel[] visibleRecords = MainVM.ThumbnailErrorRecs.ToArray();
+            ThumbnailErrorRecordViewModel[] visibleRecords =
+                MainVM?.ThumbnailErrorRecs?.ToArray() ?? [];
             if (visibleRecords.Length < 1)
             {
                 return;
@@ -1790,22 +1809,89 @@ namespace IndigoMovieManager
                 return;
             }
 
+            ThumbnailErrorClearRequest request = CaptureThumbnailErrorClearRequest(visibleRecords);
+            if (request.Records.Length < 1 || string.IsNullOrWhiteSpace(request.DbFullPath))
+            {
+                return;
+            }
+
+            if (Interlocked.Exchange(ref _thumbnailErrorClearRunning, 1) == 1)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-error-tab",
+                    "error tab clear skipped: already running"
+                );
+                return;
+            }
+
+            Mouse.OverrideCursor = Cursors.Wait;
+            try
+            {
+                ThumbnailErrorClearResult clearResult = await Task.Run(
+                    () => ClearThumbnailErrorRecordsCore(request)
+                );
+                if (!IsThumbnailErrorClearRequestCurrent(request.DbFullPath))
+                {
+                    Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);
+                    return;
+                }
+
+                DebugRuntimeLog.Write(
+                    "thumbnail-error-tab",
+                    $"error tab clear clicked: visible={clearResult.VisibleCount} deleted_markers={clearResult.DeletedMarkerCount} deleted_failure_rows={clearResult.DeletedFailureCount}"
+                );
+
+                RefreshThumbnailErrorRecords(force: true);
+                SelectFirstItem();
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-error-tab",
+                    $"error tab clear failed: {ex.Message}"
+                );
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+                Interlocked.Exchange(ref _thumbnailErrorClearRunning, 0);
+            }
+        }
+
+        private ThumbnailErrorClearRequest CaptureThumbnailErrorClearRequest(
+            IEnumerable<ThumbnailErrorRecordViewModel> visibleRecords
+        )
+        {
+            return new ThumbnailErrorClearRequest(
+                CaptureThumbnailErrorRescueRecordSnapshots(visibleRecords),
+                MainVM?.DbInfo?.DBFullPath ?? "",
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? ""
+            );
+        }
+
+        private ThumbnailErrorClearResult ClearThumbnailErrorRecordsCore(
+            ThumbnailErrorClearRequest request
+        )
+        {
             int deletedMarkerCount = 0;
             List<(string MoviePathKey, int TabIndex)> targets = [];
 
-            foreach (ThumbnailErrorRecordViewModel record in visibleRecords)
+            foreach (ThumbnailErrorRescueRecordSnapshot record in request.Records ?? [])
             {
-                string moviePath = record.MoviePath ?? record.MovieRecord?.Movie_Path ?? "";
-                string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(moviePath);
+                string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(
+                    record.MoviePath
+                );
 
                 foreach (int tabIndex in record.FailedTabIndices ?? [])
                 {
                     string outPath = ResolveThumbnailOutPath(
                         tabIndex,
-                        MainVM?.DbInfo?.DBName ?? "",
-                        MainVM?.DbInfo?.ThumbFolder ?? ""
+                        request.DbName ?? "",
+                        request.ThumbFolder ?? ""
                     );
-                    if (TryDeleteThumbnailErrorMarker(outPath, moviePath))
+                    if (TryDeleteThumbnailErrorMarker(outPath, record.MoviePath))
                     {
                         deletedMarkerCount++;
                     }
@@ -1815,20 +1901,26 @@ namespace IndigoMovieManager
             }
 
             int deletedFailureCount = 0;
-            ThumbnailFailureDbService failureDbService = ResolveCurrentThumbnailFailureDbService();
+            ThumbnailFailureDbService failureDbService = CreateThumbnailErrorFailureDbService(
+                request.DbFullPath
+            );
             if (failureDbService != null)
             {
                 deletedFailureCount = failureDbService.DeleteMainFailureRecords(targets);
             }
 
-            DebugRuntimeLog.Write(
-                "thumbnail-error-tab",
-                $"error tab clear clicked: visible={visibleRecords.Length} deleted_markers={deletedMarkerCount} deleted_failure_rows={deletedFailureCount}"
+            return new ThumbnailErrorClearResult(
+                request.Records.Length,
+                deletedMarkerCount,
+                deletedFailureCount
             );
+        }
 
-            RefreshThumbnailErrorRecords(force: true);
-            SelectFirstItem();
-            Refresh();
+        private bool IsThumbnailErrorClearRequestCurrent(string dbFullPath)
+        {
+            return !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished
+                && AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? "");
         }
 
         private async void RescueSelectedThumbnailErrorsButton_Click(object sender, RoutedEventArgs e)

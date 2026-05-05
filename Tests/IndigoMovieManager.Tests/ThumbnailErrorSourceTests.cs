@@ -146,6 +146,88 @@ public sealed class ThumbnailErrorSourceTests
         Assert.That(applyMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
     }
 
+    [Test]
+    public void ClearThumbnailErrorListButtonはUI上でMarker削除とFailureDb削除を実行しない()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string method = ExtractMethod(
+            source,
+            "private async void ClearThumbnailErrorListButton_Click("
+        );
+
+        Assert.That(method, Does.Contain("CaptureThumbnailErrorClearRequest("));
+        Assert.That(method, Does.Contain("Task.Run("));
+        Assert.That(method, Does.Contain("ClearThumbnailErrorRecordsCore(request)"));
+        Assert.That(method, Does.Contain("IsThumbnailErrorClearRequestCurrent("));
+        Assert.That(method, Does.Not.Contain("TryDeleteThumbnailErrorMarker("));
+        Assert.That(method, Does.Not.Contain("ResolveCurrentThumbnailFailureDbService("));
+        Assert.That(method, Does.Not.Contain("DeleteMainFailureRecords("));
+    }
+
+    [Test]
+    public void ThumbnailError一覧クリアは背景で削除しDB一致時だけUI反映する()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string captureMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorClearRequest CaptureThumbnailErrorClearRequest("
+        );
+        string coreMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorClearResult ClearThumbnailErrorRecordsCore("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool IsThumbnailErrorClearRequestCurrent("
+        );
+
+        Assert.That(captureMethod, Does.Contain("MainVM?.DbInfo?.DBFullPath ?? \"\""));
+        Assert.That(coreMethod, Does.Contain("TryDeleteThumbnailErrorMarker("));
+        Assert.That(coreMethod, Does.Contain("CreateThumbnailErrorFailureDbService("));
+        Assert.That(coreMethod, Does.Contain("DeleteMainFailureRecords(targets)"));
+        Assert.That(coreMethod, Does.Not.Contain("MainVM"));
+        Assert.That(guardMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+    }
+
+    [Test]
+    public void DisplayError救済のFailureDb履歴読み取りはtabErrorPlaceholderだけに限定する()
+    {
+        string rescueLaneSource = GetRepoText("Thumbnail", "MainWindow.ThumbnailRescueLane.cs");
+        string displayMethod = ExtractMethod(
+            rescueLaneSource,
+            "private bool TryEnqueueThumbnailDisplayErrorRescueJob("
+        );
+        string historyGuardMethod = ExtractMethod(
+            rescueLaneSource,
+            "internal static bool ShouldReadFailureHistoryForDisplayError("
+        );
+
+        Assert.That(historyGuardMethod, Does.Contain("\"tab-error-placeholder\""));
+        Assert.That(displayMethod, Does.Contain("if (ShouldReadFailureHistoryForDisplayError(reason))"));
+        Assert.That(
+            displayMethod.IndexOf("if (ShouldReadFailureHistoryForDisplayError(reason))", StringComparison.Ordinal),
+            Is.LessThan(displayMethod.IndexOf("HasFailureHistory(", StringComparison.Ordinal))
+        );
+    }
+
+    [Test]
+    public void ThumbnailError可視行優先投入も不要なFailureDb履歴読み取りを避ける()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string method = ExtractMethod(
+            source,
+            "private bool TryEnqueueThumbnailErrorRescueSnapshotJob("
+        );
+
+        Assert.That(method, Does.Contain("if (ShouldReadFailureHistoryForDisplayError(reason))"));
+        Assert.That(
+            method.IndexOf("if (ShouldReadFailureHistoryForDisplayError(reason))", StringComparison.Ordinal),
+            Is.LessThan(method.IndexOf("HasFailureHistory(", StringComparison.Ordinal))
+        );
+        Assert.That(method, Does.Contain("IsThumbnailErrorVisiblePromotionShutdownStarted()"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
