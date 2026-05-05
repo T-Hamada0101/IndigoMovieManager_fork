@@ -5,6 +5,7 @@
 変更概要:
 - Player 右レールの `SelectionChanged` は抑止中・非表示中に詳細/タグ更新を走らせず、選択同期中の二重 UI 更新を避けるようにした
 - preferred サムネ生成成功時、対象 `MovieRecords` へ直接反映できた場合は後段の `FilterAndSort(..., true)` を省き、forced rebind と visible refresh で止めるようにした
+- Player 右レール / visible-first 画像供給では、preferred key 更新後に full reload へ戻さず、軽い revision / trigger で実現済み画像 Binding を再評価させる方針を固定した
 - manual rescue 即時反映でも対象 `MovieRecords` へ直接反映できた場合は後段の `FilterAndSort(..., true)` を省き、forced rebind と visible refresh で止めるようにした
 - `UiHang` native overlay thread の `Create -> Drain -> Run` を `try/finally` で包み、起動直後の例外や stop 競合でも native/fallback window を必ず破棄するようにした
 - `UiHang` overlay thread の終了時クリアは thread / dispatcher の一致確認つきにし、Stop timeout 後の再 Start 状態を古い thread が消さないようにした
@@ -72,6 +73,7 @@
 - さらに `manual-reload` 開始時に watch scan scope を進め、走行中の `Auto / Watch` scan を stale 扱いで早めに畳むようにした
 - さらにプレーヤータブ右側一覧の画像バインドは、active tab 判定だけでなく viewport の可視・近傍キーにも通し、再読込直後の off-screen `image cache hit` 雪崩を減らす方向へ寄せた
 - Player 右レール / visible-first 画像供給では、preferred 対象キーが空と確定した場合は off-screen 画像更新を通さない。未初期化状態や `UpperTabVisibleRange.Empty` の未計測状態は互換として従来どおり許可し、初期化前の表示欠落を避ける。
+- Player 右レール / visible-first 画像供給では、preferred key 更新後の反映を full reload や追加 `Refresh()` で起こさない。可視範囲 snapshot の軽い revision 更新、または Binding 用 trigger のみで、既に生成済みの画像 Binding を再評価させる。
 - 下部 `ThumbnailProgress` タブが非表示の時は snapshot refresh を即時 UI 更新せず dirty 記録だけへ寄せ、サムネ成功直後の hidden progress 更新が `activity=None` を増やす経路を細くし始めた
 - 下部 `ThumbnailProgress` の初期 snapshot 全走査は UI 初期表示から外し、背景作成後に UI へ反映する形へ寄せた
 - `SearchSidecar` は本線リポから一旦外し、別リポで継続検証する方針へ切り替えた
@@ -355,6 +357,7 @@
 - `NoLockImageConverter` の metadata cache を viewport 連動で活かし、表示候補の先読みと無効化を分ける。
 - visible range 外の decode をより後ろへ倒し、可視範囲だけ即時 decode する。
 - Player 右レール / visible-first の preferred 対象キーは、「未初期化 / viewport 未計測」と「空と確定」を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、空と確定した後だけ off-screen 更新を止める。
+- preferred key 更新後は、右レール全体の再構築や full reload ではなく、可視範囲 snapshot の軽い revision 更新、または Binding 用 trigger だけで実現済み画像 Binding を再評価する。既に `MovieRecords` へ path 反映できている画像を、一覧の全面再評価で揺らさない。
 - 画像存在確認と file stamp 取得を、converter 個別呼び出しから `ThumbnailStampCache` 相当へ寄せる。
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。
 - Player / UpperTabs の追加・ fullscreen・表示切替は、watch / thumbnail / skin の背後処理と同時に走っても UI スレッドを長く掴まない形へ寄せる。
@@ -374,6 +377,7 @@
 完了条件:
 - ページ Up/Down 時の体感引っかかりが、cache miss 頻度とともに下がる。
 - off-screen 領域の decode が visible 領域を押しのけない。
+- preferred key 更新後の画像再評価が、軽い revision / trigger だけで完結し、`FilterAndSort(..., true)`、full reload、追加 `Refresh()` を既定経路に戻していない。
 - Player 操作中に watch / thumbnail / poll が目に見える詰まりを増やさない。
 
 ## Lane 3.5: `UiHang` オーバーレイ寿命管理の是正

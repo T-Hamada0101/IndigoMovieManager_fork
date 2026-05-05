@@ -1062,6 +1062,7 @@
                                             <Binding Path="IsExists" />
                                             <Binding Source="{x:Reference PlayerThumbnailList}" Path="IsVisible" />
                                             <Binding Path="Movie_Path" />
+                                            <Binding Source="{x:Reference window}" Path="UpperTabPreferredMoviePathKeysRevision" />
                                           </MultiBinding>
                                         </Image.Source>
                                       </Image>

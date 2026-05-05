@@ -12,6 +12,7 @@
 - active tab の `visible -> near-visible` 順で `MoviePathKey` を組み立て、`QueueDbService.GetPendingAndLease(...)` の `ORDER BY CASE` へ流す形にした。
 - `preferredMoviePathKeysResolver` は UI 要素を直接読まず、UI スレッドで更新した snapshot を返す形に寄せた。
 - `preferredMoviePathKeysResolver` の snapshot は未初期化 / viewport 未計測と空確定を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、preferred 対象キーが空と確定した場合だけ off-screen 更新を通さない。
+- preferred key 更新後は full reload や追加 `Refresh()` へ戻さず、snapshot の軽い revision 更新、または Binding 用 trigger だけで既存の画像 Binding を再評価する方針にする。
 - `FilteredMovieRecs` は毎回 `Clear + Add` せず、共通 prefix / suffix を残して差し替える形へ寄せた。
 - filter / sort の no-op 時は `Refresh()` と viewport 再計算を飛ばし、不要な UI 揺れを減らした。
 - sort-only で要素集合が同じ時は、`List(DataGrid)` タブに限って `Remove/Insert` より `ObservableCollection.Move(...)` を優先して並び替える形へ寄せた。
@@ -121,6 +122,7 @@
 - DB スキーマ変更は行わず、lease 時に visible-first を解決する。
 - 現在の `TabIndex` 優先に加え、同一 tab 内で `visible -> near-visible -> background` の順に `MoviePathKey` を渡す。
 - preferred 対象キーが空と確定した時は、対象外の off-screen 画像更新を通さない。ただし snapshot 未初期化時や `UpperTabVisibleRange.Empty` の未計測時は互換として従来どおり許可し、初期表示前の過剰抑止を避ける。
+- preferred key 更新後の表示反映は、`FilteredMovieRecs` の全面再評価ではなく、visible range snapshot の revision 更新や Binding trigger に限定する。実現済み画像 Binding が再評価されれば十分なので、画像供給のためだけに full reload を予約しない。
 - `QueueDbService.GetPendingAndLease(...)` の `ORDER BY CASE` で、同一 tab 内の取得順だけを寄せる。
 - 既存の `ThumbPanelPos` は流用しない。
 
@@ -132,6 +134,7 @@
 
 完了条件:
 - visible 範囲のサムネ要求が、同一タブ内の背景要求より先に処理される。
+- preferred key 更新後に、既存の画像 Binding が軽い revision / trigger で再評価され、full reload や追加 `Refresh()` が既定経路へ戻っていない。
 
 ### Phase 4: 上側タブの責務分割
 

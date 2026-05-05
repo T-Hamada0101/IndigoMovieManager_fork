@@ -3,6 +3,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using IndigoMovieManager.UpperTabs.Common;
@@ -30,10 +31,25 @@ namespace IndigoMovieManager
         private DispatcherTimer _upperTabViewportRefreshTimer;
         private UpperTabVisibleRange _activeUpperTabVisibleRange = UpperTabVisibleRange.Empty;
         private IReadOnlyList<string> _preferredVisibleMoviePathKeysSnapshot = Array.Empty<string>();
+        private bool _isUpperTabPreferredMoviePathKeysSnapshotPublished;
         private int _upperTabViewportSourceRevision;
         private int _preferredVisibleMoviePathKeysSourceRevision;
         private long _upperTabFollowupScrollRefreshSuppressUntilUtcTicks;
         private long _upperTabStartupAppendSuppressUntilUtcTicks;
+
+        public static readonly DependencyProperty UpperTabPreferredMoviePathKeysRevisionProperty =
+            DependencyProperty.Register(
+                nameof(UpperTabPreferredMoviePathKeysRevision),
+                typeof(int),
+                typeof(MainWindow),
+                new PropertyMetadata(0)
+            );
+
+        public int UpperTabPreferredMoviePathKeysRevision
+        {
+            get => (int)GetValue(UpperTabPreferredMoviePathKeysRevisionProperty);
+            private set => SetValue(UpperTabPreferredMoviePathKeysRevisionProperty, value);
+        }
 
         // 上側タブの visible 範囲追跡を初期化する。
         private void InitializeUpperTabViewportSupport()
@@ -143,6 +159,12 @@ namespace IndigoMovieManager
             _preferredVisibleMoviePathKeysSnapshot = Array.Empty<string>();
             _preferredVisibleMoviePathKeysSourceRevision = _upperTabViewportSourceRevision;
             UpperTabActivationGate.ClearPreferredMoviePathKeys();
+            if (_isUpperTabPreferredMoviePathKeysSnapshotPublished)
+            {
+                _isUpperTabPreferredMoviePathKeysSnapshotPublished = false;
+                RefreshUpperTabPreferredMoviePathKeysRevision();
+            }
+
             _activeUpperTabVisibleErrorMoviePathKeysSnapshot = Array.Empty<string>();
             _thumbnailVisibleErrorRescueRequestVersion++;
         }
@@ -519,7 +541,8 @@ namespace IndigoMovieManager
         {
             ApplyUpperTabViewportSnapshot(
                 refreshContext.NextRange,
-                nextPreferredMoviePathKeys
+                nextPreferredMoviePathKeys,
+                preferredMoviePathKeysChanged
             );
             TryScheduleStartupAppendForCurrentViewport($"viewport:{reason}");
             WriteUpperTabViewportRefreshLog(
@@ -544,20 +567,43 @@ namespace IndigoMovieManager
         // viewport の計測結果を snapshot へ反映し、保持フィールド更新を 1 か所へ寄せる。
         private void ApplyUpperTabViewportSnapshot(
             UpperTabVisibleRange nextRange,
-            IReadOnlyList<string> nextPreferredMoviePathKeys
+            IReadOnlyList<string> nextPreferredMoviePathKeys,
+            bool preferredMoviePathKeysChanged
         )
         {
+            bool shouldPublishSnapshot = ShouldPublishPreferredMoviePathKeysSnapshot(nextRange);
+            bool publishStateChanged =
+                _isUpperTabPreferredMoviePathKeysSnapshotPublished != shouldPublishSnapshot;
+
             _activeUpperTabVisibleRange = nextRange;
             _preferredVisibleMoviePathKeysSnapshot = nextPreferredMoviePathKeys;
             _preferredVisibleMoviePathKeysSourceRevision = _upperTabViewportSourceRevision;
-            if (ShouldPublishPreferredMoviePathKeysSnapshot(nextRange))
+            _isUpperTabPreferredMoviePathKeysSnapshotPublished = shouldPublishSnapshot;
+            if (shouldPublishSnapshot)
             {
                 UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys);
+                if (publishStateChanged || preferredMoviePathKeysChanged)
+                {
+                    RefreshUpperTabPreferredMoviePathKeysRevision();
+                }
+
                 return;
             }
 
             // Empty range は未計測の瞬間も含むため、空確定として全画像を落とさない。
             UpperTabActivationGate.ClearPreferredMoviePathKeys();
+            if (publishStateChanged)
+            {
+                RefreshUpperTabPreferredMoviePathKeysRevision();
+            }
+        }
+
+        private void RefreshUpperTabPreferredMoviePathKeysRevision()
+        {
+            // binding の軽い再評価だけを起こし、画像 decode そのものは converter の gate に任せる。
+            UpperTabPreferredMoviePathKeysRevision = unchecked(
+                UpperTabPreferredMoviePathKeysRevision + 1
+            );
         }
 
         // viewport 計測不能時の後始末とログを 1 か所へ寄せ、早期 return を読みやすくする。
