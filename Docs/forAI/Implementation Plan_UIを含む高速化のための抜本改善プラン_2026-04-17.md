@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- Rescue 履歴パネルは選択変更時に UI スレッドで FailureDb を同期読込せず、履歴読込と整形を背景へ逃がして revision 一致時だけ反映するようにした
 - Created watch event の同一パス連続投入は ready 待ち pipeline で1本へ圧縮し、同じファイルのコピー待ちを重複して直列に積まないようにした
 - 検索欄を空へ戻す導線も検索正本へ合流し、一覧反映と先頭選択を先に通してからサムネ常駐再起動へ進む順に揃えた
 - rescued sync 完了時の `Refresh()` は、対象が選択中レコードへ反映された時だけに絞り、FailureDb / progress 更新は維持したまま一覧全体の再評価を減らすようにした
@@ -288,6 +289,7 @@
 - preferred サムネ生成成功後も、対象 `MovieRecords` へ直接 path 反映できた場合は `FilterAndSort(..., true)` へ戻さず、forced rebind と visible refresh を優先する。
 - manual rescue 即時反映も同じ基準に寄せ、直接反映できた成功では後段 full reload を予約しない。
 - rescued sync の定期反映では FailureDb / progress 更新を維持しつつ、選択中レコードへ当たった時だけ `Refresh()` を許可する。
+- Rescue 履歴は選択変更時に FailureDb を UI スレッドで読まず、背景読込と revision guard 付き反映へ寄せる。
 - `fire-and-forget` で逃がすだけにせず、bounded drain、timeout ログ、fault ログを持つ scheduler / persister / queue へ寄せる。
 - `Watcher.cs` の薄化は、UI thread 滞在、queue 境界、shutdown 境界、観測性の改善につながる場合だけ進める。
 

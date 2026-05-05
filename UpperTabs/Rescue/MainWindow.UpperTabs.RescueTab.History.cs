@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using IndigoMovieManager.Thumbnail.FailureDb;
 using IndigoMovieManager.UpperTabs.Rescue;
 
@@ -14,6 +17,7 @@ namespace IndigoMovieManager
         private readonly ObservableCollection<UpperTabRescueHistoryItemViewModel> _upperTabRescueHistoryItems =
             [];
         private UpperTabRescueHistoryPresenter _upperTabRescueHistoryPresenter;
+        private long _upperTabRescueHistoryRefreshStamp;
 
         // 救済タブの選択変更では既存の詳細同期に続けて、下段の履歴だけを差し替える。
         private void UpperTabRescueListSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -25,6 +29,7 @@ namespace IndigoMovieManager
         private void RefreshUpperTabRescueHistoryPanel()
         {
             EnsureUpperTabRescueHistoryPresenter();
+            long refreshStamp = Interlocked.Increment(ref _upperTabRescueHistoryRefreshStamp);
 
             UpperTabRescueListItemViewModel selectedItem = GetSelectedUpperTabRescueItems().FirstOrDefault();
             if (selectedItem == null)
@@ -38,40 +43,103 @@ namespace IndigoMovieManager
 
             ThumbnailFailureDbService failureDbService = ResolveCurrentThumbnailFailureDbService();
             int targetTabIndex = GetSelectedUpperTabRescueTargetOption()?.TabIndex ?? UpperTabGridFixedIndex;
+            string selectedMovieName = selectedItem.MovieName;
+            string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(selectedItem.MoviePath);
 
             if (failureDbService == null)
             {
                 _upperTabRescueHistoryPresenter?.ShowUnavailable(
-                    selectedItem.MovieName,
+                    selectedMovieName,
                     "FailureDb を開けないため履歴を読めません。"
                 );
                 return;
             }
 
-            string moviePathKey = ThumbnailFailureDbPathResolver.CreateMoviePathKey(selectedItem.MoviePath);
-            List<ThumbnailFailureRecord> records =
-            [
-                .. failureDbService
-                    .GetFailureRecords(limit: 400)
-                    .Where(record =>
-                        record != null
-                        && string.Equals(record.MoviePathKey, moviePathKey, StringComparison.Ordinal)
-                        && record.TabIndex == targetTabIndex
-                        && (
-                            string.Equals(record.Lane, "normal", StringComparison.Ordinal)
-                            || string.Equals(record.Lane, "slow", StringComparison.Ordinal)
-                            || string.Equals(record.Lane, "rescue", StringComparison.Ordinal)
-                        )
-                    )
-                    .OrderByDescending(record => record.UpdatedAtUtc)
-                    .ThenByDescending(record => record.FailureId)
-                    .Take(40),
-            ];
-            _upperTabRescueHistoryPresenter?.ShowItems(
-                selectedItem.MovieName,
-                records.Select(BuildUpperTabRescueHistoryItem),
-                "履歴はまだありません。"
+            _upperTabRescueHistoryPresenter?.Clear(
+                selectedMovieName,
+                "履歴を読み込み中です。"
             );
+
+            // 選択移動の軽さを守るため、FailureDb 読み取りと履歴整形は UI 外で行う。
+            _ = Task.Run(() =>
+                    LoadUpperTabRescueHistoryItems(
+                        failureDbService,
+                        moviePathKey,
+                        targetTabIndex
+                    )
+                )
+                .ContinueWith(
+                    task =>
+                    {
+                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+                        {
+                            return;
+                        }
+
+                        _ = Dispatcher.BeginInvoke(
+                            new Action(
+                                () =>
+                                {
+                                    if (
+                                        refreshStamp
+                                        != Interlocked.Read(ref _upperTabRescueHistoryRefreshStamp)
+                                    )
+                                    {
+                                        return;
+                                    }
+
+                                    if (task.IsFaulted)
+                                    {
+                                        string message =
+                                            task.Exception?.GetBaseException()?.Message ?? "unknown";
+                                        DebugRuntimeLog.Write(
+                                            "thumbnail-rescue",
+                                            $"rescue history refresh failed: movie='{selectedMovieName}' err='{message}'"
+                                        );
+                                        _upperTabRescueHistoryPresenter?.ShowUnavailable(
+                                            selectedMovieName,
+                                            "履歴を読めませんでした。"
+                                        );
+                                        return;
+                                    }
+
+                                    _upperTabRescueHistoryPresenter?.ShowItems(
+                                        selectedMovieName,
+                                        task.Result,
+                                        "履歴はまだありません。"
+                                    );
+                                }
+                            ),
+                            DispatcherPriority.Background
+                        );
+                    },
+                    TaskScheduler.Default
+                );
+        }
+
+        private UpperTabRescueHistoryItemViewModel[] LoadUpperTabRescueHistoryItems(
+            ThumbnailFailureDbService failureDbService,
+            string moviePathKey,
+            int targetTabIndex
+        )
+        {
+            return failureDbService
+                .GetFailureRecords(limit: 400)
+                .Where(record =>
+                    record != null
+                    && string.Equals(record.MoviePathKey, moviePathKey, StringComparison.Ordinal)
+                    && record.TabIndex == targetTabIndex
+                    && (
+                        string.Equals(record.Lane, "normal", StringComparison.Ordinal)
+                        || string.Equals(record.Lane, "slow", StringComparison.Ordinal)
+                        || string.Equals(record.Lane, "rescue", StringComparison.Ordinal)
+                    )
+                )
+                .OrderByDescending(record => record.UpdatedAtUtc)
+                .ThenByDescending(record => record.FailureId)
+                .Take(40)
+                .Select(BuildUpperTabRescueHistoryItem)
+                .ToArray();
         }
 
         private void EnsureUpperTabRescueHistoryPresenter()
