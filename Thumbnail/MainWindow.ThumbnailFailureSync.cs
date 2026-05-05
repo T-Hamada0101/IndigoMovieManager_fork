@@ -862,14 +862,22 @@ namespace IndigoMovieManager
             applyPath(nextThumbPath);
         }
 
-        // 即時成功を画面へ見せる時は、一覧・詳細・可視範囲の再評価を同じ拍で流す。
+        // 即時成功を画面へ見せる時は、直接反映済みなら軽い再評価だけに留める。
         private void RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess(
             string reason,
             bool appliedDirectlyToMainMovie
         )
         {
             InvalidateThumbnailErrorRecords(refreshIfVisible: true);
-            Refresh();
+            if (
+                ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+                    appliedDirectlyToMainMovie
+                )
+            )
+            {
+                Refresh();
+            }
+
             if (
                 ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(
                     appliedDirectlyToMainMovie
@@ -884,6 +892,13 @@ namespace IndigoMovieManager
             }
             RequestThumbnailErrorSnapshotRefresh();
             RequestThumbnailProgressSnapshotRefresh();
+        }
+
+        internal static bool ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+            bool appliedDirectlyToMainMovie
+        )
+        {
+            return !appliedDirectlyToMainMovie;
         }
 
         internal static bool ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(

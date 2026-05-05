@@ -181,6 +181,48 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
+    public void ShouldRefreshMainViewAfterImmediateThumbnailSuccess_直接反映済みならFalse()
+    {
+        Assert.That(
+            MainWindow.ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+                appliedDirectlyToMainMovie: true
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+                appliedDirectlyToMainMovie: false
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
+    public void 即時サムネ成功のRefreshは直接反映済みなら省く()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
+            .Replace("\r\n", "\n");
+        string method = ExtractMethod(
+            source,
+            "private void RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess("
+        );
+
+        int mainViewPolicyIndex = method.IndexOf(
+            "ShouldRefreshMainViewAfterImmediateThumbnailSuccess(",
+            StringComparison.Ordinal
+        );
+        int refreshIndex = method.IndexOf("Refresh();", mainViewPolicyIndex, StringComparison.Ordinal);
+        int viewportPolicyIndex = method.IndexOf(
+            "ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(mainViewPolicyIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(refreshIndex, Is.GreaterThan(mainViewPolicyIndex));
+        Assert.That(viewportPolicyIndex, Is.GreaterThan(refreshIndex));
+    }
+
+    [Test]
     public void RescuedSync完了時はRefreshだけ選択中反映で絞る()
     {
         string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
