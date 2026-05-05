@@ -35,7 +35,7 @@ public sealed class WatcherRegistrationDirectPipelineTests
                 FileShare.None
             );
 
-            MainWindow window = CreateMainWindow(@"D:\Db\main.wb", currentTabIndex: 2);
+            MainWindow window = CreateMainWindow("%USERPROFILE%\\Db\\main.wb", currentTabIndex: 2);
             SemaphoreSlim checkFolderRunLock = new(0, 1);
             SetPrivateField(window, "_checkFolderRunLock", checkFolderRunLock);
 
@@ -111,7 +111,7 @@ public sealed class WatcherRegistrationDirectPipelineTests
                 FileShare.None
             );
 
-            MainWindow window = CreateMainWindow(@"D:\Db\main.wb", currentTabIndex: 2);
+            MainWindow window = CreateMainWindow("%USERPROFILE%\\Db\\main.wb", currentTabIndex: 2);
             SemaphoreSlim checkFolderRunLock = GetPrivateField<SemaphoreSlim>(
                 window,
                 "_checkFolderRunLock"
@@ -186,7 +186,7 @@ public sealed class WatcherRegistrationDirectPipelineTests
                 FileShare.None
             );
 
-            MainWindow window = CreateMainWindow(@"D:\Db\main.wb", currentTabIndex: 2);
+            MainWindow window = CreateMainWindow("%USERPROFILE%\\Db\\main.wb", currentTabIndex: 2);
             List<string> queuedRequests = [];
             object queuedRequestSync = new();
             window.QueueCheckFolderAsyncForTesting = (mode, trigger) =>
@@ -254,6 +254,83 @@ public sealed class WatcherRegistrationDirectPipelineTests
         finally
         {
             firstCreatedMovieLock?.Dispose();
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task QueueWatchEventAsync_Created同一パス連続投入はready待ちを圧縮する()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        string createdMoviePath = Path.Combine(tempRoot, "duplicate-created.mp4");
+        await File.WriteAllBytesAsync(createdMoviePath, [0x1]);
+        FileStream? createdMovieLock = null;
+
+        try
+        {
+            // 同一パスの created 嵐では、ready 待ちを複数本に増やさず1本へ圧縮する。
+            createdMovieLock = new FileStream(
+                createdMoviePath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None
+            );
+
+            MainWindow window = CreateMainWindow("%USERPROFILE%\\Db\\main.wb", currentTabIndex: 2);
+            List<string> queuedRequests = [];
+            object queuedRequestSync = new();
+            window.QueueCheckFolderAsyncForTesting = (mode, trigger) =>
+            {
+                lock (queuedRequestSync)
+                {
+                    queuedRequests.Add($"{mode}:{trigger}");
+                }
+
+                return Task.CompletedTask;
+            };
+
+            MethodInfo queueMethod = GetQueueWatchEventAsyncRequestMethod();
+            Task firstCreatedQueueTask = (Task)queueMethod.Invoke(
+                window,
+                [CreateCreatedWatchEventRequest(createdMoviePath), "watch-created-first"]
+            )!;
+            Task secondCreatedQueueTask = (Task)queueMethod.Invoke(
+                window,
+                [CreateCreatedWatchEventRequest(createdMoviePath), "watch-created-duplicate"]
+            )!;
+            await firstCreatedQueueTask.WaitAsync(TimeSpan.FromSeconds(2));
+            await secondCreatedQueueTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+            await Task.Delay(TimeSpan.FromMilliseconds(1250));
+            lock (queuedRequestSync)
+            {
+                Assert.That(queuedRequests, Is.Empty);
+            }
+
+            createdMovieLock.Dispose();
+            createdMovieLock = null;
+
+            Task createdPipelineTask = GetPrivateField<Task>(
+                window,
+                "_watchCreatedEventProcessingTask"
+            );
+            await createdPipelineTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            lock (queuedRequestSync)
+            {
+                Assert.That(
+                    queuedRequests,
+                    Is.EqualTo([$"Watch:created:{createdMoviePath}"])
+                );
+            }
+        }
+        finally
+        {
+            createdMovieLock?.Dispose();
             if (Directory.Exists(tempRoot))
             {
                 Directory.Delete(tempRoot, recursive: true);

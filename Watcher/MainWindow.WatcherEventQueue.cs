@@ -12,6 +12,8 @@ namespace IndigoMovieManager
         private readonly Queue<WatchEventRequest> _watchEventRequests = new();
         private Task _watchEventProcessingTask = Task.CompletedTask;
         private Task _watchCreatedEventProcessingTask = Task.CompletedTask;
+        private HashSet<string> _watchCreatedReadyWaitingPaths = new(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> _watchCreatedReadyDuplicatePaths = new(StringComparer.OrdinalIgnoreCase);
         private bool _watchEventShutdownRequested;
 
         // watch イベント要求を共通 queue へ積み、イベントハンドラから重い処理を切り離す。
@@ -207,19 +209,40 @@ namespace IndigoMovieManager
                 return;
             }
 
+            string normalizedFullPath = fullPath.Trim();
+            bool compressed = false;
             // Created の ready 待ちは queue runner から切り離しつつ、created 同士は直列化して過剰並列を防ぐ。
             lock (_watchEventRequestSync)
             {
-                Task previousTask = _watchCreatedEventProcessingTask ?? Task.CompletedTask;
-                _watchCreatedEventProcessingTask = ChainCreatedWatchEventReadyPipelineAsync(
-                    previousTask,
-                    fullPath
+                _watchCreatedReadyWaitingPaths ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _watchCreatedReadyDuplicatePaths ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (!_watchCreatedReadyWaitingPaths.Add(normalizedFullPath))
+                {
+                    _watchCreatedReadyDuplicatePaths.Add(normalizedFullPath);
+                    compressed = true;
+                }
+                else
+                {
+                    Task previousTask = _watchCreatedEventProcessingTask ?? Task.CompletedTask;
+                    _watchCreatedEventProcessingTask = ChainCreatedWatchEventReadyPipelineAsync(
+                        previousTask,
+                        normalizedFullPath
+                    );
+                }
+            }
+
+            if (compressed)
+            {
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"created event ready wait compressed: '{normalizedFullPath}'"
                 );
+                return;
             }
 
             DebugRuntimeLog.Write(
                 "watch",
-                $"created event ready wait detached: '{fullPath}'"
+                $"created event ready wait detached: '{normalizedFullPath}'"
             );
         }
 
@@ -237,14 +260,37 @@ namespace IndigoMovieManager
                 // 先行タスク失敗があっても後続 created は止めない。
             }
 
-            await ProcessCreatedWatchEventReadyPipelineAsync(fullPath);
+            bool queued = await ProcessCreatedWatchEventReadyPipelineAsync(fullPath);
+            bool retryRequested = false;
+            lock (_watchEventRequestSync)
+            {
+                if (_watchCreatedReadyDuplicatePaths != null)
+                {
+                    retryRequested = _watchCreatedReadyDuplicatePaths.Remove(fullPath);
+                }
+            }
+
+            if (!queued && retryRequested && !IsWatchEventShutdownRequested())
+            {
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"created event ready wait retry compressed duplicate: '{fullPath}'"
+                );
+                await ProcessCreatedWatchEventReadyPipelineAsync(fullPath);
+            }
+
+            lock (_watchEventRequestSync)
+            {
+                _watchCreatedReadyWaitingPaths?.Remove(fullPath);
+                _watchCreatedReadyDuplicatePaths?.Remove(fullPath);
+            }
         }
 
-        private async Task ProcessCreatedWatchEventReadyPipelineAsync(string fullPath)
+        private async Task<bool> ProcessCreatedWatchEventReadyPipelineAsync(string fullPath)
         {
             try
             {
-                await ProcessCreatedWatchEventAsync(fullPath);
+                return await ProcessCreatedWatchEventAsync(fullPath);
             }
             catch (Exception ex)
             {
@@ -252,6 +298,7 @@ namespace IndigoMovieManager
                     "watch",
                     $"created watch event processing failed: path='{fullPath}' err='{ex.GetType().Name}: {ex.Message}'"
                 );
+                return false;
             }
         }
 
@@ -280,11 +327,11 @@ namespace IndigoMovieManager
         }
 
         // Created は queue 化後にファイル準備待ちと zero-byte 判定を行い、その後 watch 本流へ合流する。
-        private async Task ProcessCreatedWatchEventAsync(string fullPath)
+        private async Task<bool> ProcessCreatedWatchEventAsync(string fullPath)
         {
             if (string.IsNullOrWhiteSpace(fullPath))
             {
-                return;
+                return false;
             }
 
             if (IsWatchEventShutdownRequested())
@@ -293,13 +340,13 @@ namespace IndigoMovieManager
                     "watch",
                     $"created event skipped by shutdown: '{fullPath}'"
                 );
-                return;
+                return false;
             }
 
             if (IsWatchSuppressedByUi())
             {
                 MarkWatchWorkDeferredWhileSuppressed($"created:{fullPath}");
-                return;
+                return false;
             }
 
             bool fileReady = await WaitForWatchCreatedFileReadyAsync(fullPath);
@@ -308,7 +355,7 @@ namespace IndigoMovieManager
 #if DEBUG
                 Debug.WriteLine($"ファイル {fullPath} にアクセスできません。");
 #endif
-                return;
+                return false;
             }
 
             if (IsZeroByteMovieFile(fullPath, out long fileLength))
@@ -326,7 +373,7 @@ namespace IndigoMovieManager
                     "watch",
                     $"skip zero-byte movie on created event: '{fullPath}' size={fileLength}"
                 );
-                return;
+                return false;
             }
 
             DebugRuntimeLog.Write(
@@ -334,6 +381,7 @@ namespace IndigoMovieManager
                 $"created event rerouted to queued watch scan: '{fullPath}'"
             );
             await QueueCheckFolderAsync(CheckMode.Watch, $"created:{fullPath}");
+            return true;
         }
 
         // コピー中ファイルは最大10回待機し、終了時は短い刻みで抜けてshutdownを詰まらせない。

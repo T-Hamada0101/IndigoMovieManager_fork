@@ -3,6 +3,7 @@
 最終更新日: 2026-05-05
 
 変更概要:
+- Created watch event の同一パス連続投入は ready 待ち pipeline で1本へ圧縮し、同じファイルのコピー待ちを重複して直列に積まないようにした
 - 検索欄を空へ戻す導線も検索正本へ合流し、一覧反映と先頭選択を先に通してからサムネ常駐再起動へ進む順に揃えた
 - rescued sync 完了時の `Refresh()` は、対象が選択中レコードへ反映された時だけに絞り、FailureDb / progress 更新は維持したまま一覧全体の再評価を減らすようにした
 - fallback 起動でも `ThumbnailProgress` snapshot を直接更新せず、通常起動と同じ coalesce 済みの予約経路へ合流するようにした
@@ -135,6 +136,7 @@
 - `scan strategy 通知` と `scan mode 診断` は runtime 側で束ね、`Watcher.cs` 側は orchestration と通知入口に専念する形へ整理した
 - `WatcherEventQueue` は処理 task を 1 本共有し、enqueue ごとに queue runner を増やさない形へ寄せて watch burst 時の先頭詰まり増幅を抑えた
 - `Created` の ready 待機は queue runner から分離して直列専用パイプラインへ逃がし、`Renamed` を `Created` 待ちで止めない形へ整合を補強した
+- 同一 path の `Created` 連続投入は ready 待ち pipeline で圧縮し、先行が scan へ合流できなかった場合だけ重複通知分を短く再確認する。
 - 旧パス未登録の `Renamed` は watch scan へ再合流させ、`Created -> Renamed` 連鎖で rename だけ先行した場合でも最終整合を回収する形へ寄せた
 - watch query-only full 戻り理由ログ、watch キュー圧縮の因果ログ、WebView 停止時の `user-priority` pending 解放、サムネ進捗初期全走査の背景化は完了済みとして扱う
 
