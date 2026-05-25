@@ -153,6 +153,33 @@ public sealed class ThumbnailProgressSourceTests
         );
     }
 
+    [Test]
+    public void QueueClearの進捗ResetはRuntime差分Guard経由にする()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailQueue.cs")
+            .Replace("\r\n", "\n");
+        string clearMethod = ExtractMethod(
+            source,
+            "private void ClearThumbnailQueue("
+        );
+
+        Assert.That(
+            clearMethod,
+            Does.Contain("UpdateThumbnailProgressRuntimeAndRequestIfChanged(")
+        );
+        Assert.That(
+            clearMethod,
+            Does.Contain("() => _thumbnailProgressRuntime.Reset()")
+        );
+        Assert.That(clearMethod, Does.Contain("ThumbnailPreviewCache.Shared.Clear();"));
+        Assert.That(clearMethod, Does.Contain("ThumbnailPreviewLatencyTracker.Reset();"));
+        Assert.That(clearMethod, Does.Contain("QueueThumbnailProgressInitialCreatedCountRefresh();"));
+        Assert.That(
+            clearMethod,
+            Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();")
+        );
+    }
+
     private static string GetThumbnailProgressSource()
     {
         return GetRepoText(

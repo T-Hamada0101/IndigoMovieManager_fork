@@ -542,10 +542,11 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _thumbnailProgressRuntime.Reset();
+            UpdateThumbnailProgressRuntimeAndRequestIfChanged(
+                () => _thumbnailProgressRuntime.Reset()
+            );
             ThumbnailPreviewCache.Shared.Clear();
             ThumbnailPreviewLatencyTracker.Reset();
-            RequestThumbnailProgressSnapshotRefresh();
             QueueThumbnailProgressInitialCreatedCountRefresh();
         }
 
