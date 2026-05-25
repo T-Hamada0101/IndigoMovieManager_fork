@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -870,7 +871,7 @@ namespace IndigoMovieManager
             RefreshLogTabPreview(force: true);
         }
 
-        private void DebugDeleteThumbnailDir_Click(object sender, RoutedEventArgs e)
+        private async void DebugDeleteThumbnailDir_Click(object sender, RoutedEventArgs e)
         {
             string thumbnailRoot = ResolveCurrentThumbnailRootForDebug();
             if (string.IsNullOrWhiteSpace(thumbnailRoot))
@@ -896,11 +897,7 @@ namespace IndigoMovieManager
                     Directory.Delete(thumbnailRoot, true);
                 }
 
-                if (!string.IsNullOrWhiteSpace(MainVM?.DbInfo?.Sort))
-                {
-                    FilterAndSort(MainVM.DbInfo.Sort, true);
-                    Refresh();
-                }
+                await RefreshLoadedThumbnailUiAfterDebugDeleteAsync();
 
                 DebugRuntimeLog.Write("debug-ui", $"debug delete thumbnail dir: path='{thumbnailRoot}'");
             }
@@ -916,6 +913,42 @@ namespace IndigoMovieManager
             }
 
             RefreshLogTabPreview(force: true);
+        }
+
+        // Debugの全サムネ削除はDBを変えないため、読み直しではなく表示中モデルだけを軽く無効化する。
+        private async Task RefreshLoadedThumbnailUiAfterDebugDeleteAsync()
+        {
+            if (MainVM?.MovieRecs == null || MainVM.MovieRecs.Count < 1)
+            {
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
+                return;
+            }
+
+            int changedCount = 0;
+            foreach (MovieRecords record in MainVM.MovieRecs)
+            {
+                if (ClearThumbnailPathsForThumbnailOnlyDelete(record))
+                {
+                    changedCount++;
+                }
+            }
+
+            if (changedCount > 0)
+            {
+                InvalidateThumbnailErrorRecords(refreshIfVisible: true);
+                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "debug-thumbnail-delete");
+                RefreshUpperTabPreferredMoviePathKeysRevision();
+            }
+
+            RequestThumbnailErrorSnapshotRefresh();
+            RequestThumbnailProgressSnapshotRefresh();
+
+            if (string.Equals(MainVM?.DbInfo?.Sort, "28", StringComparison.Ordinal))
+            {
+                // サムネERROR順だけは件数がsort keyなので、DB再読込なしで現在一覧を並べ直す。
+                await SortDataAsync(MainVM.DbInfo.Sort);
+            }
         }
 
         private void DebugRecreateAllThumbnails_Click(object sender, RoutedEventArgs e)

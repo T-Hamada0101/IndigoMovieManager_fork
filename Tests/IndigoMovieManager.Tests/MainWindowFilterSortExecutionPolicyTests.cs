@@ -201,6 +201,49 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(comboChanged, Does.Contain("if (shouldSelectFirstItem)"));
     }
 
+    [Test]
+    public void ComboSort_段階ロード中のFilterAndSortTrueは全件順序復旧fallbackとして残す()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string comboChanged = GetMethodBlock(
+            mainWindowSource,
+            "private async void ComboSort_SelectionChanged("
+        );
+
+        Assert.That(comboChanged, Does.Contain("if (IsStartupFeedPartialActive)"));
+        Assert.That(comboChanged, Does.Contain("FilterAndSort(id.ToString(), true);"));
+        Assert.That(comboChanged, Does.Contain("else"));
+        Assert.That(comboChanged, Does.Contain("await SortDataAsync(id.ToString());"));
+    }
+
+    [Test]
+    public void Debugサムネイル全削除後はDB再読込ではなく表示モデルの局所更新へ寄せる()
+    {
+        string debugSource = GetRepoText(
+            "BottomTabs",
+            "DebugTab",
+            "MainWindow.BottomTab.Debug.cs"
+        );
+        string deleteMethod = GetMethodBlock(
+            debugSource,
+            "private async void DebugDeleteThumbnailDir_Click("
+        );
+        string refreshMethod = GetMethodBlock(
+            debugSource,
+            "private async Task RefreshLoadedThumbnailUiAfterDebugDeleteAsync("
+        );
+
+        Assert.That(deleteMethod, Does.Contain("await RefreshLoadedThumbnailUiAfterDebugDeleteAsync();"));
+        Assert.That(deleteMethod, Does.Not.Contain("FilterAndSort("));
+        Assert.That(refreshMethod, Does.Contain("ClearThumbnailPathsForThumbnailOnlyDelete(record)"));
+        Assert.That(refreshMethod, Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"debug-thumbnail-delete\");"));
+        Assert.That(refreshMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Contain("await SortDataAsync(MainVM.DbInfo.Sort);"));
+        Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);

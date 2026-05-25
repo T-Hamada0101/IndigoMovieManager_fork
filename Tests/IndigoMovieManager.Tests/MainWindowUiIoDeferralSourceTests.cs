@@ -86,6 +86,21 @@ public sealed class MainWindowUiIoDeferralSourceTests
     }
 
     [Test]
+    public void Fallback起動のFilterAndSortTrueはDB初期読込復旧の許容fallbackとして残す()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
+        string fallbackMethod = ExtractMethod(
+            source,
+            "private void FallbackToLegacyStartupLoad(string sortId, int revision)"
+        );
+
+        Assert.That(fallbackMethod, Does.Contain("CancelStartupFeed(\"startup-fallback\");"));
+        Assert.That(fallbackMethod, Does.Contain("StartStartupHeavyServicesIfNeeded("));
+        Assert.That(fallbackMethod, Does.Contain("FilterAndSort(sortId, true);"));
+        Assert.That(fallbackMethod, Does.Contain("CreateWatcher();"));
+    }
+
+    [Test]
     public void ThumbnailProgressUi反映は救済workerのDBとファイルIOを直接実行しない()
     {
         string source = GetRepoText(
