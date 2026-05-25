@@ -84,6 +84,18 @@ public sealed class BookmarkReloadPolicyTests
     }
 
     [Test]
+    public void BookmarkTabView_ObservableCollection通知に任せてItemsRefreshしない()
+    {
+        string source = GetRepoText("BottomTabs", "Bookmark", "BookmarkTabView.xaml.cs");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("ObservableCollection"));
+            Assert.That(source, Does.Not.Contain(".Items.Refresh()"));
+        });
+    }
+
+    [Test]
     public void BuildBookmarkRecordsForReload_bookmark行をMovieRecordsへ変換できる()
     {
         DataTable bookmarkData = new();

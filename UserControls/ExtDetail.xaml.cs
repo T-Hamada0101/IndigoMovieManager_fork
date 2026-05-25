@@ -154,8 +154,13 @@ namespace IndigoMovieManager.UserControls
 
         public void Refresh()
         {
-            // タグ更新時にItemsControlの再描画を強制する。
-            ExtDetailTags.Items.Refresh();
+            if (!IsVisible || DataContext is not MovieRecords)
+            {
+                return;
+            }
+
+            // 詳細タブのタグは選択中1件だけなので、表示中の軽い view-local 更新に閉じる。
+            CollectionViewSource.GetDefaultView(ExtDetailTags.ItemsSource)?.Refresh();
         }
 
         public void ApplyThumbnailDisplaySize(int width, int height)

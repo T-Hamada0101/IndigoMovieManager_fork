@@ -35,6 +35,31 @@ public sealed class TagKanaLocalRefreshSourceTests
     }
 
     [Test]
+    public void 詳細タグ更新は表示中のViewLocal更新として分類する()
+    {
+        string extDetailSource = ReadRepoText("UserControls", "ExtDetail.xaml.cs");
+        string extensionTabSource = ReadRepoText(
+            "BottomTabs",
+            "Extension",
+            "ExtensionTabView.xaml.cs"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(extDetailSource, Does.Contain("CollectionViewSource.GetDefaultView"));
+            Assert.That(extDetailSource, Does.Contain("表示中の軽い view-local 更新"));
+            Assert.That(extDetailSource, Does.Not.Contain("ExtDetailTags.Items.Refresh()"));
+            Assert.That(extensionTabSource, Does.Contain("Visibility != Visibility.Visible"));
+            Assert.That(
+                extensionTabSource.IndexOf("Visibility != Visibility.Visible", StringComparison.Ordinal),
+                Is.LessThan(
+                    extensionTabSource.IndexOf("ExtensionDetailView.Refresh();", StringComparison.Ordinal)
+                )
+            );
+        });
+    }
+
+    [Test]
     public void かな補完はFilterAndSortTrueではなくMemoryRefreshへ寄せる()
     {
         string source = ReadRepoText("Views", "Main", "MainWindow.KanaBackfill.cs");

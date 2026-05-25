@@ -59,6 +59,11 @@ namespace IndigoMovieManager.BottomTabs.Extension
         // タグ変更などで詳細表示だけ再描画したい時の窓口。
         public void RefreshDetail()
         {
+            if (Visibility != Visibility.Visible || ExtensionDetailView.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
             ExtensionDetailView.Refresh();
         }
 
