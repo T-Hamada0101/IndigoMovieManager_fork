@@ -3,6 +3,11 @@
 最終更新日: 2026-05-25
 
 変更概要:
+- watch 終端 reload は `changedMovies` が no-op 札だけなら実効変更なしとして扱い、deferred/full reload を積まないようにした
+- Rescue タブの通常再試行 / 黒背景救済 retry / index repair dispatch は、投入または開始が 0 件の時は下部 ERROR/進捗 snapshot 予約も行わず、操作後の空振り再評価を減らした
+- 重複動画タブは名前変更を `PropertyChanged` 通知で反映し、`Items.Refresh()` に戻らない形へ寄せた。さらに左グループ選択時の右ペイン詳細生成はサムネ存在確認を含めて背景化し、選択 revision 一致時だけ UI へ戻すようにした
+- 外部 skin API のタグ変更後は `RefreshViewsAfterTagEditorRecordChange(...)` の局所反映に留め、追加の `Refresh()` による一覧全体再描画へ戻らないようにした
+- 検索履歴保存/再読込、watch フォルダ drop 反映、Rescue 履歴反映、サムネ進捗の初期作成数反映は、`ContinueWith` / `task.Result` ではなく async helper へ寄せ、DB/ファイル I/O 後の UI 反映を `DispatcherPriority.Background` と後着 guard で行う形に揃えた
 - watch の bulk full fallback 理由を unsafe dirty / unsafe change kind まで細分化し、既存行の安全差分に no-op 札が混ざるだけなら query-only 復帰できるようにした
 - サムネ進捗の enqueue / 初期作成数反映は runtime version 差分 guard 経由へ寄せ、状態変化がない時の余分な snapshot 予約を減らした
 - 外部 skin refresh は `CatalogRefresh` / `CachedSnapshot` を明示し、`minimal-chrome-reload` は cached definition に閉じ、明示 reload / fallback retry だけ catalog 再確認を async 経路へ通す形にした
