@@ -94,24 +94,28 @@ namespace IndigoMovieManager
                                 log: message => DebugRuntimeLog.Write("queue-consumer", message),
                                 progressSnapshot: (completed, total, currentParallel, configuredParallel) =>
                                 {
-                                    int configuredParallelForUi = GetThumbnailQueueMaxParallelism();
-                                    _thumbnailProgressRuntime.UpdateSessionProgress(
-                                        completed,
-                                        total,
-                                        currentParallel,
-                                        configuredParallelForUi
-                                    );
-                                    RequestThumbnailProgressSnapshotRefresh();
+                                    UpdateThumbnailProgressRuntimeAndRequestIfChanged(() =>
+                                    {
+                                        int configuredParallelForUi = GetThumbnailQueueMaxParallelism();
+                                        _thumbnailProgressRuntime.UpdateSessionProgress(
+                                            completed,
+                                            total,
+                                            currentParallel,
+                                            configuredParallelForUi
+                                        );
+                                    });
                                 },
                                 onJobStarted: queueObj =>
                                 {
-                                    _thumbnailProgressRuntime.MarkJobStarted(queueObj);
-                                    RequestThumbnailProgressSnapshotRefresh();
+                                    UpdateThumbnailProgressRuntimeAndRequestIfChanged(
+                                        () => _thumbnailProgressRuntime.MarkJobStarted(queueObj)
+                                    );
                                 },
                                 onJobCompleted: queueObj =>
                                 {
-                                    _thumbnailProgressRuntime.MarkJobCompleted(queueObj);
-                                    RequestThumbnailProgressSnapshotRefresh();
+                                    UpdateThumbnailProgressRuntimeAndRequestIfChanged(
+                                        () => _thumbnailProgressRuntime.MarkJobCompleted(queueObj)
+                                    );
                                 },
                                 onQueueDrainedAsync: token => OnThumbnailQueueDrainedAsync(token),
                                 progressPresenter: _thumbnailQueueProgressPresenter,
@@ -505,6 +509,25 @@ namespace IndigoMovieManager
                 || dispatcherHasShutdownStarted
                 || dispatcherHasShutdownFinished
                 || isCancellationRequested;
+        }
+
+        // Runtimeに差分が出た時だけsnapshot予約へ進め、空キュー監視の重複通知をUIへ戻さない。
+        private void UpdateThumbnailProgressRuntimeAndRequestIfChanged(Action updateRuntime)
+        {
+            if (updateRuntime == null)
+            {
+                return;
+            }
+
+            long previousVersion = _thumbnailProgressRuntime.CreateSnapshot().Version;
+            updateRuntime();
+            long currentVersion = _thumbnailProgressRuntime.CreateSnapshot().Version;
+            if (currentVersion == previousVersion)
+            {
+                return;
+            }
+
+            RequestThumbnailProgressSnapshotRefresh();
         }
 
         // ユーザーが前に出した preferred job だけは、成功時に visible UI の再読込まで行う。
