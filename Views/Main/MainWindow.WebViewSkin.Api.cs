@@ -757,8 +757,8 @@ namespace IndigoMovieManager
 
         private async Task<bool> SortExternalSkinAsync(string sortKey)
         {
-            return await InvokeExternalSkinUiActionAsync(
-                () =>
+            return await InvokeExternalSkinUiTaskAsync(
+                async () =>
                 {
                     string resolvedSortId = ResolveExternalSkinSortIdOnUiThread(sortKey);
                     if (string.IsNullOrWhiteSpace(resolvedSortId))
@@ -787,11 +787,18 @@ namespace IndigoMovieManager
                     MainVM.DbInfo.Sort = resolvedSortId;
                     if (IsStartupFeedPartialActive)
                     {
-                        FilterAndSort(resolvedSortId, true);
+                        DebugRuntimeLog.Write(
+                            "skin-webview",
+                            $"sort startup partial fallback: sort={resolvedSortId} reason=partial-feed-needs-complete-source"
+                        );
+                        // 起動部分ロード中は表示中の一部だけを並べ替えると順序が壊れるため、
+                        // DB再読込理由をログへ明示したうえで、後着キャンセル付きの正規経路へ寄せる。
+                        CancelStartupFeed("skin-sort");
+                        await FilterAndSortAsync(resolvedSortId, isGetNew: true);
                     }
                     else
                     {
-                        SortData(resolvedSortId);
+                        await SortDataAsync(resolvedSortId);
                     }
 
                     SelectFirstItem();

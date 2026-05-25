@@ -172,6 +172,19 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_sortは通常時に全件reloadへ戻らない()
+    {
+        string apiSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Api.cs");
+        string method = GetMethodBlock(apiSource, "private async Task<bool> SortExternalSkinAsync(");
+
+        Assert.That(method, Does.Contain("await SortDataAsync(resolvedSortId);"));
+        Assert.That(method, Does.Not.Contain("FilterAndSort(resolvedSortId, true);"));
+        Assert.That(method, Does.Contain("CancelStartupFeed(\"skin-sort\");"));
+        Assert.That(method, Does.Contain("await FilterAndSortAsync(resolvedSortId, isGetNew: true);"));
+        Assert.That(method, Does.Contain("partial-feed-needs-complete-source"));
+    }
+
+    [Test]
     public void 外部skin_catalog再確認reasonはAsync経路で行う()
     {
         string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
