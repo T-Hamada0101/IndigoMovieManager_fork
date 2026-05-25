@@ -72,6 +72,48 @@ public sealed class UpperTabImageSourceConverterTests
     }
 
     [Test]
+    public void 同じ複数可視近傍キーsnapshot更新は変更なしとして扱う()
+    {
+        string firstMoviePath = Path.Combine("movies", "visible-1.mp4");
+        string secondMoviePath = Path.Combine("movies", "visible-2.mp4");
+        string[] firstSnapshot =
+        [
+            QueueDbPathResolver.CreateMoviePathKey(firstMoviePath),
+            QueueDbPathResolver.CreateMoviePathKey(secondMoviePath),
+        ];
+        string[] secondSnapshot =
+        [
+            QueueDbPathResolver.CreateMoviePathKey(firstMoviePath),
+            QueueDbPathResolver.CreateMoviePathKey(secondMoviePath),
+        ];
+
+        bool firstChanged = UpperTabActivationGate.UpdatePreferredMoviePathKeys(firstSnapshot);
+        bool secondChanged = UpperTabActivationGate.UpdatePreferredMoviePathKeys(secondSnapshot);
+
+        Assert.That(firstChanged, Is.True);
+        Assert.That(secondChanged, Is.False);
+        Assert.That(UpperTabActivationGate.ShouldApplyImageUpdate(true, firstMoviePath), Is.True);
+        Assert.That(UpperTabActivationGate.ShouldApplyImageUpdate(true, secondMoviePath), Is.True);
+    }
+
+    [Test]
+    public void 空確定snapshotを再投入しても変更なしとして扱う()
+    {
+        bool firstChanged = UpperTabActivationGate.UpdatePreferredMoviePathKeys([]);
+        bool secondChanged = UpperTabActivationGate.UpdatePreferredMoviePathKeys([]);
+
+        Assert.That(firstChanged, Is.True);
+        Assert.That(secondChanged, Is.False);
+        Assert.That(
+            UpperTabActivationGate.ShouldApplyImageUpdate(
+                true,
+                Path.Combine("movies", "hidden.mp4")
+            ),
+            Is.False
+        );
+    }
+
+    [Test]
     public void Null更新は空確定ではなく未初期化へ戻す変更として扱う()
     {
         UpperTabActivationGate.UpdatePreferredMoviePathKeys([]);
@@ -131,6 +173,21 @@ public sealed class UpperTabImageSourceConverterTests
         );
 
         Assert.That(actual, Is.True);
+    }
+
+    [Test]
+    public void 未初期化状態へのNull再投入は変更なしとしてMoviePath付き画像更新を通す()
+    {
+        bool changed = UpperTabActivationGate.UpdatePreferredMoviePathKeys(null);
+
+        Assert.That(changed, Is.False);
+        Assert.That(
+            UpperTabActivationGate.ShouldApplyImageUpdate(
+                true,
+                Path.Combine("movies", "hidden.mp4")
+            ),
+            Is.True
+        );
     }
 
     [Test]

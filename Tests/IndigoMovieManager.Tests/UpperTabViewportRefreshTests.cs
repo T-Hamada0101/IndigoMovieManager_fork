@@ -84,11 +84,37 @@ public sealed class UpperTabViewportRefreshTests
             Does.Contain("UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys)")
         );
         Assert.That(applySnapshotMethod, Does.Contain("if (publishStateChanged || preferredMoviePathKeysGateChanged)"));
+        Assert.That(
+            applySnapshotMethod,
+            Does.Not.Contain("if (publishStateChanged || preferredMoviePathKeysChanged)")
+        );
         Assert.That(applySnapshotMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
         Assert.That(clearMethod, Does.Contain("if (_isUpperTabPreferredMoviePathKeysSnapshotPublished)"));
         Assert.That(clearMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
         Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision = unchecked("));
         Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision + 1"));
+    }
+
+    [Test]
+    public void Gate側の同一snapshot判定はclear前にno_opで返す()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "UpperTabActivationGate.cs");
+        string updateMethod = GetMethodBlock(
+            source,
+            "public static bool UpdatePreferredMoviePathKeys("
+        );
+
+        int equalCheckIndex = updateMethod.IndexOf(
+            "ArePreferredMoviePathKeysEqual(moviePathKeys)",
+            StringComparison.Ordinal
+        );
+        int noOpReturnIndex = updateMethod.IndexOf("return false;", equalCheckIndex, StringComparison.Ordinal);
+        int clearIndex = updateMethod.IndexOf("PreferredMoviePathKeys.Clear();", noOpReturnIndex, StringComparison.Ordinal);
+
+        // 同じ snapshot は set を空に振らず、その場で no-op として抜ける。
+        Assert.That(equalCheckIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(noOpReturnIndex, Is.GreaterThan(equalCheckIndex));
+        Assert.That(clearIndex, Is.GreaterThan(noOpReturnIndex));
     }
 
     [Test]
