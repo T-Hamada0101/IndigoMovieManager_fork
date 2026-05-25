@@ -152,6 +152,13 @@ public sealed class WatchDeferredUiReloadPolicyTests
         (int)MainWindow.WatchMovieDirtyFields.MovieName,
         "source-inserted"
     )]
+    [TestCase(8, (int)MainWindow.WatchMovieDirtyFields.None, "change-kind-unsafe:8")]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.ViewRepaired | 8,
+        (int)MainWindow.WatchMovieDirtyFields.None,
+        "change-kind-unsafe:8"
+    )]
+    [TestCase(8 | 16, (int)MainWindow.WatchMovieDirtyFields.None, "change-kind-unsafe:8,16")]
     [TestCase(
         (int)MainWindow.WatchMovieChangeKind.None,
         (int)MainWindow.WatchMovieDirtyFields.Hash,

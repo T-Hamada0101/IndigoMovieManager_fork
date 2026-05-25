@@ -85,7 +85,9 @@ namespace IndigoMovieManager
                     != WatchMovieChangeKind.None
                 )
                 {
-                    return "change-kind-unsafe";
+                    WatchMovieChangeKind unsafeChangeKinds =
+                        changedMovie.ChangeKind & ~safeExistingChangeKinds;
+                    return $"change-kind-unsafe:{FormatWatchChangeKindsForReason(unsafeChangeKinds)}";
                 }
 
                 if (
@@ -134,6 +136,45 @@ namespace IndigoMovieManager
                     "bulk-existing-view-dirty-only",
                     StringComparison.Ordinal
                 );
+        }
+
+        // 安全外の change kind だけを列挙し、full fallback の次候補をログで選びやすくする。
+        private static string FormatWatchChangeKindsForReason(WatchMovieChangeKind changeKinds)
+        {
+            if (changeKinds == WatchMovieChangeKind.None)
+            {
+                return "None";
+            }
+
+            List<string> names = [];
+            int remaining = (int)changeKinds;
+            foreach (WatchMovieChangeKind kind in Enum.GetValues<WatchMovieChangeKind>())
+            {
+                if (kind == WatchMovieChangeKind.None)
+                {
+                    continue;
+                }
+
+                if ((changeKinds & kind) != WatchMovieChangeKind.None)
+                {
+                    names.Add(kind.ToString());
+                    remaining &= ~(int)kind;
+                }
+            }
+
+            // 将来 enum 名がまだ無い bit が来ても、bit 単位の札としてログへ残す。
+            for (int bit = 1; remaining != 0 && bit > 0; bit <<= 1)
+            {
+                if ((remaining & bit) == 0)
+                {
+                    continue;
+                }
+
+                names.Add(bit.ToString());
+                remaining &= ~bit;
+            }
+
+            return names.Count > 0 ? string.Join(",", names) : changeKinds.ToString();
         }
 
         // unsafe 側だけを短い札へ畳み、実機ログから次の削減候補を選びやすくする。
