@@ -185,6 +185,31 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_UI操作は非UIスレッドからBackground優先度で投げる()
+    {
+        string apiSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Api.cs");
+        string actionMethod = GetMethodBlock(
+            apiSource,
+            "private Task<T> InvokeExternalSkinUiActionAsync<T>("
+        );
+        string taskMethod = GetMethodBlock(
+            apiSource,
+            "private Task<T> InvokeExternalSkinUiTaskAsync<T>("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(actionMethod, Does.Contain("Dispatcher.CheckAccess()"));
+            Assert.That(actionMethod, Does.Contain("Task.FromResult(action())"));
+            Assert.That(actionMethod, Does.Contain("DispatcherPriority.Background"));
+            Assert.That(taskMethod, Does.Contain("Dispatcher.CheckAccess()"));
+            Assert.That(taskMethod, Does.Contain("return action();"));
+            Assert.That(taskMethod, Does.Contain("DispatcherPriority.Background"));
+            Assert.That(taskMethod, Does.Contain(".Task.Unwrap()"));
+        });
+    }
+
+    [Test]
     public void 外部skin_catalog再確認reasonはAsync経路で行う()
     {
         string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");

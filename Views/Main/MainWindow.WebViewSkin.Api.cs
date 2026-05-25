@@ -1184,7 +1184,10 @@ namespace IndigoMovieManager
                     return Task.FromResult(action());
                 }
 
-                return Dispatcher.InvokeAsync(action).Task;
+                // 外部 skin からのUI操作は戻り値互換を保ちつつ、入力や描画の後ろへ回す。
+                return Dispatcher
+                    .InvokeAsync(action, System.Windows.Threading.DispatcherPriority.Background)
+                    .Task;
             }
             catch
             {
@@ -1206,7 +1209,10 @@ namespace IndigoMovieManager
                     return action();
                 }
 
-                return Dispatcher.InvokeAsync(action).Task.Unwrap();
+                // async 操作も Dispatcher 上では従来どおり実行し、外から来た時だけ優先度を下げる。
+                return Dispatcher
+                    .InvokeAsync(action, System.Windows.Threading.DispatcherPriority.Background)
+                    .Task.Unwrap();
             }
             catch
             {
