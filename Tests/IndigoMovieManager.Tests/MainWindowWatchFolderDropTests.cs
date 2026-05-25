@@ -131,16 +131,28 @@ public sealed class MainWindowWatchFolderDropTests
     {
         string source = GetRepoText("Views", "Main", "MainWindow.WatchFolderDrop.cs");
         string queueMethod = GetMethodBlock(source, "private void QueueDroppedWatchFolders(");
+        string asyncMethod = GetMethodBlock(
+            source,
+            "private async Task QueueDroppedWatchFoldersAsync("
+        );
+        string applyUiMethod = GetMethodBlock(
+            source,
+            "private void ApplyDroppedWatchFoldersOnUi("
+        );
         string backgroundMethod = GetMethodBlock(
             source,
             "private static DroppedWatchFolderApplyResult ApplyDroppedWatchFoldersInBackground("
         );
 
-        Assert.That(queueMethod, Does.Contain("Task.Run("));
-        Assert.That(queueMethod, Does.Contain("Dispatcher.BeginInvoke("));
-        Assert.That(queueMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(queueMethod, Does.Contain("_ = QueueDroppedWatchFoldersAsync("));
+        Assert.That(asyncMethod, Does.Contain("Task.Run("));
+        Assert.That(asyncMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(asyncMethod, Does.Contain("DispatcherPriority.Background"));
+        Assert.That(applyUiMethod, Does.Contain("AreSameMainDbPath("));
         Assert.That(queueMethod, Does.Not.Contain("SQLite.InsertWatchTable("));
         Assert.That(queueMethod, Does.Not.Contain("SQLite.GetData("));
+        Assert.That(source, Does.Not.Contain(".ContinueWith("));
+        Assert.That(source, Does.Not.Contain("task.Result"));
         Assert.That(backgroundMethod, Does.Contain("SQLite.GetData("));
         Assert.That(backgroundMethod, Does.Contain("SQLite.InsertWatchTable("));
     }

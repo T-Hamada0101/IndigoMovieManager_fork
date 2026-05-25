@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using IndigoMovieManager.DB;
 using Notification.Wpf;
 
@@ -239,52 +240,77 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _ = Task.Run(() => ApplyDroppedWatchFoldersInBackground(dbFullPath, droppedPathSnapshot))
-                .ContinueWith(
-                    task =>
-                    {
-                        if (task.IsFaulted)
-                        {
-                            DebugRuntimeLog.Write(
-                                "watch-drop",
-                                $"watch folder drop failed: db='{dbFullPath}' err='{task.Exception?.GetBaseException().Message}'"
-                            );
-                            return;
-                        }
+            _ = QueueDroppedWatchFoldersAsync(dbFullPath, droppedPathSnapshot);
+        }
 
-                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
-                        {
-                            return;
-                        }
-
-                        _ = Dispatcher.BeginInvoke(
-                            new Action(
-                                () =>
-                                {
-                                    if (
-                                        !AreSameMainDbPath(
-                                            dbFullPath,
-                                            MainVM?.DbInfo?.DBFullPath ?? ""
-                                        )
-                                    )
-                                    {
-                                        return;
-                                    }
-
-                                    watchData = task.Result.RefreshedWatchData;
-                                    if (task.Result.Result.DirectoriesToAdd.Count > 0)
-                                    {
-                                        // 直接追加した監視フォルダを次回pollへ反映するため、キャッシュを捨てる。
-                                        InvalidateEverythingWatchPollWatchFolderSnapshot();
-                                    }
-
-                                    ShowDroppedWatchFolderToast(task.Result.Result);
-                                }
-                            )
-                        );
-                    },
-                    TaskScheduler.Default
+        private async Task QueueDroppedWatchFoldersAsync(
+            string dbFullPath,
+            string[] droppedPathSnapshot
+        )
+        {
+            DroppedWatchFolderApplyResult applyResult;
+            try
+            {
+                applyResult = await Task.Run(
+                        () => ApplyDroppedWatchFoldersInBackground(dbFullPath, droppedPathSnapshot)
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-drop",
+                    $"watch folder drop failed: db='{dbFullPath}' err='{ex.GetBaseException().Message}'"
                 );
+                return;
+            }
+
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                await Dispatcher.InvokeAsync(
+                    () => ApplyDroppedWatchFoldersOnUi(dbFullPath, applyResult),
+                    DispatcherPriority.Background
+                )
+                .Task;
+            }
+            catch (InvalidOperationException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (TaskCanceledException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+        }
+
+        private void ApplyDroppedWatchFoldersOnUi(
+            string dbFullPath,
+            DroppedWatchFolderApplyResult applyResult
+        )
+        {
+            if (
+                applyResult == null
+                || !AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? "")
+            )
+            {
+                return;
+            }
+
+            watchData = applyResult.RefreshedWatchData;
+            if (applyResult.Result.DirectoriesToAdd.Count > 0)
+            {
+                // 直接追加した監視フォルダを次回pollへ反映するため、キャッシュを捨てる。
+                InvalidateEverythingWatchPollWatchFolderSnapshot();
+            }
+
+            ShowDroppedWatchFolderToast(applyResult.Result);
         }
 
         private static DroppedWatchFolderApplyResult ApplyDroppedWatchFoldersInBackground(
