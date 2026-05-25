@@ -18,20 +18,32 @@ public sealed class UpperTabRescueTabSourceTests
         );
     }
 
-    [TestCase("private async void UpperTabRescueBulkNormalRetryButton_Click(")]
-    [TestCase("private async void UpperTabRescueSelectedNormalRetryButton_Click(")]
-    [TestCase("private async Task RunUpperTabRescueBulkBlackRetryAsync(bool useLiteMode)")]
-    [TestCase("private async Task RunUpperTabRescueSelectedBlackRetryAsync(bool useLiteMode)")]
-    [TestCase("private async Task RunUpperTabRescueSelectedIndexRepairAsync()")]
-    public void Rescue再試行dispatch後はRefreshではなく下部snapshot更新を予約する(string signature)
+    [TestCase("private async void UpperTabRescueBulkNormalRetryButton_Click(", "queuedCount")]
+    [TestCase("private async void UpperTabRescueSelectedNormalRetryButton_Click(", "queuedCount")]
+    [TestCase("private async Task RunUpperTabRescueBulkBlackRetryAsync(bool useLiteMode)", "queuedCount")]
+    [TestCase("private async Task RunUpperTabRescueSelectedBlackRetryAsync(bool useLiteMode)", "queuedCount")]
+    [TestCase("private async Task RunUpperTabRescueSelectedIndexRepairAsync()", "startedCount")]
+    public void Rescue再試行dispatch後はRefreshせず投入成功時だけ下部snapshot更新を予約する(
+        string signature,
+        string guardVariable
+    )
     {
         string source = GetRepoText("UpperTabs", "Rescue", "MainWindow.UpperTabs.RescueTab.cs")
             .Replace("\r\n", "\n");
         string method = ExtractMethod(source, signature);
+        string guardBlock = ExtractBlock(method, $"if ({guardVariable} > 0)");
 
         Assert.That(method, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
-        Assert.That(method, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
-        Assert.That(method, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(guardBlock, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(guardBlock, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(
+            method.Replace(guardBlock, ""),
+            Does.Not.Contain("RequestThumbnailErrorSnapshotRefresh();")
+        );
+        Assert.That(
+            method.Replace(guardBlock, ""),
+            Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();")
+        );
     }
 
     private static string GetRepoText(params string[] relativePathParts)
@@ -57,6 +69,19 @@ public sealed class UpperTabRescueTabSourceTests
         int start = source.IndexOf(signature, StringComparison.Ordinal);
         Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
 
+        return ExtractBlockFromBrace(source, start, signature);
+    }
+
+    private static string ExtractBlock(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        return ExtractBlockFromBrace(source, start, signature);
+    }
+
+    private static string ExtractBlockFromBrace(string source, int start, string signature)
+    {
         int braceStart = source.IndexOf('{', start);
         Assert.That(braceStart, Is.GreaterThanOrEqualTo(0));
 

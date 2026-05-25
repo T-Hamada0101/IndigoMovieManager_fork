@@ -746,11 +746,12 @@ namespace IndigoMovieManager
             string dbName = MainVM?.DbInfo?.DBName ?? "";
             string thumbFolder = MainVM?.DbInfo?.ThumbFolder ?? "";
             Mouse.OverrideCursor = Cursors.Wait;
+            int queuedCount = 0;
 
             try
             {
                 ResolvePreferredThumbnailTabIndex();
-                int queuedCount = await Task.Run(
+                queuedCount = await Task.Run(
                     () =>
                         EnqueueUpperTabRescueItemsToNormalQueue(
                             items,
@@ -777,8 +778,11 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkNormalRetryRunning, 0);
-                RequestThumbnailErrorSnapshotRefresh();
-                RequestThumbnailProgressSnapshotRefresh();
+                if (queuedCount > 0)
+                {
+                    RequestThumbnailErrorSnapshotRefresh();
+                    RequestThumbnailProgressSnapshotRefresh();
+                }
             }
         }
 
@@ -818,11 +822,12 @@ namespace IndigoMovieManager
             string dbName = MainVM?.DbInfo?.DBName ?? "";
             string thumbFolder = MainVM?.DbInfo?.ThumbFolder ?? "";
             Mouse.OverrideCursor = Cursors.Wait;
+            int queuedCount = 0;
 
             try
             {
                 ResolvePreferredThumbnailTabIndex();
-                int queuedCount = await Task.Run(
+                queuedCount = await Task.Run(
                     () =>
                         EnqueueUpperTabRescueItemsToNormalQueue(
                             items,
@@ -849,8 +854,11 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkNormalRetryRunning, 0);
-                RequestThumbnailErrorSnapshotRefresh();
-                RequestThumbnailProgressSnapshotRefresh();
+                if (queuedCount > 0)
+                {
+                    RequestThumbnailErrorSnapshotRefresh();
+                    RequestThumbnailProgressSnapshotRefresh();
+                }
             }
         }
 
@@ -1193,10 +1201,11 @@ namespace IndigoMovieManager
             }
 
             Mouse.OverrideCursor = Cursors.Wait;
+            int queuedCount = 0;
             try
             {
                 ResolvePreferredThumbnailTabIndex();
-                int queuedCount = await Task.Run(
+                queuedCount = await Task.Run(
                     () => EnqueueUpperTabRescueItemsToBlackBackgroundRescue(items, useLiteMode)
                 );
 
@@ -1218,8 +1227,11 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkBlackRetryRunning, 0);
-                RequestThumbnailErrorSnapshotRefresh();
-                RequestThumbnailProgressSnapshotRefresh();
+                if (queuedCount > 0)
+                {
+                    RequestThumbnailErrorSnapshotRefresh();
+                    RequestThumbnailProgressSnapshotRefresh();
+                }
             }
         }
 
@@ -1260,10 +1272,11 @@ namespace IndigoMovieManager
             }
 
             Mouse.OverrideCursor = Cursors.Wait;
+            int queuedCount = 0;
             try
             {
                 ResolvePreferredThumbnailTabIndex();
-                int queuedCount = await Task.Run(
+                queuedCount = await Task.Run(
                     () => EnqueueUpperTabRescueItemsToBlackBackgroundRescue(items, useLiteMode)
                 );
 
@@ -1285,8 +1298,11 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _upperTabRescueBulkBlackRetryRunning, 0);
-                RequestThumbnailErrorSnapshotRefresh();
-                RequestThumbnailProgressSnapshotRefresh();
+                if (queuedCount > 0)
+                {
+                    RequestThumbnailErrorSnapshotRefresh();
+                    RequestThumbnailProgressSnapshotRefresh();
+                }
             }
         }
 
@@ -1433,6 +1449,7 @@ namespace IndigoMovieManager
                 }
 
                 Mouse.OverrideCursor = Cursors.Wait;
+                int startedCount = 0;
                 try
                 {
                     List<MovieRecords> rescueRecords = NormalizeThumbnailUserActionMovieRecords(
@@ -1447,6 +1464,7 @@ namespace IndigoMovieManager
                                 "upper-tab-selected-index-repair"
                             )
                     );
+                    startedCount = dispatchResult.StartedCount;
 
                     DebugRuntimeLog.Write(
                         "upper-tab-rescue",
@@ -1468,8 +1486,11 @@ namespace IndigoMovieManager
                 finally
                 {
                     Mouse.OverrideCursor = null;
-                    RequestThumbnailErrorSnapshotRefresh();
-                    RequestThumbnailProgressSnapshotRefresh();
+                    if (startedCount > 0)
+                    {
+                        RequestThumbnailErrorSnapshotRefresh();
+                        RequestThumbnailProgressSnapshotRefresh();
+                    }
                 }
             }
             finally
