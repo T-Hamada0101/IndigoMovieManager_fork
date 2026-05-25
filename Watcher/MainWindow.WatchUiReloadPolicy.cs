@@ -93,7 +93,9 @@ namespace IndigoMovieManager
                         != WatchMovieDirtyFields.None
                 )
                 {
-                    return "dirty-fields-unsafe";
+                    WatchMovieDirtyFields unsafeDirtyFields =
+                        changedMovie.DirtyFields & ~safeExistingDirtyFields;
+                    return $"dirty-fields-unsafe:{FormatWatchDirtyFieldsForReason(unsafeDirtyFields)}";
                 }
 
                 if (
@@ -132,6 +134,31 @@ namespace IndigoMovieManager
                     "bulk-existing-view-dirty-only",
                     StringComparison.Ordinal
                 );
+        }
+
+        // unsafe 側だけを短い札へ畳み、実機ログから次の削減候補を選びやすくする。
+        private static string FormatWatchDirtyFieldsForReason(WatchMovieDirtyFields dirtyFields)
+        {
+            if (dirtyFields == WatchMovieDirtyFields.None)
+            {
+                return "None";
+            }
+
+            List<string> names = [];
+            foreach (WatchMovieDirtyFields field in Enum.GetValues<WatchMovieDirtyFields>())
+            {
+                if (field == WatchMovieDirtyFields.None)
+                {
+                    continue;
+                }
+
+                if ((dirtyFields & field) != WatchMovieDirtyFields.None)
+                {
+                    names.Add(field.ToString());
+                }
+            }
+
+            return names.Count > 0 ? string.Join(",", names) : dirtyFields.ToString();
         }
 
         // 遅延実行時には、まだ同じDB向けの最新要求かを確認して stale reload を止める。

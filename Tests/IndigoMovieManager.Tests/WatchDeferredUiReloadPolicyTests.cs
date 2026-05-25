@@ -155,7 +155,16 @@ public sealed class WatchDeferredUiReloadPolicyTests
     [TestCase(
         (int)MainWindow.WatchMovieChangeKind.None,
         (int)MainWindow.WatchMovieDirtyFields.Hash,
-        "dirty-fields-unsafe"
+        "dirty-fields-unsafe:Hash"
+    )]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.None,
+        (int)(
+            MainWindow.WatchMovieDirtyFields.MovieName
+            | MainWindow.WatchMovieDirtyFields.Hash
+            | MainWindow.WatchMovieDirtyFields.MovieSize
+        ),
+        "dirty-fields-unsafe:MovieName,Hash"
     )]
     public void ResolveBulkQueryReloadRecoveryReason_bulk降格後の復帰理由を返す(
         int changeKindValue,
