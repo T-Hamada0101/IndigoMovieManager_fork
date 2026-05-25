@@ -232,6 +232,11 @@ public sealed class WatchDeferredUiReloadPolicyTests
     )]
     [TestCase(
         (int)MainWindow.WatchMovieChangeKind.None,
+        (int)MainWindow.WatchMovieDirtyFields.Hash | (1 << 16),
+        "dirty-fields-unsafe:Hash,65536"
+    )]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.None,
         (int)(
             MainWindow.WatchMovieDirtyFields.MovieName
             | MainWindow.WatchMovieDirtyFields.Hash

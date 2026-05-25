@@ -194,6 +194,7 @@ namespace IndigoMovieManager
             }
 
             List<string> names = [];
+            int remaining = (int)dirtyFields;
             foreach (WatchMovieDirtyFields field in Enum.GetValues<WatchMovieDirtyFields>())
             {
                 if (field == WatchMovieDirtyFields.None)
@@ -204,7 +205,20 @@ namespace IndigoMovieManager
                 if ((dirtyFields & field) != WatchMovieDirtyFields.None)
                 {
                     names.Add(field.ToString());
+                    remaining &= ~(int)field;
                 }
+            }
+
+            // enum にまだ名前が無い dirty bit も、落とさず数値の札として残す。
+            for (int bit = 1; remaining != 0 && bit > 0; bit <<= 1)
+            {
+                if ((remaining & bit) == 0)
+                {
+                    continue;
+                }
+
+                names.Add(bit.ToString());
+                remaining &= ~bit;
             }
 
             return names.Count > 0 ? string.Join(",", names) : dirtyFields.ToString();
