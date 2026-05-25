@@ -8,6 +8,53 @@ namespace IndigoMovieManager.Tests;
 public sealed class UpperTabDuplicateVideoAnalyzerTests
 {
     [Test]
+    public void DuplicateItemViewModel_値変更時だけPropertyChangedを出す()
+    {
+        UpperTabDuplicateItemViewModel vm = new();
+        List<string> changedProperties = [];
+        vm.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName ?? "");
+
+        vm.MovieName = "movie-a";
+        vm.MovieName = "movie-a";
+        vm.MoviePath = "movies/a.mp4";
+
+        Assert.That(changedProperties, Is.EqualTo(new[] { "MovieName", "MoviePath" }));
+    }
+
+    [Test]
+    public void DuplicateGroupViewModel_値変更時だけPropertyChangedを出す()
+    {
+        UpperTabDuplicateGroupViewModel vm = new();
+        List<string> changedProperties = [];
+        vm.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName ?? "");
+
+        vm.RepresentativeMovieName = "movie-a";
+        vm.RepresentativeMovieName = "movie-a";
+        vm.RepresentativeThumbnailPath = "thumb/a.jpg";
+
+        Assert.That(
+            changedProperties,
+            Is.EqualTo(new[] { "RepresentativeMovieName", "RepresentativeThumbnailPath" })
+        );
+    }
+
+    [Test]
+    public void TryApplyUpperTabDuplicateMovieNameChange_全体Refreshへ戻らない()
+    {
+        string source = GetRepoText(
+            "UpperTabs",
+            "DuplicateVideos",
+            "MainWindow.UpperTabs.DuplicateVideosTab.cs"
+        );
+        string method = GetMethodBlock(
+            source,
+            "private bool TryApplyUpperTabDuplicateMovieNameChange("
+        );
+
+        Assert.That(method, Does.Not.Contain("Items.Refresh()"));
+    }
+
+    [Test]
     public void ExtractProbText_prob付きファイル名から抽出する()
     {
         string result = UpperTabDuplicateVideoAnalyzer.ExtractProbText(
@@ -54,6 +101,53 @@ public sealed class UpperTabDuplicateVideoAnalyzerTests
             UpperTabDuplicateVideoAnalyzer.BuildSizeCompareText(2000, 3000, 1000),
             Is.EqualTo("-1.0 MB")
         );
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        while (current != null)
+        {
+            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return string.Empty;
+    }
+
+    private static string GetMethodBlock(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終了が見つかりません。");
+        return string.Empty;
     }
 }
 

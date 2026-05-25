@@ -763,8 +763,6 @@ namespace IndigoMovieManager
                 newMovieName
             );
 
-            GetUpperTabDuplicateDetailDataGrid()?.Items.Refresh();
-            GetUpperTabDuplicateGroupSelector()?.Items.Refresh();
             return true;
         }
 
