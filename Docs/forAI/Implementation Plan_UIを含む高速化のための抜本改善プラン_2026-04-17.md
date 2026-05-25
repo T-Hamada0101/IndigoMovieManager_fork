@@ -8,10 +8,11 @@
 - 2026-05-26 の `6bb00e5` で、大件数時の通常 `SortData(...)` を background + revision guard へ寄せ、後着 sort は `sort canceled` / `sort skip stale` で破棄できるようにした。
 - 2026-05-26 の `5a90210` で、`TagControl` / `MainWindow.Tag` のタグ編集後 `Refresh()` / `Items.Refresh()` と、`KanaBackfill` のかなソート時 `FilterAndSort(..., true)` を DB 再読込なしの in-memory 局所反映へ寄せた。
 - 2026-05-26 の `7b34692` で、サムネイルのみ削除後の `FilterAndSort(..., true)` を廃止し、対象 `MovieRecords` のサムネ表示パスクリア、上側タブ visible refresh、下部 ERROR/進捗 snapshot 予約へ寄せた。
-- 2026-05-26 のサブ 5.5 で、動画削除後の `FilterAndSort(..., true)` を廃止し、DB 削除成功行だけを `MovieRecs` / `FilteredMovieRecs` から ID ベースで差分削除し、SearchCount / visible refresh / ERROR・進捗 snapshot 予約へ寄せた。
+- 2026-05-26 の `cc1b094` で、動画削除後の `FilterAndSort(..., true)` を廃止し、DB 削除成功行だけを `MovieRecs` / `FilteredMovieRecs` から ID ベースで差分削除し、SearchCount / visible refresh / ERROR・進捗 snapshot 予約へ寄せた。
+- 2026-05-26 の `8f7f8ff` で、viewport が一時的に計測不能でも、同一タブかつ同一 source revision の場合は直前の preferred key snapshot を保持し、不要な revision 更新と全画像再評価を増やさないようにした。
 - 2026-05-26 の `218ff91` で、watch / rename / query-only の in-memory refresh に後着キャンセル token を通し、古い再検索・再整列が UI へ戻らないようにした。
 - 2026-05-26 の見直しで、計画の軸は維持しつつ、次の主戦場を「watch / rename の in-memory refresh 後着キャンセル」「残る Refresh() / Items.Refresh() / FilterAndSort(true) の局所反映化」「大件数 sort の background + revision guard」「実機ログでの起動 / skin / visible-first 完了判定」へ絞った。
-- 進捗は実装ベース約 86%、実機確認込み 74〜76% として扱う。完了扱いは、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
+- 進捗は実装ベース約 88%、実機確認込み 76〜78% として扱う。完了扱いは、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
 - 大件数検索では、後着検索が入った時に古い `FilterAndSortAsync(...)` の `filter-movies` 列挙を cancellation token で中断できるようにし、入力中の古い全件検索が CPU を食い続ける状態を減らした
 - 大件数の ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / 既存 Roma / 既存 Kana 由来 Roma` の軽量投影に留め、`Kana/Roma` が空の行で名前/パスから読み仮名解析へ戻る fallback を UI hot path から外した
 - watch 終端 reload は `changedMovies` が no-op 札だけなら実効変更なしとして扱い、deferred/full reload を積まないようにした
@@ -516,7 +517,8 @@
 4. 完了: 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一 revision / trigger / elapsed_ms で追えるようにした。
 5. 完了: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定できるログ基盤へ寄せた。
 6. 完了: 物理動画削除後の `FilterAndSort(..., true)` は、DB 削除成功 ID だけを表示モデルから差分削除する局所反映へ寄せた。物理ファイル削除に失敗しても、既存挙動と同じく DB から消えた行を一覧正本として扱い、失敗は警告表示と watcher 復帰に委ねる。
-7. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が visible-first / Player / 他の許容 fallback のどこにあるかを決める。
+7. 完了: visible-first は、viewport 一時未計測時に同一タブ・同一 source revision の preferred key snapshot を保持し、不要な画像再評価を抑えるようにした。
+8. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が Player / ExtDetail / Bookmark 表示更新 / 他の許容 fallback のどこにあるかを決める。
 
 ### Step 1
 
