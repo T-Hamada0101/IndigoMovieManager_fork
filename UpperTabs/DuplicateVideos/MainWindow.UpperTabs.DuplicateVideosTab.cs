@@ -35,6 +35,7 @@ namespace IndigoMovieManager
         private UpperTabDuplicateGroupSummary[] _upperTabDuplicateDetectedGroups = [];
         private UpperTabDuplicateVideosPresenter _upperTabDuplicateVideosPresenter;
         private int _upperTabDuplicateDetectRunning;
+        private long _upperTabDuplicateDetailRefreshRevision;
 
         // 重複動画タブのItemsSourceと初期表示を結び、起動直後でも空状態を安定させる。
         private void InitializeUpperTabDuplicateVideosTab()
@@ -330,31 +331,101 @@ namespace IndigoMovieManager
             GetUpperTabDuplicateGroupSelector().SelectedIndex = 0;
         }
 
-        private void ApplySelectedUpperTabDuplicateGroupDetails()
+        private async void ApplySelectedUpperTabDuplicateGroupDetails()
         {
             UpperTabDuplicateGroupViewModel selectedGroup = GetSelectedUpperTabDuplicateGroup();
             _upperTabDuplicateItems.Clear();
 
             if (selectedGroup == null)
             {
+                Interlocked.Increment(ref _upperTabDuplicateDetailRefreshRevision);
                 SetUpperTabDuplicateVideosHeaderSummary(_upperTabDuplicateGroups.Count, 0, "-");
                 ApplyUpperTabExtensionDetail(null);
                 return;
             }
 
+            long requestRevision = Interlocked.Increment(
+                ref _upperTabDuplicateDetailRefreshRevision
+            );
+            string selectedHash = selectedGroup.Hash ?? "";
+            int groupCount = _upperTabDuplicateGroups.Count;
             string dbName = MainVM?.DbInfo?.DBName ?? "";
             string thumbFolder = MainVM?.DbInfo?.ThumbFolder ?? "";
             string fallbackThumbnailPath = Path.Combine(AppContext.BaseDirectory, "Images", "errorGrid.jpg");
 
             UpperTabDuplicateMovieRecord[] items = _upperTabDuplicateDetectedRecords
-                .Where(x => string.Equals(x.Hash, selectedGroup.Hash, StringComparison.OrdinalIgnoreCase))
+                .Where(x => string.Equals(x.Hash, selectedHash, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(x => x.MovieSize)
                 .ThenByDescending(x => x.FileDateText, StringComparer.Ordinal)
                 .ThenByDescending(x => x.MovieId)
                 .ToArray();
 
-            long maxSize = items.Length > 0 ? items.Max(x => x.MovieSize) : 0;
-            long minSize = items.Length > 0 ? items.Min(x => x.MovieSize) : 0;
+            UpperTabDuplicateItemViewModel[] detailItems;
+            try
+            {
+                // サムネ存在確認と行VM生成は重いので、選択revisionを持って背景側へ逃がす。
+                detailItems = await Task.Run(
+                    () => BuildUpperTabDuplicateDetailItems(
+                        items,
+                        dbName,
+                        thumbFolder,
+                        fallbackThumbnailPath
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "upper-tab-duplicate",
+                    $"detail load failed: hash='{selectedHash}' message='{ex.Message}'"
+                );
+                detailItems = [];
+            }
+
+            if (requestRevision != Volatile.Read(ref _upperTabDuplicateDetailRefreshRevision))
+            {
+                return;
+            }
+
+            _upperTabDuplicateItems.Clear();
+            foreach (UpperTabDuplicateItemViewModel item in detailItems)
+            {
+                _upperTabDuplicateItems.Add(item);
+            }
+
+            EnsureUpperTabDuplicatePreviewThumbnailsQueued(_upperTabDuplicateItems);
+
+            SetUpperTabDuplicateVideosHeaderSummary(
+                groupCount,
+                _upperTabDuplicateItems.Count,
+                selectedHash
+            );
+            if (_upperTabDuplicateItems.Count > 0)
+            {
+                GetUpperTabDuplicateDetailDataGrid().SelectedIndex = 0;
+                ApplyUpperTabExtensionDetail(_upperTabDuplicateItems[0].MovieRecord);
+            }
+            else
+            {
+                ApplyUpperTabExtensionDetail(null);
+            }
+        }
+
+        private UpperTabDuplicateItemViewModel[] BuildUpperTabDuplicateDetailItems(
+            IReadOnlyList<UpperTabDuplicateMovieRecord> items,
+            string dbName,
+            string thumbFolder,
+            string fallbackThumbnailPath
+        )
+        {
+            if (items == null || items.Count < 1)
+            {
+                return [];
+            }
+
+            long maxSize = items.Max(x => x.MovieSize);
+            long minSize = items.Min(x => x.MovieSize);
+            List<UpperTabDuplicateItemViewModel> result = new(items.Count);
             foreach (UpperTabDuplicateMovieRecord item in items)
             {
                 MovieRecords movieRecord = BuildUpperTabDuplicateMovieRecord(
@@ -363,7 +434,7 @@ namespace IndigoMovieManager
                     thumbFolder,
                     fallbackThumbnailPath
                 );
-                _upperTabDuplicateItems.Add(
+                result.Add(
                     new UpperTabDuplicateItemViewModel
                     {
                         MovieRecord = movieRecord,
@@ -391,22 +462,7 @@ namespace IndigoMovieManager
                 );
             }
 
-            EnsureUpperTabDuplicatePreviewThumbnailsQueued(_upperTabDuplicateItems);
-
-            SetUpperTabDuplicateVideosHeaderSummary(
-                _upperTabDuplicateGroups.Count,
-                _upperTabDuplicateItems.Count,
-                selectedGroup.Hash
-            );
-            if (_upperTabDuplicateItems.Count > 0)
-            {
-                GetUpperTabDuplicateDetailDataGrid().SelectedIndex = 0;
-                ApplyUpperTabExtensionDetail(_upperTabDuplicateItems[0].MovieRecord);
-            }
-            else
-            {
-                ApplyUpperTabExtensionDetail(null);
-            }
+            return result.ToArray();
         }
 
         private void SetUpperTabDuplicateVideosHeaderSummary(int groupCount, int selectedCount, string selectedHash)

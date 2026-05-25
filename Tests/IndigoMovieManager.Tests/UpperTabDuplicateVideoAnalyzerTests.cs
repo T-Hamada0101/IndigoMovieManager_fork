@@ -55,6 +55,43 @@ public sealed class UpperTabDuplicateVideoAnalyzerTests
     }
 
     [Test]
+    public void ApplySelectedUpperTabDuplicateGroupDetails_詳細生成をTaskRunへ逃がす()
+    {
+        string source = GetRepoText(
+            "UpperTabs",
+            "DuplicateVideos",
+            "MainWindow.UpperTabs.DuplicateVideosTab.cs"
+        );
+        string method = GetMethodBlock(
+            source,
+            "private async void ApplySelectedUpperTabDuplicateGroupDetails("
+        );
+
+        Assert.That(method, Does.Contain("Task.Run("));
+        Assert.That(method, Does.Contain("BuildUpperTabDuplicateDetailItems("));
+        Assert.That(method, Does.Not.Contain("File.Exists("));
+    }
+
+    [Test]
+    public void ApplySelectedUpperTabDuplicateGroupDetails_revisionで後着を破棄する()
+    {
+        string source = GetRepoText(
+            "UpperTabs",
+            "DuplicateVideos",
+            "MainWindow.UpperTabs.DuplicateVideosTab.cs"
+        );
+        string method = GetMethodBlock(
+            source,
+            "private async void ApplySelectedUpperTabDuplicateGroupDetails("
+        );
+
+        Assert.That(source, Does.Contain("_upperTabDuplicateDetailRefreshRevision"));
+        Assert.That(method, Does.Contain("Interlocked.Increment("));
+        Assert.That(method, Does.Contain("Volatile.Read(ref _upperTabDuplicateDetailRefreshRevision)"));
+        Assert.That(method, Does.Contain("return;"));
+    }
+
+    [Test]
     public void ExtractProbText_prob付きファイル名から抽出する()
     {
         string result = UpperTabDuplicateVideoAnalyzer.ExtractProbText(
