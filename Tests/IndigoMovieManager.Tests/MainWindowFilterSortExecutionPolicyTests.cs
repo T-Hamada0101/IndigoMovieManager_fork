@@ -93,18 +93,31 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "private void PersistSearchHistoryAfterSearch("
         );
         string refreshMethod = GetMethodBlock(searchSource, "private void QueueSearchHistoryRefresh(");
+        string asyncRefreshMethod = GetMethodBlock(
+            searchSource,
+            "private async Task RefreshSearchHistoryAsync("
+        );
         string lostFocusMethod = GetMethodBlock(searchSource, "private void SearchBox_LostFocus(");
 
         Assert.That(persistMethod, Does.Not.Contain("SearchHistoryService.PersistSuccessfulSearch("));
         Assert.That(persistMethod, Does.Not.Contain("GetHistoryTable("));
         Assert.That(persistMethod, Does.Contain("QueueSearchHistoryRefresh("));
-        Assert.That(refreshMethod, Does.Contain("Task.Run("));
-        Assert.That(refreshMethod, Does.Contain("SearchHistoryService.PersistSuccessfulSearch("));
-        Assert.That(refreshMethod, Does.Contain("SearchHistoryService.LoadLatestHistory("));
-        Assert.That(refreshMethod, Does.Contain("Dispatcher.BeginInvoke("));
-        Assert.That(refreshMethod, Does.Contain("AreSameMainDbPath("));
-        Assert.That(refreshMethod, Does.Contain("ApplySearchHistoryRecords(task.Result, SearchBox?.Text ?? \"\")"));
-        Assert.That(refreshMethod, Does.Not.Contain("currentText"));
+        Assert.That(refreshMethod, Does.Contain("RefreshSearchHistoryAsync("));
+        Assert.That(refreshMethod, Does.Not.Contain("ContinueWith("));
+        Assert.That(refreshMethod, Does.Not.Contain("task.Result"));
+        Assert.That(asyncRefreshMethod, Does.Contain("Task.Run("));
+        Assert.That(asyncRefreshMethod, Does.Contain("SearchHistoryService.PersistSuccessfulSearch("));
+        Assert.That(asyncRefreshMethod, Does.Contain("SearchHistoryService.LoadLatestHistory("));
+        Assert.That(asyncRefreshMethod, Does.Contain(".InvokeAsync("));
+        Assert.That(asyncRefreshMethod, Does.Contain(".ConfigureAwait(false);"));
+        Assert.That(asyncRefreshMethod, Does.Contain(".Task.ConfigureAwait(false);"));
+        Assert.That(asyncRefreshMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(asyncRefreshMethod, Does.Contain("ApplySearchHistoryRecords(records, SearchBox?.Text ?? \"\")"));
+        Assert.That(asyncRefreshMethod, Does.Contain("catch (TaskCanceledException)"));
+        Assert.That(asyncRefreshMethod, Does.Contain("catch (InvalidOperationException)"));
+        Assert.That(asyncRefreshMethod, Does.Contain("history apply failed"));
+        Assert.That(asyncRefreshMethod, Does.Not.Contain("ContinueWith("));
+        Assert.That(asyncRefreshMethod, Does.Not.Contain("task.Result"));
         Assert.That(lostFocusMethod, Does.Contain("QueueSearchHistoryUsageRecord("));
         Assert.That(lostFocusMethod, Does.Not.Contain("SearchHistoryService.RecordSearchUsage("));
     }

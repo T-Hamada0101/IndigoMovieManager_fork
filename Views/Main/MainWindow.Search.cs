@@ -301,57 +301,84 @@ namespace IndigoMovieManager
             }
 
             long refreshStamp = Interlocked.Increment(ref _searchHistoryRefreshStamp);
-            _ = Task.Run(
-                    () =>
-                    {
-                        SearchHistoryService.PersistSuccessfulSearch(
-                            dbFullPath,
-                            keyword,
-                            searchCount
-                        );
-                        return SearchHistoryService.LoadLatestHistory(dbFullPath);
-                    }
-                )
-                .ContinueWith(
-                    task =>
-                    {
-                        if (task.IsFaulted)
+            _ = RefreshSearchHistoryAsync(dbFullPath, keyword, searchCount, refreshStamp);
+        }
+
+        private async Task RefreshSearchHistoryAsync(
+            string dbFullPath,
+            string keyword,
+            int searchCount,
+            long refreshStamp
+        )
+        {
+            History[] records;
+            try
+            {
+                // DB書き込みと再読込は検索確定後のUI導線から外し、反映だけ後で戻す。
+                records = await Task.Run(
+                        () =>
                         {
-                            DebugRuntimeLog.Write(
-                                "search-history",
-                                $"history refresh failed: db='{dbFullPath}' keyword='{keyword}' err='{task.Exception?.GetBaseException().Message}'"
+                            SearchHistoryService.PersistSuccessfulSearch(
+                                dbFullPath,
+                                keyword,
+                                searchCount
                             );
-                            return;
+                            return SearchHistoryService.LoadLatestHistory(dbFullPath);
                         }
-
-                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
-                        {
-                            return;
-                        }
-
-                        _ = Dispatcher.BeginInvoke(
-                            new Action(
-                                () =>
-                                {
-                                    if (
-                                        refreshStamp != _searchHistoryRefreshStamp
-                                        || !AreSameMainDbPath(
-                                            dbFullPath,
-                                            MainVM?.DbInfo?.DBFullPath ?? ""
-                                        )
-                                    )
-                                    {
-                                        return;
-                                    }
-
-                                    ApplySearchHistoryRecords(task.Result, SearchBox?.Text ?? "");
-                                }
-                            ),
-                            DispatcherPriority.Background
-                        );
-                    },
-                    TaskScheduler.Default
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "search-history",
+                    $"history refresh failed: db='{dbFullPath}' keyword='{keyword}' err='{ex.Message}'"
                 );
+                return;
+            }
+
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                await Dispatcher
+                    .InvokeAsync(
+                        () =>
+                        {
+                            if (
+                                refreshStamp != _searchHistoryRefreshStamp
+                                || !AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? "")
+                            )
+                            {
+                                return;
+                            }
+
+                            ApplySearchHistoryRecords(records, SearchBox?.Text ?? "");
+                        },
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (TaskCanceledException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (InvalidOperationException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "search-history",
+                    $"history apply failed: db='{dbFullPath}' keyword='{keyword}' err='{ex.Message}'"
+                );
+            }
         }
 
         private void QueueSearchHistoryUsageRecord(string dbFullPath, string keyword)
