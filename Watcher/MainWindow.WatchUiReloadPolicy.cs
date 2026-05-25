@@ -70,11 +70,22 @@ namespace IndigoMovieManager
                 WatchMovieChangeKind.ViewRepaired
                 | WatchMovieChangeKind.DisplayedViewRefresh;
             int changedCount = 0;
+            int effectiveChangedCount = 0;
             bool hasViewOnlyChange = false;
             bool hasDirtyChange = false;
             foreach (WatchChangedMovie changedMovie in changedMovies ?? [])
             {
                 changedCount++;
+                if (
+                    changedMovie.ChangeKind == WatchMovieChangeKind.None
+                    && changedMovie.DirtyFields == WatchMovieDirtyFields.None
+                )
+                {
+                    // no-op は圧縮後に混ざるだけの札として扱い、有効な差分判定から外す。
+                    continue;
+                }
+
+                effectiveChangedCount++;
                 if ((changedMovie.ChangeKind & WatchMovieChangeKind.SourceInserted) != 0)
                 {
                     return "source-inserted";
@@ -100,14 +111,6 @@ namespace IndigoMovieManager
                     return $"dirty-fields-unsafe:{FormatWatchDirtyFieldsForReason(unsafeDirtyFields)}";
                 }
 
-                if (
-                    changedMovie.ChangeKind == WatchMovieChangeKind.None
-                    && changedMovie.DirtyFields == WatchMovieDirtyFields.None
-                )
-                {
-                    return "no-effective-change";
-                }
-
                 hasViewOnlyChange |= changedMovie.ChangeKind != WatchMovieChangeKind.None;
                 hasDirtyChange |= changedMovie.DirtyFields != WatchMovieDirtyFields.None;
             }
@@ -115,6 +118,11 @@ namespace IndigoMovieManager
             if (changedCount < 1)
             {
                 return "no-changed-movies";
+            }
+
+            if (effectiveChangedCount < 1)
+            {
+                return "no-effective-change";
             }
 
             if (hasViewOnlyChange && hasDirtyChange)

@@ -115,6 +115,67 @@ public sealed class WatchDeferredUiReloadPolicyTests
     }
 
     [Test]
+    public void CanRecoverBulkExistingDirtyOnlyQueryReload_noop混じりの安全dirtyならTrueを返す()
+    {
+        bool result = MainWindow.CanRecoverBulkExistingDirtyOnlyQueryReload(
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\noop.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.FileDate
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.True);
+    }
+
+    [Test]
+    public void CanRecoverBulkExistingDirtyOnlyQueryReload_noop混じりの安全viewならTrueを返す()
+    {
+        bool result = MainWindow.CanRecoverBulkExistingDirtyOnlyQueryReload(
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\noop.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.ViewRepaired,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.True);
+    }
+
+    [Test]
+    public void CanRecoverBulkExistingDirtyOnlyQueryReload_noopだけならFalseを返す()
+    {
+        bool result = MainWindow.CanRecoverBulkExistingDirtyOnlyQueryReload(
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\noop.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
     public void CanRecoverBulkExistingDirtyOnlyQueryReload_SourceInsertedがあればFalseを返す()
     {
         bool result = MainWindow.CanRecoverBulkExistingDirtyOnlyQueryReload(
@@ -146,6 +207,11 @@ public sealed class WatchDeferredUiReloadPolicyTests
         (int)MainWindow.WatchMovieChangeKind.DisplayedViewRefresh,
         (int)MainWindow.WatchMovieDirtyFields.MovieSize,
         "bulk-existing-view-dirty-only"
+    )]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.None,
+        (int)MainWindow.WatchMovieDirtyFields.None,
+        "no-effective-change"
     )]
     [TestCase(
         (int)MainWindow.WatchMovieChangeKind.SourceInserted,
@@ -196,6 +262,50 @@ public sealed class WatchDeferredUiReloadPolicyTests
         );
 
         Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ResolveBulkQueryReloadRecoveryReason_noop混じりの安全dirtyはdirty復帰理由を返す()
+    {
+        string result = MainWindow.ResolveBulkQueryReloadRecoveryReason(
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\noop.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.FileDate
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.EqualTo("bulk-existing-dirty-only"));
+    }
+
+    [Test]
+    public void ResolveBulkQueryReloadRecoveryReason_noop混じりの安全viewはview復帰理由を返す()
+    {
+        string result = MainWindow.ResolveBulkQueryReloadRecoveryReason(
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\noop.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.DisplayedViewRefresh,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.EqualTo("bulk-existing-view-only"));
     }
 
     [Test]
