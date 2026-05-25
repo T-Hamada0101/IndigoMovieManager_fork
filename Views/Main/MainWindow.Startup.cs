@@ -19,6 +19,9 @@ namespace IndigoMovieManager
         private const int StartupAppendPageSize = 300;
         private const int StartupLoadMoreNearEndThreshold = 72;
         private const int StartupHeavyServicesDelayMs = 1500;
+        private const string StartupWarmPathTrigger = "StartupDbOpen";
+        private const string StartupSourceDbFallback = "DbFallback";
+        private const string StartupSourceLegacyFallback = "LegacyFallback";
         private static readonly int[] StartupThumbnailPrewarmTabIndexes = [0, 1, 2, 3, 4, 99];
 
         private readonly Stopwatch _startupUiStopwatch = Stopwatch.StartNew();
@@ -34,6 +37,7 @@ namespace IndigoMovieManager
         private MovieRecordBulkBuildCache _startupContinuationBulkCache = null!;
         private CancellationToken _startupContinuationCancellationToken;
         private int _startupSessionRevision;
+        private string _startupSessionTrigger = StartupWarmPathTrigger;
         private int _startupContinuationRevision;
         private int _startupNextPageIndex = 1;
         private bool _startupHasMorePages;
@@ -57,6 +61,61 @@ namespace IndigoMovieManager
             );
         }
 
+        private void LogStartupWarmPathMilestone(
+            string milestone,
+            int revision,
+            string trigger,
+            string sourceKind,
+            string feedState,
+            string details = ""
+        )
+        {
+            string normalizedDetails = string.IsNullOrWhiteSpace(details)
+                ? ""
+                : $" {details.Trim()}";
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"startup warm path {milestone}: revision={revision} trigger={trigger} source={sourceKind} feed_state={feedState}{normalizedDetails} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+            );
+        }
+
+        private string ResolveStartupWarmPathTrigger()
+        {
+            return string.IsNullOrWhiteSpace(_startupSessionTrigger)
+                ? StartupWarmPathTrigger
+                : _startupSessionTrigger;
+        }
+
+        private int ResolveStartupWarmPathRevision(int revision)
+        {
+            return revision > 0 ? revision : _startupSessionRevision;
+        }
+
+        private static string ResolveStartupFeedState(bool hasMore)
+        {
+            return hasMore ? "partial-feed" : "complete";
+        }
+
+        private static string ResolveStartupHeavyServicesFeedState(string startReason)
+        {
+            if (string.Equals(startReason, "StartupFallback", StringComparison.Ordinal))
+            {
+                return "fallback";
+            }
+
+            if (string.Equals(startReason, "StartupFeedComplete", StringComparison.Ordinal))
+            {
+                return "complete";
+            }
+
+            if (startReason.StartsWith("StartupCanceled:", StringComparison.Ordinal))
+            {
+                return "canceled";
+            }
+
+            return "partial-feed";
+        }
+
         private void BeginStartupDbOpen()
         {
             string dbPath = MainVM?.DbInfo?.DBFullPath ?? "";
@@ -66,6 +125,7 @@ namespace IndigoMovieManager
             }
 
             _startupUiStopwatch.Restart();
+            _startupSessionTrigger = StartupWarmPathTrigger;
             string sortId = string.IsNullOrWhiteSpace(MainVM?.DbInfo?.Sort)
                 ? "1"
                 : MainVM.DbInfo.Sort;
@@ -86,6 +146,7 @@ namespace IndigoMovieManager
             using IDisposable uiHangScope = TrackUiHangActivity(request.ActivityKind);
             StartupLoadSession session = _startupLoadCoordinator.StartNewSession();
             _startupSessionRevision = session.Revision;
+            _startupSessionTrigger = StartupWarmPathTrigger;
             _startupFeedIsPartialActive = true;
             _startupFeedLoadedAllPages = false;
             _startupInputReadyLogged = false;
@@ -95,7 +156,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"startup open begin: revision={session.Revision} db='{request.DbPath}' sort={request.SortId} search='{request.SearchKeyword}' first_page={request.FirstPageSize}"
+                $"startup open begin: revision={session.Revision} trigger={ResolveStartupWarmPathTrigger()} db='{request.DbPath}' sort={request.SortId} search='{request.SearchKeyword}' first_page={request.FirstPageSize}"
             );
 
             try
@@ -217,7 +278,7 @@ namespace IndigoMovieManager
                         QueuePlayerWebViewEnvironmentWarm();
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"startup light services started: revision={revision} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+                            $"startup light services started: revision={revision} trigger={ResolveStartupWarmPathTrigger()} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
                         );
                     },
                     DispatcherPriority.Background
@@ -470,7 +531,7 @@ namespace IndigoMovieManager
                 items,
                 sourcePage.ApproximateTotalCount,
                 sourcePage.HasMore,
-                SourceKind: "DbFallback",
+                SourceKind: StartupSourceDbFallback,
                 PageIndex: pageIndex
             );
         }
@@ -527,17 +588,26 @@ namespace IndigoMovieManager
                 RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "startup-first-page");
             }
 
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"startup first-page shown: revision={revision} count={page.Items.Length} has_more={page.HasMore} source={page.SourceKind} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+            string feedState = ResolveStartupFeedState(page.HasMore);
+            LogStartupWarmPathMilestone(
+                "first-page shown",
+                revision,
+                ResolveStartupWarmPathTrigger(),
+                page.SourceKind,
+                feedState,
+                $"count={page.Items.Length} has_more={page.HasMore}"
             );
 
             if (!_startupInputReadyLogged)
             {
                 _startupInputReadyLogged = true;
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"startup input ready: revision={revision} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+                LogStartupWarmPathMilestone(
+                    "input ready",
+                    revision,
+                    ResolveStartupWarmPathTrigger(),
+                    page.SourceKind,
+                    feedState,
+                    $"count={page.Items.Length} has_more={page.HasMore}"
                 );
             }
         }
@@ -560,9 +630,13 @@ namespace IndigoMovieManager
             UpdateExtensionDetailVisibilityBySearchCount();
             NotifyUpperTabViewportSourceChanged();
 
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"startup page append: revision={revision} page={page.PageIndex} count={page.Items.Length} visible_total={MainVM.FilteredMovieRecs.Count} has_more={page.HasMore} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+            LogStartupWarmPathMilestone(
+                "page append",
+                revision,
+                ResolveStartupWarmPathTrigger(),
+                page.SourceKind,
+                ResolveStartupFeedState(page.HasMore),
+                $"page={page.PageIndex} count={page.Items.Length} visible_total={MainVM.FilteredMovieRecs.Count} has_more={page.HasMore}"
             );
 
             _startupAppendInFlight = false;
@@ -590,11 +664,20 @@ namespace IndigoMovieManager
             _startupFeedLoadedAllPages = true;
             ClearStartupContinuationState();
             MainVM.DbInfo.SearchCount = MainVM.FilteredMovieRecs.Count;
-            StartStartupHeavyServicesIfNeeded("StartupFeedComplete");
+            StartStartupHeavyServicesIfNeeded(
+                "StartupFeedComplete",
+                revision,
+                StartupSourceDbFallback,
+                "complete"
+            );
 
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"startup feed complete: revision={revision} total_count={MainVM.FilteredMovieRecs.Count} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+            LogStartupWarmPathMilestone(
+                "feed complete",
+                revision,
+                ResolveStartupWarmPathTrigger(),
+                StartupSourceDbFallback,
+                "complete",
+                $"total_count={MainVM.FilteredMovieRecs.Count}"
             );
         }
 
@@ -605,13 +688,48 @@ namespace IndigoMovieManager
                 return;
             }
 
+            string warmPathTrigger = ResolveStartupWarmPathTrigger();
+            LogStartupWarmPathMilestone(
+                "fallback begin",
+                revision,
+                warmPathTrigger,
+                StartupSourceLegacyFallback,
+                "fallback",
+                $"sort={sortId}"
+            );
             CancelStartupFeed("startup-fallback");
-            StartStartupHeavyServicesIfNeeded("StartupFallback");
+            StartStartupHeavyServicesIfNeeded(
+                "StartupFallback",
+                revision,
+                StartupSourceLegacyFallback,
+                "fallback"
+            );
             ReloadBookmarkTabData();
             // fallback 起動でも通常起動と同じ遅延予約へ合流し、初期表示の置き去りを防ぐ。
             QueueStartupThumbnailProgressSnapshotRefresh();
             FilterAndSort(sortId, true);
             CreateWatcher();
+            if (!_startupInputReadyLogged)
+            {
+                _startupInputReadyLogged = true;
+                LogStartupWarmPathMilestone(
+                    "input ready",
+                    revision,
+                    warmPathTrigger,
+                    StartupSourceLegacyFallback,
+                    "fallback",
+                    $"count={MainVM.FilteredMovieRecs.Count}"
+                );
+            }
+
+            LogStartupWarmPathMilestone(
+                "fallback complete",
+                revision,
+                warmPathTrigger,
+                StartupSourceLegacyFallback,
+                "fallback",
+                $"count={MainVM.FilteredMovieRecs.Count}"
+            );
         }
 
         private void EnsureStartupBackgroundTasksRunning(string trigger)
@@ -648,23 +766,37 @@ namespace IndigoMovieManager
             }
         }
 
-        private void StartStartupHeavyServicesIfNeeded(string trigger)
+        private void StartStartupHeavyServicesIfNeeded(
+            string startReason,
+            int revisionForLog = 0,
+            string sourceKind = StartupSourceDbFallback,
+            string feedState = ""
+        )
         {
             if (_startupHeavyServicesStarted)
             {
                 return;
             }
 
+            int revision = ResolveStartupWarmPathRevision(revisionForLog);
+            string trigger = ResolveStartupWarmPathTrigger();
+            string resolvedFeedState = string.IsNullOrWhiteSpace(feedState)
+                ? ResolveStartupHeavyServicesFeedState(startReason)
+                : feedState;
             _startupHeavyServicesStarted = true;
             SetThumbnailQueueInputEnabled(true);
-            EnsureStartupBackgroundTasksRunning(trigger);
+            EnsureStartupBackgroundTasksRunning(startReason);
             QueueStartupWatcherCreation(_startupSessionRevision);
-            DebugRuntimeLog.TaskStart(nameof(CheckFolderAsync), $"mode=Auto trigger={trigger}");
-            _ = QueueCheckFolderAsync(CheckMode.Auto, trigger);
-            StartKanaBackfillIfNeeded(trigger);
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"startup heavy services started: trigger={trigger} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+            DebugRuntimeLog.TaskStart(nameof(CheckFolderAsync), $"mode=Auto trigger={startReason}");
+            _ = QueueCheckFolderAsync(CheckMode.Auto, startReason);
+            StartKanaBackfillIfNeeded(startReason);
+            LogStartupWarmPathMilestone(
+                "heavy services started",
+                revision,
+                trigger,
+                sourceKind,
+                resolvedFeedState,
+                $"start_reason={startReason}"
             );
         }
 
@@ -676,11 +808,12 @@ namespace IndigoMovieManager
             _startupLightServicesStarted = false;
             _startupHeavyServicesStarted = false;
             _startupSessionRevision = 0;
+            _startupSessionTrigger = StartupWarmPathTrigger;
             ClearStartupContinuationState();
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"startup feed reset: reason={reason} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+                $"startup feed reset: reason={reason} trigger={ResolveStartupWarmPathTrigger()} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
             );
         }
 
@@ -693,16 +826,26 @@ namespace IndigoMovieManager
 
             _startupLoadCoordinator.CancelCurrent();
             _startupFeedIsPartialActive = false;
+            int revision = _startupSessionRevision;
             _startupSessionRevision = 0;
             ClearStartupContinuationState();
 
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"startup feed canceled: reason={reason} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
+            LogStartupWarmPathMilestone(
+                "feed canceled",
+                revision,
+                ResolveStartupWarmPathTrigger(),
+                StartupSourceDbFallback,
+                "canceled",
+                $"reason={reason}"
             );
             if (!string.Equals(reason, "startup-fallback", StringComparison.Ordinal))
             {
-                StartStartupHeavyServicesIfNeeded($"StartupCanceled:{reason}");
+                StartStartupHeavyServicesIfNeeded(
+                    $"StartupCanceled:{reason}",
+                    revision,
+                    StartupSourceDbFallback,
+                    "canceled"
+                );
             }
         }
 
@@ -842,7 +985,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"startup feed parked: revision={revision} visible_total={MainVM.FilteredMovieRecs.Count} next_page={nextPageIndex} threshold={StartupLoadMoreNearEndThreshold}"
+                $"startup warm path feed parked: revision={revision} trigger={ResolveStartupWarmPathTrigger()} source={StartupSourceDbFallback} feed_state=partial-feed visible_total={MainVM.FilteredMovieRecs.Count} next_page={nextPageIndex} threshold={StartupLoadMoreNearEndThreshold} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"
             );
         }
 

@@ -32,6 +32,60 @@ public sealed class StartupWatcherWarmPathSourceTests
         Assert.That(queueMethod, Does.Contain("CreateWatcher();"));
     }
 
+    [Test]
+    public void WarmPath三段ログは同じRevisionTriggerElapsedで追える()
+    {
+        string source = File.ReadAllText(GetMainWindowStartupSourcePath());
+        string firstPageMethod = ExtractMethod(source, "private void ApplyStartupFirstPage(");
+        string heavyMethod = ExtractMethod(
+            source,
+            "private void StartStartupHeavyServicesIfNeeded("
+        );
+
+        Assert.That(source, Does.Contain("startup warm path {milestone}:"));
+        Assert.That(source, Does.Contain("\"first-page shown\""));
+        Assert.That(source, Does.Contain("\"input ready\""));
+        Assert.That(source, Does.Contain("\"heavy services started\""));
+
+        Assert.That(firstPageMethod, Does.Contain("ResolveStartupWarmPathTrigger()"));
+        Assert.That(firstPageMethod, Does.Contain("ResolveStartupFeedState(page.HasMore)"));
+        Assert.That(heavyMethod, Does.Contain("ResolveStartupWarmPathRevision(revisionForLog)"));
+        Assert.That(heavyMethod, Does.Contain("ResolveStartupWarmPathTrigger()"));
+        Assert.That(heavyMethod, Does.Contain("start_reason={startReason}"));
+        Assert.That(
+            source,
+            Does.Contain(
+                "revision={revision} trigger={trigger} source={sourceKind} feed_state={feedState}"
+            )
+        );
+        Assert.That(source, Does.Contain("elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"));
+    }
+
+    [Test]
+    public void Startup分岐ログはPartialFallbackCompleteを区別できる()
+    {
+        string source = File.ReadAllText(GetMainWindowStartupSourcePath());
+        string fallbackMethod = ExtractMethod(
+            source,
+            "private void FallbackToLegacyStartupLoad(string sortId, int revision)"
+        );
+        string completeMethod = ExtractMethod(
+            source,
+            "private void FinishStartupFeedIfCurrent(int revision)"
+        );
+        string parkedMethod = ExtractMethod(
+            source,
+            "private void RememberStartupContinuationState("
+        );
+
+        Assert.That(parkedMethod, Does.Contain("feed_state=partial-feed"));
+        Assert.That(fallbackMethod, Does.Contain("StartupSourceLegacyFallback"));
+        Assert.That(fallbackMethod, Does.Contain("\"fallback begin\""));
+        Assert.That(fallbackMethod, Does.Contain("\"fallback complete\""));
+        Assert.That(completeMethod, Does.Contain("\"StartupFeedComplete\""));
+        Assert.That(completeMethod, Does.Contain("\"complete\""));
+    }
+
     private static string GetMainWindowStartupSourcePath()
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
