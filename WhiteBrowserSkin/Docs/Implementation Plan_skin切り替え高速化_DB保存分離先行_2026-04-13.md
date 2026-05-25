@@ -38,6 +38,7 @@
 - 2026-05-05 に明示 reload の現在外部 skin 定義再確認を async 経路へ移し、`WhiteBrowserSkinCatalogService.Load(...)` だけを背景で実行してから UI 側で snapshot を採用する形へした。reload の鮮度は維持しつつ、host prepare 前の UI スレッド滞在を減らす
 - 2026-05-25 に built-in skin の単純 apply / reload 判定では catalog 未ロードでも共有 built-in 定義だけで解決し、外部 skin 再走査へ進まない形へした。明示 reload の外部 skin 鮮度確認は従来どおり維持する
 - 2026-05-25 に外部 skin refresh の reason を `CatalogRefresh` / `CachedSnapshot` へ明示分岐した。`header-reload` と `fallback-notice-retry` は鮮度確認を維持し、旧最小ヘッダー由来の `minimal-chrome-reload` は cached definition で host 再準備だけ行う
+- 2026-05-25 に batch 圧縮時の reason 優先度も `CatalogRefresh` 系を `dbinfo-*` より上に固定した。`header-reload` / `fallback-notice-retry` が DB 変化通知に埋もれて cached snapshot へ落ちる経路を防ぐ
 
 ## 1. 結論
 
@@ -335,6 +336,7 @@ skin 名解決や minimal chrome 同期のたびに、catalog を常時総なめ
 - 2026-05-05: 明示 reload 系 reason は `RefreshCurrentSkinDefinitionAsync()` を通り、catalog load の I/O だけを background へ逃がす。Orchestrator の `availableSkinDefinitions` / `activeSkinDefinition` 更新と host prepare は従来どおり UI 側へ戻してから行い、タブ復元や persist は発火させない
 - 2026-05-25: built-in skin 名は catalog 未ロードでも `WhiteBrowserSkinCatalogService` の共有 built-in 定義で即解決する。標準表示中の reload 判定や単純 apply では catalog 署名確認を始めず、外部 skin の明示 reload だけ鮮度確認を維持する
 - 2026-05-25: reason 判定を `CatalogRefresh` / `CachedSnapshot` へ分けた。共通ヘッダー `header-reload` と `fallback-notice-retry` は外部 skin の更新・削除・不足 HTML 復旧を拾うため catalog 再確認を維持し、`minimal-chrome-reload` は cached definition で host 再準備だけ行う
+- 2026-05-25: batch reason 優先度は `CatalogRefresh` 系を最上位、`dbinfo-*` を次点、`minimal-chrome-reload` を cached 系として下位に固定した。これにより、同一 batch 内で DB 変更通知が後から来ても、ユーザー明示 reload / fallback retry の catalog 再確認を落とさない
 - `MainWindow.WebViewSkin` の batch begin / flush ログと合わせ、`skin-webview` と `skin-catalog` を同じ `debug-runtime.log` だけで並べて追える状態にした
 - `skin-webview` の `refresh deferred / queued / batch begin / batch flush` には `batch=btXXXX` と `request=rqXXXX` の短い識別子も載せ、同じ切替単位の流れを 1 本で追いやすくした
 - `request=rqXXXX` は `host prepare begin` / `host navigate failed` / `refresh skipped stale` / `host presentation` にも引き継ぎ、queue された refresh が apply 完了までどう流れたかを追いやすくした

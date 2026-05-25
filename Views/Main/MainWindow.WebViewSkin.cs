@@ -249,11 +249,25 @@ namespace IndigoMovieManager
         {
             return reason switch
             {
+                // CatalogRefresh 系はユーザー明示の鮮度確認なので、DB変更通知より優先して残す。
+                "header-reload" => 400,
+                "fallback-notice-retry" => 400,
+                // dbinfo-* は状態同期として強いが、明示 reload の catalog 確認は潰さない。
                 "dbinfo-DBFullPath" => 300,
                 "dbinfo-Skin" => 200,
                 "dbinfo-ThumbFolder" => 100,
+                // minimal-chrome-reload は cached definition 前提なので、CatalogRefresh 系より下に置く。
+                "minimal-chrome-reload" => 50,
                 _ => 0,
             };
+        }
+
+        internal static string SelectPreferredExternalSkinHostRefreshReasonForTesting(
+            string currentReason,
+            string candidateReason
+        )
+        {
+            return SelectPreferredExternalSkinHostRefreshReason(currentReason, candidateReason);
         }
 
         private string CreateExternalSkinHostRefreshTraceId(string prefix)

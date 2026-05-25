@@ -106,6 +106,56 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_refresh_batchではCatalogRefresh系reasonをdbinfoより優先する()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                MainWindow.SelectPreferredExternalSkinHostRefreshReasonForTesting(
+                    "dbinfo-DBFullPath",
+                    "header-reload"
+                ),
+                Is.EqualTo("header-reload")
+            );
+            Assert.That(
+                MainWindow.SelectPreferredExternalSkinHostRefreshReasonForTesting(
+                    "header-reload",
+                    "dbinfo-DBFullPath"
+                ),
+                Is.EqualTo("header-reload")
+            );
+            Assert.That(
+                MainWindow.SelectPreferredExternalSkinHostRefreshReasonForTesting(
+                    "dbinfo-Skin",
+                    "fallback-notice-retry"
+                ),
+                Is.EqualTo("fallback-notice-retry")
+            );
+            Assert.That(
+                MainWindow.SelectPreferredExternalSkinHostRefreshReasonForTesting(
+                    "fallback-notice-retry",
+                    "dbinfo-ThumbFolder"
+                ),
+                Is.EqualTo("fallback-notice-retry")
+            );
+            Assert.That(
+                MainWindow.SelectPreferredExternalSkinHostRefreshReasonForTesting(
+                    "minimal-chrome-reload",
+                    "dbinfo-Skin"
+                ),
+                Is.EqualTo("dbinfo-Skin")
+            );
+            Assert.That(
+                MainWindow.SelectPreferredExternalSkinHostRefreshReasonForTesting(
+                    "header-reload",
+                    "minimal-chrome-reload"
+                ),
+                Is.EqualTo("header-reload")
+            );
+        });
+    }
+
+    [Test]
     public void 外部skin_catalog再確認reasonはAsync経路で行う()
     {
         string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
