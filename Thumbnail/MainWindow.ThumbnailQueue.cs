@@ -160,7 +160,9 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            RequestThumbnailProgressSnapshotRefresh();
+            UpdateThumbnailProgressRuntimeAndRequestIfChanged(
+                () => _thumbnailProgressRuntime.RecordEnqueue(queueObj)
+            );
 
             long enqueueTotal = ThumbnailQueueMetrics.RecordEnqueueAccepted();
             if (enqueueTotal <= 20 || enqueueTotal % 100 == 0)

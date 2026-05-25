@@ -103,6 +103,31 @@ public sealed class ThumbnailProgressSourceTests
         Assert.That(guardMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
     }
 
+    [Test]
+    public void Queue投入成功直後の進捗通知はRuntime差分Guard経由にする()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailQueue.cs")
+            .Replace("\r\n", "\n");
+        string enqueueMethod = ExtractMethod(
+            source,
+            "private bool TryEnqueueThumbnailJob("
+        );
+
+        Assert.That(enqueueMethod, Does.Contain("if (!TryWriteQueueRequest(queueObj))"));
+        Assert.That(
+            enqueueMethod,
+            Does.Contain("UpdateThumbnailProgressRuntimeAndRequestIfChanged(")
+        );
+        Assert.That(
+            enqueueMethod,
+            Does.Contain("() => _thumbnailProgressRuntime.RecordEnqueue(queueObj)")
+        );
+        Assert.That(
+            enqueueMethod,
+            Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();")
+        );
+    }
+
     private static string GetThumbnailProgressSource()
     {
         return GetRepoText(
