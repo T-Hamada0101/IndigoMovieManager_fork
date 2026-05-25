@@ -561,57 +561,86 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _ = Task.Run(() => ResolveThumbnailProgressInitialCreatedCount(thumbFolder))
-                .ContinueWith(
-                    task =>
-                    {
-                        if (task.IsFaulted)
-                        {
-                            DebugRuntimeLog.Write(
-                                "thumbnail-progress",
-                                $"initial created count scan task failed: folder='{thumbFolder}' err='{task.Exception?.GetBaseException().Message}'"
-                            );
-                            return;
-                        }
+            _ = RefreshThumbnailProgressInitialCreatedCountAsync(
+                scanStamp,
+                dbFullPath,
+                thumbFolder
+            );
+        }
 
-                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
-                        {
-                            return;
-                        }
+        private async Task RefreshThumbnailProgressInitialCreatedCountAsync(
+            long scanStamp,
+            string dbFullPath,
+            string thumbFolder
+        )
+        {
+            long createdCount = 0;
 
-                        _ = Dispatcher.BeginInvoke(
-                            new Action(
-                                () =>
-                                {
-                                    if (
-                                        scanStamp != thumbnailProgressInitialCountScanStamp
-                                        || !AreSameMainDbPath(
-                                            dbFullPath,
-                                            MainVM?.DbInfo?.DBFullPath ?? ""
-                                        )
-                                        || !string.Equals(
-                                            thumbFolder,
-                                            MainVM?.DbInfo?.ThumbFolder ?? "",
-                                            StringComparison.OrdinalIgnoreCase
-                                        )
-                                    )
-                                    {
-                                        return;
-                                    }
-
-                                    UpdateThumbnailProgressRuntimeAndRequestIfChanged(
-                                        () =>
-                                            _thumbnailProgressRuntime.ApplyInitialTotalCreatedCount(
-                                                task.Result
-                                            )
-                                    );
-                                }
-                            ),
-                            DispatcherPriority.Background
-                        );
-                    },
-                    TaskScheduler.Default
+            try
+            {
+                // 総作成数の全走査は UI 外で行い、反映だけを Dispatcher に戻す。
+                createdCount = await Task.Run(
+                        () => ResolveThumbnailProgressInitialCreatedCount(thumbFolder)
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-progress",
+                    $"initial created count scan task failed: folder='{thumbFolder}' err='{ex.GetBaseException().Message}'"
                 );
+                return;
+            }
+
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                await Dispatcher
+                    .InvokeAsync(
+                        () =>
+                        {
+                            if (
+                                scanStamp != thumbnailProgressInitialCountScanStamp
+                                || !AreSameMainDbPath(
+                                    dbFullPath,
+                                    MainVM?.DbInfo?.DBFullPath ?? ""
+                                )
+                                || !string.Equals(
+                                    thumbFolder,
+                                    MainVM?.DbInfo?.ThumbFolder ?? "",
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                            )
+                            {
+                                return;
+                            }
+
+                            UpdateThumbnailProgressRuntimeAndRequestIfChanged(
+                                () =>
+                                    _thumbnailProgressRuntime.ApplyInitialTotalCreatedCount(
+                                        createdCount
+                                    )
+                            );
+                        },
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (TaskCanceledException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (InvalidOperationException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
         }
 
         // 総作成の初期値は、現在DBのサムネイルフォルダに実在するファイル数をそのまま使う。

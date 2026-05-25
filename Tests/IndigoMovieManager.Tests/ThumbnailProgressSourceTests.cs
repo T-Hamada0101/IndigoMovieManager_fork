@@ -137,18 +137,34 @@ public sealed class ThumbnailProgressSourceTests
             source,
             "private void QueueThumbnailProgressInitialCreatedCountRefresh()"
         );
+        string initialCountAsyncMethod = ExtractMethod(
+            source,
+            "private async Task RefreshThumbnailProgressInitialCreatedCountAsync("
+        );
 
         Assert.That(
             initialCountMethod,
+            Does.Contain("_ = RefreshThumbnailProgressInitialCreatedCountAsync(")
+        );
+        Assert.That(initialCountAsyncMethod, Does.Contain("Task.Run("));
+        Assert.That(initialCountAsyncMethod, Does.Contain(".InvokeAsync("));
+        Assert.That(initialCountAsyncMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(
+            initialCountAsyncMethod,
             Does.Contain("UpdateThumbnailProgressRuntimeAndRequestIfChanged(")
         );
         Assert.That(
-            initialCountMethod,
+            initialCountAsyncMethod,
             Does.Contain("_thumbnailProgressRuntime.ApplyInitialTotalCreatedCount(")
         );
-        Assert.That(initialCountMethod, Does.Contain("task.Result"));
+        Assert.That(source, Does.Not.Contain(".ContinueWith("));
+        Assert.That(source, Does.Not.Contain("task.Result"));
         Assert.That(
             initialCountMethod,
+            Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();")
+        );
+        Assert.That(
+            initialCountAsyncMethod,
             Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();")
         );
     }
