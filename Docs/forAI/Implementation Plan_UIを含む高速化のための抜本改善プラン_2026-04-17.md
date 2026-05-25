@@ -3,6 +3,7 @@
 最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 のサブ5.5追加で、Debug タブの「現在サムネイルを削除」に残っていた `Directory.Exists` / `Directory.Delete(..., true)` を `Task.Run` へ逃がし、削除中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、起動 fallback と段階ロード中 sort 変更の `FilterAndSort(..., true)` は DB 正本復旧・全件順序復旧の許容 fallback として分類し、Debug タブのサムネイル全削除後 `FilterAndSort(..., true)` は表示モデルのサムネパスクリア、visible refresh、進捗/ERROR snapshot 予約へ置き換えた。
 - 2026-05-26 のサブ5.5で、外部 skin API の sort は通常時 `SortDataAsync(...)` を await する経路へ寄せ、`FilterAndSort(resolvedSortId, true)` の全件 reload fallback を通常経路から外した。起動 partial feed 中だけは全件順序の正しさを守るため `partial-feed-needs-complete-source` として分類ログを残し、startup feed をキャンセルしてから正規の後着キャンセル付き reload へ戻す。
 - 2026-05-26 のサブ5.5で、Bookmark タブの `Items.Refresh()` は `ObservableCollection` 通知へ任せる形で撤去し、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけへ絞った。
@@ -157,7 +158,7 @@
 - ファイルコピー / リネーム時の watcher 一時停止復旧は、DB切替や終了で watcher が破棄済みでも例外をログへ閉じ、UI 操作完了を壊さないようにした
 - 起動直後の EverythingLite root prewarm は非同期 watcher apply 後の共有 `watchData` に依存せず、背景側で watch table snapshot を読んで空振りを避ける形へ寄せた
 - `WatcherEventQueue` の runner 起動も ThreadPool へ寄せ、FileSystemWatcher event handler から初回処理の同期前段をさらに外した
-- 外部 skin API の非 UI スレッド経由の同期 UI 状態読み取りは `DispatcherPriority.Background` へ下げ、戻り値 API の互換を維持しつつ入力・描画を押しのけにくくした
+- 外部 skin API の非 UI スレッド経由の同期 UI 状態読み取り / UI 操作は `DispatcherPriority.Background` へ下げ、戻り値 API の互換を維持しつつ入力・描画を押しのけにくくした
 - 外部 skin API は UI 状態を `WhiteBrowserSkinApiUiSnapshot` として 1 回だけ固定し、`update / getInfo / getInfos / getFindInfo` の DTO 生成で DB パス、thumb folder、選択状態、検索条件、基準 sort を個別再読取しない入口へ寄せた
 - `update / getInfo / getInfos / getFindInfo` は DTO 生成前に必要値だけの `MovieRecords` クローンを作り、途中で UI 側モデルが変わっても 1 応答内の値が揺れにくい形へ進めた
 - `focusThum / selectThum / addTag / removeTag / flipTag` は対象解決では UI 実体 `MovieRecords` を維持し、操作後レスポンスだけを操作後 snapshot と値クローンへ寄せた
