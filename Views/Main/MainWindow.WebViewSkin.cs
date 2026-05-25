@@ -454,15 +454,9 @@ namespace IndigoMovieManager
         }
 
         // 外部 skin 判定は Orchestrator の解決結果を使い、MainWindow 直判定を増やさない。
-        private WhiteBrowserSkinDefinition GetCurrentExternalSkinDefinition(
-            bool forceCatalogRefresh = false
-        )
+        private WhiteBrowserSkinDefinition GetCurrentExternalSkinDefinition()
         {
-            if (forceCatalogRefresh)
-            {
-                return RefreshCurrentExternalSkinDefinition();
-            }
-
+            // 同期判定は cached snapshot 専用にし、catalog 再確認は async 経路だけへ閉じる。
             WhiteBrowserSkinDefinition currentDefinition = GetSkinOrchestrator().GetCurrentSkinDefinition();
             return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
         }
@@ -479,12 +473,6 @@ namespace IndigoMovieManager
 
             WhiteBrowserSkinDefinition currentDefinition =
                 GetSkinOrchestrator().GetCurrentSkinDefinition();
-            return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
-        }
-
-        private WhiteBrowserSkinDefinition RefreshCurrentExternalSkinDefinition()
-        {
-            WhiteBrowserSkinDefinition currentDefinition = RefreshCurrentSkinDefinition();
             return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
         }
 

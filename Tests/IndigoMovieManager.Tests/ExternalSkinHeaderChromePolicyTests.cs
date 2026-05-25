@@ -165,6 +165,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             refreshSource,
             "private async Task RefreshExternalSkinHostPresentationAsync("
         );
+        string syncDefinitionMethod = GetMethodBlock(
+            refreshSource,
+            "private WhiteBrowserSkinDefinition GetCurrentExternalSkinDefinition("
+        );
         string asyncDefinitionMethod = GetMethodBlock(
             refreshSource,
             "private async Task<WhiteBrowserSkinDefinition> GetCurrentExternalSkinDefinitionAsync("
@@ -179,10 +183,14 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(refreshMethod, Does.Contain("await GetCurrentExternalSkinDefinitionAsync("));
             Assert.That(refreshMethod, Does.Contain("definitionRefreshMode"));
             Assert.That(refreshMethod, Does.Not.Contain("GetCurrentExternalSkinDefinition("));
+            Assert.That(syncDefinitionMethod, Does.Not.Contain("forceCatalogRefresh"));
+            Assert.That(syncDefinitionMethod, Does.Not.Contain("RefreshCurrentSkinDefinition("));
             Assert.That(refreshSource, Does.Contain("\"header-reload\" => ExternalSkinDefinitionRefreshMode.CatalogRefresh"));
             Assert.That(refreshSource, Does.Contain("\"fallback-notice-retry\" => ExternalSkinDefinitionRefreshMode.CatalogRefresh"));
             Assert.That(refreshSource, Does.Contain("_ => ExternalSkinDefinitionRefreshMode.CachedSnapshot"));
+            Assert.That(refreshSource, Does.Not.Contain("private WhiteBrowserSkinDefinition RefreshCurrentExternalSkinDefinition("));
             Assert.That(asyncDefinitionMethod, Does.Contain("await RefreshCurrentExternalSkinDefinitionAsync()"));
+            Assert.That(refreshSource, Does.Contain("private async Task<WhiteBrowserSkinDefinition> RefreshCurrentExternalSkinDefinitionAsync()"));
             Assert.That(mainWindowSkinSource, Does.Contain("RefreshCurrentSkinDefinitionAsync()"));
             Assert.That(orchestratorAsyncMethod, Does.Contain("await Task.Run(() => WhiteBrowserSkinCatalogService.Load(skinRootPath))"));
             Assert.That(orchestratorAsyncMethod, Does.Contain("availableSkinDefinitions = loadedDefinitions;"));
