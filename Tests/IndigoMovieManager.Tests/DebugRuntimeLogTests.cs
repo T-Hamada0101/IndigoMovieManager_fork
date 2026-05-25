@@ -232,6 +232,21 @@ public sealed class DebugRuntimeLogTests
         Assert.That(DebugRuntimeLog.BuildCurrentScopeMetricSummary(), Is.Empty);
     }
 
+    [Test]
+    public void BuildCurrentScopeMetricSummary_refresh_end用にzero込みpayloadを揃えられる()
+    {
+        using (DebugRuntimeLog.BeginScopeForCurrentAsyncFlow("trace=rq0004"))
+        {
+            DebugRuntimeLog.RecordSkinNavigateAttempted();
+            DebugRuntimeLog.RecordSkinNavigateSucceeded();
+
+            Assert.That(
+                DebugRuntimeLog.BuildCurrentScopeMetricSummary(includeZeroValues: true),
+                Is.EqualTo("catalog_hit=0 catalog_miss=0 persist_enqueued=0 persist_fallback_applied=0 catalog_reused=0 catalog_skipped=0 catalog_signature_ms=0.0 catalog_load_ms=0.0 navigate_attempted=1 navigate_succeeded=1 navigate_failed=0 navigate_skipped=0 refresh_stale_skipped=0 refresh_teardown_skipped=0")
+            );
+        }
+    }
+
     private static void RestoreLogSwitches(
         bool watch,
         bool queue,

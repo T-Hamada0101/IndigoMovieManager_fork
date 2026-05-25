@@ -3,6 +3,7 @@
 最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 のサブ 5.5 で、skin `refresh end` を early skip でも必ず出し、`elapsed_ms` に加えて `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を同一 payload で出す形へ寄せた。skin 完了判定は DB 分離ではなく、catalog / persist / navigate / stale の内訳を実機ログで説明できることを引き続き基準にする。
 - 2026-05-26 の `6bb00e5` で、大件数時の通常 `SortData(...)` を background + revision guard へ寄せ、後着 sort は `sort canceled` / `sort skip stale` で破棄できるようにした。
 - 2026-05-26 の `5a90210` で、`TagControl` / `MainWindow.Tag` のタグ編集後 `Refresh()` / `Items.Refresh()` と、`KanaBackfill` のかなソート時 `FilterAndSort(..., true)` を DB 再読込なしの in-memory 局所反映へ寄せた。
 - 2026-05-26 の `7b34692` で、サムネイルのみ削除後の `FilterAndSort(..., true)` を廃止し、対象 `MovieRecords` のサムネ表示パスクリア、上側タブ visible refresh、下部 ERROR/進捗 snapshot 予約へ寄せた。
@@ -511,7 +512,7 @@
 2. 完了: `TagControl` / `MainWindow.Tag` / `KanaBackfill` とサムネイルのみ削除に残っていた `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` を、局所反映・revision trigger・snapshot 予約へ寄せた。
 3. 完了: 大件数時の通常 sort を background + revision guard へ寄せ、検索高速化後に残る UI スレッド滞在を減らした。
 4. 次: 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一ログで確認し、後ろ倒し候補を確定する。
-5. 次: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` で完了判定する。
+5. 進行中: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定する。
 
 ### Step 1
 

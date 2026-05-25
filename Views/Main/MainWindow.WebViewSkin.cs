@@ -328,99 +328,147 @@ namespace IndigoMovieManager
             bool externalSkinActive = false;
             bool hostReady = false;
             WhiteBrowserSkinHostOperationResult operationResult = null;
+            string refreshOutcome = "aborted";
+            string skipStage = "";
+            bool refreshEndLogged = false;
 
             try
             {
-                if (TrySkipStaleExternalSkinRefresh(generation, reason, requestTraceId, "begin"))
+                try
                 {
-                    return;
-                }
-
-                externalSkinDefinition = await GetCurrentExternalSkinDefinitionAsync(
-                    definitionRefreshMode
-                );
-                externalSkinActive = externalSkinDefinition != null;
-                if (
-                    TrySkipStaleExternalSkinRefresh(
-                        generation,
-                        reason,
-                        requestTraceId,
-                        "resolved-definition"
-                    )
-                )
-                {
-                    return;
-                }
-
-                if (externalSkinActive)
-                {
-                    operationResult = await PrepareExternalSkinHostPresentationAsync(
-                        externalSkinDefinition,
-                        generation,
-                        reason,
-                        requestTraceId
-                    );
                     if (
                         TrySkipStaleExternalSkinRefresh(
                             generation,
                             reason,
                             requestTraceId,
-                            "prepared-host"
+                            "begin"
                         )
                     )
                     {
+                        refreshOutcome = "skipped";
+                        skipStage = "begin";
                         return;
                     }
-                    hostReady = operationResult?.Succeeded == true;
+
+                    externalSkinDefinition = await GetCurrentExternalSkinDefinitionAsync(
+                        definitionRefreshMode
+                    );
+                    externalSkinActive = externalSkinDefinition != null;
+                    if (
+                        TrySkipStaleExternalSkinRefresh(
+                            generation,
+                            reason,
+                            requestTraceId,
+                            "resolved-definition"
+                        )
+                    )
+                    {
+                        refreshOutcome = "skipped";
+                        skipStage = "resolved-definition";
+                        return;
+                    }
+
+                    if (externalSkinActive)
+                    {
+                        operationResult = await PrepareExternalSkinHostPresentationAsync(
+                            externalSkinDefinition,
+                            generation,
+                            reason,
+                            requestTraceId
+                        );
+                        if (
+                            TrySkipStaleExternalSkinRefresh(
+                                generation,
+                                reason,
+                                requestTraceId,
+                                "prepared-host"
+                            )
+                        )
+                        {
+                            refreshOutcome = "skipped";
+                            skipStage = "prepared-host";
+                            return;
+                        }
+                        hostReady = operationResult?.Succeeded == true;
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
+                catch (Exception ex)
+                {
+                    DebugRuntimeLog.Write(
+                        "skin-webview",
+                        $"refresh failed: request={requestTraceId} err='{ex.GetType().Name}: {ex.Message}' reason={reason}"
+                    );
+                    operationResult = WhiteBrowserSkinHostOperationResult.CreateFailed(
+                        ResolveRequestedSkinName(externalSkinDefinition),
+                        ex
+                    );
+                    hostReady = false;
+                }
+
+                if (TrySkipStaleExternalSkinRefresh(generation, reason, requestTraceId, "apply"))
+                {
+                    refreshOutcome = "skipped";
+                    skipStage = "apply";
+                    return;
+                }
+
+                ApplyExternalSkinFallbackDiagnostics(
+                    externalSkinActive,
+                    externalSkinDefinition,
+                    operationResult,
+                    reason
+                );
+
+                if (hostReady)
+                {
+                    ApplyExternalSkinHostVisibility(true, externalSkinDefinition);
+                }
+                else
+                {
+                    await ApplyExternalSkinFallbackPresentationAsync();
+                }
+
+                ExternalSkinHostPresentationAppliedForTesting?.Invoke(generation, hostReady, reason);
+                refreshOutcome = ResolveExternalSkinRefreshOutcome(externalSkinActive, hostReady);
+                ExternalSkinRefreshCompletedForTesting?.Invoke(generation, reason, refreshOutcome);
                 DebugRuntimeLog.Write(
                     "skin-webview",
-                    $"refresh failed: request={requestTraceId} err='{ex.GetType().Name}: {ex.Message}' reason={reason}"
+                    $"host presentation: request={requestTraceId} active={externalSkinActive} ready={hostReady} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' skinResolved='{externalSkinDefinition?.Name ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={reason}"
                 );
-                operationResult = WhiteBrowserSkinHostOperationResult.CreateFailed(
-                    ResolveRequestedSkinName(externalSkinDefinition),
-                    ex
+                WriteExternalSkinRefreshEndLog(
+                    requestTraceId,
+                    generation,
+                    refreshOutcome,
+                    definitionRefreshMode,
+                    externalSkinActive,
+                    hostReady,
+                    externalSkinDefinition,
+                    operationResult,
+                    refreshStopwatch,
+                    reason,
+                    skipStage
                 );
-                hostReady = false;
+                refreshEndLogged = true;
             }
-
-            if (TrySkipStaleExternalSkinRefresh(generation, reason, requestTraceId, "apply"))
+            finally
             {
-                return;
+                if (!refreshEndLogged)
+                {
+                    WriteExternalSkinRefreshEndLog(
+                        requestTraceId,
+                        generation,
+                        refreshOutcome,
+                        definitionRefreshMode,
+                        externalSkinActive,
+                        hostReady,
+                        externalSkinDefinition,
+                        operationResult,
+                        refreshStopwatch,
+                        reason,
+                        skipStage
+                    );
+                }
             }
-
-            ApplyExternalSkinFallbackDiagnostics(
-                externalSkinActive,
-                externalSkinDefinition,
-                operationResult,
-                reason
-            );
-
-            if (hostReady)
-            {
-                ApplyExternalSkinHostVisibility(true, externalSkinDefinition);
-            }
-            else
-            {
-                await ApplyExternalSkinFallbackPresentationAsync();
-            }
-
-            ExternalSkinHostPresentationAppliedForTesting?.Invoke(generation, hostReady, reason);
-            string refreshOutcome = ResolveExternalSkinRefreshOutcome(externalSkinActive, hostReady);
-            ExternalSkinRefreshCompletedForTesting?.Invoke(generation, reason, refreshOutcome);
-            string metricSummary = DebugRuntimeLog.BuildCurrentScopeMetricSummary();
-            string dbKey = ResolveExternalSkinRefreshDbKeyForTesting(MainVM?.DbInfo?.DBFullPath ?? "");
-            DebugRuntimeLog.Write(
-                "skin-webview",
-                $"host presentation: request={requestTraceId} active={externalSkinActive} ready={hostReady} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' skinResolved='{externalSkinDefinition?.Name ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={reason}"
-            );
-            DebugRuntimeLog.Write(
-                "skin-webview",
-                $"refresh end: request={requestTraceId} generation={generation} outcome={refreshOutcome} definition_mode={definitionRefreshMode} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={refreshStopwatch.Elapsed.TotalMilliseconds:F1}{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} reason={reason}"
-            );
         }
 
         // 1 行要約を読む時に、表示結果を短く判断できるようにする。
@@ -432,6 +480,31 @@ namespace IndigoMovieManager
             }
 
             return externalSkinActive ? "fallback" : "standard";
+        }
+
+        private void WriteExternalSkinRefreshEndLog(
+            string requestTraceId,
+            int generation,
+            string refreshOutcome,
+            ExternalSkinDefinitionRefreshMode definitionRefreshMode,
+            bool externalSkinActive,
+            bool hostReady,
+            WhiteBrowserSkinDefinition externalSkinDefinition,
+            WhiteBrowserSkinHostOperationResult operationResult,
+            Stopwatch refreshStopwatch,
+            string reason,
+            string skipStage
+        )
+        {
+            // refresh の最後は常に同じ payload にし、支配要因を 1 行で比較できるようにする。
+            string metricSummary = DebugRuntimeLog.BuildCurrentScopeMetricSummary(
+                includeZeroValues: true
+            );
+            string dbKey = ResolveExternalSkinRefreshDbKeyForTesting(MainVM?.DbInfo?.DBFullPath ?? "");
+            DebugRuntimeLog.Write(
+                "skin-webview",
+                $"refresh end: request={requestTraceId} generation={generation} outcome={refreshOutcome} definition_mode={definitionRefreshMode} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={(refreshStopwatch?.Elapsed.TotalMilliseconds ?? 0):F1}{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} skip_stage={skipStage ?? ""} reason={reason}"
+            );
         }
 
         private void ApplyExternalSkinFallbackPresentation()
@@ -691,6 +764,7 @@ namespace IndigoMovieManager
             string requestTraceId
         )
         {
+            bool navigateAttempted = false;
             try
             {
                 WhiteBrowserSkinHostControl hostControl = EnsureExternalSkinHostCreated();
@@ -744,6 +818,7 @@ namespace IndigoMovieManager
                 );
                 if (string.IsNullOrWhiteSpace(definition.HtmlPath) || !File.Exists(definition.HtmlPath))
                 {
+                    DebugRuntimeLog.RecordSkinNavigateSkipped();
                     DebugRuntimeLog.Write(
                         "skin-webview",
                         $"host navigate skipped: request={requestTraceId} html missing skin='{requestedSkinName}' path='{definition.HtmlPath ?? ""}' reason={reason}"
@@ -759,6 +834,8 @@ namespace IndigoMovieManager
                 string userDataFolder = ResolveExternalSkinUserDataFolder();
                 Directory.CreateDirectory(userDataFolder);
 
+                DebugRuntimeLog.RecordSkinNavigateAttempted();
+                navigateAttempted = true;
                 WhiteBrowserSkinHostOperationResult navigateResult = await hostControl.TryNavigateAsync(
                     requestedSkinName,
                     userDataFolder,
@@ -766,6 +843,14 @@ namespace IndigoMovieManager
                     definition.HtmlPath,
                     thumbRootPath
                 );
+                if (navigateResult?.Succeeded == true)
+                {
+                    DebugRuntimeLog.RecordSkinNavigateSucceeded();
+                }
+                else
+                {
+                    DebugRuntimeLog.RecordSkinNavigateFailed();
+                }
 
                 return EvaluateExternalSkinHostOperationResult(
                     navigateResult,
@@ -775,6 +860,10 @@ namespace IndigoMovieManager
             }
             catch (Exception ex)
             {
+                if (navigateAttempted)
+                {
+                    DebugRuntimeLog.RecordSkinNavigateFailed();
+                }
                 DebugRuntimeLog.Write(
                     "skin-webview",
                     $"host prepare failed: request={requestTraceId} skin='{ResolveRequestedSkinName(definition)}' err='{ex.GetType().Name}: {ex.Message}' reason={reason}"
@@ -828,6 +917,7 @@ namespace IndigoMovieManager
         {
             if (IsExternalSkinHostTeardownStarted())
             {
+                DebugRuntimeLog.RecordSkinRefreshTeardownSkipped();
                 DebugRuntimeLog.Write(
                     "skin-webview",
                     $"refresh skipped teardown: request={requestTraceId} generation={generation} stage={stage} reason={reason}"
@@ -843,6 +933,7 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            DebugRuntimeLog.RecordSkinRefreshStaleSkipped();
             DebugRuntimeLog.Write(
                 "skin-webview",
                 $"refresh skipped stale: request={requestTraceId} generation={generation} current_generation={_externalSkinHostRefreshScheduler.CurrentGeneration} stage={stage} reason={reason}"

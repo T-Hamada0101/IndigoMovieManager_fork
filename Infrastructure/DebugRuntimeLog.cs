@@ -167,9 +167,39 @@ namespace IndigoMovieManager
             AmbientScopeMetrics.Value?.RecordSkinDbPersistFallbackApplied();
         }
 
-        internal static string BuildCurrentScopeMetricSummary()
+        internal static void RecordSkinNavigateAttempted()
         {
-            return AmbientScopeMetrics.Value?.BuildSummaryText() ?? "";
+            AmbientScopeMetrics.Value?.RecordSkinNavigateAttempted();
+        }
+
+        internal static void RecordSkinNavigateSucceeded()
+        {
+            AmbientScopeMetrics.Value?.RecordSkinNavigateSucceeded();
+        }
+
+        internal static void RecordSkinNavigateFailed()
+        {
+            AmbientScopeMetrics.Value?.RecordSkinNavigateFailed();
+        }
+
+        internal static void RecordSkinNavigateSkipped()
+        {
+            AmbientScopeMetrics.Value?.RecordSkinNavigateSkipped();
+        }
+
+        internal static void RecordSkinRefreshStaleSkipped()
+        {
+            AmbientScopeMetrics.Value?.RecordSkinRefreshStaleSkipped();
+        }
+
+        internal static void RecordSkinRefreshTeardownSkipped()
+        {
+            AmbientScopeMetrics.Value?.RecordSkinRefreshTeardownSkipped();
+        }
+
+        internal static string BuildCurrentScopeMetricSummary(bool includeZeroValues = false)
+        {
+            return AmbientScopeMetrics.Value?.BuildSummaryText(includeZeroValues) ?? "";
         }
 
         internal static string BuildLineForTesting(
@@ -389,6 +419,12 @@ namespace IndigoMovieManager
             private double _catalogLoadElapsedMilliseconds;
             private int _skinDbPersistQueuedCount;
             private int _skinDbPersistFallbackAppliedCount;
+            private int _skinNavigateAttemptedCount;
+            private int _skinNavigateSucceededCount;
+            private int _skinNavigateFailedCount;
+            private int _skinNavigateSkippedCount;
+            private int _skinRefreshStaleSkippedCount;
+            private int _skinRefreshTeardownSkippedCount;
 
             internal void RecordCatalogCacheHit()
             {
@@ -426,50 +462,106 @@ namespace IndigoMovieManager
                 _skinDbPersistFallbackAppliedCount++;
             }
 
-            internal string BuildSummaryText()
+            internal void RecordSkinNavigateAttempted()
+            {
+                _skinNavigateAttemptedCount++;
+            }
+
+            internal void RecordSkinNavigateSucceeded()
+            {
+                _skinNavigateSucceededCount++;
+            }
+
+            internal void RecordSkinNavigateFailed()
+            {
+                _skinNavigateFailedCount++;
+            }
+
+            internal void RecordSkinNavigateSkipped()
+            {
+                _skinNavigateSkippedCount++;
+            }
+
+            internal void RecordSkinRefreshStaleSkipped()
+            {
+                _skinRefreshStaleSkippedCount++;
+            }
+
+            internal void RecordSkinRefreshTeardownSkipped()
+            {
+                _skinRefreshTeardownSkippedCount++;
+            }
+
+            internal string BuildSummaryText(bool includeZeroValues)
             {
                 List<string> parts = [];
-                if (_catalogCacheHitCount > 0)
-                {
-                    parts.Add($"catalog_hit={_catalogCacheHitCount}");
-                }
-
-                if (_catalogCacheMissCount > 0)
-                {
-                    parts.Add($"catalog_miss={_catalogCacheMissCount}");
-                }
-
-                if (_skinDbPersistQueuedCount > 0)
-                {
-                    parts.Add($"persist_enqueued={_skinDbPersistQueuedCount}");
-                }
-
-                if (_skinDbPersistFallbackAppliedCount > 0)
-                {
-                    parts.Add($"persist_fallback_applied={_skinDbPersistFallbackAppliedCount}");
-                }
-
-                if (_catalogReusedCount > 0)
-                {
-                    parts.Add($"catalog_reused={_catalogReusedCount}");
-                }
-
-                if (_catalogSkippedCount > 0)
-                {
-                    parts.Add($"catalog_skipped={_catalogSkippedCount}");
-                }
-
-                if (_catalogSignatureElapsedMilliseconds > 0)
-                {
-                    parts.Add($"catalog_signature_ms={_catalogSignatureElapsedMilliseconds:F1}");
-                }
-
-                if (_catalogLoadElapsedMilliseconds > 0)
-                {
-                    parts.Add($"catalog_load_ms={_catalogLoadElapsedMilliseconds:F1}");
-                }
+                AddCount(parts, "catalog_hit", _catalogCacheHitCount, includeZeroValues);
+                AddCount(parts, "catalog_miss", _catalogCacheMissCount, includeZeroValues);
+                AddCount(parts, "persist_enqueued", _skinDbPersistQueuedCount, includeZeroValues);
+                AddCount(
+                    parts,
+                    "persist_fallback_applied",
+                    _skinDbPersistFallbackAppliedCount,
+                    includeZeroValues
+                );
+                AddCount(parts, "catalog_reused", _catalogReusedCount, includeZeroValues);
+                AddCount(parts, "catalog_skipped", _catalogSkippedCount, includeZeroValues);
+                AddMilliseconds(
+                    parts,
+                    "catalog_signature_ms",
+                    _catalogSignatureElapsedMilliseconds,
+                    includeZeroValues
+                );
+                AddMilliseconds(
+                    parts,
+                    "catalog_load_ms",
+                    _catalogLoadElapsedMilliseconds,
+                    includeZeroValues
+                );
+                AddCount(parts, "navigate_attempted", _skinNavigateAttemptedCount, includeZeroValues);
+                AddCount(parts, "navigate_succeeded", _skinNavigateSucceededCount, includeZeroValues);
+                AddCount(parts, "navigate_failed", _skinNavigateFailedCount, includeZeroValues);
+                AddCount(parts, "navigate_skipped", _skinNavigateSkippedCount, includeZeroValues);
+                AddCount(
+                    parts,
+                    "refresh_stale_skipped",
+                    _skinRefreshStaleSkippedCount,
+                    includeZeroValues
+                );
+                AddCount(
+                    parts,
+                    "refresh_teardown_skipped",
+                    _skinRefreshTeardownSkippedCount,
+                    includeZeroValues
+                );
 
                 return string.Join(" ", parts);
+            }
+
+            private static void AddCount(
+                List<string> parts,
+                string name,
+                int value,
+                bool includeZeroValues
+            )
+            {
+                if (includeZeroValues || value > 0)
+                {
+                    parts.Add($"{name}={value}");
+                }
+            }
+
+            private static void AddMilliseconds(
+                List<string> parts,
+                string name,
+                double value,
+                bool includeZeroValues
+            )
+            {
+                if (includeZeroValues || value > 0)
+                {
+                    parts.Add($"{name}={Math.Max(0, value):F1}");
+                }
             }
         }
 

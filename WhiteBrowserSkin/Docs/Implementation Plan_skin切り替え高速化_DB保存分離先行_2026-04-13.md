@@ -1,8 +1,9 @@
 # Implementation Plan: skin切り替え高速化 DB保存分離先行 2026-04-13
 
-最終更新日: 2026-05-25
+最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 に `refresh end` を早期 stale / teardown skip でも必ず出す形へ寄せ、`catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を zero 込みの同一 payload で読めるようにした。これにより cached catalog / minimal chrome reload / explicit reload / fallback retry の区別を保ったまま、完了判定を 1 行で閉じやすくした
 - 全体プラン見直しを受けて、`skin` 切り替え高速化の中で DB を「先頭の決定打」ではなく「第2群の土台施策」として位置づけ直した
 - `refresh` 起点一本化、stale 判定前倒し、catalog 再走査削減を DB より先に進める順序へ組み替えた
 - DB write は `WhiteBrowserSkinOrchestrator` と外部 skin API を最初から同一 persister に統合する方針へ改めた
@@ -17,6 +18,7 @@
 - `refresh end` の ambient 要約は `catalog_reused / catalog_skipped / catalog_signature_ms / catalog_load_ms` まで読めるようにし、cache miss 時の再利用量と catalog 側コストも 1 行で追えるようにした。`catalog_*_ms` は trace 内の合計値として扱う
 - `refresh end` には `skinResolved` と短い `dbKey` も載せ、フルパスを追わなくても「どの skin / どの DB の切り替えか」が end 1 行で分かるようにした
 - `refresh end` には `outcome=applied / fallback / standard` も載せ、件数や時間だけでなく「結局どう終わったか」も短く読み返せるようにした
+- `refresh end` は `outcome=skipped` の早期終了でも出し、`skip_stage` と `refresh_stale_skipped` / `refresh_teardown_skipped` で host prepare / navigate 前に止まったかを追えるようにした。実 navigate は `navigate_attempted` / `navigate_succeeded` / `navigate_failed` / `navigate_skipped` で分ける
 - `WhiteBrowserSkinCatalogService` は、built-in 同名 external フォルダを snapshot 入口で除外するようにし、結果へ絶対採用しない skin の `HtmlPath` 解決や metadata 確認を減らした
 - `WhiteBrowserSkinCatalogService` の fallback HTML 解決は 1 回の列挙へまとめ、`.htm` 優先を保ったまま `EnumerateFiles("*.htm")` / `EnumerateFiles("*.html")` の二重走査を避けるようにした
 - `WhiteBrowserSkinCatalogService.ResolveSkinHtmlPath(...)` は、標準名優先・前回 custom HTML 維持・fallback `.htm` 優先を 1 回の directory 列挙で同時に決める形へ寄せた。標準名追加時の乗り換えと custom HTML 維持の両方を focused test で固定した
@@ -41,6 +43,7 @@
 - 2026-05-25 に batch 圧縮時の reason 優先度も `CatalogRefresh` 系を `dbinfo-*` より上に固定した。`header-reload` / `fallback-notice-retry` が DB 変化通知に埋もれて cached snapshot へ落ちる経路を防ぐ
 - 2026-05-25 に同期 `GetCurrentExternalSkinDefinition()` を cached snapshot 専用へ固定し、同期 `RefreshCurrentExternalSkinDefinition()` を削除した。外部 skin 定義の catalog 再確認は async 経路だけで行う
 - 2026-05-25 に batch 圧縮時の `CatalogRefresh` 判定を `ResolveExternalSkinDefinitionRefreshMode(...)` へ集約し、priority 側で `header-reload` / `fallback-notice-retry` を二重列挙しない形へ固定した
+- 2026-05-26 に `refresh end` の payload を zero 込みへ揃え、catalog / persist が発生しなかった軽い refresh と、navigate まで進んだ refresh を同じ列で比較できるようにした
 
 ## 1. 結論
 

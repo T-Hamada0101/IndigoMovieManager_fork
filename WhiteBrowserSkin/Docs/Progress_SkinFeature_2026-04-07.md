@@ -324,6 +324,7 @@
 - 2026-04-16: `refresh end` の ambient 要約は `catalog_reused / catalog_skipped / catalog_signature_ms / catalog_load_ms` まで読めるようにし、`catalog_*_ms` は trace 内の合計値として扱うようにした。`trace=rqXXXX` の end 1 行だけで、cache miss 時の再利用量と catalog 側の処理コストも見返せる。
 - 2026-04-16: `refresh end` には `skinResolved` と短い `dbKey` も載せるようにした。フルパスを追わなくても、どの skin / DB の切り替えだったかを end 1 行で読み返せる。
 - 2026-04-16: `refresh end` に `outcome=applied / fallback / standard` を追加した。件数や時間だけでなく、外部 skin refresh が最終的に host 表示 / fallback / 標準表示のどれで終わったかを end 1 行で判別できる。
+- 2026-05-26: `refresh end` を early stale / teardown skip でも必ず出すようにし、zero 込みの `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を同じ payload へ揃えた。cached catalog / minimal chrome reload / explicit reload / fallback retry の reason 区別は維持しつつ、skip と navigate 到達有無を end 1 行で比較できる。
 - 2026-04-12: `SimpleGridWB` の可視範囲優先 thumb 読込を第2段へ進め、可視範囲から外れた先頭 thumb は `src` を外して `data-thumb-url` へ戻し、末尾 thumb は scroll 後に昇格する形へ整理した。MainWindow 実 host で、先頭 thumb の降格と末尾 thumb の昇格が両立することを確認した。
 - 2026-04-12: `SimpleGridWB` の card 軽量化の第1段として、可視範囲外 card に `is-distant` を付けて本文詳細を休ませるようにした。MainWindow 実 host で、先頭 card は scroll 後に `is-distant` 化し、末尾 card は逆に復帰することを確認した。
 - 2026-04-12: compat runtime に、`onCreateThum` 未実装の外部 skin 向け最小サムネ生成 fallback と、`onUpdateThum` 未実装でも慣例 DOM へ `src` を差し替える fallback を追加した。compat 統合テストと `WhiteBrowserDefaultList` 実 fixture で、callback 未実装でも `img77` のサムネ表示と後追い差し替えが通ることを確認した。

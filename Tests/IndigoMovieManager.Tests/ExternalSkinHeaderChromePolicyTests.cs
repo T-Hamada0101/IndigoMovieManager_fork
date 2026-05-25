@@ -71,6 +71,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(syncMethod, Does.Not.Contain("GetAvailableSkinDefinitions()"));
             Assert.That(refreshMethod, Does.Contain("ResolveExternalSkinDefinitionRefreshMode(reason)"));
             Assert.That(refreshMethod, Does.Contain("definition_mode="));
+            Assert.That(refreshMethod, Does.Contain("WriteExternalSkinRefreshEndLog("));
             Assert.That(menuActionSource, Does.Contain("\"header-reload\""));
             Assert.That(source, Does.Contain("\"minimal-chrome-reload\""));
             Assert.That(source, Does.Contain("\"fallback-notice-retry\""));
@@ -219,6 +220,37 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(orchestratorAsyncMethod, Does.Contain("availableSkinDefinitions = loadedDefinitions;"));
             Assert.That(orchestratorAsyncMethod, Does.Contain("activeSkinDefinition ="));
             Assert.That(orchestratorAsyncMethod, Does.Not.Contain("ApplySkinByName("));
+        });
+    }
+
+    [Test]
+    public void 外部skin_refresh_endはnavigateとskipを同じpayloadで出す()
+    {
+        string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string debugLogSource = GetRepoText("Infrastructure", "DebugRuntimeLog.cs");
+        string refreshEndMethod = GetMethodBlock(
+            refreshSource,
+            "private void WriteExternalSkinRefreshEndLog("
+        );
+        string prepareMethod = GetMethodBlock(
+            refreshSource,
+            "private async Task<WhiteBrowserSkinHostOperationResult> TryPrepareExternalSkinHostAsync("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refreshEndMethod, Does.Contain("includeZeroValues: true"));
+            Assert.That(refreshEndMethod, Does.Contain("metricSummary"));
+            Assert.That(refreshEndMethod, Does.Contain("skip_stage="));
+            Assert.That(refreshSource, Does.Contain("RecordSkinRefreshStaleSkipped()"));
+            Assert.That(refreshSource, Does.Contain("RecordSkinRefreshTeardownSkipped()"));
+            Assert.That(prepareMethod, Does.Contain("RecordSkinNavigateAttempted()"));
+            Assert.That(prepareMethod, Does.Contain("RecordSkinNavigateSucceeded()"));
+            Assert.That(prepareMethod, Does.Contain("RecordSkinNavigateFailed()"));
+            Assert.That(prepareMethod, Does.Contain("RecordSkinNavigateSkipped()"));
+            Assert.That(debugLogSource, Does.Contain("navigate_attempted"));
+            Assert.That(debugLogSource, Does.Contain("refresh_stale_skipped"));
+            Assert.That(debugLogSource, Does.Contain("refresh_teardown_skipped"));
         });
     }
 
