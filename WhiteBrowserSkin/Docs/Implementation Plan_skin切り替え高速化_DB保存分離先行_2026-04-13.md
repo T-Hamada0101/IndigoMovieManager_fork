@@ -40,6 +40,7 @@
 - 2026-05-25 に外部 skin refresh の reason を `CatalogRefresh` / `CachedSnapshot` へ明示分岐した。`header-reload` と `fallback-notice-retry` は鮮度確認を維持し、旧最小ヘッダー由来の `minimal-chrome-reload` は cached definition で host 再準備だけ行う
 - 2026-05-25 に batch 圧縮時の reason 優先度も `CatalogRefresh` 系を `dbinfo-*` より上に固定した。`header-reload` / `fallback-notice-retry` が DB 変化通知に埋もれて cached snapshot へ落ちる経路を防ぐ
 - 2026-05-25 に同期 `GetCurrentExternalSkinDefinition()` を cached snapshot 専用へ固定し、同期 `RefreshCurrentExternalSkinDefinition()` を削除した。外部 skin 定義の catalog 再確認は async 経路だけで行う
+- 2026-05-25 に batch 圧縮時の `CatalogRefresh` 判定を `ResolveExternalSkinDefinitionRefreshMode(...)` へ集約し、priority 側で `header-reload` / `fallback-notice-retry` を二重列挙しない形へ固定した
 
 ## 1. 結論
 

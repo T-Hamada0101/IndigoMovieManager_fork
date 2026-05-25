@@ -173,6 +173,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             refreshSource,
             "private async Task<WhiteBrowserSkinDefinition> GetCurrentExternalSkinDefinitionAsync("
         );
+        string priorityMethod = GetMethodBlock(
+            refreshSource,
+            "private static int GetExternalSkinHostRefreshReasonPriority("
+        );
         string orchestratorAsyncMethod = GetMethodBlock(
             orchestratorSource,
             "public async Task<WhiteBrowserSkinDefinition> RefreshCurrentSkinDefinitionAsync("
@@ -188,6 +192,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(refreshSource, Does.Contain("\"header-reload\" => ExternalSkinDefinitionRefreshMode.CatalogRefresh"));
             Assert.That(refreshSource, Does.Contain("\"fallback-notice-retry\" => ExternalSkinDefinitionRefreshMode.CatalogRefresh"));
             Assert.That(refreshSource, Does.Contain("_ => ExternalSkinDefinitionRefreshMode.CachedSnapshot"));
+            Assert.That(priorityMethod, Does.Contain("ResolveExternalSkinDefinitionRefreshMode(reason)"));
+            Assert.That(priorityMethod, Does.Not.Contain("\"header-reload\" => 400"));
+            Assert.That(priorityMethod, Does.Not.Contain("\"fallback-notice-retry\" => 400"));
+            Assert.That(priorityMethod, Does.Contain("\"minimal-chrome-reload\" => 50"));
             Assert.That(refreshSource, Does.Not.Contain("private WhiteBrowserSkinDefinition RefreshCurrentExternalSkinDefinition("));
             Assert.That(asyncDefinitionMethod, Does.Contain("await RefreshCurrentExternalSkinDefinitionAsync()"));
             Assert.That(refreshSource, Does.Contain("private async Task<WhiteBrowserSkinDefinition> RefreshCurrentExternalSkinDefinitionAsync()"));

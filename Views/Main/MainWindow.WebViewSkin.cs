@@ -247,11 +247,17 @@ namespace IndigoMovieManager
 
         private static int GetExternalSkinHostRefreshReasonPriority(string reason)
         {
-            return reason switch
+            if (
+                ResolveExternalSkinDefinitionRefreshMode(reason)
+                == ExternalSkinDefinitionRefreshMode.CatalogRefresh
+            )
             {
                 // CatalogRefresh 系はユーザー明示の鮮度確認なので、DB変更通知より優先して残す。
-                "header-reload" => 400,
-                "fallback-notice-retry" => 400,
+                return 400;
+            }
+
+            return reason switch
+            {
                 // dbinfo-* は状態同期として強いが、明示 reload の catalog 確認は潰さない。
                 "dbinfo-DBFullPath" => 300,
                 "dbinfo-Skin" => 200,
