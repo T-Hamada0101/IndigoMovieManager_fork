@@ -27,6 +27,13 @@ namespace IndigoMovieManager
         private string _externalSkinHostRefreshBatchTraceId = "";
         private string _externalSkinHostRefreshDeferredRequestTraceId = "";
         private int _externalSkinHostTeardownStarted;
+
+        private enum ExternalSkinDefinitionRefreshMode
+        {
+            CachedSnapshot,
+            CatalogRefresh,
+        }
+
         // 実 UI テストでは host 準備成否だけ差し替え、表示切替そのものは本物の MainWindow で確認する。
         internal Func<WhiteBrowserSkinDefinition, string, Task<bool>> ExternalSkinHostPrepareAsyncForTesting
         {
@@ -290,10 +297,12 @@ namespace IndigoMovieManager
             using IDisposable refreshTraceScope = DebugRuntimeLog.BeginScopeForCurrentAsyncFlow(
                 $"trace={requestTraceId}"
             );
+            ExternalSkinDefinitionRefreshMode definitionRefreshMode =
+                ResolveExternalSkinDefinitionRefreshMode(reason);
             Stopwatch refreshStopwatch = Stopwatch.StartNew();
             DebugRuntimeLog.Write(
                 "skin-webview",
-                $"refresh begin: request={requestTraceId} generation={generation} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={reason}"
+                $"refresh begin: request={requestTraceId} generation={generation} definition_mode={definitionRefreshMode} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={reason}"
             );
             WhiteBrowserSkinDefinition externalSkinDefinition = null;
             bool externalSkinActive = false;
@@ -308,7 +317,7 @@ namespace IndigoMovieManager
                 }
 
                 externalSkinDefinition = await GetCurrentExternalSkinDefinitionAsync(
-                    forceCatalogRefresh: ShouldRefreshExternalSkinDefinitionForReason(reason)
+                    definitionRefreshMode
                 );
                 externalSkinActive = externalSkinDefinition != null;
                 if (
@@ -390,7 +399,7 @@ namespace IndigoMovieManager
             );
             DebugRuntimeLog.Write(
                 "skin-webview",
-                $"refresh end: request={requestTraceId} generation={generation} outcome={refreshOutcome} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={refreshStopwatch.Elapsed.TotalMilliseconds:F1}{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} reason={reason}"
+                $"refresh end: request={requestTraceId} generation={generation} outcome={refreshOutcome} definition_mode={definitionRefreshMode} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={refreshStopwatch.Elapsed.TotalMilliseconds:F1}{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} reason={reason}"
             );
         }
 
@@ -445,10 +454,11 @@ namespace IndigoMovieManager
         }
 
         private async Task<WhiteBrowserSkinDefinition> GetCurrentExternalSkinDefinitionAsync(
-            bool forceCatalogRefresh = false
+            ExternalSkinDefinitionRefreshMode refreshMode =
+                ExternalSkinDefinitionRefreshMode.CachedSnapshot
         )
         {
-            if (forceCatalogRefresh)
+            if (refreshMode == ExternalSkinDefinitionRefreshMode.CatalogRefresh)
             {
                 return await RefreshCurrentExternalSkinDefinitionAsync();
             }
@@ -470,11 +480,23 @@ namespace IndigoMovieManager
             return currentDefinition?.RequiresWebView2 == true ? currentDefinition : null;
         }
 
-        private static bool ShouldRefreshExternalSkinDefinitionForReason(string reason)
+        private static ExternalSkinDefinitionRefreshMode ResolveExternalSkinDefinitionRefreshMode(
+            string reason
+        )
         {
-            return string.Equals(reason, "header-reload", StringComparison.Ordinal)
-                || string.Equals(reason, "minimal-chrome-reload", StringComparison.Ordinal)
-                || string.Equals(reason, "fallback-notice-retry", StringComparison.Ordinal);
+            return reason switch
+            {
+                // 共通ヘッダー reload はユーザー明示の再読込なので、外部 skin の更新/削除を拾う。
+                "header-reload" => ExternalSkinDefinitionRefreshMode.CatalogRefresh,
+                // fallback retry は不足 HTML 復旧などを拾えるよう、catalog 鮮度確認を残す。
+                "fallback-notice-retry" => ExternalSkinDefinitionRefreshMode.CatalogRefresh,
+                _ => ExternalSkinDefinitionRefreshMode.CachedSnapshot,
+            };
+        }
+
+        internal static string ResolveExternalSkinDefinitionRefreshModeForTesting(string reason)
+        {
+            return ResolveExternalSkinDefinitionRefreshMode(reason).ToString();
         }
 
         private void ApplyExternalSkinHostVisibility(

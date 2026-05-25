@@ -10,6 +10,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     {
         string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Chrome.cs");
         string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string menuActionSource = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
         string xaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         string method = GetMethodBlock(
             source,
@@ -68,16 +69,44 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(xaml, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
             Assert.That(syncMethod, Does.Contain("GetCachedAvailableSkinDefinitions()"));
             Assert.That(syncMethod, Does.Not.Contain("GetAvailableSkinDefinitions()"));
-            Assert.That(refreshMethod, Does.Contain("ShouldRefreshExternalSkinDefinitionForReason(reason)"));
-            Assert.That(refreshMethod, Does.Contain("forceCatalogRefresh:"));
-            Assert.That(refreshSource, Does.Contain("\"header-reload\""));
-            Assert.That(refreshSource, Does.Contain("\"minimal-chrome-reload\""));
-            Assert.That(refreshSource, Does.Contain("\"fallback-notice-retry\""));
+            Assert.That(refreshMethod, Does.Contain("ResolveExternalSkinDefinitionRefreshMode(reason)"));
+            Assert.That(refreshMethod, Does.Contain("definition_mode="));
+            Assert.That(menuActionSource, Does.Contain("\"header-reload\""));
+            Assert.That(source, Does.Contain("\"minimal-chrome-reload\""));
+            Assert.That(source, Does.Contain("\"fallback-notice-retry\""));
         });
     }
 
     [Test]
-    public void 外部skin明示reloadはcatalog再確認をAsync経路で行う()
+    public void 外部skin_refresh_reasonごとにcatalog再確認モードを分ける()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                MainWindow.ResolveExternalSkinDefinitionRefreshModeForTesting("header-reload"),
+                Is.EqualTo("CatalogRefresh")
+            );
+            Assert.That(
+                MainWindow.ResolveExternalSkinDefinitionRefreshModeForTesting("fallback-notice-retry"),
+                Is.EqualTo("CatalogRefresh")
+            );
+            Assert.That(
+                MainWindow.ResolveExternalSkinDefinitionRefreshModeForTesting("minimal-chrome-reload"),
+                Is.EqualTo("CachedSnapshot")
+            );
+            Assert.That(
+                MainWindow.ResolveExternalSkinDefinitionRefreshModeForTesting("dbinfo-Skin"),
+                Is.EqualTo("CachedSnapshot")
+            );
+            Assert.That(
+                MainWindow.ResolveExternalSkinDefinitionRefreshModeForTesting("skin-tag-mutation"),
+                Is.EqualTo("CachedSnapshot")
+            );
+        });
+    }
+
+    [Test]
+    public void 外部skin_catalog再確認reasonはAsync経路で行う()
     {
         string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
         string orchestratorSource = GetRepoText("WhiteBrowserSkin", "WhiteBrowserSkinOrchestrator.cs");
@@ -98,8 +127,11 @@ public sealed class ExternalSkinHeaderChromePolicyTests
         Assert.Multiple(() =>
         {
             Assert.That(refreshMethod, Does.Contain("await GetCurrentExternalSkinDefinitionAsync("));
-            Assert.That(refreshMethod, Does.Contain("forceCatalogRefresh:"));
+            Assert.That(refreshMethod, Does.Contain("definitionRefreshMode"));
             Assert.That(refreshMethod, Does.Not.Contain("GetCurrentExternalSkinDefinition("));
+            Assert.That(refreshSource, Does.Contain("\"header-reload\" => ExternalSkinDefinitionRefreshMode.CatalogRefresh"));
+            Assert.That(refreshSource, Does.Contain("\"fallback-notice-retry\" => ExternalSkinDefinitionRefreshMode.CatalogRefresh"));
+            Assert.That(refreshSource, Does.Contain("_ => ExternalSkinDefinitionRefreshMode.CachedSnapshot"));
             Assert.That(asyncDefinitionMethod, Does.Contain("await RefreshCurrentExternalSkinDefinitionAsync()"));
             Assert.That(mainWindowSkinSource, Does.Contain("RefreshCurrentSkinDefinitionAsync()"));
             Assert.That(orchestratorAsyncMethod, Does.Contain("await Task.Run(() => WhiteBrowserSkinCatalogService.Load(skinRootPath))"));
