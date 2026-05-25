@@ -59,6 +59,7 @@
 - 左ドロワー表示中は `EverythingPoll` と `Created` 由来の watch 新規流入だけ抑制し、閉じた時に catch-up を 1 回だけ流す
 - watch 由来の最終 UI 再描画は、変更が in-memory 一覧へ反映済みで起動時部分ロード中でもない時だけ `query-only` 再計算へ寄せ、必要時だけ full reload を維持する
 - rename 後の一覧追従は DB 再読込へ戻さず、`MainVM.MovieRecs` を元に再検索・再整列して bookmark 再読込と合わせて軽く反映する
+- 2026-05-25 に bulk 降格後の query-only 復帰理由を unsafe dirty / unsafe change kind まで細分化した。no-op 札だけでは復帰しないが、安全な既存行差分に no-op が混ざるだけなら `bulk-existing-*` として DB 再読込へ戻さない
 
 ## 3. 現在の見取り図
 
@@ -94,6 +95,7 @@
 - `Watcher/MainWindow.Watcher.cs`
 - `Watcher/MainWindow.WatcherEventQueue.cs`
 - `Watcher/MainWindow.WatchScanCoordinator.cs`
+- `Watcher/MainWindow.WatchUiReloadPolicy.cs`
 - `Watcher/FileIndexIncrementalSyncPolicy.cs`
 - `Views/Main/MainWindow.xaml`
 - `Views/Main/MainWindow.xaml.cs`
@@ -110,6 +112,7 @@
 2. deferred batch 上限 `200` がまだ重いか、実ログで確認し、必要なら `100` まで下げる
 3. `watch event queue` の DTO と実行本体を、`MainWindow` 依存からさらに離して `WatcherEventDispatcher` 相当へ寄せる
 4. watch起点の UI 再読込を、差分反映優先でさらに縮められる点があるか確認する
+   - まず `debug-runtime.log` の `plan_reason=dirty-fields-unsafe:*` / `change-kind-unsafe:*` を見て、次に安全化できる fallback を選ぶ
 
 ## 6. やってはいけないこと
 

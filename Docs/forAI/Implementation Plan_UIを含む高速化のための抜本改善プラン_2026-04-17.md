@@ -1,8 +1,11 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-05-05
+最終更新日: 2026-05-25
 
 変更概要:
+- watch の bulk full fallback 理由を unsafe dirty / unsafe change kind まで細分化し、既存行の安全差分に no-op 札が混ざるだけなら query-only 復帰できるようにした
+- サムネ進捗の enqueue / 初期作成数反映は runtime version 差分 guard 経由へ寄せ、状態変化がない時の余分な snapshot 予約を減らした
+- 外部 skin refresh は `CatalogRefresh` / `CachedSnapshot` を明示し、`minimal-chrome-reload` は cached definition に閉じ、明示 reload / fallback retry だけ catalog 再確認を async 経路へ通す形にした
 - 詳細サムネ側の表示更新は、UI 上で既存 jpg 走査、ERROR marker 確認、FailureDb open rescue 確認、未生成通常キュー投入、ERROR 救済投入を直接行わず、選択行と DB 情報を snapshot に固定して背景確認し、DB 一致・選択一致・shutdown guard 後に `ThumbDetail` と下部 ERROR/進捗 snapshot 更新だけ戻す形へ寄せた
 - 上側タブの可視 ERROR 自動投入は UI 上で救済投入入口を直接回さず、可視 `MovieRecords` を DB 情報付き snapshot に固めてから、marker 削除 / FailureDb 確認 / queue 投入を背景側で実行する形へ寄せた。背景 core でも `AreSameMainDbPath` guard を通し、DB 切替後着と shutdown 中の要求は捨てる
 - `TryEnqueueThumbnailDisplayErrorRescueJob` と下部 `ThumbnailError` 可視行優先投入は、通常キューへ戻す可能性がある `tab-error-placeholder` の時だけ FailureDb 履歴を読み、可視行自動投入などでは不要な履歴 read を避けるようにした
@@ -273,6 +276,7 @@
 - 2026-05-03: deferred watch reload が適用されなかった理由を `skip_reason` として `debug-runtime.log` に残す。`revision-stale` / `db-changed` / `ui-suppressed` を分けて shutdown と DB 切替の後着を追えるようにする。
 - 2026-05-03: deferred watch reload の consume 失敗も `skip_reason=not-pending / revision-stale` で残し、二重消費と古い要求を分けて追えるようにする。
 - 2026-05-03: watch 終端 reload ログへ `can_query_only` を追加する。`watch-full-fallback` が query-only 不可由来かを実機ログから絞り、次の差分化候補を選ぶ。
+- 2026-05-25: watch bulk 復帰の full fallback 理由を `dirty-fields-unsafe:*` / `change-kind-unsafe:*` まで細分化した。no-op だけなら復帰しないが、no-op が安全な既存行差分に混ざるだけなら query-only 復帰を維持する。
 - 着手前に `git status --short` で対象外差分を確認する。
 - `layout*.xml` や実機操作で動く差分は、目的が一致する時だけ扱う。
 - 最低限の計測点を固定する。
@@ -304,6 +308,7 @@
 - manual rescue 即時反映も同じ基準に寄せ、直接反映できた成功では後段 full reload を予約しない。
 - rescued sync の定期反映では FailureDb / progress 更新を維持しつつ、選択中レコードへ当たった時だけ `Refresh()` を許可する。
 - Rescue 履歴は選択変更時に FailureDb を UI スレッドで読まず、背景読込と revision guard 付き反映へ寄せる。
+- `ThumbnailProgress` の enqueue / 初期作成数反映は `ThumbnailProgressRuntime.CurrentVersion` の差分 guard を通し、runtime 状態が変わらない時は snapshot 予約を増やさない。
 - `fire-and-forget` で逃がすだけにせず、bounded drain、timeout ログ、fault ログを持つ scheduler / persister / queue へ寄せる。
 - `Watcher.cs` の薄化は、UI thread 滞在、queue 境界、shutdown 境界、観測性の改善につながる場合だけ進める。
 
@@ -331,6 +336,7 @@
 - `FilterAndSort(..., true)` を watch の既定終端から外し、小規模変更は差分 apply を既定にする。
 - watch query-only では `MovieRecs` 全件を毎回 `FilterMovies(...)` に通さず、`changed paths` だけを再評価して `ReplaceFilteredMovieRecs(...)` へ渡す経路を育てる。
 - changed path 局所更新の lookup も、全件辞書化ではなく変更対象 path だけを保持し、少数変更時の allocation を変更件数寄りへ寄せる。
+- bulk 降格後の最終判定では、既存行の安全な view / dirty 差分だけなら query-only へ戻す。圧縮過程で混ざる no-op 札は有効差分から外し、no-op だけの要求は復帰扱いにしない。
 - 検索等のユーザー要求中は、watch full / bulk reload、zero-diff reconcile、rescue、thumbnail などが完了を妨げないよう後ろへ逃がす。
 - 全面再評価が必要な条件だけを明示する。
   - sort key 変更
@@ -445,6 +451,8 @@
 - built-in skin への単純な apply は既存 snapshot を優先して解決し、外部 skin は同名更新・削除検知を優先して catalog load へ戻す。
 - 外部 skin の明示 reload は現在定義を再確認し、同名 HTML/config 更新や削除を host prepare 前に拾う。
 - 外部 skin の明示 reload で必要な catalog load は background へ逃がし、UI 側は結果 snapshot の採用と host prepare に集中させる。
+- `header-reload` / `fallback-notice-retry` は `CatalogRefresh` として `dbinfo-*` より強く batch に残し、`minimal-chrome-reload` は cached definition の host 再準備に留める。
+- 同期 `GetCurrentExternalSkinDefinition()` は cached snapshot 専用とし、catalog 再確認は `GetCurrentExternalSkinDefinitionAsync(...)` から `RefreshCurrentSkinDefinitionAsync()` へ流す。
 - `SelectProfileValue(...)` を cold path に閉じ込め、session cache と persisted 値の責務差を明示する。
 
 完了条件:

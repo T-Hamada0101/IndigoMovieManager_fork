@@ -56,6 +56,8 @@
 
 ## 5. いま次にやるべきこと
 
+2026-05-25 時点で、下部 `ThumbnailProgress` の実行中イベント、enqueue、初期作成数反映は runtime version 差分 guard 経由になっている。状態が変わらない時は snapshot 予約を増やさない前提で見る。
+
 優先順は次のとおり。
 
 1. rescue レーンの実動画検証を進める
