@@ -91,6 +91,40 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public void ApplySkinByNameは未ロードでもbuilt_in_skinならcatalog署名確認へ進まない()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ExternalForColdBuiltInApply");
+        string currentSkinName = "";
+        List<string> selectedTabs = [];
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? "")
+            );
+
+            bool applied = orchestrator.ApplySkinByName("DefaultGrid", persistToCurrentDb: false);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(applied, Is.True);
+                Assert.That(currentSkinName, Is.EqualTo("DefaultGrid"));
+                Assert.That(selectedTabs, Is.EqualTo(new[] { "DefaultGrid" }));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadHitCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogSignatureBuildCountForTesting(), Is.EqualTo(0));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void ApplySkinByNameはsnapshotにないskinならcatalogを再確認する()
     {
         string rootPath = CreateSkinRootWithSingleSkin("FirstGrid");
@@ -131,6 +165,38 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
                 Assert.That(currentSkinName, Is.EqualTo("SecondGrid"));
                 Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(2));
                 Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadHitCountForTesting(), Is.EqualTo(0));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
+    public void GetCurrentSkinDefinitionは未ロードのbuilt_in_skinならcatalog署名確認へ進まない()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ExternalForColdCurrentBuiltIn");
+        string currentSkinName = "DefaultGrid";
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? ""
+            );
+
+            WhiteBrowserSkinDefinition definition = orchestrator.GetCurrentSkinDefinition();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(definition, Is.Not.Null);
+                Assert.That(definition.Name, Is.EqualTo("DefaultGrid"));
+                Assert.That(definition.IsBuiltIn, Is.True);
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadHitCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogSignatureBuildCountForTesting(), Is.EqualTo(0));
             });
         }
         finally

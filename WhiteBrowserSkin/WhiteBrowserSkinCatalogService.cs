@@ -323,6 +323,18 @@ namespace IndigoMovieManager.Skin
             return definitions.FirstOrDefault(x => NameComparer.Equals(x.Name, normalizedSkinName));
         }
 
+        internal static WhiteBrowserSkinDefinition TryResolveBuiltInByName(string skinName)
+        {
+            string normalizedSkinName = skinName?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(normalizedSkinName))
+            {
+                normalizedSkinName = DefaultGridSkinName;
+            }
+
+            // built-in skin は定義が固定なので、catalog 署名確認へ進む前に共有定義だけで解決する。
+            return SharedBuiltInDefinitions.FirstOrDefault(x => NameComparer.Equals(x.Name, normalizedSkinName));
+        }
+
         private static WhiteBrowserSkinDefinition CreateBuiltIn(string skinName)
         {
             return new WhiteBrowserSkinDefinition(

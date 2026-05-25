@@ -1,6 +1,6 @@
 # Implementation Plan: skin切り替え高速化 DB保存分離先行 2026-04-13
 
-最終更新日: 2026-05-05
+最終更新日: 2026-05-25
 
 変更概要:
 - 全体プラン見直しを受けて、`skin` 切り替え高速化の中で DB を「先頭の決定打」ではなく「第2群の土台施策」として位置づけ直した
@@ -36,6 +36,7 @@
 - 2026-05-05 に `ApplySkinByName(...)` の built-in skin 名解決を cached-first にし、Grid へ戻るだけの操作では catalog 署名確認へ戻らない形へした。外部 skin は同名 HTML/config 更新や削除検知を優先し、従来どおり再確認する
 - 2026-05-05 に `header-reload` / `minimal-chrome-reload` / `fallback-notice-retry` では現在外部 skin 定義を明示的に再確認し、同名 HTML/config 更新や削除を reload 導線で拾えるようにした
 - 2026-05-05 に明示 reload の現在外部 skin 定義再確認を async 経路へ移し、`WhiteBrowserSkinCatalogService.Load(...)` だけを背景で実行してから UI 側で snapshot を採用する形へした。reload の鮮度は維持しつつ、host prepare 前の UI スレッド滞在を減らす
+- 2026-05-25 に built-in skin の単純 apply / reload 判定では catalog 未ロードでも共有 built-in 定義だけで解決し、外部 skin 再走査へ進まない形へした。明示 reload の外部 skin 鮮度確認は従来どおり維持する
 
 ## 1. 結論
 
@@ -331,6 +332,7 @@ skin 名解決や minimal chrome 同期のたびに、catalog を常時総なめ
 - 2026-05-05: `ApplySkinByName(...)` は既存 snapshot にある built-in skin だけ cached definition を使い、`ResolveInitialTabStateNameForSkin(...)` と `SelectUpperTabDefaultViewBySkinName(...)` は従来どおり通す。外部 skin は同名更新・削除・missing 遷移を隠さないよう catalog を再確認する
 - 2026-05-05: 明示 reload 系 reason (`header-reload` / `minimal-chrome-reload` / `fallback-notice-retry`) は `RefreshCurrentSkinDefinition()` で現在外部 skin 定義を再読込してから host prepare へ進む。通常 refresh や tag mutation ではこの強制再確認を行わない
 - 2026-05-05: 明示 reload 系 reason は `RefreshCurrentSkinDefinitionAsync()` を通り、catalog load の I/O だけを background へ逃がす。Orchestrator の `availableSkinDefinitions` / `activeSkinDefinition` 更新と host prepare は従来どおり UI 側へ戻してから行い、タブ復元や persist は発火させない
+- 2026-05-25: built-in skin 名は catalog 未ロードでも `WhiteBrowserSkinCatalogService` の共有 built-in 定義で即解決する。標準表示中の reload 判定や単純 apply では catalog 署名確認を始めず、外部 skin の明示 reload だけ鮮度確認を維持する
 - `MainWindow.WebViewSkin` の batch begin / flush ログと合わせ、`skin-webview` と `skin-catalog` を同じ `debug-runtime.log` だけで並べて追える状態にした
 - `skin-webview` の `refresh deferred / queued / batch begin / batch flush` には `batch=btXXXX` と `request=rqXXXX` の短い識別子も載せ、同じ切替単位の流れを 1 本で追いやすくした
 - `request=rqXXXX` は `host prepare begin` / `host navigate failed` / `refresh skipped stale` / `host presentation` にも引き継ぎ、queue された refresh が apply 完了までどう流れたかを追いやすくした
