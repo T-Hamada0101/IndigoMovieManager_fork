@@ -1,8 +1,10 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-05-25
+最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 の見直しで、計画の軸は維持しつつ、次の主戦場を「watch / rename の in-memory refresh 後着キャンセル」「残る Refresh() / Items.Refresh() / FilterAndSort(true) の局所反映化」「大件数 sort の background + revision guard」「実機ログでの起動 / skin / visible-first 完了判定」へ絞った。
+- 進捗は実装ベース約 78%、実機確認込み 70〜72% として扱う。完了扱いは、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
 - 大件数検索では、後着検索が入った時に古い `FilterAndSortAsync(...)` の `filter-movies` 列挙を cancellation token で中断できるようにし、入力中の古い全件検索が CPU を食い続ける状態を減らした
 - 大件数の ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / 既存 Roma / 既存 Kana 由来 Roma` の軽量投影に留め、`Kana/Roma` が空の行で名前/パスから読み仮名解析へ戻る fallback を UI hot path から外した
 - watch 終端 reload は `changedMovies` が no-op 札だけなら実効変更なしとして扱い、deferred/full reload を積まないようにした
@@ -499,6 +501,14 @@
 
 ## 7. 直近の着手順
 
+### 2026-05-26 見直し後の最短タスク
+
+1. watch query-only / rename の `RefreshMovieViewFromCurrentSourceAsync(...)` に後着キャンセルを通し、`CancellationToken.None` で古い計算が走り切る経路を閉じる。
+2. `TagControl` / `MainWindow.Tag` / `KanaBackfill` / `ThumbnailFailed` などに残る `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` を、既存の局所反映・revision trigger・snapshot 予約へ寄せる。
+3. 大件数時の通常 sort を background + revision guard へ寄せ、検索高速化後に残る UI スレッド滞在を減らす。
+4. 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一ログで確認し、後ろ倒し候補を確定する。
+5. skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` で完了判定する。
+
 ### Step 1
 
 - 現在の未コミット差分を確認し、対象外ファイルを混ぜずに区切る。
@@ -531,6 +541,9 @@
 3. 検索入力やページ移動の引っかかりが、既存ログ比較で改善している。
 4. skin 切り替え時の refresh / catalog / DB のどこが効いたか分けて説明できる。
 5. sidecar が壊れても起動不能にならない。
+6. 後着検索・後着 reload で、古い filter / sort 計算が走り切らず、UI に反映されないことをログで説明できる。
+7. 残る `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` は、許容 fallback か局所反映化対象か分類済みである。
+8. 起動 / skin / visible-first は、実機ログで支配要因を説明できるまで完了扱いにしない。
 
 ## 9. 今回やらないこと
 

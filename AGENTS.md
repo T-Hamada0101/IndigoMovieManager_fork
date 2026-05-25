@@ -61,6 +61,12 @@
 - UI の詰まり解消と抜本高速化の正本は `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md`
 - `skin` 個別の高速化と保存分離の正本は `WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`
 
+## UI高速化プランの最新見直し（2026-05-26 AI必読）
+- 計画の軸は維持する。進捗は実装ベース約 78%、実機確認込み 70〜72% として扱い、完了判定は実機ログで閉じる
+- 次の最優先は `RefreshMovieViewFromCurrentSourceAsync(...)` の後着キャンセル、`Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` 残りの局所反映化、大件数 sort の background + revision guard
+- 起動 / skin / visible-first は、`debug-runtime.log` で `first-page shown` / `input ready` / `refresh end` / `catalog_*` / `persist_*` を説明できるまで完了扱いにしない
+- skin は DB 分離だけで完了扱いにせず、`refresh` / stale / catalog / navigate の削減と trace 観測を優先する
+
 ## 2チーム体制（AI必読）
 - 本線チームは `AI向け_現在の全体プラン_workthree_2026-03-20.md` と `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として進める
 - スキンチームは `WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md` を正本として進める
