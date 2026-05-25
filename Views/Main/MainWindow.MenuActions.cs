@@ -917,14 +917,17 @@ namespace IndigoMovieManager
 
             string thumbFolder = ResolveCurrentThumbnailRoot();
             string thumbOutPath = ResolveCurrentThumbnailOutPath(GetCurrentThumbnailActionTabIndex());
-            string sortId = MainVM?.DbInfo?.Sort ?? "";
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            int actionTabIndex = GetCurrentThumbnailActionTabIndex();
 
             _ = Task.Run(
                 () =>
                 {
                     List<string> deleteFailureMessages = new();
+                    List<MovieRecords> deletedRecords = new();
                     foreach (MovieRecords rec in recordSnapshot)
                     {
+                        int failureCountBeforeDelete = deleteFailureMessages.Count;
                         DeleteThumbnailsForMovieCore(
                             rec,
                             thumbFolder,
@@ -932,17 +935,129 @@ namespace IndigoMovieManager
                             sendToRecycleBin: false,
                             deleteFailureMessages
                         );
+                        if (deleteFailureMessages.Count == failureCountBeforeDelete)
+                        {
+                            deletedRecords.Add(rec);
+                        }
                     }
 
                     _ = Dispatcher.InvokeAsync(
                         () =>
                         {
                             ShowDeleteFailureSummary(deleteFailureMessages);
-                            FilterAndSort(sortId, true);
+                            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+                            {
+                                return;
+                            }
+
+                            RefreshVisibleThumbnailUiAfterThumbnailOnlyDelete(
+                                deletedRecords,
+                                actionTabIndex
+                            );
                         }
                     );
                 }
             );
+        }
+
+        // サムネイルのみ削除はDBに影響しないため、表示モデルと既存の軽量更新だけを進める。
+        private void RefreshVisibleThumbnailUiAfterThumbnailOnlyDelete(
+            IReadOnlyList<MovieRecords> records,
+            int actionTabIndex
+        )
+        {
+            if (records == null || records.Count == 0)
+            {
+                return;
+            }
+
+            foreach (MovieRecords record in records)
+            {
+                if (!ClearThumbnailPathsForThumbnailOnlyDelete(record))
+                {
+                    continue;
+                }
+
+                TryQueueExternalSkinThumbnailUpdated(
+                    record,
+                    actionTabIndex,
+                    "thumbnail-only-delete"
+                );
+            }
+
+            InvalidateThumbnailErrorRecords(refreshIfVisible: true);
+            RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "thumbnail-only-delete");
+            RefreshUpperTabPreferredMoviePathKeysRevision();
+            RequestThumbnailErrorSnapshotRefresh();
+            RequestThumbnailProgressSnapshotRefresh();
+        }
+
+        // 削除済みjpgを再参照しないよう、保持しているサムネ表示パスを空にしてPropertyChangedへ流す。
+        internal static bool ClearThumbnailPathsForThumbnailOnlyDelete(MovieRecords record)
+        {
+            if (record == null)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            ClearThumbnailPathForThumbnailOnlyDelete(
+                record.ThumbPathSmall,
+                value => record.ThumbPathSmall = value,
+                ref changed
+            );
+            ClearThumbnailPathForThumbnailOnlyDelete(
+                record.ThumbPathBig,
+                value => record.ThumbPathBig = value,
+                ref changed
+            );
+            ClearThumbnailPathForThumbnailOnlyDelete(
+                record.ThumbPathGrid,
+                value => record.ThumbPathGrid = value,
+                ref changed
+            );
+            ClearThumbnailPathForThumbnailOnlyDelete(
+                record.ThumbPathList,
+                value => record.ThumbPathList = value,
+                ref changed
+            );
+            ClearThumbnailPathForThumbnailOnlyDelete(
+                record.ThumbPathBig10,
+                value => record.ThumbPathBig10 = value,
+                ref changed
+            );
+            ClearThumbnailPathForThumbnailOnlyDelete(
+                record.ThumbDetail,
+                value => record.ThumbDetail = value,
+                ref changed
+            );
+
+            if (record.ThumbnailErrorMarkerCount != 0)
+            {
+                record.ThumbnailErrorMarkerCount = 0;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static void ClearThumbnailPathForThumbnailOnlyDelete(
+            string currentPath,
+            Action<string> applyPath,
+            ref bool changed
+        )
+        {
+            if (applyPath == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentPath))
+            {
+                NoLockImageConverter.InvalidateFilePath(currentPath);
+                applyPath(string.Empty);
+                changed = true;
+            }
         }
 
         // 選択動画に紐づくサムネイル本体と ERROR マーカーをまとめて片付ける。

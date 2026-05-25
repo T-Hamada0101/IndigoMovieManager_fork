@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using NUnit.Framework;
 
@@ -79,8 +80,67 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(queueMethod, Does.Contain("Task.Run("));
         Assert.That(queueMethod, Does.Contain("DeleteThumbnailsForMovieCore("));
         Assert.That(queueMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(queueMethod, Does.Contain("RefreshVisibleThumbnailUiAfterThumbnailOnlyDelete("));
+        Assert.That(queueMethod, Does.Not.Contain("FilterAndSort("));
         Assert.That(coreMethod, Does.Contain("TryDeleteThumbnailFile("));
         Assert.That(coreMethod, Does.Contain("TryDeleteThumbnailErrorMarker("));
+    }
+
+    [Test]
+    public void サムネイルのみ削除後は表示パスとERROR件数を局所更新する()
+    {
+        MovieRecords record = new()
+        {
+            ThumbPathSmall = "thumb-small.jpg",
+            ThumbPathBig = "thumb-big.jpg",
+            ThumbPathGrid = "thumb-grid.jpg",
+            ThumbPathList = "thumb-list.jpg",
+            ThumbPathBig10 = "thumb-big10.jpg",
+            ThumbDetail = "thumb-detail.jpg",
+            ThumbnailErrorMarkerCount = 2,
+        };
+        List<string> changedProperties = [];
+        record.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName ?? "");
+
+        bool changed = MainWindow.ClearThumbnailPathsForThumbnailOnlyDelete(record);
+
+        Assert.That(changed, Is.True);
+        Assert.That(record.ThumbPathSmall, Is.Empty);
+        Assert.That(record.ThumbPathBig, Is.Empty);
+        Assert.That(record.ThumbPathGrid, Is.Empty);
+        Assert.That(record.ThumbPathList, Is.Empty);
+        Assert.That(record.ThumbPathBig10, Is.Empty);
+        Assert.That(record.ThumbDetail, Is.Empty);
+        Assert.That(record.ThumbnailErrorMarkerCount, Is.Zero);
+        Assert.That(changedProperties, Does.Contain(nameof(MovieRecords.ThumbPathSmall)));
+        Assert.That(changedProperties, Does.Contain(nameof(MovieRecords.ThumbPathBig)));
+        Assert.That(changedProperties, Does.Contain(nameof(MovieRecords.ThumbPathGrid)));
+        Assert.That(changedProperties, Does.Contain(nameof(MovieRecords.ThumbPathList)));
+        Assert.That(changedProperties, Does.Contain(nameof(MovieRecords.ThumbPathBig10)));
+        Assert.That(changedProperties, Does.Contain(nameof(MovieRecords.ThumbDetail)));
+        Assert.That(changedProperties, Does.Contain(nameof(MovieRecords.ThumbnailErrorMarkerCount)));
+    }
+
+    [Test]
+    public void サムネイルのみ削除後のUI反映は既存の軽量更新へ寄せる()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string refreshMethod = GetMethodBlock(
+            source,
+            "private void RefreshVisibleThumbnailUiAfterThumbnailOnlyDelete("
+        );
+
+        Assert.That(refreshMethod, Does.Contain("InvalidateThumbnailErrorRecords(refreshIfVisible: true);"));
+        Assert.That(
+            refreshMethod,
+            Does.Contain(
+                "RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"thumbnail-only-delete\");"
+            )
+        );
+        Assert.That(refreshMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
     }
 
     [Test]
