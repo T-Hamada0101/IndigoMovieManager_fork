@@ -3,6 +3,9 @@
 最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 のサブ5.5追加で、起動 fallback と段階ロード中 sort 変更の `FilterAndSort(..., true)` は DB 正本復旧・全件順序復旧の許容 fallback として分類し、Debug タブのサムネイル全削除後 `FilterAndSort(..., true)` は表示モデルのサムネパスクリア、visible refresh、進捗/ERROR snapshot 予約へ置き換えた。
+- 2026-05-26 のサブ5.5で、外部 skin API の sort は通常時 `SortDataAsync(...)` を await する経路へ寄せ、`FilterAndSort(resolvedSortId, true)` の全件 reload fallback を通常経路から外した。起動 partial feed 中だけは全件順序の正しさを守るため `partial-feed-needs-complete-source` として分類ログを残し、startup feed をキャンセルしてから正規の後着キャンセル付き reload へ戻す。
+- 2026-05-26 のサブ5.5で、Bookmark タブの `Items.Refresh()` は `ObservableCollection` 通知へ任せる形で撤去し、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけへ絞った。
 - 2026-05-26 の `73b96e4` で、skin `refresh end` を early skip でも必ず出し、`elapsed_ms` に加えて `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を同一 payload で出す形へ寄せた。skin 完了判定は DB 分離ではなく、catalog / persist / navigate / stale の内訳を実機ログで説明できることを引き続き基準にする。
 - 2026-05-26 の `0992877` で、起動 warm path の `first-page shown` / `input ready` / `heavy services started` を同一 revision / trigger / elapsed_ms で追えるようにし、partial-feed / fallback / complete / canceled を `feed_state` で区別できるようにした。
 - 2026-05-26 の `6bb00e5` で、大件数時の通常 `SortData(...)` を background + revision guard へ寄せ、後着 sort は `sort canceled` / `sort skip stale` で破棄できるようにした。
@@ -518,7 +521,9 @@
 5. 完了: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定できるログ基盤へ寄せた。
 6. 完了: 物理動画削除後の `FilterAndSort(..., true)` は、DB 削除成功 ID だけを表示モデルから差分削除する局所反映へ寄せた。物理ファイル削除に失敗しても、既存挙動と同じく DB から消えた行を一覧正本として扱い、失敗は警告表示と watcher 復帰に委ねる。
 7. 完了: visible-first は、viewport 一時未計測時に同一タブ・同一 source revision の preferred key snapshot を保持し、不要な画像再評価を抑えるようにした。
-8. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が Player / ExtDetail / Bookmark 表示更新 / 他の許容 fallback のどこにあるかを決める。
+8. 完了: サブ5.5追加で、起動 fallback の `FilterAndSort(sortId, true)` は first-page 起動失敗時の DB 初期読込復旧、段階ロード中 sort 変更の `FilterAndSort(id.ToString(), true)` は新 sort の全件順序復旧として許容 fallback に分類した。Debug タブのサムネイル全削除後は DB 再読込をやめ、読み込み済み `MovieRecords` のサムネパスと ERROR 件数を局所クリアし、visible refresh と snapshot 予約だけへ寄せた。
+9. 完了: Bookmark タブの view refresh は `ObservableCollection` 通知へ任せ、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけに絞った。
+10. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が Player / 他の許容 fallback / 実機画像供給のどこにあるかを決める。
 
 ### Step 1
 
