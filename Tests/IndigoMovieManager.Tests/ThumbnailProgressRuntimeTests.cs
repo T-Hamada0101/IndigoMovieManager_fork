@@ -267,6 +267,23 @@ public class ThumbnailProgressRuntimeTests
     }
 
     [Test]
+    public void CurrentVersion_同値更新では増えず変更時だけ進む()
+    {
+        ThumbnailProgressRuntime runtime = new();
+
+        long initialVersion = runtime.CurrentVersion;
+
+        runtime.UpdateSessionProgress(3, 10, 2, 6);
+        long changedVersion = runtime.CurrentVersion;
+
+        runtime.UpdateSessionProgress(3, 10, 2, 6);
+        long sameVersion = runtime.CurrentVersion;
+
+        Assert.That(changedVersion, Is.GreaterThan(initialVersion));
+        Assert.That(sameVersion, Is.EqualTo(changedVersion));
+    }
+
+    [Test]
     public void ViewStateApply_GPUHDD未取得時はNA表示になる()
     {
         ThumbnailProgressViewState viewState = new();

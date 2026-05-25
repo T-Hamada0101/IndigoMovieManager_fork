@@ -97,6 +97,8 @@ public sealed class ThumbnailProgressSourceTests
             checkThumbMethod,
             Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();")
         );
+        Assert.That(guardMethod, Does.Contain("_thumbnailProgressRuntime.CurrentVersion"));
+        Assert.That(guardMethod, Does.Not.Contain("CreateSnapshot()"));
         Assert.That(guardMethod, Does.Contain("currentVersion == previousVersion"));
         Assert.That(guardMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
     }

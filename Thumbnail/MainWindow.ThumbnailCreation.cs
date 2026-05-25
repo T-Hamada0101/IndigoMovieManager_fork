@@ -519,9 +519,9 @@ namespace IndigoMovieManager
                 return;
             }
 
-            long previousVersion = _thumbnailProgressRuntime.CreateSnapshot().Version;
+            long previousVersion = _thumbnailProgressRuntime.CurrentVersion;
             updateRuntime();
-            long currentVersion = _thumbnailProgressRuntime.CreateSnapshot().Version;
+            long currentVersion = _thumbnailProgressRuntime.CurrentVersion;
             if (currentVersion == previousVersion)
             {
                 return;

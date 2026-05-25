@@ -25,6 +25,8 @@ namespace IndigoMovieManager.Thumbnail
         private long stateVersion;
         private ThumbnailProgressRuntimeSnapshot cachedSnapshot;
 
+        public long CurrentVersion => System.Threading.Volatile.Read(ref stateVersion);
+
         public void Reset(long initialTotalCreatedCount = 0)
         {
             lock (stateLock)
@@ -341,7 +343,7 @@ namespace IndigoMovieManager.Thumbnail
 
                 ThumbnailProgressRuntimeSnapshot snapshot = new()
                 {
-                    Version = stateVersion,
+                    Version = CurrentVersion,
                     SessionCompletedCount = sessionCompletedCount,
                     SessionTotalCount = sessionTotalCount,
                     TotalCreatedCount = totalCreatedCount,
