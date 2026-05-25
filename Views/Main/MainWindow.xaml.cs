@@ -2142,6 +2142,8 @@ namespace IndigoMovieManager
             using IDisposable uiHangScope = TrackUiHangActivity(uiHangActivityKind);
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
+            using CancellationTokenSource refreshCancellation = BeginFilterAndSortCancellation();
+            CancellationToken refreshCancellationToken = refreshCancellation.Token;
             string resolvedSortId = string.IsNullOrWhiteSpace(sortId)
                 ? MainVM?.DbInfo?.Sort ?? ""
                 : sortId;
@@ -2169,36 +2171,68 @@ namespace IndigoMovieManager
             Stopwatch filterSortStopwatch = Stopwatch.StartNew();
             bool allowExpensiveAsciiPhoneticFallback =
                 !MainWindow.ShouldUseFastAsciiSearchProjection(sourceMovies.Length);
-            await Task.Run(() =>
+            try
             {
-                usedChangedPathRefresh = TryBuildChangedMovieRefreshSourceWithReason(
-                    sourceMovies,
-                    currentFilteredMovies,
-                    searchKeyword,
-                    resolvedSortId,
-                    changedMovies,
-                    MainVM.FilterMovies,
-                    out filtered,
-                    out canReuseCurrentOrder,
-                    out changedPathFallbackReason
-                );
-                if (!usedChangedPathRefresh)
-                {
-                    filtered = MainVM
-                        .FilterMovies(
+                await Task.Run(
+                    () =>
+                    {
+                        refreshCancellationToken.ThrowIfCancellationRequested();
+                        usedChangedPathRefresh = TryBuildChangedMovieRefreshSourceWithReason(
                             sourceMovies,
+                            currentFilteredMovies,
                             searchKeyword,
-                            CancellationToken.None,
-                            allowExpensiveAsciiPhoneticFallback
-                        )
-                        .ToArray();
-                }
+                            resolvedSortId,
+                            changedMovies,
+                            (movies, keyword) =>
+                                MainVM.FilterMovies(
+                                    movies,
+                                    keyword,
+                                    refreshCancellationToken,
+                                    allowExpensiveAsciiPhoneticFallback
+                                ),
+                            out filtered,
+                            out canReuseCurrentOrder,
+                            out changedPathFallbackReason
+                        );
+                        refreshCancellationToken.ThrowIfCancellationRequested();
+                        if (!usedChangedPathRefresh)
+                        {
+                            filtered = MainVM
+                                .FilterMovies(
+                                    sourceMovies,
+                                    searchKeyword,
+                                    refreshCancellationToken,
+                                    allowExpensiveAsciiPhoneticFallback
+                                )
+                                .ToArray();
+                        }
 
-                searchCount = filtered.Length;
-                sorted = canReuseCurrentOrder
-                    ? filtered
-                    : MainVM.SortMovies(filtered, resolvedSortId).ToArray();
-            });
+                        refreshCancellationToken.ThrowIfCancellationRequested();
+                        searchCount = filtered.Length;
+                        sorted = canReuseCurrentOrder
+                            ? filtered
+                            : MainVM.SortMovies(filtered, resolvedSortId).ToArray();
+                        refreshCancellationToken.ThrowIfCancellationRequested();
+                    },
+                    refreshCancellationToken
+                );
+            }
+            catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"{resolvedTraceName} refresh canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} changed_path_mode={(usedChangedPathRefresh ? "partial" : "full")} changed_path_fallback={changedPathFallbackReason} elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
+                );
+                return;
+            }
+            catch (ObjectDisposedException) when (refreshCancellationToken.IsCancellationRequested)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"{resolvedTraceName} refresh canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} reason=token-disposed elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
+                );
+                return;
+            }
 
             if (requestRevision != _filterAndSortRequestRevision)
             {

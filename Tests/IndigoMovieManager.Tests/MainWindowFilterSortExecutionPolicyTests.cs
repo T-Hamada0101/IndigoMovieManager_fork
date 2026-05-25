@@ -147,6 +147,31 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(textChangedMethod, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, IsStartupFeedPartialActive);"));
     }
 
+    [Test]
+    public void RefreshMovieViewFromCurrentSourceAsync_後着キャンセルtokenをin_memory再計算へ通す()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string method = GetMethodBlock(
+            mainWindowSource,
+            "private async Task RefreshMovieViewFromCurrentSourceAsync("
+        );
+
+        Assert.That(method, Does.Contain("BeginFilterAndSortCancellation();"));
+        Assert.That(method, Does.Contain("CancellationToken refreshCancellationToken"));
+        Assert.That(method, Does.Contain("refreshCancellationToken.ThrowIfCancellationRequested();"));
+        Assert.That(method, Does.Contain("Task.Run("));
+        Assert.That(method, Does.Contain("MainVM.FilterMovies("));
+        Assert.That(method, Does.Contain("refreshCancellationToken,"));
+        Assert.That(
+            method,
+            Does.Contain(
+                "catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)"
+            )
+        );
+        Assert.That(method, Does.Contain("refresh canceled: revision="));
+        Assert.That(method, Does.Not.Contain("CancellationToken.None"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
