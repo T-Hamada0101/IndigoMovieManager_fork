@@ -163,6 +163,8 @@ namespace IndigoMovieManager
             Dictionary<long, KanaBackfillUpdate> bookmarkReadingMap = bookmarkUpdates?
                 .GroupBy(x => x.MovieId)
                 .ToDictionary(x => x.Key, x => x.Last()) ?? new Dictionary<long, KanaBackfillUpdate>();
+            List<WatchChangedMovie> changedMovies = [];
+            HashSet<string> changedMoviePaths = new(StringComparer.OrdinalIgnoreCase);
 
             if (movieReadingMap.Count > 0)
             {
@@ -172,6 +174,7 @@ namespace IndigoMovieManager
                     {
                         item.Kana = update.Kana;
                         item.Roma = update.Roma;
+                        AddKanaBackfillChangedMovie(item, changedMovies, changedMoviePaths);
                     }
                 }
 
@@ -181,6 +184,7 @@ namespace IndigoMovieManager
                     {
                         item.Kana = update.Kana;
                         item.Roma = update.Roma;
+                        AddKanaBackfillChangedMovie(item, changedMovies, changedMoviePaths);
                     }
                 }
             }
@@ -202,10 +206,72 @@ namespace IndigoMovieManager
                 }
             }
 
-            if (MainVM?.DbInfo?.Sort is "10" or "11")
+            QueueKanaBackfillMovieViewRefresh(movieReadingMap.Count, changedMovies);
+        }
+
+        private void QueueKanaBackfillMovieViewRefresh(
+            int updatedMovieCount,
+            IReadOnlyList<WatchChangedMovie> changedMovies
+        )
+        {
+            if (updatedMovieCount < 1)
             {
-                FilterAndSort(MainVM.DbInfo.Sort, true);
+                return;
             }
+
+            string sortId = MainVM?.DbInfo?.Sort ?? "";
+            string searchKeyword = MainVM?.DbInfo?.SearchKeyword ?? "";
+            bool affectsCurrentView =
+                sortId is "10" or "11" || !string.IsNullOrWhiteSpace(searchKeyword);
+            if (!affectsCurrentView)
+            {
+                return;
+            }
+
+            if (changedMovies == null || changedMovies.Count < 1)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"kana backfill local refresh fallback: reason=missing-path updated={updatedMovieCount}"
+                );
+            }
+
+            // かな補完は DB 反映済みの値を UI モデルにも当てた後なので、
+            // DB再読込ではなく現在 snapshot の再検索・再整列だけを予約する。
+            _ = RefreshMovieViewFromCurrentSourceAsync(
+                sortId,
+                changedMovies == null || changedMovies.Count < 1
+                    ? "kana-backfill-query"
+                    : "kana-backfill",
+                UiHangActivityKind.Database,
+                changedMovies == null || changedMovies.Count < 1 ? null : changedMovies
+            );
+        }
+
+        private static void AddKanaBackfillChangedMovie(
+            MovieRecords item,
+            List<WatchChangedMovie> changedMovies,
+            HashSet<string> changedMoviePaths
+        )
+        {
+            if (
+                item == null
+                || string.IsNullOrWhiteSpace(item.Movie_Path)
+                || changedMovies == null
+                || changedMoviePaths == null
+                || !changedMoviePaths.Add(item.Movie_Path)
+            )
+            {
+                return;
+            }
+
+            changedMovies.Add(
+                new WatchChangedMovie(
+                    item.Movie_Path,
+                    WatchMovieChangeKind.None,
+                    WatchMovieDirtyFields.Kana
+                )
+            );
         }
     }
 }

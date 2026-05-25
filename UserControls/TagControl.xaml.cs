@@ -116,7 +116,6 @@ namespace IndigoMovieManager.UserControls
                 {
                     mv.Tag.Remove(item.DataContext.ToString());
                     mv.Tags = ConvertTagsWithNewLine(mv.Tag);
-                    int index = ownerWindow.Tabs.SelectedIndex;
 
                     // タグの見た目は先に更新し、DB保存は MainWindow 側の背景保存へ任せる。
                     var dt = (MainWindowViewModel)ownerWindow.DataContext;
@@ -125,21 +124,13 @@ namespace IndigoMovieManager.UserControls
 
                     try
                     {
-                        switch (index)
-                        {
-                            case 0: ownerWindow.SmallList.Items.Refresh(); break;
-                            case 1: ownerWindow.BigList.Items.Refresh(); break;
-                            case 2: ownerWindow.GridList.Items.Refresh(); break;
-                            case 3: ownerWindow.ListDataGrid.Items.Refresh(); break;
-                            case 4: ownerWindow.BigList10.Items.Refresh(); break;
-                            default: break;
-                        }
+                        ownerWindow.RefreshViewsAfterTagRecordsChanged(mv, "chip-remove");
                         ownerWindow.RefreshExtensionDetailView();
                         ownerWindow.RefreshTagEditorView();
                     }
                     catch (Exception)
                     {
-                        //サムネイル作成中にタグを消すと例外起こるので握りつぶす。
+                        // サムネイル更新などの後着UI更新と重なっても、タグ削除操作自体は先に完了させる。
                     }
                 }
             }

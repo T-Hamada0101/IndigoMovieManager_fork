@@ -74,8 +74,7 @@ namespace IndigoMovieManager
                 NotifyTagEditorTagIndexChanged(rec);
             }
 
-            // 万一画面表示がズレないよう一覧を再描画
-            Refresh();
+            RefreshViewsAfterTagRecordsChanged(mv, "paste");
             RefreshTagEditorView();
         }
 
@@ -260,7 +259,7 @@ namespace IndigoMovieManager
                 }
             }
 
-            Refresh();
+            RefreshViewsAfterTagRecordsChanged(mv, "delete");
             RefreshTagEditorView();
         }
 
@@ -321,7 +320,7 @@ namespace IndigoMovieManager
             QueueMovieTagPersist(MainVM?.DbInfo?.DBFullPath ?? "", mv.Movie_Id, mv.Tags);
             NotifyTagEditorTagIndexChanged(mv);
 
-            Refresh();
+            RefreshViewsAfterTagRecordsChanged(mv, "edit");
             RefreshTagEditorView();
         }
 
@@ -390,7 +389,7 @@ namespace IndigoMovieManager
                 NotifyTagEditorTagIndexChanged(rec);
             }
 
-            Refresh();
+            RefreshViewsAfterTagRecordsChanged(records, "add");
             RefreshTagEditorView();
         }
 
@@ -419,6 +418,91 @@ namespace IndigoMovieManager
                     }
                 }
             );
+        }
+
+        internal void RefreshViewsAfterTagRecordsChanged(MovieRecords record, string trigger)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            RefreshViewsAfterTagRecordsChanged([record], trigger);
+        }
+
+        internal void RefreshViewsAfterTagRecordsChanged(
+            IReadOnlyList<MovieRecords> records,
+            string trigger
+        )
+        {
+            List<MovieRecords> changedRecords = records?
+                .Where(record => record != null)
+                .Distinct()
+                .ToList() ?? [];
+            if (changedRecords.Count < 1)
+            {
+                return;
+            }
+
+            string normalizedTrigger = string.IsNullOrWhiteSpace(trigger)
+                ? "tag-change"
+                : trigger.Trim();
+            List<WatchChangedMovie> changedMovies = BuildTagChangedMovies(changedRecords);
+            string searchKeyword = MainVM?.DbInfo?.SearchKeyword ?? "";
+            bool canUseChangedPathRefresh =
+                string.IsNullOrWhiteSpace(searchKeyword)
+                && changedMovies.Count == changedRecords.Count;
+
+            if (!canUseChangedPathRefresh)
+            {
+                string reason =
+                    changedMovies.Count != changedRecords.Count ? "missing-path" : "search-dependent";
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"tag local refresh fallback: trigger={normalizedTrigger} reason={reason} records={changedRecords.Count} changed_paths={changedMovies.Count}"
+                );
+            }
+
+            // タグ検索中は結果の出入りが起きるため、changed path 最適化ではなく
+            // DB再読込なしの query-only 再評価へ寄せて正しさを守る。
+            _ = RefreshMovieViewFromCurrentSourceAsync(
+                MainVM?.DbInfo?.Sort ?? "",
+                canUseChangedPathRefresh
+                    ? $"tag-{normalizedTrigger}"
+                    : $"tag-{normalizedTrigger}-query",
+                UiHangActivityKind.Database,
+                canUseChangedPathRefresh ? changedMovies : null
+            );
+        }
+
+        private static List<WatchChangedMovie> BuildTagChangedMovies(
+            IEnumerable<MovieRecords> records
+        )
+        {
+            List<WatchChangedMovie> changedMovies = [];
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+            foreach (MovieRecords record in records ?? [])
+            {
+                if (record == null || string.IsNullOrWhiteSpace(record.Movie_Path))
+                {
+                    continue;
+                }
+
+                if (!seenPaths.Add(record.Movie_Path))
+                {
+                    continue;
+                }
+
+                changedMovies.Add(
+                    new WatchChangedMovie(
+                        record.Movie_Path,
+                        WatchMovieChangeKind.None,
+                        WatchMovieDirtyFields.Tags
+                    )
+                );
+            }
+
+            return changedMovies;
         }
 
         // 一括タグ付けの完了は軽いトーストで返し、一覧操作の流れを止めない。
@@ -484,7 +568,7 @@ namespace IndigoMovieManager
                 NotifyTagEditorTagIndexChanged(rec);
             }
 
-            Refresh();
+            RefreshViewsAfterTagRecordsChanged(records, "remove");
             RefreshTagEditorView();
         }
 
