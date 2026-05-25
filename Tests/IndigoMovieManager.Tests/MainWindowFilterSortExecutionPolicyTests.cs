@@ -234,6 +234,15 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         );
 
         Assert.That(deleteMethod, Does.Contain("await RefreshLoadedThumbnailUiAfterDebugDeleteAsync();"));
+        Assert.That(deleteMethod, Does.Contain("await Task.Run(() =>"));
+        Assert.That(
+            deleteMethod.IndexOf("Directory.Exists(thumbnailRoot)", StringComparison.Ordinal),
+            Is.GreaterThan(deleteMethod.IndexOf("await Task.Run(() =>", StringComparison.Ordinal))
+        );
+        Assert.That(
+            deleteMethod.IndexOf("Directory.Delete(thumbnailRoot, true)", StringComparison.Ordinal),
+            Is.GreaterThan(deleteMethod.IndexOf("await Task.Run(() =>", StringComparison.Ordinal))
+        );
         Assert.That(deleteMethod, Does.Not.Contain("FilterAndSort("));
         Assert.That(refreshMethod, Does.Contain("ClearThumbnailPathsForThumbnailOnlyDelete(record)"));
         Assert.That(refreshMethod, Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"debug-thumbnail-delete\");"));

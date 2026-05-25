@@ -892,10 +892,14 @@ namespace IndigoMovieManager
 
             try
             {
-                if (Directory.Exists(thumbnailRoot))
+                await Task.Run(() =>
                 {
-                    Directory.Delete(thumbnailRoot, true);
-                }
+                    // フォルダ存在確認と再帰削除は重いので、UIへ戻す前に背景側で完結させる。
+                    if (Directory.Exists(thumbnailRoot))
+                    {
+                        Directory.Delete(thumbnailRoot, true);
+                    }
+                });
 
                 await RefreshLoadedThumbnailUiAfterDebugDeleteAsync();
 
