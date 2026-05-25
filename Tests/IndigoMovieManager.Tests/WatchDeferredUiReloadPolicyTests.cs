@@ -70,6 +70,65 @@ public sealed class WatchDeferredUiReloadPolicyTests
     }
 
     [Test]
+    public void HasEffectiveWatchUiReloadChanges_noopだけならFalseを返す()
+    {
+        Assert.That(
+            MainWindow.HasEffectiveWatchUiReloadChanges(
+                hasChanges: false,
+                changedMovies: []
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.HasEffectiveWatchUiReloadChanges(
+                hasChanges: true,
+                changedMovies: null!
+            ),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.HasEffectiveWatchUiReloadChanges(
+                hasChanges: true,
+                changedMovies: []
+            ),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.HasEffectiveWatchUiReloadChanges(
+                hasChanges: true,
+                changedMovies:
+                [
+                    new MainWindow.WatchChangedMovie(
+                        "Movies\\noop.mp4",
+                        MainWindow.WatchMovieChangeKind.None,
+                        MainWindow.WatchMovieDirtyFields.None
+                    ),
+                ]
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.HasEffectiveWatchUiReloadChanges(
+                hasChanges: true,
+                changedMovies:
+                [
+                    new MainWindow.WatchChangedMovie(
+                        "Movies\\noop.mp4",
+                        MainWindow.WatchMovieChangeKind.None,
+                        MainWindow.WatchMovieDirtyFields.None
+                    ),
+                    new MainWindow.WatchChangedMovie(
+                        "Movies\\alpha.mp4",
+                        MainWindow.WatchMovieChangeKind.None,
+                        MainWindow.WatchMovieDirtyFields.FileDate
+                    ),
+                ]
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
     public void CanRecoverBulkExistingDirtyOnlyQueryReload_既存属性dirtyだけならTrueを返す()
     {
         bool result = MainWindow.CanRecoverBulkExistingDirtyOnlyQueryReload(
@@ -711,6 +770,42 @@ public sealed class WatchDeferredUiReloadPolicyTests
             "test-cleanup"
         );
         Assert.That(hadPendingRequest, Is.True);
+    }
+
+    [Test]
+    public void HandleFolderCheckUiReloadAfterChanges_watchでnoopだけならreloadを積まない()
+    {
+        const string dbFullPath = @"D:\Db\Main.wb";
+        MainWindow window = CreateMainWindowForDeferredReloadTests(dbFullPath, "28");
+        SetPrivateField(window, "_watchUiSuppressionSync", new object());
+        SetPrivateField(window, "_watchDeferredUiReloadSync", new object());
+        SetPrivateField(window, "_watchDeferredUiReloadCts", new CancellationTokenSource());
+
+        int filterAndSortCount = 0;
+        int refreshCount = 0;
+        window.FilterAndSortForTesting = (_, _) => filterAndSortCount++;
+        window.RefreshMovieViewFromCurrentSourceForTesting = (_, _, _) => refreshCount++;
+
+        InvokeVoid(
+            window,
+            "HandleFolderCheckUiReloadAfterChanges",
+            true,
+            CreatePrivateEnumValue("CheckMode", "Watch"),
+            dbFullPath,
+            true,
+            new List<MainWindow.WatchChangedMovie>
+            {
+                new(
+                    @"E:\Movies\noop.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+            }
+        );
+
+        Assert.That(filterAndSortCount, Is.EqualTo(0));
+        Assert.That(refreshCount, Is.EqualTo(0));
+        Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadPending"), Is.False);
     }
 
     [Test]

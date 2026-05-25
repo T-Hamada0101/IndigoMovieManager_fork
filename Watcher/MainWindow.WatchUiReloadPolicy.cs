@@ -37,6 +37,36 @@ namespace IndigoMovieManager
             return hasChanges && isWatchMode && canUseQueryOnlyReload;
         }
 
+        // changedMovies が具体化されている時だけ no-op 札を除き、終端 reload の実効差分を見る。
+        internal static bool HasEffectiveWatchUiReloadChanges(
+            bool hasChanges,
+            IReadOnlyList<WatchChangedMovie> changedMovies
+        )
+        {
+            if (!hasChanges)
+            {
+                return false;
+            }
+
+            if (changedMovies == null || changedMovies.Count < 1)
+            {
+                return hasChanges;
+            }
+
+            foreach (WatchChangedMovie changedMovie in changedMovies)
+            {
+                if (
+                    changedMovie.ChangeKind != WatchMovieChangeKind.None
+                    || changedMovie.DirtyFields != WatchMovieDirtyFields.None
+                )
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // bulk 候補で一度 full 候補へ落ちても、既存行の軽い属性差分だけなら最終段で query-only へ戻す。
         internal static bool CanRecoverBulkExistingDirtyOnlyQueryReload(
             bool allowBulkExistingDirtyOnlyQueryReload,
@@ -619,6 +649,10 @@ namespace IndigoMovieManager
                 IsWatchSuppressedByUi(),
                 isWatchMode
             );
+            bool hasEffectiveChanges = HasEffectiveWatchUiReloadChanges(
+                hasChanges,
+                changedMovies
+            );
             string queryOnlyRecoveryReason = !canUseQueryOnlyReload
                 ? ResolveBulkQueryReloadRecoveryReason(
                     allowBulkExistingDirtyOnlyQueryReload,
@@ -639,13 +673,13 @@ namespace IndigoMovieManager
             }
 
             string planReason = ResolveWatchUiReloadPlanReason(
-                hasChanges,
+                hasEffectiveChanges,
                 isWatchMode,
                 isSuppressed,
                 resolvedCanUseQueryOnlyReload
             );
             WatchUiReloadPlan reloadPlan = EvaluateWatchUiReloadPlan(
-                hasChanges,
+                hasEffectiveChanges,
                 isWatchMode,
                 isSuppressed,
                 resolvedCanUseQueryOnlyReload
