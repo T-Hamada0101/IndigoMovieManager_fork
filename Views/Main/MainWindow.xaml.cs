@@ -2794,10 +2794,62 @@ namespace IndigoMovieManager
         /// </summary>
         private void SortData(string id)
         {
-            Stopwatch sw = Stopwatch.StartNew();
+            _ = SortDataFromLegacyCallerAsync(id);
+        }
+
+        private async Task SortDataFromLegacyCallerAsync(string id)
+        {
             try
             {
-                var sorted = MainVM.SortMovies(MainVM.FilteredMovieRecs, id).ToArray();
+                await SortDataAsync(id);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"sort legacy caller failed: sort={id} message={ex.Message}"
+                );
+            }
+        }
+
+        private async Task<bool> SortDataAsync(string id)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
+            using CancellationTokenSource sortCancellation = BeginFilterAndSortCancellation();
+            CancellationToken sortCancellationToken = sortCancellation.Token;
+            MovieRecords[] source = MainVM.FilteredMovieRecs
+                .Where(movie => movie != null)
+                .ToArray();
+            bool runOnBackground = ShouldRunFilterSortOnBackground(source.Length);
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"sort start: revision={requestRevision} sort={id} source={source.Length} background={runOnBackground}"
+            );
+            try
+            {
+                MovieRecords[] sorted = runOnBackground
+                    ? await Task.Run(
+                        () =>
+                        {
+                            sortCancellationToken.ThrowIfCancellationRequested();
+                            MovieRecords[] result = MainVM.SortMovies(source, id).ToArray();
+                            sortCancellationToken.ThrowIfCancellationRequested();
+                            return result;
+                        },
+                        sortCancellationToken
+                    )
+                    : MainVM.SortMovies(source, id).ToArray();
+                sortCancellationToken.ThrowIfCancellationRequested();
+                if (requestRevision != _filterAndSortRequestRevision)
+                {
+                    DebugRuntimeLog.Write(
+                        "ui-tempo",
+                        $"sort skip stale: revision={requestRevision} current_revision={_filterAndSortRequestRevision} sort={id} total_ms={sw.ElapsedMilliseconds}"
+                    );
+                    return false;
+                }
+
                 filterList = sorted;
                 int currentTabIndex = TryGetCurrentUpperTabFixedIndex(out int resolvedTabIndex)
                     ? resolvedTabIndex
@@ -2830,8 +2882,17 @@ namespace IndigoMovieManager
                 sw.Stop();
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"sort end: sort={id} tab={currentTabIndex} changed={applyResult.HasChanges} prefix={applyResult.RetainedPrefixCount} suffix={applyResult.RetainedSuffixCount} removed={applyResult.RemovedCount} inserted={applyResult.InsertedCount} moved={applyResult.MovedCount} update_mode={updateMode} refresh_applied={shouldRefresh} count={sorted.Length} total_ms={sw.ElapsedMilliseconds}"
+                    $"sort end: revision={requestRevision} sort={id} tab={currentTabIndex} changed={applyResult.HasChanges} prefix={applyResult.RetainedPrefixCount} suffix={applyResult.RetainedSuffixCount} removed={applyResult.RemovedCount} inserted={applyResult.InsertedCount} moved={applyResult.MovedCount} update_mode={updateMode} refresh_applied={shouldRefresh} count={sorted.Length} background={runOnBackground} total_ms={sw.ElapsedMilliseconds}"
                 );
+                return true;
+            }
+            catch (OperationCanceledException) when (sortCancellationToken.IsCancellationRequested)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"sort canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} sort={id} total_ms={sw.ElapsedMilliseconds}"
+                );
+                return false;
             }
             catch (Exception err)
             {
@@ -2843,7 +2904,6 @@ namespace IndigoMovieManager
                 );
                 throw;
             }
-            return;
         }
 
         /// <summary>
@@ -3417,7 +3477,7 @@ namespace IndigoMovieManager
         /// ソートコンボボックスの選択変更ハンドラ。
         /// 段階ロード中は全件再取得付き FilterAndSort、通常時はインメモリ SortData で並び替えて先頭を選択する。
         /// </summary>
-        private void ComboSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void ComboSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
@@ -3434,19 +3494,23 @@ namespace IndigoMovieManager
                     if (senderObj.SelectedValue != null)
                     {
                         var id = senderObj.SelectedValue;
+                        bool shouldSelectFirstItem = true;
                         if (IsStartupFeedPartialActive)
                         {
                             FilterAndSort(id.ToString(), true);
                         }
                         else
                         {
-                            SortData(id.ToString());
+                            shouldSelectFirstItem = await SortDataAsync(id.ToString());
                         }
                         if (id.ToString() == "28")
                         {
                             RefreshThumbnailErrorRecords(force: true);
                         }
-                        SelectFirstItem();
+                        if (shouldSelectFirstItem)
+                        {
+                            SelectFirstItem();
+                        }
                     }
                 }
             }

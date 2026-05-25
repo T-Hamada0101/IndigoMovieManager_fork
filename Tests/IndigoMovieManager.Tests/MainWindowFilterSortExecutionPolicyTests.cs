@@ -172,6 +172,35 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(method, Does.Not.Contain("CancellationToken.None"));
     }
 
+    [Test]
+    public void SortDataAsync_大件数sortはbackgroundとrevision_guardへ寄せる()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string legacyWrapper = GetMethodBlock(mainWindowSource, "private void SortData(");
+        string legacyAsyncWrapper = GetMethodBlock(
+            mainWindowSource,
+            "private async Task SortDataFromLegacyCallerAsync("
+        );
+        string sortAsync = GetMethodBlock(mainWindowSource, "private async Task<bool> SortDataAsync(");
+        string comboChanged = GetMethodBlock(
+            mainWindowSource,
+            "private async void ComboSort_SelectionChanged("
+        );
+
+        Assert.That(legacyWrapper, Does.Contain("SortDataFromLegacyCallerAsync(id);"));
+        Assert.That(legacyAsyncWrapper, Does.Contain("await SortDataAsync(id);"));
+        Assert.That(legacyAsyncWrapper, Does.Contain("sort legacy caller failed:"));
+        Assert.That(sortAsync, Does.Contain("Interlocked.Increment(ref _filterAndSortRequestRevision);"));
+        Assert.That(sortAsync, Does.Contain("BeginFilterAndSortCancellation();"));
+        Assert.That(sortAsync, Does.Contain("ShouldRunFilterSortOnBackground(source.Length);"));
+        Assert.That(sortAsync, Does.Contain("Task.Run("));
+        Assert.That(sortAsync, Does.Contain("sort skip stale:"));
+        Assert.That(sortAsync, Does.Contain("sort canceled:"));
+        Assert.That(sortAsync, Does.Contain("sort end: revision="));
+        Assert.That(comboChanged, Does.Contain("await SortDataAsync(id.ToString());"));
+        Assert.That(comboChanged, Does.Contain("if (shouldSelectFirstItem)"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
