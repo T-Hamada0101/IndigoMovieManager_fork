@@ -17,15 +17,25 @@ public sealed class UpperTabRescueHistorySourceTests
             source,
             "private void RefreshUpperTabRescueHistoryPanel("
         );
+        string refreshAsyncMethod = GetMethodBlock(
+            source,
+            "private async Task RefreshUpperTabRescueHistoryPanelAsync("
+        );
         string loadMethod = GetMethodBlock(
             source,
             "private UpperTabRescueHistoryItemViewModel[] LoadUpperTabRescueHistoryItems("
         );
 
-        Assert.That(refreshMethod, Does.Contain("Task.Run("));
-        Assert.That(refreshMethod, Does.Contain("Dispatcher.BeginInvoke("));
+        Assert.That(refreshMethod, Does.Contain("_ = RefreshUpperTabRescueHistoryPanelAsync("));
+        Assert.That(refreshAsyncMethod, Does.Contain("Task.Run("));
+        Assert.That(refreshAsyncMethod, Does.Contain("Dispatcher"));
+        Assert.That(refreshAsyncMethod, Does.Contain(".InvokeAsync("));
+        Assert.That(source, Does.Not.Contain(".ContinueWith("));
+        Assert.That(source, Does.Not.Contain("task.Result"));
         Assert.That(refreshMethod, Does.Contain("_upperTabRescueHistoryRefreshStamp"));
+        Assert.That(refreshAsyncMethod, Does.Contain("_upperTabRescueHistoryRefreshStamp"));
         Assert.That(refreshMethod, Does.Not.Contain(".GetFailureRecords(limit: 400)"));
+        Assert.That(refreshAsyncMethod, Does.Not.Contain(".GetFailureRecords(limit: 400)"));
         Assert.That(loadMethod, Does.Contain(".GetFailureRecords(limit: 400)"));
     }
 

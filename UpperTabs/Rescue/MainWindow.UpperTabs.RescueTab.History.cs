@@ -60,61 +60,97 @@ namespace IndigoMovieManager
                 "履歴を読み込み中です。"
             );
 
-            // 選択移動の軽さを守るため、FailureDb 読み取りと履歴整形は UI 外で行う。
-            _ = Task.Run(() =>
-                    LoadUpperTabRescueHistoryItems(
-                        failureDbService,
-                        moviePathKey,
-                        targetTabIndex
+            _ = RefreshUpperTabRescueHistoryPanelAsync(
+                refreshStamp,
+                failureDbService,
+                moviePathKey,
+                targetTabIndex,
+                selectedMovieName
+            );
+        }
+
+        private async Task RefreshUpperTabRescueHistoryPanelAsync(
+            long refreshStamp,
+            ThumbnailFailureDbService failureDbService,
+            string moviePathKey,
+            int targetTabIndex,
+            string selectedMovieName
+        )
+        {
+            UpperTabRescueHistoryItemViewModel[] items = [];
+            Exception loadException = null;
+
+            try
+            {
+                // 選択移動の軽さを守るため、FailureDb 読み取りと履歴整形は UI 外で行う。
+                items = await Task.Run(
+                        () =>
+                            LoadUpperTabRescueHistoryItems(
+                                failureDbService,
+                                moviePathKey,
+                                targetTabIndex
+                            )
                     )
-                )
-                .ContinueWith(
-                    task =>
-                    {
-                        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                loadException = ex;
+            }
+
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                await Dispatcher
+                    .InvokeAsync(
+                        () =>
                         {
-                            return;
-                        }
+                            if (
+                                refreshStamp
+                                != Interlocked.Read(ref _upperTabRescueHistoryRefreshStamp)
+                            )
+                            {
+                                return;
+                            }
 
-                        _ = Dispatcher.BeginInvoke(
-                            new Action(
-                                () =>
-                                {
-                                    if (
-                                        refreshStamp
-                                        != Interlocked.Read(ref _upperTabRescueHistoryRefreshStamp)
-                                    )
-                                    {
-                                        return;
-                                    }
+                            if (loadException != null)
+                            {
+                                string message = loadException.GetBaseException().Message;
+                                DebugRuntimeLog.Write(
+                                    "thumbnail-rescue",
+                                    $"rescue history refresh failed: movie='{selectedMovieName}' err='{message}'"
+                                );
+                                _upperTabRescueHistoryPresenter?.ShowUnavailable(
+                                    selectedMovieName,
+                                    "履歴を読めませんでした。"
+                                );
+                                return;
+                            }
 
-                                    if (task.IsFaulted)
-                                    {
-                                        string message =
-                                            task.Exception?.GetBaseException()?.Message ?? "unknown";
-                                        DebugRuntimeLog.Write(
-                                            "thumbnail-rescue",
-                                            $"rescue history refresh failed: movie='{selectedMovieName}' err='{message}'"
-                                        );
-                                        _upperTabRescueHistoryPresenter?.ShowUnavailable(
-                                            selectedMovieName,
-                                            "履歴を読めませんでした。"
-                                        );
-                                        return;
-                                    }
-
-                                    _upperTabRescueHistoryPresenter?.ShowItems(
-                                        selectedMovieName,
-                                        task.Result,
-                                        "履歴はまだありません。"
-                                    );
-                                }
-                            ),
-                            DispatcherPriority.Background
-                        );
-                    },
-                    TaskScheduler.Default
-                );
+                            _upperTabRescueHistoryPresenter?.ShowItems(
+                                selectedMovieName,
+                                items,
+                                "履歴はまだありません。"
+                            );
+                        },
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (TaskCanceledException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (InvalidOperationException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
         }
 
         private UpperTabRescueHistoryItemViewModel[] LoadUpperTabRescueHistoryItems(
