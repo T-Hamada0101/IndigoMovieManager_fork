@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 
 namespace IndigoMovieManager.Tests;
@@ -141,6 +142,47 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
         Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
         Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
+    }
+
+    [Test]
+    public void 動画削除後はDB再読込ではなく局所削除反映へ寄せる()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string deleteMethod = GetMethodBlock(source, "private void ExecuteDeleteAction(");
+        string refreshMethod = GetMethodBlock(
+            source,
+            "private void RefreshVisibleMovieUiAfterMovieDelete("
+        );
+
+        Assert.That(deleteMethod, Does.Contain("List<MovieRecords> deletedRecords = new();"));
+        Assert.That(deleteMethod, Does.Contain("if (deletedCount > 0)"));
+        Assert.That(deleteMethod, Does.Contain("deletedRecords.Add(rec);"));
+        Assert.That(deleteMethod, Does.Contain("RefreshVisibleMovieUiAfterMovieDelete(deletedRecords);"));
+        Assert.That(deleteMethod, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, true);"));
+        Assert.That(refreshMethod, Does.Contain("RemoveDeletedMovieRecordsById(MainVM.MovieRecs, deletedMovieIds);"));
+        Assert.That(refreshMethod, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
+        Assert.That(refreshMethod, Does.Contain("MainVM.DbInfo.SearchCount = nextFilteredMovies.Length;"));
+        Assert.That(refreshMethod, Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"movie-delete\");"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
+    }
+
+    [Test]
+    public void 動画削除の局所反映は削除成功IDだけ抜く()
+    {
+        MovieRecords keep = new() { Movie_Id = 1, Movie_Name = "keep" };
+        MovieRecords deletedA = new() { Movie_Id = 2, Movie_Name = "delete-a" };
+        MovieRecords deletedB = new() { Movie_Id = 3, Movie_Name = "delete-b" };
+        List<MovieRecords> records = [keep, deletedA, deletedB];
+
+        int removedCount = MainWindow.RemoveDeletedMovieRecordsById(
+            records,
+            new HashSet<long> { 2, 3 }
+        );
+
+        Assert.That(removedCount, Is.EqualTo(2));
+        Assert.That(records.Select(record => record.Movie_Id), Is.EqualTo(new[] { 1L }));
     }
 
     [Test]

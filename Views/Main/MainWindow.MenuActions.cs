@@ -11,6 +11,8 @@ using IndigoMovieManager.Converter;
 using IndigoMovieManager.Data;
 using IndigoMovieManager.DB;
 using IndigoMovieManager.Thumbnail;
+using IndigoMovieManager.UpperTabs.Common;
+using IndigoMovieManager.ViewModels;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 using Notification.Wpf;
@@ -806,6 +808,7 @@ namespace IndigoMovieManager
             }
 
             List<string> deleteFailureMessages = new();
+            List<MovieRecords> deletedRecords = new();
             foreach (var rec in mv)
             {
                 bool shouldDeleteThumbnail = isDeleteThumbnailOnlyMode || dialogWindow.checkBox.IsChecked == true;
@@ -820,6 +823,10 @@ namespace IndigoMovieManager
 
                 int deletedCount = DeleteMovieTable(MainVM.DbInfo.DBFullPath, rec.Movie_Id);
                 TryAdjustRegisteredMovieCount(MainVM.DbInfo.DBFullPath, -deletedCount);
+                if (deletedCount > 0)
+                {
+                    deletedRecords.Add(rec);
+                }
 
                 // 実ファイルの削除、2パターン。
                 if (isDeleteFileMode)
@@ -903,7 +910,101 @@ namespace IndigoMovieManager
             }
 
             ShowDeleteFailureSummary(deleteFailureMessages);
-            FilterAndSort(MainVM.DbInfo.Sort, true);
+            RefreshVisibleMovieUiAfterMovieDelete(deletedRecords);
+        }
+
+        // DBから消えた行だけを手元の表示モデルから抜き、動画削除後の全件DB再読込を避ける。
+        private void RefreshVisibleMovieUiAfterMovieDelete(IReadOnlyList<MovieRecords> records)
+        {
+            HashSet<long> deletedMovieIds = records
+                ?.Where(record => record != null && record.Movie_Id > 0)
+                .Select(record => record.Movie_Id)
+                .ToHashSet() ?? [];
+            if (deletedMovieIds.Count == 0 || MainVM?.MovieRecs == null || MainVM.FilteredMovieRecs == null)
+            {
+                return;
+            }
+
+            int sourceRemovedCount = RemoveDeletedMovieRecordsById(MainVM.MovieRecs, deletedMovieIds);
+            MovieRecords[] nextFilteredMovies = MainVM.FilteredMovieRecs
+                .Where(record => record != null && !deletedMovieIds.Contains(record.Movie_Id))
+                .ToArray();
+
+            int currentTabIndex = TryGetCurrentUpperTabFixedIndex(out int resolvedTabIndex)
+                ? resolvedTabIndex
+                : UpperTabGridFixedIndex;
+            FilteredMovieRecsUpdateMode updateMode =
+                UpperTabCollectionUpdatePolicy.ResolveUpdateMode(
+                    currentTabIndex,
+                    isSortOnly: false
+                );
+            FilteredMovieRecsUpdateResult applyResult = MainVM.ReplaceFilteredMovieRecs(
+                nextFilteredMovies,
+                updateMode: updateMode
+            );
+
+            filterList = nextFilteredMovies;
+            MainVM.DbInfo.SearchCount = nextFilteredMovies.Length;
+            UpdateExtensionDetailVisibilityBySearchCount();
+
+            bool hasChanges = sourceRemovedCount > 0 || applyResult.HasChanges;
+            bool shouldRefresh =
+                applyResult.HasChanges
+                && UpperTabCollectionUpdatePolicy.ShouldRefreshAfterCollectionApply(
+                    currentTabIndex,
+                    updateMode
+                );
+            if (shouldRefresh)
+            {
+                Refresh();
+            }
+
+            if (hasChanges)
+            {
+                NotifyUpperTabViewportSourceChanged();
+                InvalidateThumbnailErrorRecords(refreshIfVisible: true);
+                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "movie-delete");
+                RefreshUpperTabPreferredMoviePathKeysRevision();
+                RequestThumbnailErrorSnapshotRefresh();
+                RequestThumbnailProgressSnapshotRefresh();
+            }
+
+            if (string.Equals(MainVM.DbInfo.Sort, "28", StringComparison.Ordinal))
+            {
+                RefreshThumbnailErrorRecords(force: true);
+            }
+
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"movie delete local refresh: source_removed={sourceRemovedCount} filtered_removed={applyResult.RemovedCount} update_mode={updateMode} refresh_applied={shouldRefresh} count={nextFilteredMovies.Length}"
+            );
+        }
+
+        internal static int RemoveDeletedMovieRecordsById(
+            IList<MovieRecords> records,
+            ISet<long> deletedMovieIds
+        )
+        {
+            if (records == null || deletedMovieIds == null || deletedMovieIds.Count == 0)
+            {
+                return 0;
+            }
+
+            int removedCount = 0;
+            for (int index = records.Count - 1; index >= 0; index--)
+            {
+                MovieRecords record = records[index];
+                if (record == null || !deletedMovieIds.Contains(record.Movie_Id))
+                {
+                    continue;
+                }
+
+                // 後ろから抜くことで、削除中のインデックスずれを避ける。
+                records.RemoveAt(index);
+                removedCount++;
+            }
+
+            return removedCount;
         }
 
         // サムネイルのみ削除は DB を触らないため、ファイル削除を背景へ逃がして UI 操作を先に返す。
