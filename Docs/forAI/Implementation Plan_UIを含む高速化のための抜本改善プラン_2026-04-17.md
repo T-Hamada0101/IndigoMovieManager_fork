@@ -3,13 +3,14 @@
 最終更新日: 2026-05-26
 
 変更概要:
-- 2026-05-26 のサブ 5.5 で、skin `refresh end` を early skip でも必ず出し、`elapsed_ms` に加えて `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を同一 payload で出す形へ寄せた。skin 完了判定は DB 分離ではなく、catalog / persist / navigate / stale の内訳を実機ログで説明できることを引き続き基準にする。
+- 2026-05-26 の `73b96e4` で、skin `refresh end` を early skip でも必ず出し、`elapsed_ms` に加えて `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を同一 payload で出す形へ寄せた。skin 完了判定は DB 分離ではなく、catalog / persist / navigate / stale の内訳を実機ログで説明できることを引き続き基準にする。
+- 2026-05-26 の `0992877` で、起動 warm path の `first-page shown` / `input ready` / `heavy services started` を同一 revision / trigger / elapsed_ms で追えるようにし、partial-feed / fallback / complete / canceled を `feed_state` で区別できるようにした。
 - 2026-05-26 の `6bb00e5` で、大件数時の通常 `SortData(...)` を background + revision guard へ寄せ、後着 sort は `sort canceled` / `sort skip stale` で破棄できるようにした。
 - 2026-05-26 の `5a90210` で、`TagControl` / `MainWindow.Tag` のタグ編集後 `Refresh()` / `Items.Refresh()` と、`KanaBackfill` のかなソート時 `FilterAndSort(..., true)` を DB 再読込なしの in-memory 局所反映へ寄せた。
 - 2026-05-26 の `7b34692` で、サムネイルのみ削除後の `FilterAndSort(..., true)` を廃止し、対象 `MovieRecords` のサムネ表示パスクリア、上側タブ visible refresh、下部 ERROR/進捗 snapshot 予約へ寄せた。
 - 2026-05-26 の `218ff91` で、watch / rename / query-only の in-memory refresh に後着キャンセル token を通し、古い再検索・再整列が UI へ戻らないようにした。
 - 2026-05-26 の見直しで、計画の軸は維持しつつ、次の主戦場を「watch / rename の in-memory refresh 後着キャンセル」「残る Refresh() / Items.Refresh() / FilterAndSort(true) の局所反映化」「大件数 sort の background + revision guard」「実機ログでの起動 / skin / visible-first 完了判定」へ絞った。
-- 進捗は実装ベース約 78%、実機確認込み 70〜72% として扱う。完了扱いは、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
+- 進捗は実装ベース約 86%、実機確認込み 74〜76% として扱う。完了扱いは、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
 - 大件数検索では、後着検索が入った時に古い `FilterAndSortAsync(...)` の `filter-movies` 列挙を cancellation token で中断できるようにし、入力中の古い全件検索が CPU を食い続ける状態を減らした
 - 大件数の ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / 既存 Roma / 既存 Kana 由来 Roma` の軽量投影に留め、`Kana/Roma` が空の行で名前/パスから読み仮名解析へ戻る fallback を UI hot path から外した
 - watch 終端 reload は `changedMovies` が no-op 札だけなら実効変更なしとして扱い、deferred/full reload を積まないようにした
@@ -511,8 +512,9 @@
 1. 完了: watch query-only / rename の `RefreshMovieViewFromCurrentSourceAsync(...)` に後着キャンセルを通し、`CancellationToken.None` で古い計算が走り切る経路を閉じた。
 2. 完了: `TagControl` / `MainWindow.Tag` / `KanaBackfill` とサムネイルのみ削除に残っていた `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` を、局所反映・revision trigger・snapshot 予約へ寄せた。
 3. 完了: 大件数時の通常 sort を background + revision guard へ寄せ、検索高速化後に残る UI スレッド滞在を減らした。
-4. 次: 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一ログで確認し、後ろ倒し候補を確定する。
-5. 進行中: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定する。
+4. 完了: 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一 revision / trigger / elapsed_ms で追えるようにした。
+5. 完了: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定できるログ基盤へ寄せた。
+6. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が visible-first / Player / 物理削除 reload のどこにあるかを決める。
 
 ### Step 1
 
