@@ -3,6 +3,10 @@
 最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 の `6bb00e5` で、大件数時の通常 `SortData(...)` を background + revision guard へ寄せ、後着 sort は `sort canceled` / `sort skip stale` で破棄できるようにした。
+- 2026-05-26 の `5a90210` で、`TagControl` / `MainWindow.Tag` のタグ編集後 `Refresh()` / `Items.Refresh()` と、`KanaBackfill` のかなソート時 `FilterAndSort(..., true)` を DB 再読込なしの in-memory 局所反映へ寄せた。
+- 2026-05-26 の `7b34692` で、サムネイルのみ削除後の `FilterAndSort(..., true)` を廃止し、対象 `MovieRecords` のサムネ表示パスクリア、上側タブ visible refresh、下部 ERROR/進捗 snapshot 予約へ寄せた。
+- 2026-05-26 の `218ff91` で、watch / rename / query-only の in-memory refresh に後着キャンセル token を通し、古い再検索・再整列が UI へ戻らないようにした。
 - 2026-05-26 の見直しで、計画の軸は維持しつつ、次の主戦場を「watch / rename の in-memory refresh 後着キャンセル」「残る Refresh() / Items.Refresh() / FilterAndSort(true) の局所反映化」「大件数 sort の background + revision guard」「実機ログでの起動 / skin / visible-first 完了判定」へ絞った。
 - 進捗は実装ベース約 78%、実機確認込み 70〜72% として扱う。完了扱いは、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
 - 大件数検索では、後着検索が入った時に古い `FilterAndSortAsync(...)` の `filter-movies` 列挙を cancellation token で中断できるようにし、入力中の古い全件検索が CPU を食い続ける状態を減らした
@@ -501,13 +505,13 @@
 
 ## 7. 直近の着手順
 
-### 2026-05-26 見直し後の最短タスク
+### 2026-05-26 見直し後の反映状況と次タスク
 
-1. watch query-only / rename の `RefreshMovieViewFromCurrentSourceAsync(...)` に後着キャンセルを通し、`CancellationToken.None` で古い計算が走り切る経路を閉じる。
-2. `TagControl` / `MainWindow.Tag` / `KanaBackfill` / `ThumbnailFailed` などに残る `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` を、既存の局所反映・revision trigger・snapshot 予約へ寄せる。
-3. 大件数時の通常 sort を background + revision guard へ寄せ、検索高速化後に残る UI スレッド滞在を減らす。
-4. 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一ログで確認し、後ろ倒し候補を確定する。
-5. skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` で完了判定する。
+1. 完了: watch query-only / rename の `RefreshMovieViewFromCurrentSourceAsync(...)` に後着キャンセルを通し、`CancellationToken.None` で古い計算が走り切る経路を閉じた。
+2. 完了: `TagControl` / `MainWindow.Tag` / `KanaBackfill` とサムネイルのみ削除に残っていた `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` を、局所反映・revision trigger・snapshot 予約へ寄せた。
+3. 完了: 大件数時の通常 sort を background + revision guard へ寄せ、検索高速化後に残る UI スレッド滞在を減らした。
+4. 次: 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一ログで確認し、後ろ倒し候補を確定する。
+5. 次: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` で完了判定する。
 
 ### Step 1
 
