@@ -93,6 +93,28 @@ public sealed class WatchDeferredUiReloadPolicyTests
     }
 
     [Test]
+    public void CanRecoverBulkExistingDirtyOnlyQueryReload_既存表示補修だけならTrueを返す()
+    {
+        bool result = MainWindow.CanRecoverBulkExistingDirtyOnlyQueryReload(
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.ViewRepaired,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\beta.mp4",
+                    MainWindow.WatchMovieChangeKind.DisplayedViewRefresh,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.True);
+    }
+
+    [Test]
     public void CanRecoverBulkExistingDirtyOnlyQueryReload_SourceInsertedがあればFalseを返す()
     {
         bool result = MainWindow.CanRecoverBulkExistingDirtyOnlyQueryReload(
@@ -108,6 +130,56 @@ public sealed class WatchDeferredUiReloadPolicyTests
         );
 
         Assert.That(result, Is.False);
+    }
+
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.None,
+        (int)MainWindow.WatchMovieDirtyFields.FileDate,
+        "bulk-existing-dirty-only"
+    )]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.ViewRepaired,
+        (int)MainWindow.WatchMovieDirtyFields.None,
+        "bulk-existing-view-only"
+    )]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.DisplayedViewRefresh,
+        (int)MainWindow.WatchMovieDirtyFields.MovieSize,
+        "bulk-existing-view-dirty-only"
+    )]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.SourceInserted,
+        (int)MainWindow.WatchMovieDirtyFields.MovieName,
+        "source-inserted"
+    )]
+    [TestCase(
+        (int)MainWindow.WatchMovieChangeKind.None,
+        (int)MainWindow.WatchMovieDirtyFields.Hash,
+        "dirty-fields-unsafe"
+    )]
+    public void ResolveBulkQueryReloadRecoveryReason_bulk降格後の復帰理由を返す(
+        int changeKindValue,
+        int dirtyFieldsValue,
+        string expected
+    )
+    {
+        MainWindow.WatchMovieChangeKind changeKind =
+            (MainWindow.WatchMovieChangeKind)changeKindValue;
+        MainWindow.WatchMovieDirtyFields dirtyFields =
+            (MainWindow.WatchMovieDirtyFields)dirtyFieldsValue;
+
+        string result = MainWindow.ResolveBulkQueryReloadRecoveryReason(
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\sample.mp4",
+                    changeKind,
+                    dirtyFields
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.EqualTo(expected));
     }
 
     [Test]
@@ -779,6 +851,53 @@ public sealed class WatchDeferredUiReloadPolicyTests
                 "_watchDeferredUiReloadChangedMovies"
             )).Select(x => x.MoviePath),
             Is.EqualTo(["Movies\\alpha.mp4"])
+        );
+    }
+
+    [Test]
+    public void HandleFolderCheckUiReloadAfterChanges_bulk既存表示補修のみならqueryOnlyへ復帰する()
+    {
+        const string dbFullPath = "Db\\Main.wb";
+        MainWindow window = CreateMainWindowForDeferredReloadTests(dbFullPath, "12");
+        SetPrivateField(window, "_watchUiSuppressionSync", new object());
+        SetPrivateField(window, "_watchDeferredUiReloadSync", new object());
+        SetPrivateField(window, "_watchDeferredUiReloadCts", new CancellationTokenSource());
+
+        InvokeVoid(
+            window,
+            "HandleFolderCheckUiReloadAfterChanges",
+            true,
+            CreatePrivateEnumValue("CheckMode", "Watch"),
+            dbFullPath,
+            false,
+            true,
+            new List<MainWindow.WatchChangedMovie>
+            {
+                new(
+                    "Movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.ViewRepaired,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+                new(
+                    "Movies\\beta.mp4",
+                    MainWindow.WatchMovieChangeKind.DisplayedViewRefresh,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+            }
+        );
+
+        Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadPending"), Is.True);
+        Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadQueryOnly"), Is.True);
+        Assert.That(
+            (string)GetPrivateField(window, "_watchDeferredUiReloadPlanReason"),
+            Is.EqualTo("watch-query-only")
+        );
+        Assert.That(
+            ((List<MainWindow.WatchChangedMovie>)GetPrivateField(
+                window,
+                "_watchDeferredUiReloadChangedMovies"
+            )).Select(x => x.MoviePath),
+            Is.EqualTo(["Movies\\alpha.mp4", "Movies\\beta.mp4"])
         );
     }
 

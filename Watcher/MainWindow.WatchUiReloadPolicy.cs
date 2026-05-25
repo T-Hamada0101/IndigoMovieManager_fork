@@ -43,31 +43,95 @@ namespace IndigoMovieManager
             IEnumerable<WatchChangedMovie> changedMovies
         )
         {
+            return IsBulkQueryReloadRecoveryReason(
+                ResolveBulkQueryReloadRecoveryReason(
+                    allowBulkExistingDirtyOnlyQueryReload,
+                    changedMovies
+                )
+            );
+        }
+
+        // bulk 降格後でも、既存行だけの安全な差分なら DB 再読込へ戻さない。
+        internal static string ResolveBulkQueryReloadRecoveryReason(
+            bool allowBulkExistingDirtyOnlyQueryReload,
+            IEnumerable<WatchChangedMovie> changedMovies
+        )
+        {
             if (!allowBulkExistingDirtyOnlyQueryReload)
             {
-                return false;
+                return "not-bulk-downgrade";
             }
 
             WatchMovieDirtyFields safeExistingDirtyFields =
                 WatchMovieDirtyFields.FileDate
                 | WatchMovieDirtyFields.MovieSize
                 | WatchMovieDirtyFields.MovieLength;
+            WatchMovieChangeKind safeExistingChangeKinds =
+                WatchMovieChangeKind.ViewRepaired
+                | WatchMovieChangeKind.DisplayedViewRefresh;
             int changedCount = 0;
+            bool hasViewOnlyChange = false;
+            bool hasDirtyChange = false;
             foreach (WatchChangedMovie changedMovie in changedMovies ?? [])
             {
                 changedCount++;
+                if ((changedMovie.ChangeKind & WatchMovieChangeKind.SourceInserted) != 0)
+                {
+                    return "source-inserted";
+                }
+
                 if (
-                    changedMovie.ChangeKind != WatchMovieChangeKind.None
-                    || changedMovie.DirtyFields == WatchMovieDirtyFields.None
-                    || (changedMovie.DirtyFields & ~safeExistingDirtyFields)
+                    (changedMovie.ChangeKind & ~safeExistingChangeKinds)
+                    != WatchMovieChangeKind.None
+                )
+                {
+                    return "change-kind-unsafe";
+                }
+
+                if (
+                    (changedMovie.DirtyFields & ~safeExistingDirtyFields)
                         != WatchMovieDirtyFields.None
                 )
                 {
-                    return false;
+                    return "dirty-fields-unsafe";
                 }
+
+                if (
+                    changedMovie.ChangeKind == WatchMovieChangeKind.None
+                    && changedMovie.DirtyFields == WatchMovieDirtyFields.None
+                )
+                {
+                    return "no-effective-change";
+                }
+
+                hasViewOnlyChange |= changedMovie.ChangeKind != WatchMovieChangeKind.None;
+                hasDirtyChange |= changedMovie.DirtyFields != WatchMovieDirtyFields.None;
             }
 
-            return changedCount > 0;
+            if (changedCount < 1)
+            {
+                return "no-changed-movies";
+            }
+
+            if (hasViewOnlyChange && hasDirtyChange)
+            {
+                return "bulk-existing-view-dirty-only";
+            }
+
+            return hasViewOnlyChange
+                ? "bulk-existing-view-only"
+                : "bulk-existing-dirty-only";
+        }
+
+        private static bool IsBulkQueryReloadRecoveryReason(string reason)
+        {
+            return string.Equals(reason, "bulk-existing-dirty-only", StringComparison.Ordinal)
+                || string.Equals(reason, "bulk-existing-view-only", StringComparison.Ordinal)
+                || string.Equals(
+                    reason,
+                    "bulk-existing-view-dirty-only",
+                    StringComparison.Ordinal
+                );
         }
 
         // 遅延実行時には、まだ同じDB向けの最新要求かを確認して stale reload を止める。
@@ -465,19 +529,22 @@ namespace IndigoMovieManager
                 IsWatchSuppressedByUi(),
                 isWatchMode
             );
-            bool recoveredQueryOnlyReload =
-                !canUseQueryOnlyReload
-                && CanRecoverBulkExistingDirtyOnlyQueryReload(
+            string queryOnlyRecoveryReason = !canUseQueryOnlyReload
+                ? ResolveBulkQueryReloadRecoveryReason(
                     allowBulkExistingDirtyOnlyQueryReload,
                     changedMovies
-                );
+                )
+                : "already-query-only";
+            bool recoveredQueryOnlyReload =
+                !canUseQueryOnlyReload
+                && IsBulkQueryReloadRecoveryReason(queryOnlyRecoveryReason);
             bool resolvedCanUseQueryOnlyReload =
                 canUseQueryOnlyReload || recoveredQueryOnlyReload;
             if (recoveredQueryOnlyReload)
             {
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"watch query-only recovered: reason=bulk-existing-dirty-only changed_paths={changedMovies?.Count ?? 0}"
+                    $"watch query-only recovered: reason={queryOnlyRecoveryReason} changed_paths={changedMovies?.Count ?? 0}"
                 );
             }
 
