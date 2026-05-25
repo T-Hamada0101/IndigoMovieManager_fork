@@ -78,8 +78,12 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(source, Does.Contain("private bool _isUpperTabPreferredMoviePathKeysSnapshotPublished;"));
         Assert.That(applySnapshotMethod, Does.Contain("bool preferredMoviePathKeysChanged"));
         Assert.That(applySnapshotMethod, Does.Contain("bool publishStateChanged"));
-        Assert.That(applySnapshotMethod, Does.Contain("UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys);"));
-        Assert.That(applySnapshotMethod, Does.Contain("if (publishStateChanged || preferredMoviePathKeysChanged)"));
+        Assert.That(applySnapshotMethod, Does.Contain("bool preferredMoviePathKeysGateChanged"));
+        Assert.That(
+            applySnapshotMethod,
+            Does.Contain("UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys)")
+        );
+        Assert.That(applySnapshotMethod, Does.Contain("if (publishStateChanged || preferredMoviePathKeysGateChanged)"));
         Assert.That(applySnapshotMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
         Assert.That(clearMethod, Does.Contain("if (_isUpperTabPreferredMoviePathKeysSnapshotPublished)"));
         Assert.That(clearMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));

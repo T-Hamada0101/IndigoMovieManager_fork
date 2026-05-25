@@ -47,6 +47,48 @@ public sealed class UpperTabImageSourceConverterTests
     }
 
     [Test]
+    public void 同じ可視近傍キー更新は変更なしとして扱う()
+    {
+        string visibleMoviePathKey = QueueDbPathResolver.CreateMoviePathKey(
+            Path.Combine("movies", "visible.mp4")
+        );
+
+        bool firstChanged = UpperTabActivationGate.UpdatePreferredMoviePathKeys(
+            [visibleMoviePathKey]
+        );
+        bool secondChanged = UpperTabActivationGate.UpdatePreferredMoviePathKeys(
+            [visibleMoviePathKey]
+        );
+
+        Assert.That(firstChanged, Is.True);
+        Assert.That(secondChanged, Is.False);
+        Assert.That(
+            UpperTabActivationGate.ShouldApplyImageUpdate(
+                true,
+                Path.Combine("movies", "visible.mp4")
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
+    public void Null更新は空確定ではなく未初期化へ戻す変更として扱う()
+    {
+        UpperTabActivationGate.UpdatePreferredMoviePathKeys([]);
+
+        bool changed = UpperTabActivationGate.UpdatePreferredMoviePathKeys(null);
+
+        Assert.That(changed, Is.True);
+        Assert.That(
+            UpperTabActivationGate.ShouldApplyImageUpdate(
+                true,
+                Path.Combine("movies", "hidden.mp4")
+            ),
+            Is.True
+        );
+    }
+
+    [Test]
     public void 可視近傍の空集合が確定した場合はMoviePath付き画像更新を通さない()
     {
         // viewport 評価後に対象なしが確定した時は、Movie_Path 付きの再評価を止める。

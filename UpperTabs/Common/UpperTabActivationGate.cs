@@ -47,17 +47,28 @@ namespace IndigoMovieManager.UpperTabs.Common
             }
         }
 
-        public static void UpdatePreferredMoviePathKeys(IEnumerable<string> moviePathKeys)
+        public static bool UpdatePreferredMoviePathKeys(IReadOnlyList<string> moviePathKeys)
         {
             lock (PreferredMoviePathKeysGate)
             {
-                PreferredMoviePathKeys.Clear();
                 if (moviePathKeys == null)
                 {
+                    bool changed = HasPreferredMoviePathKeysSnapshot
+                        || PreferredMoviePathKeys.Count > 0;
+                    PreferredMoviePathKeys.Clear();
                     HasPreferredMoviePathKeysSnapshot = false;
-                    return;
+                    return changed;
                 }
 
+                if (
+                    HasPreferredMoviePathKeysSnapshot
+                    && ArePreferredMoviePathKeysEqual(moviePathKeys)
+                )
+                {
+                    return false;
+                }
+
+                PreferredMoviePathKeys.Clear();
                 HasPreferredMoviePathKeysSnapshot = true;
                 foreach (string moviePathKey in moviePathKeys)
                 {
@@ -68,6 +79,8 @@ namespace IndigoMovieManager.UpperTabs.Common
 
                     _ = PreferredMoviePathKeys.Add(moviePathKey);
                 }
+
+                return true;
             }
         }
 
@@ -78,6 +91,27 @@ namespace IndigoMovieManager.UpperTabs.Common
                 PreferredMoviePathKeys.Clear();
                 HasPreferredMoviePathKeysSnapshot = false;
             }
+        }
+
+        private static bool ArePreferredMoviePathKeysEqual(IReadOnlyList<string> moviePathKeys)
+        {
+            int nextCount = 0;
+            for (int index = 0; index < moviePathKeys.Count; index++)
+            {
+                string moviePathKey = moviePathKeys[index];
+                if (string.IsNullOrWhiteSpace(moviePathKey))
+                {
+                    continue;
+                }
+
+                nextCount++;
+                if (!PreferredMoviePathKeys.Contains(moviePathKey))
+                {
+                    return false;
+                }
+            }
+
+            return PreferredMoviePathKeys.Count == nextCount;
         }
     }
 }

@@ -581,8 +581,9 @@ namespace IndigoMovieManager
             _isUpperTabPreferredMoviePathKeysSnapshotPublished = shouldPublishSnapshot;
             if (shouldPublishSnapshot)
             {
-                UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys);
-                if (publishStateChanged || preferredMoviePathKeysChanged)
+                bool preferredMoviePathKeysGateChanged =
+                    UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys);
+                if (publishStateChanged || preferredMoviePathKeysGateChanged)
                 {
                     RefreshUpperTabPreferredMoviePathKeysRevision();
                 }
