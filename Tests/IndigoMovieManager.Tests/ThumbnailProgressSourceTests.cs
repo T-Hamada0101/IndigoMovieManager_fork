@@ -128,6 +128,31 @@ public sealed class ThumbnailProgressSourceTests
         );
     }
 
+    [Test]
+    public void 初期作成数反映はRuntime差分Guard経由にする()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailQueue.cs")
+            .Replace("\r\n", "\n");
+        string initialCountMethod = ExtractMethod(
+            source,
+            "private void QueueThumbnailProgressInitialCreatedCountRefresh()"
+        );
+
+        Assert.That(
+            initialCountMethod,
+            Does.Contain("UpdateThumbnailProgressRuntimeAndRequestIfChanged(")
+        );
+        Assert.That(
+            initialCountMethod,
+            Does.Contain("_thumbnailProgressRuntime.ApplyInitialTotalCreatedCount(")
+        );
+        Assert.That(initialCountMethod, Does.Contain("task.Result"));
+        Assert.That(
+            initialCountMethod,
+            Does.Not.Contain("RequestThumbnailProgressSnapshotRefresh();")
+        );
+    }
+
     private static string GetThumbnailProgressSource()
     {
         return GetRepoText(

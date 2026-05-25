@@ -598,10 +598,12 @@ namespace IndigoMovieManager
                                         return;
                                     }
 
-                                    _thumbnailProgressRuntime.ApplyInitialTotalCreatedCount(
-                                        task.Result
+                                    UpdateThumbnailProgressRuntimeAndRequestIfChanged(
+                                        () =>
+                                            _thumbnailProgressRuntime.ApplyInitialTotalCreatedCount(
+                                                task.Result
+                                            )
                                     );
-                                    RequestThumbnailProgressSnapshotRefresh();
                                 }
                             ),
                             DispatcherPriority.Background
