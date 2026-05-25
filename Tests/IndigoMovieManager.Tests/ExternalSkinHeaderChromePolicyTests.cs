@@ -156,6 +156,21 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skinタグ変更後は局所反映だけ行い全体Refreshしない()
+    {
+        string apiSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Api.cs");
+        string method = GetMethodBlock(
+            apiSource,
+            "private WhiteBrowserSkinTagMutationResult ApplyExternalSkinMovieTagMutation("
+        );
+
+        Assert.That(method, Does.Contain("NotifyTagEditorTagIndexChanged(movie);"));
+        Assert.That(method, Does.Contain("RefreshViewsAfterTagEditorRecordChange(movie);"));
+        Assert.That(method, Does.Contain("QueueExternalSkinHostRefresh(\"skin-tag-mutation\");"));
+        Assert.That(method, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
+    }
+
+    [Test]
     public void 外部skin_catalog再確認reasonはAsync経路で行う()
     {
         string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");

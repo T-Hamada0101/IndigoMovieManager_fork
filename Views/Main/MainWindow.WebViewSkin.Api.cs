@@ -730,7 +730,6 @@ namespace IndigoMovieManager
 
                 NotifyTagEditorTagIndexChanged(movie);
                 RefreshViewsAfterTagEditorRecordChange(movie);
-                Refresh();
                 QueueExternalSkinHostRefresh("skin-tag-mutation");
             }
 
