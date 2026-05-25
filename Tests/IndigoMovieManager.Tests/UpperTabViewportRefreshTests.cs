@@ -58,12 +58,38 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(actual, Is.True);
     }
 
+    [TestCase(true, 7, 7, 10, 10, true)]
+    [TestCase(true, 7, 7, 11, 10, false)]
+    [TestCase(true, 7, 3, 10, 10, false)]
+    [TestCase(false, 7, 7, 10, 10, false)]
+    public void Viewport計測不能時は同一タブ同一sourceだけpreferredキーを保持する(
+        bool hasPublishedSnapshot,
+        int currentTabIndex,
+        int snapshotTabIndex,
+        int viewportSourceRevision,
+        int snapshotSourceRevision,
+        bool expected
+    )
+    {
+        bool actual =
+            IndigoMovieManager.MainWindow.ShouldPreservePreferredMoviePathKeysOnUnavailableViewport(
+                hasPublishedSnapshot,
+                currentTabIndex,
+                snapshotTabIndex,
+                viewportSourceRevision,
+                snapshotSourceRevision
+            );
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
     [Test]
     public void Preferredキー更新時は画像MultiBinding再評価用revisionを進める()
     {
         string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
         string applySnapshotMethod = GetMethodBlock(source, "private void ApplyUpperTabViewportSnapshot(");
         string clearMethod = GetMethodBlock(source, "private void ClearUpperTabVisibleRange()");
+        string unavailableMethod = GetMethodBlock(source, "private void HandleUnavailableUpperTabViewport(");
         string refreshMethod = GetMethodBlock(
             source,
             "private void RefreshUpperTabPreferredMoviePathKeysRevision()"
@@ -76,8 +102,13 @@ public sealed class UpperTabViewportRefreshTests
         );
         Assert.That(source, Does.Contain("public int UpperTabPreferredMoviePathKeysRevision"));
         Assert.That(source, Does.Contain("private bool _isUpperTabPreferredMoviePathKeysSnapshotPublished;"));
+        Assert.That(source, Does.Contain("private int _preferredVisibleMoviePathKeysTabIndex = -1;"));
         Assert.That(applySnapshotMethod, Does.Contain("bool preferredMoviePathKeysChanged"));
         Assert.That(applySnapshotMethod, Does.Contain("bool publishStateChanged"));
+        Assert.That(
+            applySnapshotMethod,
+            Does.Contain("_preferredVisibleMoviePathKeysTabIndex = shouldPublishSnapshot ? currentTabIndex : -1;")
+        );
         Assert.That(applySnapshotMethod, Does.Contain("bool preferredMoviePathKeysGateChanged"));
         Assert.That(
             applySnapshotMethod,
@@ -89,7 +120,13 @@ public sealed class UpperTabViewportRefreshTests
             Does.Not.Contain("if (publishStateChanged || preferredMoviePathKeysChanged)")
         );
         Assert.That(applySnapshotMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(
+            unavailableMethod,
+            Does.Contain("ShouldPreservePreferredMoviePathKeysOnUnavailableViewport(")
+        );
+        Assert.That(unavailableMethod, Does.Contain("if (!shouldPreservePreferredMoviePathKeys)"));
         Assert.That(clearMethod, Does.Contain("if (_isUpperTabPreferredMoviePathKeysSnapshotPublished)"));
+        Assert.That(clearMethod, Does.Contain("_preferredVisibleMoviePathKeysTabIndex = -1;"));
         Assert.That(clearMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
         Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision = unchecked("));
         Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision + 1"));

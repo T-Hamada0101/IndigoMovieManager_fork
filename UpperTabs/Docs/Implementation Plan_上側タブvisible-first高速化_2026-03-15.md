@@ -13,6 +13,7 @@
 - `preferredMoviePathKeysResolver` は UI 要素を直接読まず、UI スレッドで更新した snapshot を返す形に寄せた。
 - `preferredMoviePathKeysResolver` の snapshot は未初期化 / viewport 未計測と空確定を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、preferred 対象キーが空と確定した場合だけ off-screen 更新を通さない。
 - preferred key 更新後は full reload や追加 `Refresh()` へ戻さず、snapshot の軽い revision 更新、または Binding 用 trigger だけで既存の画像 Binding を再評価する方針にする。
+- 2026-05-26: viewport が一時的に計測不能でも、同一タブかつ同一 source revision の場合は直前の preferred key snapshot を保持し、不要な revision 更新と全画像再評価を増やさないようにした。
 - `FilteredMovieRecs` は毎回 `Clear + Add` せず、共通 prefix / suffix を残して差し替える形へ寄せた。
 - filter / sort の no-op 時は `Refresh()` と viewport 再計算を飛ばし、不要な UI 揺れを減らした。
 - sort-only で要素集合が同じ時は、`List(DataGrid)` タブに限って `Remove/Insert` より `ObservableCollection.Move(...)` を優先して並び替える形へ寄せた。

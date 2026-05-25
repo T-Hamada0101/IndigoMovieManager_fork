@@ -32,6 +32,7 @@ namespace IndigoMovieManager
         private UpperTabVisibleRange _activeUpperTabVisibleRange = UpperTabVisibleRange.Empty;
         private IReadOnlyList<string> _preferredVisibleMoviePathKeysSnapshot = Array.Empty<string>();
         private bool _isUpperTabPreferredMoviePathKeysSnapshotPublished;
+        private int _preferredVisibleMoviePathKeysTabIndex = -1;
         private int _upperTabViewportSourceRevision;
         private int _preferredVisibleMoviePathKeysSourceRevision;
         private long _upperTabFollowupScrollRefreshSuppressUntilUtcTicks;
@@ -153,10 +154,25 @@ namespace IndigoMovieManager
             return visibleRange.HasVisibleItems;
         }
 
+        internal static bool ShouldPreservePreferredMoviePathKeysOnUnavailableViewport(
+            bool hasPublishedSnapshot,
+            int currentTabIndex,
+            int snapshotTabIndex,
+            int viewportSourceRevision,
+            int snapshotSourceRevision
+        )
+        {
+            return hasPublishedSnapshot
+                && currentTabIndex >= 0
+                && currentTabIndex == snapshotTabIndex
+                && viewportSourceRevision == snapshotSourceRevision;
+        }
+
         private void ClearUpperTabVisibleRange()
         {
             _activeUpperTabVisibleRange = UpperTabVisibleRange.Empty;
             _preferredVisibleMoviePathKeysSnapshot = Array.Empty<string>();
+            _preferredVisibleMoviePathKeysTabIndex = -1;
             _preferredVisibleMoviePathKeysSourceRevision = _upperTabViewportSourceRevision;
             UpperTabActivationGate.ClearPreferredMoviePathKeys();
             if (_isUpperTabPreferredMoviePathKeysSnapshotPublished)
@@ -540,6 +556,7 @@ namespace IndigoMovieManager
         )
         {
             ApplyUpperTabViewportSnapshot(
+                refreshContext.CurrentTabIndex,
                 refreshContext.NextRange,
                 nextPreferredMoviePathKeys,
                 preferredMoviePathKeysChanged
@@ -566,6 +583,7 @@ namespace IndigoMovieManager
 
         // viewport の計測結果を snapshot へ反映し、保持フィールド更新を 1 か所へ寄せる。
         private void ApplyUpperTabViewportSnapshot(
+            int currentTabIndex,
             UpperTabVisibleRange nextRange,
             IReadOnlyList<string> nextPreferredMoviePathKeys,
             bool preferredMoviePathKeysChanged
@@ -577,6 +595,7 @@ namespace IndigoMovieManager
 
             _activeUpperTabVisibleRange = nextRange;
             _preferredVisibleMoviePathKeysSnapshot = nextPreferredMoviePathKeys;
+            _preferredVisibleMoviePathKeysTabIndex = shouldPublishSnapshot ? currentTabIndex : -1;
             _preferredVisibleMoviePathKeysSourceRevision = _upperTabViewportSourceRevision;
             _isUpperTabPreferredMoviePathKeysSnapshotPublished = shouldPublishSnapshot;
             if (shouldPublishSnapshot)
@@ -615,10 +634,25 @@ namespace IndigoMovieManager
             long elapsedMilliseconds
         )
         {
-            ClearUpperTabVisibleRange();
+            bool shouldPreservePreferredMoviePathKeys =
+                ShouldPreservePreferredMoviePathKeysOnUnavailableViewport(
+                    _isUpperTabPreferredMoviePathKeysSnapshotPublished,
+                    currentTabIndex,
+                    _preferredVisibleMoviePathKeysTabIndex,
+                    _upperTabViewportSourceRevision,
+                    _preferredVisibleMoviePathKeysSourceRevision
+                );
+
+            if (!shouldPreservePreferredMoviePathKeys)
+            {
+                ClearUpperTabVisibleRange();
+            }
+
+            // 同一タブの一時的な未計測では前回 snapshot を残し、余分な画像再評価を増やさない。
+            string preservedText = shouldPreservePreferredMoviePathKeys ? "true" : "false";
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"upper tab viewport: tab={currentTabIndex} reason={reason} {state} elapsed_ms={elapsedMilliseconds}"
+                $"upper tab viewport: tab={currentTabIndex} reason={reason} {state} preserved={preservedText} preferred={_preferredVisibleMoviePathKeysSnapshot.Count} elapsed_ms={elapsedMilliseconds}"
             );
         }
 
