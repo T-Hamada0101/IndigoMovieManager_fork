@@ -3,6 +3,8 @@
 最終更新日: 2026-05-25
 
 変更概要:
+- 大件数検索では、後着検索が入った時に古い `FilterAndSortAsync(...)` の `filter-movies` 列挙を cancellation token で中断できるようにし、入力中の古い全件検索が CPU を食い続ける状態を減らした
+- 大件数の ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / 既存 Roma / 既存 Kana 由来 Roma` の軽量投影に留め、`Kana/Roma` が空の行で名前/パスから読み仮名解析へ戻る fallback を UI hot path から外した
 - watch 終端 reload は `changedMovies` が no-op 札だけなら実効変更なしとして扱い、deferred/full reload を積まないようにした
 - Rescue タブの通常再試行 / 黒背景救済 retry / index repair dispatch は、投入または開始が 0 件の時は下部 ERROR/進捗 snapshot 予約も行わず、操作後の空振り再評価を減らした
 - 重複動画タブは名前変更を `PropertyChanged` 通知で反映し、`Items.Refresh()` に戻らない形へ寄せた。さらに左グループ選択時の右ペイン詳細生成はサムネ存在確認を含めて背景化し、選択 revision 一致時だけ UI へ戻すようにした

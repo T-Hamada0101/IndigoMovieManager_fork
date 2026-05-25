@@ -62,6 +62,17 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(actual, Is.EqualTo(expected));
     }
 
+    [TestCase(63, false)]
+    [TestCase(64, true)]
+    public void ShouldUseFastAsciiSearchProjection_大件数だけ読み仮名fallbackを省く(
+        int sourceCount,
+        bool expected
+    )
+    {
+        bool actual = MainWindow.ShouldUseFastAsciiSearchProjection(sourceCount);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
     [Test]
     public void LinkSearch_ユーザーコントロールから検索正本へ合流する()
     {

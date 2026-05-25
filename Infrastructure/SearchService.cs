@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace IndigoMovieManager.Infrastructure
 {
@@ -57,7 +58,22 @@ namespace IndigoMovieManager.Infrastructure
             string searchKeyword
         )
         {
-            var query = source ?? Enumerable.Empty<MovieRecords>();
+            return FilterMovies(
+                source,
+                searchKeyword,
+                CancellationToken.None,
+                allowExpensiveAsciiPhoneticFallback: true
+            );
+        }
+
+        public static IEnumerable<MovieRecords> FilterMovies(
+            IEnumerable<MovieRecords> source,
+            string searchKeyword,
+            CancellationToken cancellationToken,
+            bool allowExpensiveAsciiPhoneticFallback = true
+        )
+        {
+            var query = WithCancellation(source ?? Enumerable.Empty<MovieRecords>(), cancellationToken);
             if (string.IsNullOrWhiteSpace(searchKeyword))
             {
                 return query;
@@ -66,7 +82,12 @@ namespace IndigoMovieManager.Infrastructure
             var searchText = searchKeyword.Trim();
 
             // exact tag 構文は通常検索と共存できるよう、先にタグ条件だけ抜き出す。
-            query = ApplyExactTagFilters(query, searchText, out string remainingSearchText);
+            query = ApplyExactTagFilters(
+                query,
+                searchText,
+                cancellationToken,
+                out string remainingSearchText
+            );
             if (!ReferenceEquals(query, source) && string.IsNullOrWhiteSpace(remainingSearchText))
             {
                 return query;
@@ -79,14 +100,15 @@ namespace IndigoMovieManager.Infrastructure
             {
                 StringComparison comparison = ResolveSearchComparison(exact);
                 bool useAsciiFastPath = comparison == StringComparison.OrdinalIgnoreCase;
-                return query.Where(item =>
+                return WhereWithCancellation(query, item =>
                     ContainsInAnyField(
                         useAsciiFastPath
-                            ? item.GetAsciiSearchFieldsForFilter()
+                            ? item.GetAsciiSearchFieldsForFilter(allowExpensiveAsciiPhoneticFallback)
                             : item.GetSearchFieldsForFilter(),
                         exact,
                         comparison
-                    )
+                    ),
+                    cancellationToken
                 );
             }
 
@@ -97,31 +119,37 @@ namespace IndigoMovieManager.Infrastructure
 
                 if (inner.Equals("notag", StringComparison.CurrentCultureIgnoreCase))
                 {
-                    return query.Where(item => item.GetNormalizedTagsForFilter().Length == 0);
+                    return WhereWithCancellation(
+                        query,
+                        item => item.GetNormalizedTagsForFilter().Length == 0,
+                        cancellationToken
+                    );
                 }
 
                 if (inner.Equals("dup", StringComparison.CurrentCultureIgnoreCase))
                 {
-                    return FilterDuplicateMovies(query);
+                    return FilterDuplicateMovies(query, cancellationToken);
                 }
             }
 
             // 通常検索は OR -> AND -> NOT の順で既存仕様を保つ。
             SearchTerm[][] orGroups = CompileOrGroups(searchText);
-            return query.Where(item =>
+            bool useAsciiSearchFieldFastPath = ShouldUseAsciiSearchFieldFastPath(orGroups);
+            return WhereWithCancellation(query, item =>
             {
-                bool useAsciiFastPath = ShouldUseAsciiSearchFieldFastPath(orGroups);
-                string[] fields = useAsciiFastPath
-                    ? item.GetAsciiSearchFieldsForFilter()
+                string[] fields = useAsciiSearchFieldFastPath
+                    ? item.GetAsciiSearchFieldsForFilter(allowExpensiveAsciiPhoneticFallback)
                     : item.GetSearchFieldsForFilter();
 
                 return MatchesAnyOrGroup(fields, orGroups);
-            });
+            },
+            cancellationToken);
         }
 
         private static IEnumerable<MovieRecords> ApplyExactTagFilters(
             IEnumerable<MovieRecords> query,
             string searchText,
+            CancellationToken cancellationToken,
             out string remainingSearchText
         )
         {
@@ -130,7 +158,11 @@ namespace IndigoMovieManager.Infrastructure
             if (searchText.Equals("!notag", StringComparison.CurrentCultureIgnoreCase))
             {
                 remainingSearchText = "";
-                return query.Where(item => item.GetNormalizedTagsForFilter().Length == 0);
+                return WhereWithCancellation(
+                    query,
+                    item => item.GetNormalizedTagsForFilter().Length == 0,
+                    cancellationToken
+                );
             }
 
             string[] tagKeywords = TagSearchKeywordCodec.ExtractActiveTags(searchText);
@@ -140,8 +172,10 @@ namespace IndigoMovieManager.Infrastructure
             }
 
             remainingSearchText = TagSearchKeywordCodec.ReplaceTagFilters(searchText, Array.Empty<string>());
-            return query.Where(item =>
-                HasAllExactTags(item.GetNormalizedTagsForFilter(), tagKeywords)
+            return WhereWithCancellation(
+                query,
+                item => HasAllExactTags(item.GetNormalizedTagsForFilter(), tagKeywords),
+                cancellationToken
             );
         }
 
@@ -320,13 +354,18 @@ namespace IndigoMovieManager.Infrastructure
             return true;
         }
 
-        private static IEnumerable<MovieRecords> FilterDuplicateMovies(IEnumerable<MovieRecords> query)
+        private static IEnumerable<MovieRecords> FilterDuplicateMovies(
+            IEnumerable<MovieRecords> query,
+            CancellationToken cancellationToken
+        )
         {
-            List<MovieRecords> materialized = query as List<MovieRecords> ?? query.ToList();
+            List<MovieRecords> materialized = query as List<MovieRecords>
+                ?? MaterializeWithCancellation(query, cancellationToken);
             Dictionary<string, int> hashCounts = [];
 
             foreach (MovieRecords item in materialized)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (string.IsNullOrEmpty(item?.Hash))
                 {
                     continue;
@@ -336,11 +375,57 @@ namespace IndigoMovieManager.Infrastructure
                 hashCounts[item.Hash] = currentCount + 1;
             }
 
-            return materialized.Where(item =>
-                !string.IsNullOrEmpty(item?.Hash)
-                && hashCounts.TryGetValue(item.Hash, out int count)
-                && count > 1
+            return WhereWithCancellation(
+                materialized,
+                item =>
+                    !string.IsNullOrEmpty(item?.Hash)
+                    && hashCounts.TryGetValue(item.Hash, out int count)
+                    && count > 1,
+                cancellationToken
             );
+        }
+
+        private static List<MovieRecords> MaterializeWithCancellation(
+            IEnumerable<MovieRecords> source,
+            CancellationToken cancellationToken
+        )
+        {
+            List<MovieRecords> items = [];
+            foreach (MovieRecords item in source ?? Enumerable.Empty<MovieRecords>())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                items.Add(item);
+            }
+
+            return items;
+        }
+
+        private static IEnumerable<MovieRecords> WithCancellation(
+            IEnumerable<MovieRecords> source,
+            CancellationToken cancellationToken
+        )
+        {
+            foreach (MovieRecords item in source)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return item;
+            }
+        }
+
+        private static IEnumerable<MovieRecords> WhereWithCancellation(
+            IEnumerable<MovieRecords> source,
+            Func<MovieRecords, bool> predicate,
+            CancellationToken cancellationToken
+        )
+        {
+            foreach (MovieRecords item in source ?? Enumerable.Empty<MovieRecords>())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (predicate(item))
+                {
+                    yield return item;
+                }
+            }
         }
 
         // ASCII だけの検索語は culture 比較より ordinal ignore case の方が軽い。

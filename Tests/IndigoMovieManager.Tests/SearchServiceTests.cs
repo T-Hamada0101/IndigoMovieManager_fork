@@ -1,3 +1,4 @@
+using System.Threading;
 using IndigoMovieManager.Infrastructure;
 
 namespace IndigoMovieManager.Tests;
@@ -175,6 +176,59 @@ public sealed class SearchServiceTests
         MovieRecords[] actual = SearchService.FilterMovies([target, other], "AIUEO").ToArray();
 
         Assert.That(actual, Is.EqualTo([target]));
+    }
+
+    [Test]
+    public void FilterMovies_ASCII高速投影でも既存kana列のローマ字検索は維持する()
+    {
+        MovieRecords target = CreateMovie("target");
+        target.Kana = "とうきょうらぶすとーりー";
+        MovieRecords other = CreateMovie("other");
+        other.Kana = "なごやらぶすとーりー";
+
+        MovieRecords[] actual = SearchService
+            .FilterMovies(
+                [target, other],
+                "tokyo",
+                CancellationToken.None,
+                allowExpensiveAsciiPhoneticFallback: false
+            )
+            .ToArray();
+
+        Assert.That(actual, Is.EqualTo([target]));
+    }
+
+    [Test]
+    public void FilterMovies_ASCII高速投影では名前由来の読み仮名解析へ戻らない()
+    {
+        MovieRecords target = CreateMovie("かなものがたり");
+        MovieRecords other = CreateMovie("べつさく");
+
+        MovieRecords[] actual = SearchService
+            .FilterMovies(
+                [target, other],
+                "kana",
+                CancellationToken.None,
+                allowExpensiveAsciiPhoneticFallback: false
+            )
+            .ToArray();
+
+        Assert.That(actual, Is.Empty);
+    }
+
+    [Test]
+    public void FilterMovies_キャンセル済みなら列挙を中断する()
+    {
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        IEnumerable<MovieRecords> query = SearchService.FilterMovies(
+            [CreateMovie("target")],
+            "target",
+            cts.Token
+        );
+
+        Assert.Throws<OperationCanceledException>(() => query.ToArray());
     }
 
     [Test]

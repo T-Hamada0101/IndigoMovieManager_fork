@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Windows.Data;
 using IndigoMovieManager.DB;
 using IndigoMovieManager.Infrastructure;
@@ -402,6 +403,21 @@ namespace IndigoMovieManager.ViewModels
         )
         {
             return SearchService.FilterMovies(source, searchKeyword);
+        }
+
+        public IEnumerable<MovieRecords> FilterMovies(
+            IEnumerable<MovieRecords> source,
+            string searchKeyword,
+            CancellationToken cancellationToken,
+            bool allowExpensiveAsciiPhoneticFallback = true
+        )
+        {
+            return SearchService.FilterMovies(
+                source,
+                searchKeyword,
+                cancellationToken,
+                allowExpensiveAsciiPhoneticFallback
+            );
         }
 
         /// <summary>

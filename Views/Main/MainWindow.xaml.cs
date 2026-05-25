@@ -90,6 +90,8 @@ namespace IndigoMovieManager
 
         private IEnumerable<MovieRecords> filterList = [];
         private int _filterAndSortRequestRevision;
+        private readonly object _filterAndSortCancellationGate = new();
+        private CancellationTokenSource _filterAndSortCancellation;
         private int _movieExistsRefreshRevision;
         private int _registeredMovieCountRevision;
         private bool _registeredMovieCountInitialized;
@@ -1897,6 +1899,9 @@ namespace IndigoMovieManager
             using IDisposable uiHangScope = TrackUiHangActivity(UiHangActivityKind.Database);
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
+            using CancellationTokenSource filterAndSortCancellation =
+                BeginFilterAndSortCancellation();
+            CancellationToken filterAndSortCancellationToken = filterAndSortCancellation.Token;
             DataTable latestMovieData = movieData;
             MovieRecords[] latestMovieRecords = null;
             long dbLoadElapsedMs = 0;
@@ -1994,9 +1999,11 @@ namespace IndigoMovieManager
                 .Where(movie => movie != null)
                 .ToArray();
             bool runOnBackground = MainWindow.ShouldRunFilterSortOnBackground(filterSource.Length);
+            bool allowExpensiveAsciiPhoneticFallback =
+                !MainWindow.ShouldUseFastAsciiSearchProjection(filterSource.Length);
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"filter stage begin: revision={requestRevision} stage=filter-sort-compute route={executionRoute} source={filterSource.Length} keyword='{searchKeyword}' background={runOnBackground}"
+                $"filter stage begin: revision={requestRevision} stage=filter-sort-compute route={executionRoute} source={filterSource.Length} keyword='{searchKeyword}' background={runOnBackground} ascii_fast_projection={!allowExpensiveAsciiPhoneticFallback}"
             );
 
             (MovieRecords[] sorted, int searchCount) ComputeFilterAndSortMovies()
@@ -2007,8 +2014,14 @@ namespace IndigoMovieManager
                 );
                 Stopwatch filterMoviesStopwatch = Stopwatch.StartNew();
                 MovieRecords[] filtered = MainVM
-                    .FilterMovies(filterSource, searchKeyword)
+                    .FilterMovies(
+                        filterSource,
+                        searchKeyword,
+                        filterAndSortCancellationToken,
+                        allowExpensiveAsciiPhoneticFallback
+                    )
                     .ToArray();
+                filterAndSortCancellationToken.ThrowIfCancellationRequested();
                 filterMoviesStopwatch.Stop();
                 int resolvedSearchCount = filtered.Length;
                 DebugRuntimeLog.Write(
@@ -2020,7 +2033,9 @@ namespace IndigoMovieManager
                     $"filter stage begin: revision={requestRevision} stage=sort-movies filtered={resolvedSearchCount} sort={id}"
                 );
                 Stopwatch sortMoviesStopwatch = Stopwatch.StartNew();
+                filterAndSortCancellationToken.ThrowIfCancellationRequested();
                 MovieRecords[] sortedMovies = MainVM.SortMovies(filtered, id).ToArray();
+                filterAndSortCancellationToken.ThrowIfCancellationRequested();
                 sortMoviesStopwatch.Stop();
                 DebugRuntimeLog.Write(
                     "ui-tempo",
@@ -2029,9 +2044,22 @@ namespace IndigoMovieManager
                 return (sortedMovies, resolvedSearchCount);
             }
 
-            (MovieRecords[] sorted, int searchCount) = runOnBackground
-                ? await Task.Run(ComputeFilterAndSortMovies)
-                : ComputeFilterAndSortMovies();
+            MovieRecords[] sorted = [];
+            int searchCount = 0;
+            try
+            {
+                (sorted, searchCount) = runOnBackground
+                    ? await Task.Run(ComputeFilterAndSortMovies, filterAndSortCancellationToken)
+                    : ComputeFilterAndSortMovies();
+            }
+            catch (OperationCanceledException) when (filterAndSortCancellationToken.IsCancellationRequested)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"filter canceled: revision={requestRevision} elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
+                );
+                return;
+            }
             DebugRuntimeLog.Write(
                 "ui-tempo",
                 $"filter stage end: revision={requestRevision} stage=filter-sort-compute route={executionRoute} sorted={sorted.Length} search_count={searchCount} elapsed_ms={filterSortStopwatch.ElapsedMilliseconds}"
@@ -2139,6 +2167,8 @@ namespace IndigoMovieManager
             );
 
             Stopwatch filterSortStopwatch = Stopwatch.StartNew();
+            bool allowExpensiveAsciiPhoneticFallback =
+                !MainWindow.ShouldUseFastAsciiSearchProjection(sourceMovies.Length);
             await Task.Run(() =>
             {
                 usedChangedPathRefresh = TryBuildChangedMovieRefreshSourceWithReason(
@@ -2154,7 +2184,14 @@ namespace IndigoMovieManager
                 );
                 if (!usedChangedPathRefresh)
                 {
-                    filtered = MainVM.FilterMovies(sourceMovies, searchKeyword).ToArray();
+                    filtered = MainVM
+                        .FilterMovies(
+                            sourceMovies,
+                            searchKeyword,
+                            CancellationToken.None,
+                            allowExpensiveAsciiPhoneticFallback
+                        )
+                        .ToArray();
                 }
 
                 searchCount = filtered.Length;
@@ -2613,6 +2650,33 @@ namespace IndigoMovieManager
         internal static bool ShouldRunFilterSortOnBackground(int sourceCount)
         {
             return sourceCount >= 64;
+        }
+
+        // 大件数検索では、ASCII入力のたびに名前/パスから読み仮名解析へ戻さない。
+        internal static bool ShouldUseFastAsciiSearchProjection(int sourceCount)
+        {
+            return sourceCount >= 64;
+        }
+
+        private CancellationTokenSource BeginFilterAndSortCancellation()
+        {
+            CancellationTokenSource current = new();
+            CancellationTokenSource previous;
+            lock (_filterAndSortCancellationGate)
+            {
+                previous = _filterAndSortCancellation;
+                _filterAndSortCancellation = current;
+            }
+
+            try
+            {
+                previous?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            return current;
         }
 
         // query-only と full reload を短い札にして、ui-tempo ログで経路を追いやすくする。

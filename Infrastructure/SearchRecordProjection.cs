@@ -26,10 +26,14 @@ namespace IndigoMovieManager.Infrastructure
             ];
         }
 
-        internal static string[] BuildAsciiSearchFields(MovieRecords item)
+        internal static string[] BuildAsciiSearchFields(
+            MovieRecords item,
+            bool allowExpensivePhoneticFallback = true
+        )
         {
-            string kana = ResolveSearchKana(item);
-            string roma = ResolveSearchRoma(item, kana);
+            string roma = allowExpensivePhoneticFallback
+                ? ResolveSearchRoma(item, ResolveSearchKana(item))
+                : ResolveAsciiSearchRomaWithoutNameFallback(item);
 
             return
             [
@@ -81,6 +85,23 @@ namespace IndigoMovieManager.Infrastructure
             }
 
             return JapaneseKanaProvider.GetRoma(item.Movie_Name, item.Movie_Path);
+        }
+
+        private static string ResolveAsciiSearchRomaWithoutNameFallback(MovieRecords item)
+        {
+            if (!string.IsNullOrWhiteSpace(item?.Roma))
+            {
+                return item.Roma;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item?.Kana))
+            {
+                string kana = JapaneseKanaProvider.NormalizeToHiragana(item.Kana);
+                return JapaneseKanaProvider.GetRomaFromKana(kana);
+            }
+
+            // 大件数のUI検索では、ASCII入力のたびに名前/パスから読み仮名解析へ落とさない。
+            return "";
         }
     }
 }
