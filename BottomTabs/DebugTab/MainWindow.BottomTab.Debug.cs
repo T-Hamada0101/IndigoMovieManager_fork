@@ -799,7 +799,7 @@ namespace IndigoMovieManager
             RefreshLogTabPreview(force: true);
         }
 
-        private void DebugDeleteCurrentDb_Click(object sender, RoutedEventArgs e)
+        private async void DebugDeleteCurrentDb_Click(object sender, RoutedEventArgs e)
         {
             string dbPath = MainVM?.DbInfo?.DBFullPath ?? "";
             if (string.IsNullOrWhiteSpace(dbPath))
@@ -822,15 +822,12 @@ namespace IndigoMovieManager
 
             try
             {
-                if (File.Exists(dbPath))
-                {
-                    File.Delete(dbPath);
-                }
+                await DeleteDebugFileIfExistsAsync(dbPath).ConfigureAwait(true);
 
                 if (string.Equals(Properties.Settings.Default.LastDoc, dbPath, StringComparison.OrdinalIgnoreCase))
                 {
                     Properties.Settings.Default.LastDoc = "";
-                    Properties.Settings.Default.Save();
+                    QueueApplicationSettingsSave("debug-delete-current-db-last-doc");
                 }
 
                 ResetDebugCurrentDbUiState();
@@ -838,7 +835,7 @@ namespace IndigoMovieManager
             }
             catch (Exception ex)
             {
-                if (File.Exists(dbPath))
+                if (await DebugFileExistsAsync(dbPath).ConfigureAwait(true))
                 {
                     OpenDatafile(dbPath);
                 }
@@ -918,7 +915,7 @@ namespace IndigoMovieManager
             RefreshLogTabPreview(force: true);
         }
 
-        private void DebugDeleteFailureDb_Click(object sender, RoutedEventArgs e)
+        private async void DebugDeleteFailureDb_Click(object sender, RoutedEventArgs e)
         {
             string failureDbPath = ResolveCurrentFailureDbPathForDebug();
             if (string.IsNullOrWhiteSpace(failureDbPath))
@@ -939,10 +936,7 @@ namespace IndigoMovieManager
 
             try
             {
-                if (File.Exists(failureDbPath))
-                {
-                    File.Delete(failureDbPath);
-                }
+                await DeleteDebugFileIfExistsAsync(failureDbPath).ConfigureAwait(true);
 
                 DebugRuntimeLog.Write("debug-ui", $"debug delete failure db: path='{failureDbPath}'");
             }
@@ -990,7 +984,7 @@ namespace IndigoMovieManager
             RefreshLogTabPreview(force: true);
         }
 
-        private void DebugDeleteQueueDb_Click(object sender, RoutedEventArgs e)
+        private async void DebugDeleteQueueDb_Click(object sender, RoutedEventArgs e)
         {
             string queueDbPath = ResolveCurrentQueueDbPathForDebug();
             if (string.IsNullOrWhiteSpace(queueDbPath))
@@ -1012,10 +1006,7 @@ namespace IndigoMovieManager
             try
             {
                 ClearThumbnailQueue();
-                if (File.Exists(queueDbPath))
-                {
-                    File.Delete(queueDbPath);
-                }
+                await DeleteDebugFileIfExistsAsync(queueDbPath).ConfigureAwait(true);
 
                 DebugRuntimeLog.Write("debug-ui", $"debug delete queue db: path='{queueDbPath}'");
             }
@@ -1032,6 +1023,23 @@ namespace IndigoMovieManager
 
             RefreshDebugRecordCounts(force: true);
             RefreshLogTabPreview(force: true);
+        }
+
+        private static Task DeleteDebugFileIfExistsAsync(string path)
+        {
+            return Task.Run(() =>
+            {
+                // 削除対象の存在確認とファイルI/Oは背景側で完結させ、Debug操作中のUI入力を塞がない。
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            });
+        }
+
+        private static Task<bool> DebugFileExistsAsync(string path)
+        {
+            return Task.Run(() => File.Exists(path));
         }
 
         private async void DebugDeleteThumbnailDir_Click(object sender, RoutedEventArgs e)

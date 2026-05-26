@@ -344,6 +344,71 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(failureAsync, Does.Contain("Task.Run(() => BuildDebugCurrentFailureDbRecordCountText(failureDbPath))"));
     }
 
+    [Test]
+    public void DebugタブのDBファイル削除IOは背景helperへ逃がす()
+    {
+        string debugSource = GetRepoText(
+            "BottomTabs",
+            "DebugTab",
+            "MainWindow.BottomTab.Debug.cs"
+        );
+        string mainDelete = GetMethodBlock(
+            debugSource,
+            "private async void DebugDeleteCurrentDb_Click("
+        );
+        string failureDelete = GetMethodBlock(
+            debugSource,
+            "private async void DebugDeleteFailureDb_Click("
+        );
+        string queueDelete = GetMethodBlock(
+            debugSource,
+            "private async void DebugDeleteQueueDb_Click("
+        );
+        string deleteHelper = GetMethodBlock(
+            debugSource,
+            "private static Task DeleteDebugFileIfExistsAsync("
+        );
+        string existsHelper = GetMethodBlock(
+            debugSource,
+            "private static Task<bool> DebugFileExistsAsync("
+        );
+
+        Assert.That(mainDelete, Does.Contain("ShutdownCurrentDb();"));
+        Assert.That(mainDelete, Does.Contain("await DeleteDebugFileIfExistsAsync(dbPath)"));
+        Assert.That(mainDelete, Does.Contain("await DebugFileExistsAsync(dbPath)"));
+        Assert.That(mainDelete, Does.Contain("QueueApplicationSettingsSave(\"debug-delete-current-db-last-doc\")"));
+        Assert.That(mainDelete, Does.Contain("ResetDebugCurrentDbUiState();"));
+        Assert.That(
+            mainDelete.IndexOf("ShutdownCurrentDb();", StringComparison.Ordinal),
+            Is.LessThan(mainDelete.IndexOf("await DeleteDebugFileIfExistsAsync(dbPath)", StringComparison.Ordinal))
+        );
+        Assert.That(
+            mainDelete.IndexOf("await DeleteDebugFileIfExistsAsync(dbPath)", StringComparison.Ordinal),
+            Is.LessThan(mainDelete.IndexOf("ResetDebugCurrentDbUiState();", StringComparison.Ordinal))
+        );
+        Assert.That(mainDelete, Does.Not.Contain("File.Exists("));
+        Assert.That(mainDelete, Does.Not.Contain("File.Delete("));
+        Assert.That(mainDelete, Does.Not.Contain("Properties.Settings.Default.Save();"));
+
+        Assert.That(failureDelete, Does.Contain("await DeleteDebugFileIfExistsAsync(failureDbPath)"));
+        Assert.That(failureDelete, Does.Not.Contain("File.Exists("));
+        Assert.That(failureDelete, Does.Not.Contain("File.Delete("));
+
+        Assert.That(queueDelete, Does.Contain("ClearThumbnailQueue();"));
+        Assert.That(queueDelete, Does.Contain("await DeleteDebugFileIfExistsAsync(queueDbPath)"));
+        Assert.That(
+            queueDelete.IndexOf("ClearThumbnailQueue();", StringComparison.Ordinal),
+            Is.LessThan(queueDelete.IndexOf("await DeleteDebugFileIfExistsAsync(queueDbPath)", StringComparison.Ordinal))
+        );
+        Assert.That(queueDelete, Does.Not.Contain("File.Exists("));
+        Assert.That(queueDelete, Does.Not.Contain("File.Delete("));
+
+        Assert.That(deleteHelper, Does.Contain("Task.Run(() =>"));
+        Assert.That(deleteHelper, Does.Contain("File.Exists(path)"));
+        Assert.That(deleteHelper, Does.Contain("File.Delete(path)"));
+        Assert.That(existsHelper, Does.Contain("Task.Run(() => File.Exists(path))"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
