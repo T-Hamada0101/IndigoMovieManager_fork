@@ -51,6 +51,31 @@ public sealed class ThumbnailErrorSourceTests
     }
 
     [Test]
+    public void ThumbnailErrorSnapshot要求はBottomTabなしSort28なら件数更新へ通す()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "ThumbnailError",
+            "MainWindow.BottomTab.ThumbnailError.Progress.cs"
+        );
+        string method = ExtractMethod(source, "private void RequestThumbnailErrorSnapshotRefresh()");
+
+        Assert.That(
+            method,
+            Does.Contain("bool shouldRefreshSortCountsOnly = ShouldRefreshThumbnailErrorSortCountsWithoutBottomTab();")
+        );
+        Assert.That(
+            method,
+            Does.Contain("if (!shouldRefreshSortCountsOnly)")
+        );
+        Assert.That(method, Does.Contain("Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);"));
+        Assert.That(method, Does.Contain("RefreshThumbnailErrorRecords();"));
+        Assert.That(method, Does.Contain("Interlocked.Exchange(ref _thumbnailErrorRefreshRequested, 1);"));
+        Assert.That(method, Does.Not.Contain("ReplaceThumbnailErrorRecs("));
+        Assert.That(method, Does.Not.Contain("ThumbnailErrorProgress?.Apply("));
+    }
+
+    [Test]
     public void ThumbnailErrorSnapshot反映はDB切替後着を捨てる()
     {
         string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");

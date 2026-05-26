@@ -133,8 +133,17 @@ namespace IndigoMovieManager
                 return;
             }
 
+            bool shouldRefreshSortCountsOnly = ShouldRefreshThumbnailErrorSortCountsWithoutBottomTab();
             if (!HasThumbnailErrorBottomTabHost())
             {
+                if (!shouldRefreshSortCountsOnly)
+                {
+                    return;
+                }
+
+                // 下側ERROR UIが無い構成でも、Sort=28中は件数だけ軽い集計へ通す。
+                Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);
+                RefreshThumbnailErrorRecords();
                 return;
             }
 
