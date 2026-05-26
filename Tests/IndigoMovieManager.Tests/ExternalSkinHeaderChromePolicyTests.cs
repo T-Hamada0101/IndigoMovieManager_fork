@@ -280,6 +280,11 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(refreshEndMethod, Does.Contain("includeZeroValues: true"));
             Assert.That(refreshEndMethod, Does.Contain("metricSummary"));
             Assert.That(refreshEndMethod, Does.Contain("skip_stage="));
+            Assert.That(refreshEndMethod, Does.Contain("prepare_ms="));
+            Assert.That(refreshEndMethod, Does.Contain("file_prepare_ms="));
+            Assert.That(refreshEndMethod, Does.Contain("host_navigate_ms="));
+            Assert.That(refreshEndMethod, Does.Contain("initial_doc_ms="));
+            Assert.That(refreshEndMethod, Does.Contain("navigate_to_string_ms="));
             Assert.That(refreshSource, Does.Contain("RecordSkinRefreshStaleSkipped()"));
             Assert.That(refreshSource, Does.Contain("RecordSkinRefreshTeardownSkipped()"));
             Assert.That(prepareMethod, Does.Contain("RecordSkinNavigateAttempted()"));
@@ -306,6 +311,11 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             "WhiteBrowserSkin",
             "Runtime",
             "WhiteBrowserSkinRenderCoordinator.cs"
+        );
+        string operationResultSource = GetRepoText(
+            "WhiteBrowserSkin",
+            "Runtime",
+            "WhiteBrowserSkinHostOperationResult.cs"
         );
         string prepareMethod = GetMethodBlock(
             refreshSource,
@@ -343,6 +353,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
         Assert.Multiple(() =>
         {
             Assert.That(prepareMethod, Does.Contain("await PrepareExternalSkinHostFileSystemAsync("));
+            Assert.That(prepareMethod, Does.Contain("filePrepareStopwatch"));
+            Assert.That(prepareMethod, Does.Contain("hostNavigateStopwatch"));
+            Assert.That(prepareMethod, Does.Contain("filePrepareElapsedMilliseconds"));
+            Assert.That(prepareMethod, Does.Contain("hostNavigateElapsedMilliseconds"));
             Assert.That(prepareMethod, Does.Not.Contain("File.Exists("));
             Assert.That(prepareMethod, Does.Not.Contain("Directory.CreateDirectory("));
             Assert.That(prepareMethod, Does.Contain("\"prepare-before-navigate\""));
@@ -366,6 +380,16 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(navigateMethod, Does.Not.Contain("renderCoordinator.BuildInitialDocument("));
             Assert.That(navigateMethod, Does.Contain("await ResumeOnHostDispatcherAsync()"));
             Assert.That(navigateMethod, Does.Contain("await NavigateToStringAsync(document.Html)"));
+            Assert.That(navigateMethod, Does.Contain("initialDocumentStopwatch"));
+            Assert.That(navigateMethod, Does.Contain("navigateToStringStopwatch"));
+            Assert.That(navigateMethod, Does.Contain("initialDocumentBuildElapsedMilliseconds"));
+            Assert.That(navigateMethod, Does.Contain("navigateToStringElapsedMilliseconds"));
+            Assert.That(operationResultSource, Does.Contain("PrepareElapsedMilliseconds"));
+            Assert.That(operationResultSource, Does.Contain("FilePrepareElapsedMilliseconds"));
+            Assert.That(operationResultSource, Does.Contain("HostNavigateElapsedMilliseconds"));
+            Assert.That(operationResultSource, Does.Contain("InitialDocumentBuildElapsedMilliseconds"));
+            Assert.That(operationResultSource, Does.Contain("NavigateToStringElapsedMilliseconds"));
+            Assert.That(operationResultSource, Does.Contain("WithTimings("));
             Assert.That(asyncBuildMethod, Does.Contain("Task.Run(() => BuildInitialDocument("));
         });
     }

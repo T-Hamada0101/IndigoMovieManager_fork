@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5 Worker B Round 5 で、`skin-webview refresh end` に `prepare_ms` / `file_prepare_ms` / `host_navigate_ms` / `initial_doc_ms` / `navigate_to_string_ms` を追加した。外部 skin refresh の 500〜900ms 台が host 準備、HTML/file 準備、初期 document 生成、WebView `NavigateToString` のどこで膨らんだか実機ログ 1 行から切り分ける。
 - 2026-05-27 のサブ5.5 Worker B Round 4 で、外部 skin host refresh scheduler の実行中 pending reason に batch と同じ優先度選択を適用した。`header-reload` / `fallback-notice-retry` の CatalogRefresh 要求が後続の `minimal-chrome-reload` / `dbinfo-*` で上書きされないようにし、採用された reason に対応する request trace を残す。
 - 2026-05-27 のサブ5.5 Worker B Round 3 で、外部 skin 初期タブ解決の短命 cache に `PreferredTabStateName` を含め、catalog reload / `RefreshCurrentSkinDefinition(...)` / `RefreshCurrentSkinDefinitionAsync(...)` 後に同名 skin の HTML/config 更新で preferred tab が変わった場合は再解決するようにした。`persisted` cache 優先と、preferred tab が変わらない同一 skin 連続 apply の DB read 抑制は維持する。
 - 2026-05-27 のサブ5.5 Worker B 継続で、`WhiteBrowserSkinHostControl.TryNavigateAsync(...)` から同期 `BuildInitialDocument(...)` 呼び出しを外し、`BuildInitialDocumentAsync(...)` 経由で HTML 読み込み / encoding normalize / document cache 判定を `Task.Run` 背景側へ逃がした。WebView2 attach、`HandleSkinLeaveAsync()`、`NavigateToStringAsync(...)` は UI 側に残し、document cache の path / mtime / length 意味論は維持する。

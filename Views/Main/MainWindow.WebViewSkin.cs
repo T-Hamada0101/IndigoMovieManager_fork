@@ -332,6 +332,7 @@ namespace IndigoMovieManager
             string refreshOutcome = "aborted";
             string skipStage = "";
             bool refreshEndLogged = false;
+            Stopwatch hostPrepareStopwatch = null;
 
             try
             {
@@ -371,11 +372,17 @@ namespace IndigoMovieManager
 
                     if (externalSkinActive)
                     {
+                        hostPrepareStopwatch = Stopwatch.StartNew();
                         operationResult = await PrepareExternalSkinHostPresentationAsync(
                             externalSkinDefinition,
                             generation,
                             reason,
                             requestTraceId
+                        );
+                        operationResult = operationResult?.WithTimings(
+                            prepareElapsedMilliseconds: hostPrepareStopwatch
+                                .Elapsed
+                                .TotalMilliseconds
                         );
                         if (
                             TrySkipStaleExternalSkinRefresh(
@@ -402,7 +409,12 @@ namespace IndigoMovieManager
                     operationResult = WhiteBrowserSkinHostOperationResult.CreateFailed(
                         ResolveRequestedSkinName(externalSkinDefinition),
                         ex
-                    );
+                    )
+                        .WithTimings(
+                            prepareElapsedMilliseconds: hostPrepareStopwatch
+                                ?.Elapsed
+                                .TotalMilliseconds
+                        );
                     hostReady = false;
                 }
 
@@ -504,7 +516,7 @@ namespace IndigoMovieManager
             string dbKey = ResolveExternalSkinRefreshDbKeyForTesting(MainVM?.DbInfo?.DBFullPath ?? "");
             DebugRuntimeLog.Write(
                 "skin-webview",
-                $"refresh end: request={requestTraceId} generation={generation} outcome={refreshOutcome} definition_mode={definitionRefreshMode} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={(refreshStopwatch?.Elapsed.TotalMilliseconds ?? 0):F1}{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} skip_stage={skipStage ?? ""} reason={reason}"
+                $"refresh end: request={requestTraceId} generation={generation} outcome={refreshOutcome} definition_mode={definitionRefreshMode} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={(refreshStopwatch?.Elapsed.TotalMilliseconds ?? 0):F1} prepare_ms={(operationResult?.PrepareElapsedMilliseconds ?? 0):F1} file_prepare_ms={(operationResult?.FilePrepareElapsedMilliseconds ?? 0):F1} host_navigate_ms={(operationResult?.HostNavigateElapsedMilliseconds ?? 0):F1} initial_doc_ms={(operationResult?.InitialDocumentBuildElapsedMilliseconds ?? 0):F1} navigate_to_string_ms={(operationResult?.NavigateToStringElapsedMilliseconds ?? 0):F1}{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} skip_stage={skipStage ?? ""} reason={reason}"
             );
         }
 
@@ -766,6 +778,8 @@ namespace IndigoMovieManager
         )
         {
             bool navigateAttempted = false;
+            double filePrepareMilliseconds = 0;
+            double hostNavigateMilliseconds = 0;
             try
             {
                 WhiteBrowserSkinHostControl hostControl = EnsureExternalSkinHostCreated();
@@ -818,8 +832,10 @@ namespace IndigoMovieManager
                     $"host prepare begin: request={requestTraceId} skin='{requestedSkinName}' reason={reason}"
                 );
                 string userDataFolder = ResolveExternalSkinUserDataFolder();
+                Stopwatch filePrepareStopwatch = Stopwatch.StartNew();
                 ExternalSkinHostFilePreparationResult filePreparation =
                     await PrepareExternalSkinHostFileSystemAsync(definition.HtmlPath, userDataFolder);
+                filePrepareMilliseconds = filePrepareStopwatch.Elapsed.TotalMilliseconds;
                 if (!filePreparation.HtmlExists)
                 {
                     DebugRuntimeLog.RecordSkinNavigateSkipped();
@@ -830,7 +846,8 @@ namespace IndigoMovieManager
                     return WhiteBrowserSkinHostOperationResult.CreateMissingHtml(
                         requestedSkinName,
                         definition.HtmlPath
-                    );
+                    )
+                        .WithTimings(filePrepareElapsedMilliseconds: filePrepareMilliseconds);
                 }
 
                 if (
@@ -845,7 +862,8 @@ namespace IndigoMovieManager
                     return WhiteBrowserSkinHostOperationResult.CreateSkipped(
                         ResolveRequestedSkinName(definition),
                         "Refresh became stale before navigate."
-                    );
+                    )
+                        .WithTimings(filePrepareElapsedMilliseconds: filePrepareMilliseconds);
                 }
 
                 string skinRootPath = ResolveExternalSkinRootPath();
@@ -853,6 +871,7 @@ namespace IndigoMovieManager
 
                 DebugRuntimeLog.RecordSkinNavigateAttempted();
                 navigateAttempted = true;
+                Stopwatch hostNavigateStopwatch = Stopwatch.StartNew();
                 WhiteBrowserSkinHostOperationResult navigateResult = await hostControl.TryNavigateAsync(
                     requestedSkinName,
                     filePreparation.UserDataFolder,
@@ -860,6 +879,7 @@ namespace IndigoMovieManager
                     definition.HtmlPath,
                     thumbRootPath
                 );
+                hostNavigateMilliseconds = hostNavigateStopwatch.Elapsed.TotalMilliseconds;
                 if (navigateResult?.Succeeded == true)
                 {
                     DebugRuntimeLog.RecordSkinNavigateSucceeded();
@@ -869,8 +889,14 @@ namespace IndigoMovieManager
                     DebugRuntimeLog.RecordSkinNavigateFailed();
                 }
 
+                WhiteBrowserSkinHostOperationResult timedNavigateResult =
+                    (navigateResult ?? WhiteBrowserSkinHostOperationResult.CreateSuccess(requestedSkinName))
+                        .WithTimings(
+                            filePrepareElapsedMilliseconds: filePrepareMilliseconds,
+                            hostNavigateElapsedMilliseconds: hostNavigateMilliseconds
+                        );
                 return EvaluateExternalSkinHostOperationResult(
-                    navigateResult,
+                    timedNavigateResult,
                     reason,
                     requestTraceId
                 );
@@ -888,7 +914,11 @@ namespace IndigoMovieManager
                 return WhiteBrowserSkinHostOperationResult.CreateFailed(
                     ResolveRequestedSkinName(definition),
                     ex
-                );
+                )
+                    .WithTimings(
+                        filePrepareElapsedMilliseconds: filePrepareMilliseconds,
+                        hostNavigateElapsedMilliseconds: hostNavigateMilliseconds
+                    );
             }
         }
 

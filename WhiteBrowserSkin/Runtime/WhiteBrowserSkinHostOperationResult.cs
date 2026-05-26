@@ -11,7 +11,12 @@ namespace IndigoMovieManager.Skin.Runtime
             bool runtimeAvailable,
             string requestedSkinName,
             string errorMessage,
-            string errorType
+            string errorType,
+            double prepareElapsedMilliseconds = 0,
+            double filePrepareElapsedMilliseconds = 0,
+            double hostNavigateElapsedMilliseconds = 0,
+            double initialDocumentBuildElapsedMilliseconds = 0,
+            double navigateToStringElapsedMilliseconds = 0
         )
         {
             Succeeded = succeeded;
@@ -19,6 +24,15 @@ namespace IndigoMovieManager.Skin.Runtime
             RequestedSkinName = requestedSkinName ?? "";
             ErrorMessage = errorMessage ?? "";
             ErrorType = errorType ?? "";
+            PrepareElapsedMilliseconds = SanitizeElapsedMilliseconds(prepareElapsedMilliseconds);
+            FilePrepareElapsedMilliseconds = SanitizeElapsedMilliseconds(filePrepareElapsedMilliseconds);
+            HostNavigateElapsedMilliseconds = SanitizeElapsedMilliseconds(hostNavigateElapsedMilliseconds);
+            InitialDocumentBuildElapsedMilliseconds = SanitizeElapsedMilliseconds(
+                initialDocumentBuildElapsedMilliseconds
+            );
+            NavigateToStringElapsedMilliseconds = SanitizeElapsedMilliseconds(
+                navigateToStringElapsedMilliseconds
+            );
         }
 
         public bool Succeeded { get; }
@@ -26,6 +40,33 @@ namespace IndigoMovieManager.Skin.Runtime
         public string RequestedSkinName { get; }
         public string ErrorMessage { get; }
         public string ErrorType { get; }
+        public double PrepareElapsedMilliseconds { get; }
+        public double FilePrepareElapsedMilliseconds { get; }
+        public double HostNavigateElapsedMilliseconds { get; }
+        public double InitialDocumentBuildElapsedMilliseconds { get; }
+        public double NavigateToStringElapsedMilliseconds { get; }
+
+        public WhiteBrowserSkinHostOperationResult WithTimings(
+            double? prepareElapsedMilliseconds = null,
+            double? filePrepareElapsedMilliseconds = null,
+            double? hostNavigateElapsedMilliseconds = null,
+            double? initialDocumentBuildElapsedMilliseconds = null,
+            double? navigateToStringElapsedMilliseconds = null
+        )
+        {
+            return new WhiteBrowserSkinHostOperationResult(
+                Succeeded,
+                RuntimeAvailable,
+                RequestedSkinName,
+                ErrorMessage,
+                ErrorType,
+                prepareElapsedMilliseconds ?? PrepareElapsedMilliseconds,
+                filePrepareElapsedMilliseconds ?? FilePrepareElapsedMilliseconds,
+                hostNavigateElapsedMilliseconds ?? HostNavigateElapsedMilliseconds,
+                initialDocumentBuildElapsedMilliseconds ?? InitialDocumentBuildElapsedMilliseconds,
+                navigateToStringElapsedMilliseconds ?? NavigateToStringElapsedMilliseconds
+            );
+        }
 
         public static WhiteBrowserSkinHostOperationResult CreateSuccess(string requestedSkinName)
         {
@@ -105,6 +146,16 @@ namespace IndigoMovieManager.Skin.Runtime
                 exception?.Message ?? "",
                 exception?.GetType().Name ?? ""
             );
+        }
+
+        private static double SanitizeElapsedMilliseconds(double elapsedMilliseconds)
+        {
+            if (double.IsNaN(elapsedMilliseconds) || double.IsInfinity(elapsedMilliseconds))
+            {
+                return 0;
+            }
+
+            return Math.Max(0, elapsedMilliseconds);
         }
     }
 }

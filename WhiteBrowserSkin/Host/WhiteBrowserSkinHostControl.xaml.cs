@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows.Controls;
 using IndigoMovieManager.Skin.Runtime;
 using Microsoft.Web.WebView2.Core;
@@ -53,12 +54,20 @@ namespace IndigoMovieManager.Skin.Host
             string thumbRootPath
         )
         {
+            Stopwatch hostNavigateStopwatch = Stopwatch.StartNew();
+            double initialDocumentBuildMilliseconds = 0;
+            double navigateToStringMilliseconds = 0;
             if (disposed)
             {
                 return WhiteBrowserSkinHostOperationResult.CreateSkipped(
                     requestedSkinName ?? "",
                     "External skin host is already disposed."
-                );
+                )
+                    .WithTimings(
+                        hostNavigateElapsedMilliseconds: hostNavigateStopwatch
+                            .Elapsed
+                            .TotalMilliseconds
+                    );
             }
 
             WhiteBrowserSkinHostOperationResult attachResult = await runtimeBridge.TryEnsureAttachedAsync(
@@ -70,26 +79,43 @@ namespace IndigoMovieManager.Skin.Host
             );
             if (!attachResult.Succeeded)
             {
-                return attachResult;
+                return attachResult.WithTimings(
+                    hostNavigateElapsedMilliseconds: hostNavigateStopwatch.Elapsed.TotalMilliseconds
+                );
             }
 
             // 旧ページの終了 callback を先に返してから、新しい skin を流し込む。
             await runtimeBridge.HandleSkinLeaveAsync();
+            Stopwatch initialDocumentStopwatch = Stopwatch.StartNew();
             WhiteBrowserSkinRenderDocument document = await renderCoordinator.BuildInitialDocumentAsync(
                 skinRootPath,
                 skinHtmlPath
             );
+            initialDocumentBuildMilliseconds = initialDocumentStopwatch.Elapsed.TotalMilliseconds;
             await ResumeOnHostDispatcherAsync();
             if (disposed)
             {
                 return WhiteBrowserSkinHostOperationResult.CreateSkipped(
                     requestedSkinName ?? "",
                     "External skin host is already disposed."
-                );
+                )
+                    .WithTimings(
+                        hostNavigateElapsedMilliseconds: hostNavigateStopwatch
+                            .Elapsed
+                            .TotalMilliseconds,
+                        initialDocumentBuildElapsedMilliseconds: initialDocumentBuildMilliseconds
+                    );
             }
 
+            Stopwatch navigateToStringStopwatch = Stopwatch.StartNew();
             await NavigateToStringAsync(document.Html);
-            return WhiteBrowserSkinHostOperationResult.CreateSuccess(requestedSkinName);
+            navigateToStringMilliseconds = navigateToStringStopwatch.Elapsed.TotalMilliseconds;
+            return WhiteBrowserSkinHostOperationResult.CreateSuccess(requestedSkinName)
+                .WithTimings(
+                    hostNavigateElapsedMilliseconds: hostNavigateStopwatch.Elapsed.TotalMilliseconds,
+                    initialDocumentBuildElapsedMilliseconds: initialDocumentBuildMilliseconds,
+                    navigateToStringElapsedMilliseconds: navigateToStringMilliseconds
+                );
         }
 
         public void Clear()
