@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,6 +29,7 @@ namespace IndigoMovieManager
         private string _debugCurrentDbRecordCountPath = "";
         private string _debugCurrentQueueDbRecordCountPath = "";
         private string _debugCurrentFailureDbRecordCountPath = "";
+        private int _debugExplorerOpenRequestRevision;
 
         private void InitializeDebugTabSupport()
         {
@@ -1012,46 +1014,53 @@ namespace IndigoMovieManager
             _debugCurrentFailureDbRecordCountPath = "";
         }
 
-        private void OpenDebugPathInExplorer(string path, bool preferSelectFile)
+        private async void OpenDebugPathInExplorer(string path, bool preferSelectFile)
         {
-            if (string.IsNullOrWhiteSpace(path))
+            string pathSnapshot = path?.Trim() ?? "";
+            bool preferSelectFileSnapshot = preferSelectFile;
+            if (string.IsNullOrWhiteSpace(pathSnapshot))
             {
                 ShowDebugPathMissingMessage("対象パスがありません。");
                 return;
             }
 
+            int requestRevision = Interlocked.Increment(ref _debugExplorerOpenRequestRevision);
             try
             {
-                if (preferSelectFile && File.Exists(path))
+                DebugExplorerOpenPlan plan = await Task.Run(() =>
+                        ResolveDebugExplorerOpenPlan(pathSnapshot, preferSelectFileSnapshot)
+                    )
+                    .ConfigureAwait(true);
+
+                if (!IsDebugExplorerOpenRequestCurrent(requestRevision))
                 {
-                    Process.Start("explorer.exe", $"/select,\"{path}\"");
+                    DebugRuntimeLog.Write(
+                        "debug-ui",
+                        $"debug explorer open skipped: stale_or_shutdown revision={requestRevision} path='{pathSnapshot}'"
+                    );
                     return;
                 }
 
-                if (Directory.Exists(path))
+                if (plan.HasExplorerArguments)
                 {
-                    Process.Start("explorer.exe", $"\"{path}\"");
+                    Process.Start("explorer.exe", plan.ExplorerArguments);
                     return;
                 }
 
-                string parentDir = Path.GetDirectoryName(path) ?? "";
-                if (Directory.Exists(parentDir))
-                {
-                    if (preferSelectFile)
-                    {
-                        Process.Start("explorer.exe", $"/select,\"{path}\"");
-                    }
-                    else
-                    {
-                        Process.Start("explorer.exe", $"\"{parentDir}\"");
-                    }
-                    return;
-                }
-
-                ShowDebugPathMissingMessage($"パスが存在しません。\n{path}");
+                ShowDebugPathMissingMessage(plan.MissingMessage);
             }
             catch (Exception ex)
             {
+                DebugRuntimeLog.Write(
+                    "debug-ui",
+                    $"debug explorer open failed: path='{pathSnapshot}' err='{ex.GetType().Name}: {ex.Message}'"
+                );
+
+                if (!IsDebugExplorerOpenRequestCurrent(requestRevision))
+                {
+                    return;
+                }
+
                 MessageBox.Show(
                     this,
                     $"Explorer起動に失敗しました。\n{ex.Message}",
@@ -1059,6 +1068,66 @@ namespace IndigoMovieManager
                     MessageBoxButton.OK,
                     MessageBoxImage.Error
                 );
+            }
+        }
+
+        private static DebugExplorerOpenPlan ResolveDebugExplorerOpenPlan(
+            string path,
+            bool preferSelectFile
+        )
+        {
+            // Explorerへ渡す形の判断だけを背景側で済ませ、UIスレッドには起動結果だけを戻す。
+            if (preferSelectFile && File.Exists(path))
+            {
+                return DebugExplorerOpenPlan.Open($"/select,\"{path}\"");
+            }
+
+            if (Directory.Exists(path))
+            {
+                return DebugExplorerOpenPlan.Open($"\"{path}\"");
+            }
+
+            string parentDir = Path.GetDirectoryName(path) ?? "";
+            if (Directory.Exists(parentDir))
+            {
+                return preferSelectFile
+                    ? DebugExplorerOpenPlan.Open($"/select,\"{path}\"")
+                    : DebugExplorerOpenPlan.Open($"\"{parentDir}\"");
+            }
+
+            return DebugExplorerOpenPlan.Missing($"パスが存在しません。\n{path}");
+        }
+
+        private bool IsDebugExplorerOpenRequestCurrent(int requestRevision)
+        {
+            return requestRevision == Volatile.Read(ref _debugExplorerOpenRequestRevision)
+                && Dispatcher != null
+                && !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished;
+        }
+
+        private readonly struct DebugExplorerOpenPlan
+        {
+            private DebugExplorerOpenPlan(string explorerArguments, string missingMessage)
+            {
+                ExplorerArguments = explorerArguments;
+                MissingMessage = missingMessage;
+            }
+
+            public string ExplorerArguments { get; }
+
+            public string MissingMessage { get; }
+
+            public bool HasExplorerArguments => !string.IsNullOrWhiteSpace(ExplorerArguments);
+
+            public static DebugExplorerOpenPlan Open(string explorerArguments)
+            {
+                return new DebugExplorerOpenPlan(explorerArguments, "");
+            }
+
+            public static DebugExplorerOpenPlan Missing(string missingMessage)
+            {
+                return new DebugExplorerOpenPlan("", missingMessage);
             }
         }
 

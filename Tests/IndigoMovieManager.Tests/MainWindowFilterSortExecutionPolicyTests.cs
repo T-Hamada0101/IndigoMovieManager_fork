@@ -253,6 +253,38 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
     }
 
+    [Test]
+    public void DebugExplorer起動前の存在確認は背景helperへ逃がす()
+    {
+        string debugSource = GetRepoText(
+            "BottomTabs",
+            "DebugTab",
+            "MainWindow.BottomTab.Debug.cs"
+        );
+        string openMethod = GetMethodBlock(
+            debugSource,
+            "private async void OpenDebugPathInExplorer("
+        );
+        string resolveMethod = GetMethodBlock(
+            debugSource,
+            "private static DebugExplorerOpenPlan ResolveDebugExplorerOpenPlan("
+        );
+
+        Assert.That(openMethod, Does.Contain("string pathSnapshot = path?.Trim() ?? \"\";"));
+        Assert.That(openMethod, Does.Contain("Interlocked.Increment(ref _debugExplorerOpenRequestRevision);"));
+        Assert.That(openMethod, Does.Contain("await Task.Run(() =>"));
+        Assert.That(openMethod, Does.Contain("ResolveDebugExplorerOpenPlan(pathSnapshot, preferSelectFileSnapshot)"));
+        Assert.That(openMethod, Does.Contain("IsDebugExplorerOpenRequestCurrent(requestRevision)"));
+        Assert.That(openMethod, Does.Contain("Process.Start(\"explorer.exe\", plan.ExplorerArguments);"));
+        Assert.That(openMethod, Does.Contain("ShowDebugPathMissingMessage(plan.MissingMessage);"));
+        Assert.That(openMethod, Does.Contain("debug explorer open failed:"));
+        Assert.That(openMethod, Does.Not.Contain("File.Exists("));
+        Assert.That(openMethod, Does.Not.Contain("Directory.Exists("));
+        Assert.That(resolveMethod, Does.Contain("File.Exists(path)"));
+        Assert.That(resolveMethod, Does.Contain("Directory.Exists(path)"));
+        Assert.That(resolveMethod, Does.Contain("Directory.Exists(parentDir)"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
