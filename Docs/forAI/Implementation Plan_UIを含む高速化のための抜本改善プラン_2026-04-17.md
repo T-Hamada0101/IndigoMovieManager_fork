@@ -15,6 +15,7 @@
 - 2026-05-26 のサブ5.5追加で、Player 通常再生入口の `Path.Exists(mv.Movie_Path)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、存在確認中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-27 のサブ5.5追加で、Player タブ表示/切替入口の `Path.Exists(movie.Movie_Path)` も path snapshot 後の `Task.Run` helper へ逃がし、存在しない時は `user-priority` を開始せず戻る形にした。
 - 2026-05-26 のサブ5.5追加で、Debug タブの「現在サムネイルを削除」に残っていた `Directory.Exists` / `Directory.Delete(..., true)` を `Task.Run` へ逃がし、削除中も UI スレッドの入力/描画を塞ぎにくくした。
+- 2026-05-27 のサブ5.5追加で、Debug タブの現在DB / QueueDB / FailureDB レコード件数取得に残っていた `File.Exists` と SQLite read を path snapshot 後の `Task.Run` helper へ逃がし、revision / path / shutdown guard 後に結果だけ UI へ戻す形にした。
 - 2026-05-26 のサブ5.5追加で、起動 fallback と段階ロード中 sort 変更の `FilterAndSort(..., true)` は DB 正本復旧・全件順序復旧の許容 fallback として分類し、Debug タブのサムネイル全削除後 `FilterAndSort(..., true)` は表示モデルのサムネパスクリア、visible refresh、進捗/ERROR snapshot 予約へ置き換えた。
 - 2026-05-26 のサブ5.5で、外部 skin API の sort は通常時 `SortDataAsync(...)` を await する経路へ寄せ、`FilterAndSort(resolvedSortId, true)` の全件 reload fallback を通常経路から外した。起動 partial feed 中だけは全件順序の正しさを守るため `partial-feed-needs-complete-source` として分類ログを残し、startup feed をキャンセルしてから正規の後着キャンセル付き reload へ戻す。
 - 2026-05-26 のサブ5.5で、Bookmark タブの `Items.Refresh()` は `ObservableCollection` 通知へ任せる形で撤去し、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけへ絞った。

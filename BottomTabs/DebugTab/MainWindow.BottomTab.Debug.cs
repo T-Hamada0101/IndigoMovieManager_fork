@@ -29,6 +29,9 @@ namespace IndigoMovieManager
         private string _debugCurrentDbRecordCountPath = "";
         private string _debugCurrentQueueDbRecordCountPath = "";
         private string _debugCurrentFailureDbRecordCountPath = "";
+        private int _debugCurrentDbRecordCountRevision;
+        private int _debugCurrentQueueDbRecordCountRevision;
+        private int _debugCurrentFailureDbRecordCountRevision;
         private int _debugExplorerOpenRequestRevision;
 
         private void InitializeDebugTabSupport()
@@ -296,9 +299,10 @@ namespace IndigoMovieManager
             RefreshDebugCurrentFailureDbRecordCount(ResolveCurrentFailureDbPathForDebug(), force);
         }
 
-        private void RefreshDebugCurrentDbRecordCount(string dbPath, bool force)
+        private async void RefreshDebugCurrentDbRecordCount(string dbPath, bool force)
         {
-            if (DebugTabViewHost?.CurrentDbRecordCountTextBlock == null)
+            TextBlock recordCountTextBlock = DebugTabViewHost?.CurrentDbRecordCountTextBlock;
+            if (recordCountTextBlock == null)
             {
                 return;
             }
@@ -315,16 +319,48 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _debugCurrentDbRecordCountPath = dbPath ?? "";
-            SetTextIfChanged(
-                DebugTabViewHost.CurrentDbRecordCountTextBlock,
-                BuildDebugCurrentDbRecordCountText(dbPath)
-            );
+            // UI側では要求の同一性だけを固定し、実ファイル確認とSQLite readは背景側へ逃がす。
+            string dbPathSnapshot = dbPath ?? "";
+            _debugCurrentDbRecordCountPath = dbPathSnapshot;
+            int requestRevision = Interlocked.Increment(ref _debugCurrentDbRecordCountRevision);
+
+            try
+            {
+                string text = await BuildDebugCurrentDbRecordCountTextAsync(dbPathSnapshot)
+                    .ConfigureAwait(true);
+
+                if (!IsDebugCurrentDbRecordCountRequestCurrent(requestRevision, dbPathSnapshot))
+                {
+                    DebugRuntimeLog.Write(
+                        "debug-ui",
+                        $"debug record count skipped: target=main revision={requestRevision} path='{dbPathSnapshot}'"
+                    );
+                    return;
+                }
+
+                SetTextIfChanged(recordCountTextBlock, text);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "debug-ui",
+                    $"debug record count failed: target=main path='{dbPathSnapshot}' err='{ex.GetType().Name}: {ex.Message}'"
+                );
+
+                if (IsDebugCurrentDbRecordCountRequestCurrent(requestRevision, dbPathSnapshot))
+                {
+                    SetTextIfChanged(
+                        recordCountTextBlock,
+                        $"レコード数: 取得失敗 ({ex.Message})"
+                    );
+                }
+            }
         }
 
-        private void RefreshDebugCurrentQueueDbRecordCount(string queueDbPath, bool force)
+        private async void RefreshDebugCurrentQueueDbRecordCount(string queueDbPath, bool force)
         {
-            if (DebugTabViewHost?.CurrentQueueDbRecordCountTextBlock == null)
+            TextBlock recordCountTextBlock = DebugTabViewHost?.CurrentQueueDbRecordCountTextBlock;
+            if (recordCountTextBlock == null)
             {
                 return;
             }
@@ -341,16 +377,48 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _debugCurrentQueueDbRecordCountPath = queueDbPath ?? "";
-            SetTextIfChanged(
-                DebugTabViewHost.CurrentQueueDbRecordCountTextBlock,
-                BuildDebugCurrentQueueDbRecordCountText(queueDbPath)
-            );
+            // UI側では要求の同一性だけを固定し、実ファイル確認とSQLite readは背景側へ逃がす。
+            string queueDbPathSnapshot = queueDbPath ?? "";
+            _debugCurrentQueueDbRecordCountPath = queueDbPathSnapshot;
+            int requestRevision = Interlocked.Increment(ref _debugCurrentQueueDbRecordCountRevision);
+
+            try
+            {
+                string text = await BuildDebugCurrentQueueDbRecordCountTextAsync(queueDbPathSnapshot)
+                    .ConfigureAwait(true);
+
+                if (!IsDebugCurrentQueueDbRecordCountRequestCurrent(requestRevision, queueDbPathSnapshot))
+                {
+                    DebugRuntimeLog.Write(
+                        "debug-ui",
+                        $"debug record count skipped: target=queue revision={requestRevision} path='{queueDbPathSnapshot}'"
+                    );
+                    return;
+                }
+
+                SetTextIfChanged(recordCountTextBlock, text);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "debug-ui",
+                    $"debug record count failed: target=queue path='{queueDbPathSnapshot}' err='{ex.GetType().Name}: {ex.Message}'"
+                );
+
+                if (IsDebugCurrentQueueDbRecordCountRequestCurrent(requestRevision, queueDbPathSnapshot))
+                {
+                    SetTextIfChanged(
+                        recordCountTextBlock,
+                        $"レコード数: 取得失敗 ({ex.Message})"
+                    );
+                }
+            }
         }
 
-        private void RefreshDebugCurrentFailureDbRecordCount(string failureDbPath, bool force)
+        private async void RefreshDebugCurrentFailureDbRecordCount(string failureDbPath, bool force)
         {
-            if (DebugTabViewHost?.CurrentFailureDbRecordCountTextBlock == null)
+            TextBlock recordCountTextBlock = DebugTabViewHost?.CurrentFailureDbRecordCountTextBlock;
+            if (recordCountTextBlock == null)
             {
                 return;
             }
@@ -367,11 +435,104 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _debugCurrentFailureDbRecordCountPath = failureDbPath ?? "";
-            SetTextIfChanged(
-                DebugTabViewHost.CurrentFailureDbRecordCountTextBlock,
-                BuildDebugCurrentFailureDbRecordCountText(failureDbPath)
-            );
+            // UI側では要求の同一性だけを固定し、実ファイル確認とSQLite readは背景側へ逃がす。
+            string failureDbPathSnapshot = failureDbPath ?? "";
+            _debugCurrentFailureDbRecordCountPath = failureDbPathSnapshot;
+            int requestRevision = Interlocked.Increment(ref _debugCurrentFailureDbRecordCountRevision);
+
+            try
+            {
+                string text = await BuildDebugCurrentFailureDbRecordCountTextAsync(failureDbPathSnapshot)
+                    .ConfigureAwait(true);
+
+                if (!IsDebugCurrentFailureDbRecordCountRequestCurrent(requestRevision, failureDbPathSnapshot))
+                {
+                    DebugRuntimeLog.Write(
+                        "debug-ui",
+                        $"debug record count skipped: target=failure revision={requestRevision} path='{failureDbPathSnapshot}'"
+                    );
+                    return;
+                }
+
+                SetTextIfChanged(recordCountTextBlock, text);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "debug-ui",
+                    $"debug record count failed: target=failure path='{failureDbPathSnapshot}' err='{ex.GetType().Name}: {ex.Message}'"
+                );
+
+                if (IsDebugCurrentFailureDbRecordCountRequestCurrent(requestRevision, failureDbPathSnapshot))
+                {
+                    SetTextIfChanged(
+                        recordCountTextBlock,
+                        $"レコード数: 取得失敗 ({ex.Message})"
+                    );
+                }
+            }
+        }
+
+        private static Task<string> BuildDebugCurrentDbRecordCountTextAsync(string dbPath)
+        {
+            return Task.Run(() => BuildDebugCurrentDbRecordCountText(dbPath));
+        }
+
+        private static Task<string> BuildDebugCurrentQueueDbRecordCountTextAsync(string queueDbPath)
+        {
+            return Task.Run(() => BuildDebugCurrentQueueDbRecordCountText(queueDbPath));
+        }
+
+        private static Task<string> BuildDebugCurrentFailureDbRecordCountTextAsync(string failureDbPath)
+        {
+            return Task.Run(() => BuildDebugCurrentFailureDbRecordCountText(failureDbPath));
+        }
+
+        private bool IsDebugCurrentDbRecordCountRequestCurrent(int requestRevision, string dbPath)
+        {
+            return IsDebugRecordCountUiAvailable()
+                && requestRevision == Volatile.Read(ref _debugCurrentDbRecordCountRevision)
+                && string.Equals(
+                    _debugCurrentDbRecordCountPath,
+                    dbPath ?? "",
+                    StringComparison.OrdinalIgnoreCase
+                );
+        }
+
+        private bool IsDebugCurrentQueueDbRecordCountRequestCurrent(
+            int requestRevision,
+            string queueDbPath
+        )
+        {
+            return IsDebugRecordCountUiAvailable()
+                && requestRevision == Volatile.Read(ref _debugCurrentQueueDbRecordCountRevision)
+                && string.Equals(
+                    _debugCurrentQueueDbRecordCountPath,
+                    queueDbPath ?? "",
+                    StringComparison.OrdinalIgnoreCase
+                );
+        }
+
+        private bool IsDebugCurrentFailureDbRecordCountRequestCurrent(
+            int requestRevision,
+            string failureDbPath
+        )
+        {
+            return IsDebugRecordCountUiAvailable()
+                && requestRevision == Volatile.Read(ref _debugCurrentFailureDbRecordCountRevision)
+                && string.Equals(
+                    _debugCurrentFailureDbRecordCountPath,
+                    failureDbPath ?? "",
+                    StringComparison.OrdinalIgnoreCase
+                );
+        }
+
+        private bool IsDebugRecordCountUiAvailable()
+        {
+            return IsDebugTabActive()
+                && Dispatcher != null
+                && !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished;
         }
 
         private static string BuildDebugCurrentDbRecordCountText(string dbPath)

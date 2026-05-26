@@ -285,6 +285,65 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(resolveMethod, Does.Contain("Directory.Exists(parentDir)"));
     }
 
+    [Test]
+    public void Debugタブのレコード件数取得は背景helperへ逃がす()
+    {
+        string debugSource = GetRepoText(
+            "BottomTabs",
+            "DebugTab",
+            "MainWindow.BottomTab.Debug.cs"
+        );
+        string mainRefresh = GetMethodBlock(
+            debugSource,
+            "private async void RefreshDebugCurrentDbRecordCount("
+        );
+        string queueRefresh = GetMethodBlock(
+            debugSource,
+            "private async void RefreshDebugCurrentQueueDbRecordCount("
+        );
+        string failureRefresh = GetMethodBlock(
+            debugSource,
+            "private async void RefreshDebugCurrentFailureDbRecordCount("
+        );
+        string mainAsync = GetMethodBlock(
+            debugSource,
+            "private static Task<string> BuildDebugCurrentDbRecordCountTextAsync("
+        );
+        string queueAsync = GetMethodBlock(
+            debugSource,
+            "private static Task<string> BuildDebugCurrentQueueDbRecordCountTextAsync("
+        );
+        string failureAsync = GetMethodBlock(
+            debugSource,
+            "private static Task<string> BuildDebugCurrentFailureDbRecordCountTextAsync("
+        );
+
+        Assert.That(mainRefresh, Does.Contain("string dbPathSnapshot = dbPath ?? \"\";"));
+        Assert.That(queueRefresh, Does.Contain("string queueDbPathSnapshot = queueDbPath ?? \"\";"));
+        Assert.That(failureRefresh, Does.Contain("string failureDbPathSnapshot = failureDbPath ?? \"\";"));
+        Assert.That(mainRefresh, Does.Contain("Interlocked.Increment(ref _debugCurrentDbRecordCountRevision);"));
+        Assert.That(queueRefresh, Does.Contain("Interlocked.Increment(ref _debugCurrentQueueDbRecordCountRevision);"));
+        Assert.That(failureRefresh, Does.Contain("Interlocked.Increment(ref _debugCurrentFailureDbRecordCountRevision);"));
+        Assert.That(mainRefresh, Does.Contain("await BuildDebugCurrentDbRecordCountTextAsync(dbPathSnapshot)"));
+        Assert.That(queueRefresh, Does.Contain("await BuildDebugCurrentQueueDbRecordCountTextAsync(queueDbPathSnapshot)"));
+        Assert.That(failureRefresh, Does.Contain("await BuildDebugCurrentFailureDbRecordCountTextAsync(failureDbPathSnapshot)"));
+        Assert.That(mainRefresh, Does.Contain("IsDebugCurrentDbRecordCountRequestCurrent(requestRevision, dbPathSnapshot)"));
+        Assert.That(queueRefresh, Does.Contain("IsDebugCurrentQueueDbRecordCountRequestCurrent(requestRevision, queueDbPathSnapshot)"));
+        Assert.That(failureRefresh, Does.Contain("IsDebugCurrentFailureDbRecordCountRequestCurrent(requestRevision, failureDbPathSnapshot)"));
+        Assert.That(debugSource, Does.Contain("private bool IsDebugRecordCountUiAvailable()"));
+        Assert.That(debugSource, Does.Contain("Dispatcher.HasShutdownStarted"));
+        Assert.That(debugSource, Does.Contain("Dispatcher.HasShutdownFinished"));
+        Assert.That(mainRefresh, Does.Not.Contain("File.Exists("));
+        Assert.That(queueRefresh, Does.Not.Contain("File.Exists("));
+        Assert.That(failureRefresh, Does.Not.Contain("File.Exists("));
+        Assert.That(mainRefresh, Does.Not.Contain("CreateReadOnlyConnection("));
+        Assert.That(queueRefresh, Does.Not.Contain("new SQLiteConnection("));
+        Assert.That(failureRefresh, Does.Not.Contain("new SQLiteConnection("));
+        Assert.That(mainAsync, Does.Contain("Task.Run(() => BuildDebugCurrentDbRecordCountText(dbPath))"));
+        Assert.That(queueAsync, Does.Contain("Task.Run(() => BuildDebugCurrentQueueDbRecordCountText(queueDbPath))"));
+        Assert.That(failureAsync, Does.Contain("Task.Run(() => BuildDebugCurrentFailureDbRecordCountText(failureDbPath))"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
