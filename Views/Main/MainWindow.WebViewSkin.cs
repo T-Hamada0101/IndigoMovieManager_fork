@@ -299,7 +299,8 @@ namespace IndigoMovieManager
                         $"refresh drain failed: err='{ex.GetType().Name}: {ex.Message}'"
                     );
                     ApplyExternalSkinFallbackPresentation();
-                }
+                },
+                SelectPreferredExternalSkinHostRefreshReason
             );
         }
 

@@ -143,6 +143,72 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
         });
     }
 
+    [Test]
+    public async Task Queue_実行中pendingではCatalogRefresh理由とtraceを軽い要求で潰さない()
+    {
+        RefreshSerializationResult result = await RunOnStaDispatcherAsync(async () =>
+        {
+            List<(int Generation, string Reason, string Request)> invocations = [];
+            TaskCompletionSource<bool> firstStarted = new(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+            TaskCompletionSource<bool> releaseFirst = new(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+            TaskCompletionSource<bool> secondCompleted = new(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+
+            ExternalSkinHostRefreshScheduler scheduler = new(
+                Dispatcher.CurrentDispatcher,
+                async (generation, reason, requestTraceId) =>
+                {
+                    invocations.Add((generation, reason, requestTraceId));
+
+                    if (invocations.Count == 1)
+                    {
+                        firstStarted.TrySetResult(true);
+                        await releaseFirst.Task;
+                    }
+
+                    if (invocations.Count == 2)
+                    {
+                        secondCompleted.TrySetResult(true);
+                    }
+                },
+                ex => throw new AssertionException($"refresh drain failed: {ex.Message}"),
+                SelectPreferredReasonForTest
+            );
+
+            scheduler.Queue("window-loaded", "rq0201");
+            await WaitAsync(firstStarted.Task, TimeSpan.FromSeconds(5), "最初の refresh が始まりませんでした。");
+
+            scheduler.Queue("header-reload", "rq0202");
+            scheduler.Queue("minimal-chrome-reload", "rq0203");
+            releaseFirst.TrySetResult(true);
+
+            await WaitAsync(
+                secondCompleted.Task,
+                TimeSpan.FromSeconds(5),
+                "優先 reason の 2 回目 refresh が完了しませんでした。"
+            );
+
+            return new RefreshSerializationResult(
+                1,
+                invocations.ToArray(),
+                scheduler.CurrentGeneration
+            );
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Invocations, Has.Length.EqualTo(2));
+            Assert.That(result.Invocations[0], Is.EqualTo((1, "window-loaded", "rq0201")));
+            Assert.That(result.Invocations[1], Is.EqualTo((3, "header-reload", "rq0202")));
+            Assert.That(result.FinalGeneration, Is.EqualTo(3));
+        });
+    }
+
     private static async Task WaitAsync(Task task, TimeSpan timeout, string timeoutMessage)
     {
         Task completedTask = await Task.WhenAny(task, Task.Delay(timeout));
@@ -190,6 +256,31 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return completion.Task;
+    }
+
+    private static string SelectPreferredReasonForTest(string currentReason, string candidateReason)
+    {
+        if (string.IsNullOrWhiteSpace(candidateReason))
+        {
+            return currentReason ?? "";
+        }
+
+        return GetReasonPriority(candidateReason) >= GetReasonPriority(currentReason)
+            ? candidateReason
+            : currentReason ?? "";
+    }
+
+    private static int GetReasonPriority(string reason)
+    {
+        return reason switch
+        {
+            "header-reload" or "fallback-notice-retry" => 400,
+            "dbinfo-DBFullPath" => 300,
+            "dbinfo-Skin" => 200,
+            "dbinfo-ThumbFolder" => 100,
+            "minimal-chrome-reload" => 50,
+            _ => 0,
+        };
     }
 
     private sealed record RefreshSerializationResult(

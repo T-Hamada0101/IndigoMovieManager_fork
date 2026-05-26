@@ -13,6 +13,7 @@ namespace IndigoMovieManager
         private readonly Dispatcher dispatcher;
         private readonly Func<int, string, string, Task> refreshAsync;
         private readonly Action<Exception> onDrainFailed;
+        private readonly Func<string, string, string> selectPreferredReason;
         private bool isRefreshRunning;
         private bool isRefreshPending;
         private int currentGeneration;
@@ -22,12 +23,14 @@ namespace IndigoMovieManager
         internal ExternalSkinHostRefreshScheduler(
             Dispatcher dispatcher,
             Func<int, string, string, Task> refreshAsync,
-            Action<Exception> onDrainFailed
+            Action<Exception> onDrainFailed,
+            Func<string, string, string> selectPreferredReason = null
         )
         {
             this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
             this.refreshAsync = refreshAsync ?? throw new ArgumentNullException(nameof(refreshAsync));
             this.onDrainFailed = onDrainFailed ?? (_ => { });
+            this.selectPreferredReason = selectPreferredReason ?? SelectLatestReason;
         }
 
         internal int CurrentGeneration => currentGeneration;
@@ -41,9 +44,24 @@ namespace IndigoMovieManager
                 return;
             }
 
+            string normalizedReason = reason ?? "";
+            string normalizedRequestTraceId = requestTraceId ?? "";
+            string selectedReason = isRefreshPending
+                ? selectPreferredReason(pendingReason, normalizedReason) ?? ""
+                : normalizedReason;
+
             isRefreshPending = true;
-            pendingReason = reason ?? "";
-            pendingRequestTraceId = requestTraceId ?? "";
+            if (string.Equals(selectedReason, normalizedReason, StringComparison.Ordinal))
+            {
+                // 採用した reason と trace を対にして残し、CatalogRefresh の要求元を後続の軽い要求で潰さない。
+                pendingReason = normalizedReason;
+                pendingRequestTraceId = normalizedRequestTraceId;
+            }
+            else
+            {
+                pendingReason = selectedReason;
+            }
+
             currentGeneration++;
             if (isRefreshRunning)
             {
@@ -98,6 +116,11 @@ namespace IndigoMovieManager
             isRefreshPending = false;
             pendingReason = "";
             pendingRequestTraceId = "";
+        }
+
+        private static string SelectLatestReason(string currentReason, string candidateReason)
+        {
+            return !string.IsNullOrWhiteSpace(candidateReason) ? candidateReason : currentReason ?? "";
         }
     }
 }
