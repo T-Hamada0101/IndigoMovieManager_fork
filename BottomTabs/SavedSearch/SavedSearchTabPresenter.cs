@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Threading;
 using System.Threading.Tasks;
 using AvalonDock.Layout;
 using IndigoMovieManager.BottomTabs.Common;
@@ -21,6 +22,7 @@ namespace IndigoMovieManager.BottomTabs.SavedSearch
         private bool _isDirty;
         private SavedSearchItem[] _pendingItems = [];
         private string _pendingMessage = PreparingMessage;
+        private int _reloadRevision;
 
         public SavedSearchTabPresenter(
             LayoutAnchorable tabHost,
@@ -56,9 +58,66 @@ namespace IndigoMovieManager.BottomTabs.SavedSearch
 
         public void ReloadItems()
         {
+            QueueReloadItems();
+        }
+
+        private void QueueReloadItems()
+        {
             string dbFullPath = _getDbFullPath?.Invoke() ?? "";
-            SavedSearchItem[] items = SavedSearchService.LoadItems(dbFullPath);
-            ApplyItems(items, items.Length > 0 ? "" : ResolveEmptyMessage(dbFullPath));
+            int requestRevision = Interlocked.Increment(ref _reloadRevision);
+
+            ApplyItems([], PreparingMessage);
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return;
+            }
+
+            _ = RunReloadItemsAsync(dbFullPath, requestRevision);
+        }
+
+        private async Task RunReloadItemsAsync(string dbFullPath, int requestRevision)
+        {
+            try
+            {
+                // DB 読込は UI から切り離し、戻り時に最新要求だけを表示へ流す。
+                SavedSearchItem[] items = await Task.Run(() =>
+                    SavedSearchService.LoadItems(dbFullPath)
+                );
+
+                if (!IsCurrentReloadRequest(dbFullPath, requestRevision))
+                {
+                    return;
+                }
+
+                ApplyItems(items, items.Length > 0 ? "" : ResolveEmptyMessage(dbFullPath));
+            }
+            catch (Exception ex)
+            {
+                if (!IsCurrentReloadRequest(dbFullPath, requestRevision))
+                {
+                    return;
+                }
+
+                global::IndigoMovieManager.DebugRuntimeLog.Write(
+                    "saved-search",
+                    $"saved search reload failed: revision={requestRevision} db='{dbFullPath}' error={ex.Message}"
+                );
+                ApplyItems([], "保存済み検索条件の読込に失敗しました。");
+            }
+        }
+
+        private bool IsCurrentReloadRequest(string dbFullPath, int requestRevision)
+        {
+            if (requestRevision != Volatile.Read(ref _reloadRevision))
+            {
+                return false;
+            }
+
+            string currentDbFullPath = _getDbFullPath?.Invoke() ?? "";
+            return global::IndigoMovieManager.MainWindow.AreSameMainDbPath(
+                dbFullPath,
+                currentDbFullPath
+            );
         }
 
         // 後で階層表示へ広げても、空状態表示の入口は presenter で固定する。
