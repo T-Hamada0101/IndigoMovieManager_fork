@@ -1,5 +1,8 @@
 using Microsoft.Win32;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using IndigoMovieManager.Converter;
 using IndigoMovieManager.Skin;
@@ -21,6 +24,7 @@ namespace IndigoMovieManager
         private bool _isUpperTabImageCacheMaxEntriesSyncing;
         private bool _isSkinSelectorInitializing;
         private bool _isThemeSelectorInitializing;
+        private int _skinSelectorRefreshRevision;
 
         // 共通設定画面の初期化。
         // 閉じるイベントで設定保存するため、ここでイベントを接続する。
@@ -30,7 +34,7 @@ namespace IndigoMovieManager
             SourceInitialized += (_, _) => App.ApplyWindowTitleBarTheme(this);
             Closing += OnClosing;
             Closed += CommonSettingsWindow_Closed;
-            Activated += (_, _) => RefreshSkinSelector();
+            Activated += async (_, _) => await RefreshSkinSelectorAsync();
             sliderUpperTabImageCacheMaxEntries.ValueChanged +=
                 SliderUpperTabImageCacheMaxEntries_ValueChanged;
             Properties.Settings.Default.PropertyChanged += SettingsDefault_PropertyChanged;
@@ -105,6 +109,7 @@ namespace IndigoMovieManager
         // 共通設定を閉じる時にイベント購読を解除する。
         private void CommonSettingsWindow_Closed(object sender, System.EventArgs e)
         {
+            Interlocked.Increment(ref _skinSelectorRefreshRevision);
             sliderUpperTabImageCacheMaxEntries.ValueChanged -=
                 SliderUpperTabImageCacheMaxEntries_ValueChanged;
             Properties.Settings.Default.PropertyChanged -= SettingsDefault_PropertyChanged;
@@ -183,7 +188,7 @@ namespace IndigoMovieManager
 
         private void InitializeSkinSelector()
         {
-            RefreshSkinSelector();
+            _ = RefreshSkinSelectorAsync();
         }
 
         private void InitializeThemeSelector()
@@ -215,8 +220,9 @@ namespace IndigoMovieManager
             }
         }
 
-        private void RefreshSkinSelector()
+        private async Task RefreshSkinSelectorAsync()
         {
+            int revision = Interlocked.Increment(ref _skinSelectorRefreshRevision);
             WhiteBrowserSkinOrchestrator skinOrchestrator = GetMainWindowSkinOrchestrator();
             if (skinOrchestrator == null)
             {
@@ -225,24 +231,48 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _isSkinSelectorInitializing = true;
             try
             {
-                SkinComboBox.ItemsSource = skinOrchestrator.GetAvailableSkinDefinitions();
-                SkinComboBox.SelectedValue = skinOrchestrator.GetCurrentSkinName();
-            }
-            finally
-            {
-                _isSkinSelectorInitializing = false;
-            }
+                IReadOnlyList<WhiteBrowserSkinDefinition> definitions =
+                    await skinOrchestrator.GetAvailableSkinDefinitionsAsync();
+                if (revision != _skinSelectorRefreshRevision)
+                {
+                    return;
+                }
 
-            MainWindow mainWindow = Application.Current?.MainWindow as MainWindow;
-            bool hasCurrentDb = !string.IsNullOrWhiteSpace(mainWindow.MainVM?.DbInfo?.DBFullPath ?? "");
-            SkinComboBox.IsEnabled = hasCurrentDb;
-            UpdateSkinSelectorToolTip(
-                skinOrchestrator.GetCurrentSkinDefinition(),
-                hasCurrentDb
-            );
+                _isSkinSelectorInitializing = true;
+                try
+                {
+                    SkinComboBox.ItemsSource = definitions;
+                    SkinComboBox.SelectedValue = skinOrchestrator.GetCurrentSkinName();
+                }
+                finally
+                {
+                    _isSkinSelectorInitializing = false;
+                }
+
+                MainWindow mainWindow = Application.Current?.MainWindow as MainWindow;
+                bool hasCurrentDb = !string.IsNullOrWhiteSpace(mainWindow?.MainVM?.DbInfo?.DBFullPath ?? "");
+                SkinComboBox.IsEnabled = hasCurrentDb;
+                UpdateSkinSelectorToolTip(
+                    skinOrchestrator.GetCurrentSkinDefinition(),
+                    hasCurrentDb
+                );
+            }
+            catch (Exception ex)
+            {
+                if (revision != _skinSelectorRefreshRevision)
+                {
+                    return;
+                }
+
+                DebugRuntimeLog.Write(
+                    "settings-ui",
+                    $"skin selector refresh failed: {ex.GetType().Name}: {ex.Message}"
+                );
+                SkinComboBox.IsEnabled = false;
+                SkinComboBox.ToolTip = "スキン一覧の取得に失敗しました。ログを確認してください。";
+            }
         }
 
         private WhiteBrowserSkinOrchestrator GetMainWindowSkinOrchestrator()

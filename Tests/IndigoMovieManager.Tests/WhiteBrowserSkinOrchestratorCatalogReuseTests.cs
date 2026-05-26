@@ -54,6 +54,40 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public async Task GetAvailableSkinDefinitionsAsyncはcatalog_cacheを背景経路で更新する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("AsyncListGrid");
+        string currentSkinName = "AsyncListGrid";
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? ""
+            );
+
+            IReadOnlyList<WhiteBrowserSkinDefinition> definitions =
+                await orchestrator.GetAvailableSkinDefinitionsAsync();
+            WhiteBrowserSkinDefinition? externalSkin =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(definitions, "AsyncListGrid");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(externalSkin, Is.Not.Null);
+                Assert.That(externalSkin!.Name, Is.EqualTo("AsyncListGrid"));
+                Assert.That(orchestrator.GetCurrentSkinName(), Is.EqualTo("AsyncListGrid"));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(1));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogSignatureBuildCountForTesting(), Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void ApplySkinByNameはbuilt_in_skinならcatalog署名確認を繰り返さない()
     {
         string rootPath = CreateSkinRootWithSingleSkin("ExternalForBuiltInApply");

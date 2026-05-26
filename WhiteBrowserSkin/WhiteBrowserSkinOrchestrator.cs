@@ -82,6 +82,17 @@ namespace IndigoMovieManager.Skin
             return BuildAvailableSkinDefinitionSnapshot();
         }
 
+        public async Task<IReadOnlyList<WhiteBrowserSkinDefinition>> GetAvailableSkinDefinitionsAsync()
+        {
+            IReadOnlyList<WhiteBrowserSkinDefinition> loadedDefinitions =
+                await Task.Run(() => WhiteBrowserSkinCatalogService.Load(skinRootPath));
+            availableSkinDefinitions = loadedDefinitions;
+
+            // 設定画面の一覧更新は catalog 走査だけを背景へ逃がし、
+            // 現在 skin の missing 補完は既存 snapshot 生成の流れへ揃える。
+            return BuildAvailableSkinDefinitionSnapshot();
+        }
+
         public IReadOnlyList<WhiteBrowserSkinDefinition> GetCachedAvailableSkinDefinitions()
         {
             if (availableSkinDefinitions.Count < 1)

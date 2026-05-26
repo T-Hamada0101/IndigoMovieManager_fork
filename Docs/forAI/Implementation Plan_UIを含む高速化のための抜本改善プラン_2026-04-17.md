@@ -5,6 +5,7 @@
 変更概要:
 - 2026-05-27 のサブ5.5追加で、Debug タブの現在DB / FailureDB / QueueDB ファイル削除に残っていた `File.Exists` / `File.Delete` を確認後の `Task.Run` helper へ逃がし、削除失敗時の復旧用存在確認と `LastDoc` 保存も UI 同期 I/O から外した。
 - 2026-05-27 のサブ5.5追加で、外部 skin host prepare の HTML 存在確認と WebView2 userDataFolder 作成を `Task.Run` helper へ逃がし、戻った後の stale guard と navigate / WebView2 操作の UI 側責務を維持した。fallback log ボタンも Explorer 引数判定だけを背景化し、`Process.Start` は UI 側に残した。
+- 2026-05-27 のサブ5.5追加で、設定画面の skin selector 初期化 / Activated 更新に残っていた同期 `GetAvailableSkinDefinitions()` を async 一覧取得へ寄せ、catalog load は `Task.Run` 背景実行、UI 反映は revision guard 後に限定した。
 - 2026-05-27 のサブ5.5追加で、DuplicateVideos タブのグループ一覧生成時に残っていた代表サムネ `File.Exists` を左ペイン VM 生成ごと `Task.Run` へ逃がし、後着 group revision guard 後に UI へ反映する形にした。
 - 2026-05-26 のサブ5.5追加で、Debug タブのExplorer起動前に残っていた `File.Exists` / `Directory.Exists` を path snapshot 後の `Task.Run` helper へ逃がし、Explorer起動と未存在メッセージだけを revision / shutdown guard 後に UI へ戻す形にした。
 - 2026-05-26 のサブ5.5追加で、Explorer drag/drop の .wb 判定に残っていた `File.Exists` を DragOver から外し、Drop 確定後の `Task.Run` 存在確認と DB 一致/shutdown guard へ分離した。
