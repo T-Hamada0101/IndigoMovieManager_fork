@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5 Worker A で、サムネ手動救済 / 直接 index repair のメニュー操作後に残っていた `Refresh()` 全体再描画を、受付数・開始数が 1 件以上の時だけ走る局所更新へ置き換えた。ERROR 表示 stale 化、上側 visible range refresh、preferred key revision、ERROR/進捗 snapshot 予約へ寄せ、空振り時は popup 以外の再描画を増やさない。
 - 2026-05-27 のサブ5.5 Worker A で、DuplicateVideos タブの左代表サムネ/右詳細行生成に残っていた存在確認を、背景処理内の候補数連動 lookup へ寄せた。少数候補では必要ファイル名だけの bounded `File.Exists(...)`、一定数以上ではサムネ出力フォルダ/動画親フォルダの `HashSet` snapshot に切り替え、大件数グループの N×probe と巨大フォルダ全列挙の逆効果を両方避ける。
 - 2026-05-27 のサブ5.5 Worker A で、メニューのファイル移動に残っていた `File.Move(...)` と行ごとの `Refresh()` を UI クリック処理から外した。選択行と移動先を snapshot して物理 Move は `Task.Run` 背景処理へ逃がし、完了後は DB パス保存要求、`MovieRecords` のパス/フォルダ/存在状態更新、必要時のパス sort 再適用だけを UI へ戻す。
 - 2026-05-27 のサブ5.5 Worker M で、監視フォルダ編集画面と MainWindow の folder drop 判定に残っていた `Directory.Exists(...)` を DragOver / Drop 事前判定から外した。`CanAccept(...)` は文字列正規化と拡張子なし候補だけを見る軽量判定へ寄せ、Drop確定後だけ `BuildAfterDropExistenceCheck(...)` を `Task.Run` 背景処理で実行する。WatchWindow は drop revision と `DispatcherPriority.Background` の UI 戻しを通し、古い存在確認結果が新しいドロップ結果を上書きしないようにした。

@@ -1977,7 +1977,10 @@ namespace IndigoMovieManager
                         upperDispatchResult.ExistingSuccessCount
                     )
                 );
-                Refresh();
+                RefreshThumbnailManualUserActionUiIfAccepted(
+                    upperDispatchResult.AcceptedCount,
+                    upperReason
+                );
                 return;
             }
 
@@ -2041,7 +2044,28 @@ namespace IndigoMovieManager
                     normalDispatchResult.ExistingSuccessCount
                 )
             );
-            Refresh();
+            RefreshThumbnailManualUserActionUiIfAccepted(
+                normalDispatchResult.AcceptedCount,
+                normalReason
+            );
+        }
+
+        // 救済の受付が実際に増えた時だけ、一覧全体ではなく関連する表示面へ軽く知らせる。
+        private void RefreshThumbnailManualUserActionUiIfAccepted(
+            int acceptedOrStartedCount,
+            string reason
+        )
+        {
+            if (acceptedOrStartedCount <= 0)
+            {
+                return;
+            }
+
+            InvalidateThumbnailErrorRecords(refreshIfVisible: true);
+            RequestUpperTabVisibleRangeRefresh(immediate: true, reason: reason);
+            RefreshUpperTabPreferredMoviePathKeysRevision();
+            RequestThumbnailErrorSnapshotRefresh();
+            RequestThumbnailProgressSnapshotRefresh();
         }
 
         // 右クリックからも rescue レーンへ送れるようにし、難動画を通常キューへ戻さない。
@@ -2296,7 +2320,10 @@ namespace IndigoMovieManager
                     : MessageBoxImage.Warning
             );
 
-            Refresh();
+            RefreshThumbnailManualUserActionUiIfAccepted(
+                dispatchResult.StartedCount,
+                reason
+            );
         }
 
         // 進捗表示だけは mode 名を短い文へ変換し、手動操作の意図を UI に返す。

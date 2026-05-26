@@ -223,6 +223,42 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void 手動救済とIndexRepair後は受付時だけ局所更新へ寄せる()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string rescueMethod = GetMethodBlock(source, "private void RunThumbnailRescueMenuAction(");
+        string repairMethod = GetMethodBlock(
+            source,
+            "private void RunThumbnailIndexRepairMenuActionCore("
+        );
+        string refreshMethod = GetMethodBlock(
+            source,
+            "private void RefreshThumbnailManualUserActionUiIfAccepted("
+        );
+
+        Assert.That(
+            CountOccurrences(rescueMethod, "RefreshThumbnailManualUserActionUiIfAccepted("),
+            Is.EqualTo(2)
+        );
+        Assert.That(rescueMethod, Does.Contain("upperDispatchResult.AcceptedCount"));
+        Assert.That(rescueMethod, Does.Contain("normalDispatchResult.AcceptedCount"));
+        Assert.That(rescueMethod, Does.Not.Contain("Refresh();"));
+        Assert.That(repairMethod, Does.Contain("dispatchResult.StartedCount"));
+        Assert.That(repairMethod, Does.Contain("RefreshThumbnailManualUserActionUiIfAccepted("));
+        Assert.That(repairMethod, Does.Not.Contain("Refresh();"));
+        Assert.That(refreshMethod, Does.Contain("if (acceptedOrStartedCount <= 0)"));
+        Assert.That(refreshMethod, Does.Contain("InvalidateThumbnailErrorRecords(refreshIfVisible: true);"));
+        Assert.That(
+            refreshMethod,
+            Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: reason);")
+        );
+        Assert.That(refreshMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
+    }
+
+    [Test]
     public void 動画削除後はDB再読込ではなく局所削除反映へ寄せる()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
