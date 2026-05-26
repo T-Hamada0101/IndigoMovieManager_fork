@@ -213,6 +213,8 @@
 
 ## 1. 目的
 
+※ 2026-05-27 以降、この節以降では実装済み・方針固定済みの項目に `済:` を付ける。実機ログで閉じる必要がある項目は、`済:` と残条件を併記する。
+
 - ユーザーが最初に触る一覧、検索、ページ移動、watch 反映、skin 切り替えの体感テンポを、局所改善ではなく構造変更で底上げする。
 - 検索、並び替え、ページ移動、タブ切り替えなどの明示的なユーザー要求は、watch / rescue / thumbnail / poll などの背後処理より最優先で完了させる。
 - 高速化の主戦場を「重い処理を少し速くする」から、「重い処理をそもそも起こさない」へ移す。
@@ -225,55 +227,55 @@
 ### 2.1 一覧再評価
 
 - `Views/Main/MainWindow.xaml.cs:1560` の `FilterAndSortAsync(...)` は、DB再読込、source 差し替え、全件 filter/sort、`Refresh()` までを 1 本で持つ。
-- `Infrastructure/SearchExecutionController.cs` と `Views/Main/MainWindow.Search.cs` では、通常の検索確定を `query only recompute` 側へ寄せ始めている。`RefreshMovieViewAfterRenameAsync(...)` も、rename 後の一覧再計算をメモリ上 read model だけで回す初手まで入っている。
-- `Infrastructure/SearchService.cs` は、検索仕様の正本を維持したまま `MovieRecords` 単位の遅延 cache を使い、`kana / katakana / roma / normalized tags` を毎回再生成しない形へ寄せた。
+- 済: `Infrastructure/SearchExecutionController.cs` と `Views/Main/MainWindow.Search.cs` では、通常の検索確定を `query only recompute` 側へ寄せている。`RefreshMovieViewAfterRenameAsync(...)` も、rename 後の一覧再計算をメモリ上 read model で回す初手まで入っている。
+- 済: `Infrastructure/SearchService.cs` は、検索仕様の正本を維持したまま `MovieRecords` 単位の遅延 cache を使い、`kana / katakana / roma / normalized tags` を毎回再生成しない形へ寄せた。
 - 一方で、起動直後の部分ロード中は full reload を維持する意味論が残っており、`query only recompute` と `full snapshot reload` の境界はまだ育成中である。
 - `Watcher/MainWindow.Watcher.cs`、`Watcher/MainWindow.WatcherUiBridge.cs`、`Watcher/MainWindow.WatcherRenameBridge.cs`、`Watcher/MainWindow.WatchScanCoordinator.cs` では、watch 後の最終 reload と rename 後追従を軽量化し始めているが、大量変更時や起動時部分ロード中は full reload へ戻す境界をまだ整理中である。
-- 直近では、watch 側で `changed paths + ChangeKind` を集約し、`Views/Main/MainWindow.xaml.cs` の in-memory refresh へ渡して「現在の `FilteredMovieRecs` から changed paths だけ抜き差しして再検索する」経路を追加した。これで検索結果が総件数より十分小さい時は、watch query-only でも全件 filter を避けられる。
-- さらに `empty search` かつ `source insert / view repair / displayed refresh` の時は、per-path `FilterMovies(...)` すら省いて直接復帰できる現在地まで入った。
-- rename 系では `MovieName / MoviePath / Kana` の dirty fields を明示し、current sort がそれらに依存しない時は full sort を避けて既存順を再利用する現在地まで入った。
-- watch existing movie でも、Everything 起点の changed path に限っては `file_date / movie_size` の cheap な観測値を `ObservedState` として source `MovieRecords` へ当て、DB 再読込なしで局所更新へ載せる現在地まで入った。
-- さらに query-only incremental watch 中で cheap 差分または DB length 未確定の時だけ metadata probe を許し、watch existing movie の `MovieLength` 変更も `ObservedState` 経由で局所更新へ載せる現在地まで入った。
-- ただし `{dup}` 検索だけは changed path 外の既存行も結果へ出入りするため、`Hash` 変化時は changed-path 局所更新を使わず full in-memory filter へ戻す安全弁を入れた。
-- その一方で通常検索では、`MovieSize / FileDate / MovieLength` など検索非依存 dirty の時は changed path ごとの `FilterMovies(...)` も省き、現在の一致状態をそのまま再利用する現在地まで入った。
+- 済: watch 側で `changed paths + ChangeKind` を集約し、`Views/Main/MainWindow.xaml.cs` の in-memory refresh へ渡して「現在の `FilteredMovieRecs` から changed paths だけ抜き差しして再検索する」経路を追加した。これで検索結果が総件数より十分小さい時は、watch query-only でも全件 filter を避けられる。
+- 済: `empty search` かつ `source insert / view repair / displayed refresh` の時は、per-path `FilterMovies(...)` すら省いて直接復帰できる現在地まで入った。
+- 済: rename 系では `MovieName / MoviePath / Kana` の dirty fields を明示し、current sort がそれらに依存しない時は full sort を避けて既存順を再利用する現在地まで入った。
+- 済: watch existing movie でも、Everything 起点の changed path に限っては `file_date / movie_size` の cheap な観測値を `ObservedState` として source `MovieRecords` へ当て、DB 再読込なしで局所更新へ載せる現在地まで入った。
+- 済: query-only incremental watch 中で cheap 差分または DB length 未確定の時だけ metadata probe を許し、watch existing movie の `MovieLength` 変更も `ObservedState` 経由で局所更新へ載せる現在地まで入った。
+- 済: `{dup}` 検索だけは changed path 外の既存行も結果へ出入りするため、`Hash` 変化時は changed-path 局所更新を使わず full in-memory filter へ戻す安全弁を入れた。
+- 済: 通常検索では、`MovieSize / FileDate / MovieLength` など検索非依存 dirty の時は changed path ごとの `FilterMovies(...)` も省き、現在の一致状態をそのまま再利用する現在地まで入った。
 - つまり「変更件数は少ないのに、結果として一覧全体を考え直す」経路が残っている。
 
 ### 2.2 画像表示
 
-- `Infrastructure/Converter/NoLockImageConverter.cs:51` 以降は改善済みだが、miss 時は `FileInfo` と decode を踏む。
+- 済: `Infrastructure/Converter/NoLockImageConverter.cs:51` 以降は改善済みだが、miss 時は `FileInfo` と decode を踏む。
 - `Infrastructure/Converter/NoLockImageConverter.cs:292` の metadata miss は往復スクロールやページ移動でまだ効く。
-- 直近では、UI スレッド上の画像読込失敗時だけ再試行 `Thread.Sleep(20)` を行わず、1回失敗で次回描画へ譲るようにして visible-first の詰まりを減らした。非 UI スレッドでは従来の短い再試行を維持する。
+- 済: UI スレッド上の画像読込失敗時だけ再試行 `Thread.Sleep(20)` を行わず、1回失敗で次回描画へ譲るようにして visible-first の詰まりを減らした。非 UI スレッドでは従来の短い再試行を維持する。
 - visible-first は進んだが、「今見えている範囲だけを優先する」思想が一覧全体の更新経路までは貫通していない。
 
 ### 2.3 skin 切り替え
 
 - `WhiteBrowserSkin/WhiteBrowserSkinOrchestrator.cs:97` の apply は簡潔になったが、skin 解決、初期タブ解決、persist、host refresh が近接している。
 - `WhiteBrowserSkin/WhiteBrowserSkinOrchestrator.cs:232` では definition 解決時に catalog load を伴う。
-- catalog cache と refresh scheduler は入ったが、skin 切り替え全体を「表示切替」と「保存・整合」に完全分離し切ったとはまだ言えない。
+- 済: catalog cache と refresh scheduler は入った。ただし、skin 切り替え全体を「表示切替」と「保存・整合」に完全分離し切ったとはまだ言えない。
 
 ### 2.4 起動と常駐開始
 
 - 起動段階ロード化で first-page 化は進んだが、起動後の watch / bookmark / queue / skin 関連の warm path はまだ分散している。
-- 直近では、起動時 auto-open の `system` 先読みをコンストラクタから外し、最初の表示前は cold start 既定値だけを使って `ContentRendered` 後の DB 切替へ寄せた。
-- さらに Bookmark 下部タブの再読込も、`bookmark` DB read と item 生成を background 化し、UI スレッドには結果反映だけを残し始めた。
-- さらに Bookmark 追加時のメタ取得、bookmark フォルダ作成、DB 登録も UI クリック処理から外し、サムネ生成成功後に背景 DB 登録してから一覧 reload する形へ寄せた。
-- さらに Bookmark 削除時の DB 書き込みも背景化し、削除クリックでは対象 ID と DB パスの snapshot だけを持つ形へ寄せた。
-- さらに Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新も背景保存へ寄せ、再生クリック後の DB 待ちを減らした。
-- さらにスコア増減メニューも、UI 側では `MovieRecords.Score` の表示値更新だけを先に行い、DB 更新は背景 task で実行してクリック導線を塞がないようにした。
-- さらにタグメニュー、下部タグ編集タブ、タグチップ削除も、UI 側では `MovieRecords.Tag/Tags` の表示更新だけを先に行い、DB 更新は共通背景 helper へ逃がす形へ寄せた。
-- さらにファイル移動メニューも、物理移動成功後の `MovieRecords.Movie_Path` 表示更新を先に行い、`movie_path` DB 更新は背景 helper へ逃がす形へ寄せた。
-- さらにファイルコピーは、コピー要求を snapshot して `File.Copy(...)` を背景 task へ逃がし、watcher 抑止の復旧を `finally` で保証する形へ寄せた。
-- さらにファイルリネームも watcher 抑止と復旧を共通 helper で扱い、`RenameThumb(...)` 呼び出し中の例外で監視停止が残らないようにした。
-- さらにサムネイルのみ削除は、選択レコードとサムネパスを snapshot し、ファイル削除は背景 task、完了後の失敗表示と `FilterAndSort(...)` だけ UI へ戻す形へ寄せた。
-- さらに Bookmark ラベル再生の FPS 取得用 `MovieInfo` 生成も背景化し、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした。
-- さらにサムネイルシート再生位置解析も `Task.Run` へ逃がし、クリック位置からの `ThumbInfo` 読み取りを UI スレッドに残さないようにした。
-- Player 音量設定の実 `Save()` は debounce 後に直列背景保存へ寄せ、スライダー操作中の設定ファイル I/O を UI から外した。
-- MainDB 切替時の `LastDoc` / ダイアログフォルダ保存、終了時の最近使ったファイル保存、Player fullscreen debug、詳細サムネ表示モード、Log タブ debug カテゴリ切替の一時設定保存も、共通の背景保存キューへ寄せた。終了時は短時間 drain して保存取りこぼしを防ぐ。
-- DB 切替後の旧 QueueDB pending 掃除は背景 task へ逃がし、切替成功後の UI 待ちに queue cleanup I/O を残さないようにした。
-- さらに Bookmark reload の dirty 解除を成功反映後へ移し、revision 不一致や DB 切替後着では dirty を消さずに捨てるようにした。
-- さらに起動 deferred services の `CreateWatcher()` も `ApplicationIdle` へ後ろ倒しし、first-page 直後の UI tick に watch table 読込と watcher 配備を詰め込まないようにした。
-- 直近では watcher 作成を light services から heavy services 開始時へ移し、first-page 直後の UI tick では bookmark reload と軽い prewarm を優先する段差へ寄せた。
-- サムネ成功インデックス prewarm も背景 task へ移し、first-page 直後の UI tick ではファイル索引構築を始めないようにした。
+- 済: 起動時 auto-open の `system` 先読みをコンストラクタから外し、最初の表示前は cold start 既定値だけを使って `ContentRendered` 後の DB 切替へ寄せた。
+- 済: Bookmark 下部タブの再読込も、`bookmark` DB read と item 生成を background 化し、UI スレッドには結果反映だけを残し始めた。
+- 済: Bookmark 追加時のメタ取得、bookmark フォルダ作成、DB 登録も UI クリック処理から外し、サムネ生成成功後に背景 DB 登録してから一覧 reload する形へ寄せた。
+- 済: Bookmark 削除時の DB 書き込みも背景化し、削除クリックでは対象 ID と DB パスの snapshot だけを持つ形へ寄せた。
+- 済: Player 再生開始後の score / view_count / last_date と Bookmark 再生回数更新も背景保存へ寄せ、再生クリック後の DB 待ちを減らした。
+- 済: スコア増減メニューも、UI 側では `MovieRecords.Score` の表示値更新だけを先に行い、DB 更新は背景 task で実行してクリック導線を塞がないようにした。
+- 済: タグメニュー、下部タグ編集タブ、タグチップ削除も、UI 側では `MovieRecords.Tag/Tags` の表示更新だけを先に行い、DB 更新は共通背景 helper へ逃がす形へ寄せた。
+- 済: ファイル移動メニューも、物理移動成功後の `MovieRecords.Movie_Path` 表示更新を先に行い、`movie_path` DB 更新は背景 helper へ逃がす形へ寄せた。
+- 済: ファイルコピーは、コピー要求を snapshot して `File.Copy(...)` を背景 task へ逃がし、watcher 抑止の復旧を `finally` で保証する形へ寄せた。
+- 済: ファイルリネームも watcher 抑止と復旧を共通 helper で扱い、`RenameThumb(...)` 呼び出し中の例外で監視停止が残らないようにした。
+- 済: サムネイルのみ削除は、選択レコードとサムネパスを snapshot し、ファイル削除は背景 task、完了後の失敗表示と `FilterAndSort(...)` だけ UI へ戻す形へ寄せた。
+- 済: Bookmark ラベル再生の FPS 取得用 `MovieInfo` 生成も背景化し、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした。
+- 済: サムネイルシート再生位置解析も `Task.Run` へ逃がし、クリック位置からの `ThumbInfo` 読み取りを UI スレッドに残さないようにした。
+- 済: Player 音量設定の実 `Save()` は debounce 後に直列背景保存へ寄せ、スライダー操作中の設定ファイル I/O を UI から外した。
+- 済: MainDB 切替時の `LastDoc` / ダイアログフォルダ保存、終了時の最近使ったファイル保存、Player fullscreen debug、詳細サムネ表示モード、Log タブ debug カテゴリ切替の一時設定保存も、共通の背景保存キューへ寄せた。終了時は短時間 drain して保存取りこぼしを防ぐ。
+- 済: DB 切替後の旧 QueueDB pending 掃除は背景 task へ逃がし、切替成功後の UI 待ちに queue cleanup I/O を残さないようにした。
+- 済: Bookmark reload の dirty 解除を成功反映後へ移し、revision 不一致や DB 切替後着では dirty を消さずに捨てるようにした。
+- 済: 起動 deferred services の `CreateWatcher()` も `ApplicationIdle` へ後ろ倒しし、first-page 直後の UI tick に watch table 読込と watcher 配備を詰め込まないようにした。
+- 済: watcher 作成を light services から heavy services 開始時へ移し、first-page 直後の UI tick では bookmark reload と軽い prewarm を優先する段差へ寄せた。
+- 済: サムネ成功インデックス prewarm も背景 task へ移し、first-page 直後の UI tick ではファイル索引構築を始めないようにした。
 - warm start をさらに詰めるには、起動直後に必要な read model と、後で良い常駐処理をより明確に分ける必要がある。
 
 ### 2.5 `UiHang` オーバーレイ終了残留
@@ -282,7 +284,7 @@
 - `Views/Main/NativeOverlayHost.cs` は native overlay を owner なしの `CreateWindowExW(...)` で作っており、本体ウインドウ終了へ OS の owner-chain を使って追従していない。
 - `Views/Main/NativeOverlayHost.cs` の `Stop()` は join timeout 後に `overlay thread still alive after shutdown request` で諦めうるため、終了競合時に HWND が取り残される余地がある。
 - したがって主因は「表示中の overlay 自体」より、「overlay の寿命管理が owner なし + overlay thread 正常応答前提」な点にある。
-- `無通信timer` は見た目を減らす safety fuse にはなるが、overlay thread 側が詰まると効かず、UI 本当に詰まり中でも誤って hide しうるため主解にはしない。
+- 済: `無通信timer` は見た目を減らす safety fuse にはなるが、overlay thread 側が詰まると効かず、UI 本当に詰まり中でも誤って hide しうるため主解にはしない、という方針で固定した。
 
 ## 3. 抜本方針
 
@@ -324,12 +326,12 @@
 実施内容:
 - `filter start/end`、watch reload、page append、thumbnail decode、skin refresh の trace id を揃える。
 - 指標を `debug-runtime.log` で横断して読めるようにする。
-- 2026-05-03: watch 終端 reload の判断理由を `plan_reason` として `debug-runtime.log` に残す。`watch-full-fallback` が残る経路を次の差分化候補として扱う。
-- 2026-05-03: deferred watch reload は schedule と apply の両方で同じ `plan_reason` を残す。圧縮後の reload でも query-only 由来か full fallback 由来かを追えるようにする。
-- 2026-05-03: deferred watch reload が適用されなかった理由を `skip_reason` として `debug-runtime.log` に残す。`revision-stale` / `db-changed` / `ui-suppressed` を分けて shutdown と DB 切替の後着を追えるようにする。
-- 2026-05-03: deferred watch reload の consume 失敗も `skip_reason=not-pending / revision-stale` で残し、二重消費と古い要求を分けて追えるようにする。
-- 2026-05-03: watch 終端 reload ログへ `can_query_only` を追加する。`watch-full-fallback` が query-only 不可由来かを実機ログから絞り、次の差分化候補を選ぶ。
-- 2026-05-25: watch bulk 復帰の full fallback 理由を `dirty-fields-unsafe:*` / `change-kind-unsafe:*` まで細分化した。no-op だけなら復帰しないが、no-op が安全な既存行差分に混ざるだけなら query-only 復帰を維持する。
+- 済: 2026-05-03: watch 終端 reload の判断理由を `plan_reason` として `debug-runtime.log` に残す。`watch-full-fallback` が残る経路を次の差分化候補として扱う。
+- 済: 2026-05-03: deferred watch reload は schedule と apply の両方で同じ `plan_reason` を残す。圧縮後の reload でも query-only 由来か full fallback 由来かを追えるようにする。
+- 済: 2026-05-03: deferred watch reload が適用されなかった理由を `skip_reason` として `debug-runtime.log` に残す。`revision-stale` / `db-changed` / `ui-suppressed` を分けて shutdown と DB 切替の後着を追えるようにする。
+- 済: 2026-05-03: deferred watch reload の consume 失敗も `skip_reason=not-pending / revision-stale` で残し、二重消費と古い要求を分けて追えるようにする。
+- 済: 2026-05-03: watch 終端 reload ログへ `can_query_only` を追加する。`watch-full-fallback` が query-only 不可由来かを実機ログから絞り、次の差分化候補を選ぶ。
+- 済: 2026-05-25: watch bulk 復帰の full fallback 理由を `dirty-fields-unsafe:*` / `change-kind-unsafe:*` まで細分化した。no-op だけなら復帰しないが、no-op が安全な既存行差分に混ざるだけなら query-only 復帰を維持する。
 - 着手前に `git status --short` で対象外差分を確認する。
 - `layout*.xml` や実機操作で動く差分は、目的が一致する時だけ扱う。
 - 最低限の計測点を固定する。
@@ -338,11 +340,11 @@
   - watch: `event accepted -> ui diff applied`
   - skin: `apply requested -> host presented`
   - 画像: `viewport request -> image ready`
-- 2026-05-03: 実 WebView2 を使う `MainWindowWebViewSkinIntegrationTests` は `WebView2Real` / `MainWindowWebViewSkin` category で識別する。全件一括では testhost shutdown 側のクラッシュが出るため、リリース前は category と `Name` filter を併用して小分け検証する。
-- 2026-05-03: 小分け検証の入口として `Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1` を追加。既定順は `HostBasics` / `TutorialCallback` / `DefaultList` / `SimpleGrid` / `TagInputSmoke` / `TreeSmoke` / `BuildOutputSkins`。`TagInputRelation` 全体や tree 系全体の broad filter は testhost shutdown 側のクラッシュ再現域なので、まず smoke chunk から通す。
-- 2026-05-03 実測: `HostBasics` 23件、`TutorialCallback` 9件、`DefaultList` 4件、`SimpleGrid` 8件、`TagInputSmoke` 6件、`TreeSmoke` 3件、`BuildOutputSkins` 109件は、ビルド込みの既定順連続実行で成功。
-- 2026-05-03 追加確認: poll / queue 境界変更後も `FullyQualifiedName~Watch` は 322件成功、`Run-WebView2SkinIntegrationChunks.ps1 -NoBuild -Chunk HostBasics` は 23件成功。
-- chunk 名の確認は `pwsh -NoProfile -ExecutionPolicy Bypass -File Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1 -ListChunks` を使う。
+- 済: 2026-05-03: 実 WebView2 を使う `MainWindowWebViewSkinIntegrationTests` は `WebView2Real` / `MainWindowWebViewSkin` category で識別する。全件一括では testhost shutdown 側のクラッシュが出るため、リリース前は category と `Name` filter を併用して小分け検証する。
+- 済: 2026-05-03: 小分け検証の入口として `Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1` を追加。既定順は `HostBasics` / `TutorialCallback` / `DefaultList` / `SimpleGrid` / `TagInputSmoke` / `TreeSmoke` / `BuildOutputSkins`。`TagInputRelation` 全体や tree 系全体の broad filter は testhost shutdown 側のクラッシュ再現域なので、まず smoke chunk から通す。
+- 済: 2026-05-03 実測: `HostBasics` 23件、`TutorialCallback` 9件、`DefaultList` 4件、`SimpleGrid` 8件、`TagInputSmoke` 6件、`TreeSmoke` 3件、`BuildOutputSkins` 109件は、ビルド込みの既定順連続実行で成功。
+- 済: 2026-05-03 追加確認: poll / queue 境界変更後も `FullyQualifiedName~Watch` は 322件成功、`Run-WebView2SkinIntegrationChunks.ps1 -NoBuild -Chunk HostBasics` は 23件成功。
+- 済: chunk 名の確認は `pwsh -NoProfile -ExecutionPolicy Bypass -File Tests\IndigoMovieManager.Tests\Run-WebView2SkinIntegrationChunks.ps1 -ListChunks` を使う。
 
 完了条件:
 - どこが遅いかを「起動」「一覧」「watch」「skin」「画像」で分けて説明できる。
@@ -355,16 +357,16 @@
 - ユーザーの明示操作を、背後処理より先に通す。
 
 実施内容:
-- `Search / page / Player / tab` 操作中は、`Auto / Watch`、`watch_zero_diff reconcile`、rescue、thumbnail progress、poll を必要に応じて defer する。
-- UI スレッド上の DB read/write、catalog scan、file metadata、decode、collection 全差し替えを見つけたら、まず snapshot / queue / background read へ分離する。
-- preferred サムネ生成成功後も、対象 `MovieRecords` へ直接 path 反映できた場合は `FilterAndSort(..., true)` へ戻さず、forced rebind と visible refresh を優先する。
-- manual rescue 即時反映も同じ基準に寄せ、直接反映できた成功では後段 full reload を予約しない。
+- 済: `Search / page / Player / tab` 操作中は、`Auto / Watch`、`watch_zero_diff reconcile`、rescue、thumbnail progress、poll を必要に応じて defer する。
+- 済: UI スレッド上の DB read/write、catalog scan、file metadata、decode、collection 全差し替えは、確認できた hot path から snapshot / queue / background read へ分離した。
+- 済: preferred サムネ生成成功後も、対象 `MovieRecords` へ直接 path 反映できた場合は `FilterAndSort(..., true)` へ戻さず、forced rebind と visible refresh を優先する。
+- 済: manual rescue 即時反映も同じ基準に寄せ、直接反映できた成功では後段 full reload を予約しない。
 - rescued sync の定期反映では FailureDb / progress 更新を維持しつつ、選択中レコードへ当たった時だけ `Refresh()` を許可する。
-- Rescue 履歴は選択変更時に FailureDb を UI スレッドで読まず、背景読込と revision guard 付き反映へ寄せる。
-- Log タブ preview は UI 側で表示対象パスと active / force 判定だけを取り、ファイル存在確認、mtime、末尾 preview 読みは背景 helper へ逃がし、後着 request id guard で古い結果を捨てる。
-- `ThumbnailProgress` の enqueue / 初期作成数反映は `ThumbnailProgressRuntime.CurrentVersion` の差分 guard を通し、runtime 状態が変わらない時は snapshot 予約を増やさない。
-- `fire-and-forget` で逃がすだけにせず、bounded drain、timeout ログ、fault ログを持つ scheduler / persister / queue へ寄せる。
-- `Watcher.cs` の薄化は、UI thread 滞在、queue 境界、shutdown 境界、観測性の改善につながる場合だけ進める。
+- 済: Rescue 履歴は選択変更時に FailureDb を UI スレッドで読まず、背景読込と revision guard 付き反映へ寄せる。
+- 済: Log タブ preview は UI 側で表示対象パスと active / force 判定だけを取り、ファイル存在確認、mtime、末尾 preview 読みは背景 helper へ逃がし、後着 request id guard で古い結果を捨てる。
+- 済: `ThumbnailProgress` の enqueue / 初期作成数反映は `ThumbnailProgressRuntime.CurrentVersion` の差分 guard を通し、runtime 状態が変わらない時は snapshot 予約を増やさない。
+- 済: `fire-and-forget` で逃がすだけにせず、bounded drain、timeout ログ、fault ログを持つ scheduler / persister / queue へ寄せる。
+- 済: `Watcher.cs` の薄化は、UI thread 滞在、queue 境界、shutdown 境界、観測性の改善につながる場合だけ進める方針で固定した。
 
 完了条件:
 - 明示的なユーザー操作中に、背後処理が full reload / full scan / heavy DB I/O を重ねない。
@@ -380,24 +382,24 @@
 実施内容:
 - `MainWindow` 直下にある検索条件、ソート、上側タブ状態、ページ状態を `QueryState` として 1 か所へ寄せる。
 - `movieData -> MovieRecords[] -> FilteredMovieRecs` の都度組み立てをやめ、read model 更新と view query 適用を分離する。
-- `isGetNew=true` の full reload と、検索語変更・ソート変更・watch 差分反映を同じ入口で扱わない。
-- まず以下の 3 種に分ける。
+- 済: `isGetNew=true` の full reload と、検索語変更・ソート変更・watch 差分反映を同じ入口で扱わない分類へ寄せた。
+- 済: まず以下の 3 種に分ける。
   - full snapshot reload
   - query only recompute
   - item diff apply
-- `MainVM.ReplaceFilteredMovieRecs(...)` を中核にしつつ、一覧反映の前段に `FilteredMovieDiffCoordinator` 相当を置く。
-- watch / rescue / manual reload の反映を「追加」「削除」「更新」「順位変更」に分ける。
-- `FilterAndSort(..., true)` を watch の既定終端から外し、小規模変更は差分 apply を既定にする。
-- watch query-only では `MovieRecs` 全件を毎回 `FilterMovies(...)` に通さず、`changed paths` だけを再評価して `ReplaceFilteredMovieRecs(...)` へ渡す経路を育てる。
-- changed path 局所更新の lookup も、全件辞書化ではなく変更対象 path だけを保持し、少数変更時の allocation を変更件数寄りへ寄せる。
-- bulk 降格後の最終判定では、既存行の安全な view / dirty 差分だけなら query-only へ戻す。圧縮過程で混ざる no-op 札は有効差分から外し、no-op だけの要求は復帰扱いにしない。
-- 検索等のユーザー要求中は、watch full / bulk reload、zero-diff reconcile、rescue、thumbnail などが完了を妨げないよう後ろへ逃がす。
+- 済: `MainVM.ReplaceFilteredMovieRecs(...)` を中核にしつつ、一覧反映の前段に `FilteredMovieDiffCoordinator` 相当を置く。
+- 済: watch / rescue / manual reload の反映を「追加」「削除」「更新」「順位変更」に分ける。
+- 済: `FilterAndSort(..., true)` を watch の既定終端から外し、小規模変更は差分 apply を既定にする。
+- 済: watch query-only では `MovieRecs` 全件を毎回 `FilterMovies(...)` に通さず、`changed paths` だけを再評価して `ReplaceFilteredMovieRecs(...)` へ渡す経路を育てる。
+- 済: changed path 局所更新の lookup も、全件辞書化ではなく変更対象 path だけを保持し、少数変更時の allocation を変更件数寄りへ寄せる。
+- 済: bulk 降格後の最終判定では、既存行の安全な view / dirty 差分だけなら query-only へ戻す。圧縮過程で混ざる no-op 札は有効差分から外し、no-op だけの要求は復帰扱いにしない。
+- 済: 検索等のユーザー要求中は、watch full / bulk reload、zero-diff reconcile、rescue、thumbnail などが完了を妨げないよう後ろへ逃がす。
 - 全面再評価が必要な条件だけを明示する。
   - sort key 変更
   - query 条件変更
   - 大量変更しきい値超過
   - DB 切り替え
-- 検索高速化の別リポ検証は継続してよいが、本線へ戻す時は既存検索仕様と fallback 条件を先に揃える。
+- 済: 検索高速化の別リポ検証は継続してよいが、本線へ戻す時は既存検索仕様と fallback 条件を先に揃える方針で固定した。
 
 完了条件:
 - watch の 1 件追加や rename で `Refresh()` 全面経路を常に踏まない。
@@ -409,15 +411,15 @@
 - Watcher と Everything poll を別スレッド化・非同期化しても、終了時や DB 切替時に取りこぼしや二重実行を出さない。
 
 実施内容:
-- `FileSystemWatcher` 入力停止、watch event queue complete、created ready pipeline drain、Everything poll 停止を順序付きで扱う。
-- Created ready 待機は通常時の retry 契約を保ちつつ、shutdown 開始後は短い分割待機で stale skip し、detached task を残さない。
-- check-folder queue runner も同じ shutdown drain deadline 内で待ち、追加の500ms待機を増やさず `check-folder-queue-runner` として timeout / fault を追えるようにする。
-- Everything poll loop は UI コンテキストへ戻らない待機を使い、周期判定を UI tick と競合させない。
-- low-update 時の poll interval 延長を、初期処理が落ち着いた後だけ有効化する。
-- `watch folder snapshot` と eligible 判定 cache の invalidation 条件を、DB 切替 / watch folder 編集 / settings 変更へ限定する。
-- Everything poll の DB path 存在確認は policy 注入 delegate に統一し、instance 側で確認済みの DB 存在結果を snapshot 取得へ渡して、通常周回で DB path probe を二重三重に重ねない。
-- check-folder queue runner は UI スレッドから直接走らせず、enqueue と処理実行の境界を分ける。runner task は 1 本共有にし、burst 時に待機 task を増やしすぎない。runner fault は `watch-check` へ残し、await している経路には例外をそのまま返す。
-- queue の mode 圧縮で trigger / path の因果が消えすぎる箇所は、追加済みログを維持し、必要なら軽量 DTO へ広げる。
+- 済: `FileSystemWatcher` 入力停止、watch event queue complete、created ready pipeline drain、Everything poll 停止を順序付きで扱う。
+- 済: Created ready 待機は通常時の retry 契約を保ちつつ、shutdown 開始後は短い分割待機で stale skip し、detached task を残さない。
+- 済: check-folder queue runner も同じ shutdown drain deadline 内で待ち、追加の500ms待機を増やさず `check-folder-queue-runner` として timeout / fault を追えるようにする。
+- 済: Everything poll loop は UI コンテキストへ戻らない待機を使い、周期判定を UI tick と競合させない。
+- 済: low-update 時の poll interval 延長を、初期処理が落ち着いた後だけ有効化する。
+- 済: `watch folder snapshot` と eligible 判定 cache の invalidation 条件を、DB 切替 / watch folder 編集 / settings 変更へ限定する。
+- 済: Everything poll の DB path 存在確認は policy 注入 delegate に統一し、instance 側で確認済みの DB 存在結果を snapshot 取得へ渡して、通常周回で DB path probe を二重三重に重ねない。
+- 済: check-folder queue runner は UI スレッドから直接走らせず、enqueue と処理実行の境界を分ける。runner task は 1 本共有にし、burst 時に待機 task を増やしすぎない。runner fault は `watch-check` へ残し、await している経路には例外をそのまま返す。
+- 済: queue の mode 圧縮で trigger / path の因果が消えすぎる箇所は、追加済みログを維持し、必要なら軽量 DTO へ広げる。
 
 完了条件:
 - shutdown 中に watcher / poll / created pipeline が新規要求を増やさない。
@@ -432,13 +434,13 @@
 
 実施内容:
 - 起動時 read model を first-page 用と background append 用に明確分離する。
-- `CreateWatcher()`、bookmark reload、tag / queue warm path を UI 入力可能後へ順次開始する。
-- `OpenDatafile(...)` 後に必要な同期仕事をさらに削り、「表示」「操作可能」「常駐起動完了」を別イベントとして扱う。
-- DB切替直後の検索履歴候補読込は、`BootNewDb(...)` 内で直接 `SearchHistoryService.LoadLatestHistory(...)` を呼ばず、背景読込と後着 guard 付きの UI 反映へ送る。
-- `ThumbnailProgress` snapshot は `ContentRendered` 直後に直接作らず、first-page 後の startup light services から既存の coalesce 経路へ予約する。
-- fallback 起動も `QueueStartupThumbnailProgressSnapshotRefresh()` へ合流し、直接更新を増やさずに進捗表示の置き去りを抑える。
+- 済: `CreateWatcher()`、bookmark reload、tag / queue warm path を UI 入力可能後へ順次開始する。
+- 済: `OpenDatafile(...)` 後に必要な同期仕事をさらに削り、「表示」「操作可能」「常駐起動完了」を別イベントとして扱う。
+- 済: DB切替直後の検索履歴候補読込は、`BootNewDb(...)` 内で直接 `SearchHistoryService.LoadLatestHistory(...)` を呼ばず、背景読込と後着 guard 付きの UI 反映へ送る。
+- 済: `ThumbnailProgress` snapshot は `ContentRendered` 直後に直接作らず、first-page 後の startup light services から既存の coalesce 経路へ予約する。
+- 済: fallback 起動も `QueueStartupThumbnailProgressSnapshotRefresh()` へ合流し、直接更新を増やさずに進捗表示の置き去りを抑える。
 - warm start 用の補助 cache を使う場合も `LocalAppData` 配下に限定し、壊れても DB fallback に戻せる形を守る。
-- `Everything poll` は watch folder 一覧の snapshot と eligible 判定再利用を前提にし、DB 切替や監視フォルダ編集時だけ invalidation する。通常周回では毎回 `watch` テーブルと同一 path の eligibility を掘り直さない。
+- 済: `Everything poll` は watch folder 一覧の snapshot と eligible 判定再利用を前提にし、DB 切替や監視フォルダ編集時だけ invalidation する。通常周回では毎回 `watch` テーブルと同一 path の eligibility を掘り直さない。
 
 完了条件:
 - 起動完了を 1 点ではなく、3 段階のイベントで説明できる。
@@ -453,27 +455,27 @@
 実施内容:
 - `NoLockImageConverter` の metadata cache を viewport 連動で活かし、表示候補の先読みと無効化を分ける。
 - visible range 外の decode をより後ろへ倒し、可視範囲だけ即時 decode する。
-- Player 右レール / visible-first の preferred 対象キーは、「未初期化 / viewport 未計測」と「空と確定」を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、空と確定した後だけ off-screen 更新を止める。
-- 通常上側タブの画像 Binding も Player 右レールと同じ preferred key gate / revision trigger を通し、active tab 内の off-screen decode を増やさない。
-- preferred key 更新後は、右レール全体の再構築や full reload ではなく、可視範囲 snapshot の軽い revision 更新、または Binding 用 trigger だけで実現済み画像 Binding を再評価する。既に `MovieRecords` へ path 反映できている画像を、一覧の全面再評価で揺らさない。
-- preferred / manual rescue の即時成功も、直接反映済みなら viewport 再計測を省き、preferred key revision だけを進める。
+- 済: Player 右レール / visible-first の preferred 対象キーは、「未初期化 / viewport 未計測」と「空と確定」を分ける。未初期化や `UpperTabVisibleRange.Empty` は互換として従来どおり off-screen 画像更新を許可し、空と確定した後だけ off-screen 更新を止める。
+- 済: 通常上側タブの画像 Binding も Player 右レールと同じ preferred key gate / revision trigger を通し、active tab 内の off-screen decode を増やさない。
+- 済: preferred key 更新後は、右レール全体の再構築や full reload ではなく、可視範囲 snapshot の軽い revision 更新、または Binding 用 trigger だけで実現済み画像 Binding を再評価する。既に `MovieRecords` へ path 反映できている画像を、一覧の全面再評価で揺らさない。
+- 済: preferred / manual rescue の即時成功も、直接反映済みなら viewport 再計測を省き、preferred key revision だけを進める。
 - 画像存在確認と file stamp 取得を、converter 個別呼び出しから `ThumbnailStampCache` 相当へ寄せる。
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。
 - Player / UpperTabs の追加・ fullscreen・表示切替は、watch / thumbnail / skin の背後処理と同時に走っても UI スレッドを長く掴まない形へ寄せる。
 - WebView Player の動画切り替えでは、ホスト側音量適用中の通知を保存せず、切り替え直後の 100% 既定音量通知でユーザー音量を上書きしない。
-- Player 通常再生前の実ファイル存在確認は、UI 側では選択パス snapshot だけにして `Task.Run` helper へ逃がす。存在しない時の早期 return と、その後のサムネイル再生位置解析・外部プレイヤー起動順は維持する。
-- Bookmark 追加は、UI 側で選択行・再生位置・DB パスだけ snapshot し、動画メタ取得と DB 登録は背景へ逃がす。DB 切替後着は現在 DB 一致で捨てる。
-- Bookmark 削除も、UI 側では対象 ID と DB パスだけ snapshot し、DB 書き込みは背景へ逃がす。
-- Player 再生時の統計保存も、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
-- スコア増減メニューも、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
-- タグメニュー、下部タグ編集タブ、タグチップ削除も、UI 側ではタグ表示更新だけ先に行い、DB 書き込みは背景へ逃がす。
-- ファイル移動後の `movie_path` 保存も、表示反映後の背景 DB 書き込みへ寄せる。
-- ファイルコピーは、UI 側でコピー元/先を snapshot してファイル I/O を背景へ逃がす。
-- 親フォルダを開く操作は、UI 側で動画パスと親フォルダだけ snapshot し、存在確認を背景へ逃がしてから Explorer 起動だけ UI へ戻す。
-- ファイルリネームは、watcher 抑止と復旧を `try/finally` で固定してから重い後続処理を薄くする。
-- サムネイルのみ削除は、UI 側で対象とパスを snapshot してファイル削除を背景へ逃がす。
-- Bookmark ラベル再生の FPS 取得も背景化し、再生位置計算中に UI スレッドを掴まないようにする。
-- Bookmark reload の dirty 解除は成功反映後に限定し、古い背景読込結果で未反映更新を消さない。
+- 済: Player 通常再生前の実ファイル存在確認は、UI 側では選択パス snapshot だけにして `Task.Run` helper へ逃がす。存在しない時の早期 return と、その後のサムネイル再生位置解析・外部プレイヤー起動順は維持する。
+- 済: Bookmark 追加は、UI 側で選択行・再生位置・DB パスだけ snapshot し、動画メタ取得と DB 登録は背景へ逃がす。DB 切替後着は現在 DB 一致で捨てる。
+- 済: Bookmark 削除も、UI 側では対象 ID と DB パスだけ snapshot し、DB 書き込みは背景へ逃がす。
+- 済: Player 再生時の統計保存も、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
+- 済: スコア増減メニューも、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
+- 済: タグメニュー、下部タグ編集タブ、タグチップ削除も、UI 側ではタグ表示更新だけ先に行い、DB 書き込みは背景へ逃がす。
+- 済: ファイル移動後の `movie_path` 保存も、表示反映後の背景 DB 書き込みへ寄せる。
+- 済: ファイルコピーは、UI 側でコピー元/先を snapshot してファイル I/O を背景へ逃がす。
+- 済: 親フォルダを開く操作は、UI 側で動画パスと親フォルダだけ snapshot し、存在確認を背景へ逃がしてから Explorer 起動だけ UI へ戻す。
+- 済: ファイルリネームは、watcher 抑止と復旧を `try/finally` で固定してから重い後続処理を薄くする。
+- 済: サムネイルのみ削除は、UI 側で対象とパスを snapshot してファイル削除を背景へ逃がす。
+- 済: Bookmark ラベル再生の FPS 取得も背景化し、再生位置計算中に UI スレッドを掴まないようにする。
+- 済: Bookmark reload の dirty 解除は成功反映後に限定し、古い背景読込結果で未反映更新を消さない。
 
 完了条件:
 - ページ Up/Down 時の体感引っかかりが、cache miss 頻度とともに下がる。
@@ -487,10 +489,10 @@
 - 終了後に overlay が取り残される事象を、見た目のごまかしではなく寿命管理の正攻法で止める。
 
 実施内容:
-- `NativeOverlayHost` の native overlay を MainWindow owner 付き popup として生成し、本体終了へ OS レベルで追従させる。
-- `StopUiHangNotificationSupport()` からの停止では、overlay thread dispatcher 依頼より前に caller 側から即 hide を保証する。
-- overlay thread の join timeout 後は、`InvokeShutdown()` 任せで終わらせず、強制閉鎖線を持つ。
-- そのうえで最後の保険として、shutdown 開始後だけ効く stale fuse を検討する。常時の無通信 timer は入れない。
+- 済: `NativeOverlayHost` の native overlay を MainWindow owner 付き popup として生成し、本体終了へ OS レベルで追従させる。
+- 済: `StopUiHangNotificationSupport()` からの停止では、overlay thread dispatcher 依頼より前に caller 側から即 hide を保証する。
+- 済: overlay thread の join timeout 後は、`InvokeShutdown()` 任せで終わらせず、強制閉鎖線を持つ。
+- 済: そのうえで最後の保険として、shutdown 開始後だけ効く stale fuse を検討する。常時の無通信 timer は入れない。
 
 完了条件:
 - `MainWindow` 終了後に overlay が残らない。
@@ -504,14 +506,14 @@
 
 実施内容:
 - `ApplySkinByName(...)` は「表示切替要求の確定」までに責務を絞り、persist は非同期経路の completion へ完全移譲する。
-- current definition 解決、tab state 解決、persist request、host refresh request を trace 単位で分離する。
-- catalog load は起動時 snapshot と変更検知に寄せ、単純な apply で掘り直さない条件を増やす。
-- built-in skin への単純な apply は既存 snapshot を優先して解決し、外部 skin は同名更新・削除検知を優先して catalog load へ戻す。
-- 外部 skin の明示 reload は現在定義を再確認し、同名 HTML/config 更新や削除を host prepare 前に拾う。
-- 外部 skin の明示 reload で必要な catalog load は background へ逃がし、UI 側は結果 snapshot の採用と host prepare に集中させる。
-- `header-reload` / `fallback-notice-retry` は `CatalogRefresh` として `dbinfo-*` より強く batch に残し、`minimal-chrome-reload` は cached definition の host 再準備に留める。
-- 同期 `GetCurrentExternalSkinDefinition()` は cached snapshot 専用とし、catalog 再確認は `GetCurrentExternalSkinDefinitionAsync(...)` から `RefreshCurrentSkinDefinitionAsync()` へ流す。
-- `GetCachedAvailableSkinDefinitions()` は cache が空でも catalog load へ戻らず、built-in 共有定義と現在外部 skin の missing 補完だけで表示同期を成立させる。鮮度確認は明示 reload / 設定画面の一覧取得へ閉じ込める。
+- 済: current definition 解決、tab state 解決、persist request、host refresh request を trace 単位で分離する。
+- 済: catalog load は起動時 snapshot と変更検知に寄せ、単純な apply で掘り直さない条件を増やす。
+- 済: built-in skin への単純な apply は既存 snapshot を優先して解決し、外部 skin は同名更新・削除検知を優先して catalog load へ戻す。
+- 済: 外部 skin の明示 reload は現在定義を再確認し、同名 HTML/config 更新や削除を host prepare 前に拾う。
+- 済: 外部 skin の明示 reload で必要な catalog load は background へ逃がし、UI 側は結果 snapshot の採用と host prepare に集中させる。
+- 済: `header-reload` / `fallback-notice-retry` は `CatalogRefresh` として `dbinfo-*` より強く batch に残し、`minimal-chrome-reload` は cached definition の host 再準備に留める。
+- 済: 同期 `GetCurrentExternalSkinDefinition()` は cached snapshot 専用とし、catalog 再確認は `GetCurrentExternalSkinDefinitionAsync(...)` から `RefreshCurrentSkinDefinitionAsync()` へ流す。
+- 済: `GetCachedAvailableSkinDefinitions()` は cache が空でも catalog load へ戻らず、built-in 共有定義と現在外部 skin の missing 補完だけで表示同期を成立させる。鮮度確認は明示 reload / 設定画面の一覧取得へ閉じ込める。
 - `SelectProfileValue(...)` を cold path に閉じ込め、session cache と persisted 値の責務差を明示する。
 
 完了条件:
@@ -553,15 +555,15 @@
 
 ### 2026-05-26 見直し後の反映状況と次タスク
 
-1. 完了: watch query-only / rename の `RefreshMovieViewFromCurrentSourceAsync(...)` に後着キャンセルを通し、`CancellationToken.None` で古い計算が走り切る経路を閉じた。
-2. 完了: `TagControl` / `MainWindow.Tag` / `KanaBackfill` とサムネイルのみ削除に残っていた `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` を、局所反映・revision trigger・snapshot 予約へ寄せた。
-3. 完了: 大件数時の通常 sort を background + revision guard へ寄せ、検索高速化後に残る UI スレッド滞在を減らした。
-4. 完了: 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一 revision / trigger / elapsed_ms で追えるようにした。
-5. 完了: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定できるログ基盤へ寄せた。
-6. 完了: 物理動画削除後の `FilterAndSort(..., true)` は、DB 削除成功 ID だけを表示モデルから差分削除する局所反映へ寄せた。物理ファイル削除に失敗しても、既存挙動と同じく DB から消えた行を一覧正本として扱い、失敗は警告表示と watcher 復帰に委ねる。
-7. 完了: visible-first は、viewport 一時未計測時に同一タブ・同一 source revision の preferred key snapshot を保持し、不要な画像再評価を抑えるようにした。
-8. 完了: サブ5.5追加で、起動 fallback の `FilterAndSort(sortId, true)` は first-page 起動失敗時の DB 初期読込復旧、段階ロード中 sort 変更の `FilterAndSort(id.ToString(), true)` は新 sort の全件順序復旧として許容 fallback に分類した。Debug タブのサムネイル全削除後と Thumbnail 成功後の main tab 後段は DB 再読込をやめ、読み込み済み `MovieRecords` のサムネパス/ERROR 件数や visible refresh、preferred key revision、snapshot 予約へ寄せた。サムネERROR順だけは順序変化を拾うため、現在一覧の in-memory sort に限定する。
-9. 完了: Bookmark タブの view refresh は `ObservableCollection` 通知へ任せ、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけに絞った。
+1. 済: watch query-only / rename の `RefreshMovieViewFromCurrentSourceAsync(...)` に後着キャンセルを通し、`CancellationToken.None` で古い計算が走り切る経路を閉じた。
+2. 済: `TagControl` / `MainWindow.Tag` / `KanaBackfill` とサムネイルのみ削除に残っていた `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` を、局所反映・revision trigger・snapshot 予約へ寄せた。
+3. 済: 大件数時の通常 sort を background + revision guard へ寄せ、検索高速化後に残る UI スレッド滞在を減らした。
+4. 済: 起動 warm path は `first-page shown` / `input ready` / `heavy services started` を同一 revision / trigger / elapsed_ms で追えるようにした。
+5. 済: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定できるログ基盤へ寄せた。
+6. 済: 物理動画削除後の `FilterAndSort(..., true)` は、DB 削除成功 ID だけを表示モデルから差分削除する局所反映へ寄せた。物理ファイル削除に失敗しても、既存挙動と同じく DB から消えた行を一覧正本として扱い、失敗は警告表示と watcher 復帰に委ねる。
+7. 済: visible-first は、viewport 一時未計測時に同一タブ・同一 source revision の preferred key snapshot を保持し、不要な画像再評価を抑えるようにした。
+8. 済: サブ5.5追加で、起動 fallback の `FilterAndSort(sortId, true)` は first-page 起動失敗時の DB 初期読込復旧、段階ロード中 sort 変更の `FilterAndSort(id.ToString(), true)` は新 sort の全件順序復旧として許容 fallback に分類した。Debug タブのサムネイル全削除後と Thumbnail 成功後の main tab 後段は DB 再読込をやめ、読み込み済み `MovieRecords` のサムネパス/ERROR 件数や visible refresh、preferred key revision、snapshot 予約へ寄せた。サムネERROR順だけは順序変化を拾うため、現在一覧の in-memory sort に限定する。
+9. 済: Bookmark タブの view refresh は `ObservableCollection` 通知へ任せ、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけに絞った。
 10. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が Player / 他の許容 fallback / 実機画像供給のどこにあるかを決める。
 
 ### Step 1
