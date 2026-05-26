@@ -32,13 +32,21 @@ namespace IndigoMovieManager.Skin.Runtime
             string dbIdentity = BuildDbIdentity(normalizedContext.DbFullPath);
             string recordKey = BuildRecordKey(dbIdentity, movie.Movie_Id);
             string resolvedThumbPath = ResolveThumbPath(movie, normalizedContext);
-            string sourceKind = ResolveSourceKind(movie, resolvedThumbPath);
+            string sourceKind = ResolveSourceKind(
+                movie,
+                resolvedThumbPath,
+                normalizedContext.ResolveMode
+            );
             WhiteBrowserSkinThumbnailSizeInfo sizeInfo = ResolveSizeInfo(
                 resolvedThumbPath,
                 sourceKind,
                 normalizedContext.ResolveMode
             );
-            string thumbRevision = BuildThumbRevision(resolvedThumbPath, sourceKind);
+            string thumbRevision = BuildThumbRevisionForCreate(
+                resolvedThumbPath,
+                sourceKind,
+                normalizedContext.ResolveMode
+            );
 
             return new WhiteBrowserSkinThumbnailContractDto
             {
@@ -133,8 +141,30 @@ namespace IndigoMovieManager.Skin.Runtime
             WhiteBrowserSkinThumbnailResolveContext context
         )
         {
-            string candidatePath = GetThumbPathForTab(movie, context.DisplayTabIndex);
-            if (IsUsablePath(candidatePath))
+            if (context.ResolveMode == WhiteBrowserSkinThumbnailResolveMode.CacheOnly)
+            {
+                return ResolveThumbPathForCacheOnly(movie, context.DisplayTabIndex);
+            }
+
+            return ResolveThumbPathForFullSync(movie, context.DisplayTabIndex);
+        }
+
+        private static string ResolveThumbPathForCacheOnly(MovieRecords movie, int displayTabIndex)
+        {
+            string candidatePath = GetThumbPathForTab(movie, displayTabIndex);
+            if (!string.IsNullOrWhiteSpace(candidatePath))
+            {
+                return candidatePath;
+            }
+
+            // CacheOnly は visible range の応答優先経路なので、同名画像探索を掘らず既定画像へ縮退する。
+            return ResolveMissingPlaceholderPath(displayTabIndex);
+        }
+
+        private static string ResolveThumbPathForFullSync(MovieRecords movie, int displayTabIndex)
+        {
+            string candidatePath = GetThumbPathForTab(movie, displayTabIndex);
+            if (IsUsableExistingPath(candidatePath))
             {
                 return candidatePath;
             }
@@ -149,7 +179,7 @@ namespace IndigoMovieManager.Skin.Runtime
                 return sourceImagePath;
             }
 
-            return ResolveMissingPlaceholderPath(context.DisplayTabIndex);
+            return ResolveMissingPlaceholderPath(displayTabIndex);
         }
 
         private static bool IsMovieSelected(
@@ -165,7 +195,57 @@ namespace IndigoMovieManager.Skin.Runtime
             return context?.SelectedMovieId.HasValue == true && context.SelectedMovieId.Value == movieId;
         }
 
-        private static string ResolveSourceKind(MovieRecords movie, string resolvedThumbPath)
+        private static string ResolveSourceKind(
+            MovieRecords movie,
+            string resolvedThumbPath,
+            WhiteBrowserSkinThumbnailResolveMode resolveMode
+        )
+        {
+            return resolveMode == WhiteBrowserSkinThumbnailResolveMode.CacheOnly
+                ? ResolveSourceKindForCacheOnly(movie, resolvedThumbPath)
+                : ResolveSourceKindForFullSync(movie, resolvedThumbPath);
+        }
+
+        private static string ResolveSourceKindForCacheOnly(
+            MovieRecords movie,
+            string resolvedThumbPath
+        )
+        {
+            if (string.IsNullOrWhiteSpace(resolvedThumbPath))
+            {
+                return WhiteBrowserSkinThumbnailSourceKinds.MissingFilePlaceholder;
+            }
+
+            if (IsMissingMoviePlaceholderPath(resolvedThumbPath))
+            {
+                return WhiteBrowserSkinThumbnailSourceKinds.MissingFilePlaceholder;
+            }
+
+            if (
+                ThumbnailErrorPlaceholderHelper.IsPlaceholderPath(resolvedThumbPath)
+                || ThumbnailPathResolver.IsErrorMarker(resolvedThumbPath)
+            )
+            {
+                return WhiteBrowserSkinThumbnailSourceKinds.ErrorPlaceholder;
+            }
+
+            if (IsSameNameSourceImagePathByString(movie?.Movie_Path, resolvedThumbPath))
+            {
+                return WhiteBrowserSkinThumbnailSourceKinds.SourceImageDirect;
+            }
+
+            string cacheKey = BuildSizeInfoCacheKey(NormalizePath(resolvedThumbPath));
+            if (TryGetCachedSourceKindWithoutFileStamp(cacheKey, out string cachedSourceKind))
+            {
+                return cachedSourceKind;
+            }
+
+            // import marker や実ファイル有無は I/O が必要なため、CacheOnly では managed として扱う。
+            // 後続の FullSync / 更新 callback で正確な source kind へ寄せ直す。
+            return WhiteBrowserSkinThumbnailSourceKinds.ManagedThumbnail;
+        }
+
+        private static string ResolveSourceKindForFullSync(MovieRecords movie, string resolvedThumbPath)
         {
             if (string.IsNullOrWhiteSpace(resolvedThumbPath))
             {
@@ -221,7 +301,12 @@ namespace IndigoMovieManager.Skin.Runtime
                 return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
             }
 
-            string cacheKey = BuildSizeInfoCacheKey(normalizedThumbPath, sourceKind, resolveMode);
+            string cacheKey = BuildSizeInfoCacheKey(normalizedThumbPath);
+            if (resolveMode == WhiteBrowserSkinThumbnailResolveMode.CacheOnly)
+            {
+                return ResolveSizeInfoForCacheOnly(cacheKey);
+            }
+
             if (!TryReadSizeInfoFileStamp(normalizedThumbPath, out SizeInfoFileStamp fileStamp))
             {
                 return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
@@ -238,29 +323,37 @@ namespace IndigoMovieManager.Skin.Runtime
                 return cached;
             }
 
-            if (resolveMode == WhiteBrowserSkinThumbnailResolveMode.CacheOnly)
-            {
-                if (
-                    TryResolveSizeInfoFromThumbnailMetadataFile(
-                        normalizedThumbPath,
-                        sourceKind,
-                        out WhiteBrowserSkinThumbnailSizeInfo metadataSizeInfo
-                    )
-                )
-                {
-                    StoreCachedSizeInfo(cacheKey, fileStamp, metadataSizeInfo);
-                    return metadataSizeInfo;
-                }
-
-                return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
-            }
-
             WhiteBrowserSkinThumbnailSizeInfo resolvedSizeInfo = ResolveSizeInfoCore(
                 normalizedThumbPath,
                 sourceKind
             );
-            StoreCachedSizeInfo(cacheKey, fileStamp, resolvedSizeInfo);
+            StoreCachedSizeInfo(
+                cacheKey,
+                fileStamp,
+                resolvedSizeInfo,
+                sourceKind,
+                BuildThumbRevisionFromStamp(normalizedThumbPath, sourceKind, fileStamp)
+            );
             return resolvedSizeInfo;
+        }
+
+        private static WhiteBrowserSkinThumbnailSizeInfo ResolveSizeInfoForCacheOnly(
+            string cacheKey
+        )
+        {
+            if (
+                TryGetCachedSizeInfoWithoutFileStamp(
+                    cacheKey,
+                    out WhiteBrowserSkinThumbnailSizeInfo cached
+                )
+            )
+            {
+                return cached;
+            }
+
+            // CacheOnly はファイルスタンプや WB メタを読まず、未確定値は安全な既定寸法へ委ねる。
+            // API 層の fallback と後続 FullSync / 更新 callback が、実寸をあとから正確化する。
+            return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
         }
 
         // 同じサムネイルを WebView update ごとに再解析すると GDI/WIC 負荷が高いので、
@@ -308,56 +401,6 @@ namespace IndigoMovieManager.Skin.Runtime
             return new WhiteBrowserSkinThumbnailSizeInfo(0, 0, 1, 1);
         }
 
-        private static bool TryResolveSizeInfoFromThumbnailMetadataFile(
-            string resolvedThumbPath,
-            string sourceKind,
-            out WhiteBrowserSkinThumbnailSizeInfo sizeInfo
-        )
-        {
-            sizeInfo = default;
-            if (!RequiresThumbnailSheetMetadata(sourceKind))
-            {
-                return false;
-            }
-
-            try
-            {
-                ThumbInfo thumbInfo = new();
-                thumbInfo.GetThumbInfo(resolvedThumbPath);
-                return thumbInfo.IsThumbnail
-                    && TryResolveSizeInfoFromThumbnailMetadata(thumbInfo, out sizeInfo);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static bool TryResolveSizeInfoFromThumbnailMetadata(
-            ThumbInfo thumbInfo,
-            out WhiteBrowserSkinThumbnailSizeInfo sizeInfo
-        )
-        {
-            sizeInfo = default;
-            if (thumbInfo == null)
-            {
-                return false;
-            }
-
-            int columns = Math.Max(1, thumbInfo.ThumbColumns);
-            int rows = Math.Max(1, thumbInfo.ThumbRows);
-            int totalWidth = thumbInfo.TotalWidth;
-            int totalHeight = thumbInfo.TotalHeight;
-            bool hasGridLayout = columns > 1 || rows > 1 || thumbInfo.ThumbCounts > 1;
-            if (!hasGridLayout || totalWidth <= 0 || totalHeight <= 0)
-            {
-                return false;
-            }
-
-            sizeInfo = new WhiteBrowserSkinThumbnailSizeInfo(totalWidth, totalHeight, columns, rows);
-            return true;
-        }
-
         private static bool RequiresThumbnailSheetMetadata(string sourceKind)
         {
             return string.Equals(
@@ -403,13 +446,9 @@ namespace IndigoMovieManager.Skin.Runtime
             }
         }
 
-        private static string BuildSizeInfoCacheKey(
-            string normalizedThumbPath,
-            string sourceKind,
-            WhiteBrowserSkinThumbnailResolveMode resolveMode
-        )
+        private static string BuildSizeInfoCacheKey(string normalizedThumbPath)
         {
-            return $"{normalizedThumbPath}|{sourceKind ?? ""}|{resolveMode}";
+            return normalizedThumbPath ?? "";
         }
 
         private static bool TryGetCachedSizeInfo(
@@ -440,10 +479,69 @@ namespace IndigoMovieManager.Skin.Runtime
             return false;
         }
 
+        private static bool TryGetCachedSizeInfoWithoutFileStamp(
+            string cacheKey,
+            out WhiteBrowserSkinThumbnailSizeInfo sizeInfo
+        )
+        {
+            lock (SizeInfoCacheGate)
+            {
+                if (SizeInfoCache.TryGetValue(cacheKey, out SizeInfoCacheEntry entry))
+                {
+                    TouchSizeInfoCacheEntry(entry);
+                    sizeInfo = entry.SizeInfo;
+                    return true;
+                }
+            }
+
+            sizeInfo = default;
+            return false;
+        }
+
+        private static bool TryGetCachedSourceKindWithoutFileStamp(
+            string cacheKey,
+            out string sourceKind
+        )
+        {
+            lock (SizeInfoCacheGate)
+            {
+                if (SizeInfoCache.TryGetValue(cacheKey, out SizeInfoCacheEntry entry))
+                {
+                    TouchSizeInfoCacheEntry(entry);
+                    sourceKind = entry.SourceKind;
+                    return !string.IsNullOrWhiteSpace(sourceKind);
+                }
+            }
+
+            sourceKind = "";
+            return false;
+        }
+
+        private static bool TryGetCachedThumbRevisionWithoutFileStamp(
+            string cacheKey,
+            out string thumbRevision
+        )
+        {
+            lock (SizeInfoCacheGate)
+            {
+                if (SizeInfoCache.TryGetValue(cacheKey, out SizeInfoCacheEntry entry))
+                {
+                    TouchSizeInfoCacheEntry(entry);
+                    thumbRevision = entry.ThumbRevision;
+                    return !string.IsNullOrWhiteSpace(thumbRevision);
+                }
+            }
+
+            thumbRevision = "";
+            return false;
+        }
+
         private static void StoreCachedSizeInfo(
             string cacheKey,
             SizeInfoFileStamp fileStamp,
-            WhiteBrowserSkinThumbnailSizeInfo sizeInfo
+            WhiteBrowserSkinThumbnailSizeInfo sizeInfo,
+            string sourceKind,
+            string thumbRevision
         )
         {
             lock (SizeInfoCacheGate)
@@ -458,6 +556,8 @@ namespace IndigoMovieManager.Skin.Runtime
                     fileStamp.LastWriteTicks,
                     fileStamp.FileLength,
                     sizeInfo,
+                    sourceKind,
+                    thumbRevision,
                     node
                 );
                 TrimSizeInfoCacheLocked();
@@ -608,7 +708,51 @@ namespace IndigoMovieManager.Skin.Runtime
             );
         }
 
-        private static bool IsUsablePath(string path)
+        private static string BuildThumbRevisionForCreate(
+            string resolvedThumbPath,
+            string sourceKind,
+            WhiteBrowserSkinThumbnailResolveMode resolveMode
+        )
+        {
+            return resolveMode == WhiteBrowserSkinThumbnailResolveMode.CacheOnly
+                ? BuildThumbRevisionForCacheOnly(resolvedThumbPath, sourceKind)
+                : BuildThumbRevision(resolvedThumbPath, sourceKind);
+        }
+
+        private static string BuildThumbRevisionForCacheOnly(
+            string resolvedThumbPath,
+            string sourceKind
+        )
+        {
+            string normalizedThumbPath = NormalizePath(resolvedThumbPath);
+            string cacheKey = BuildSizeInfoCacheKey(normalizedThumbPath);
+            if (TryGetCachedThumbRevisionWithoutFileStamp(cacheKey, out string cachedRevision))
+            {
+                return cachedRevision;
+            }
+
+            // CacheOnly の未キャッシュ revision は UI 即応を優先してファイルスタンプを読まない安全値に固定する。
+            return "0";
+        }
+
+        private static string BuildThumbRevisionFromStamp(
+            string normalizedThumbPath,
+            string sourceKind,
+            SizeInfoFileStamp fileStamp
+        )
+        {
+            if (string.IsNullOrWhiteSpace(normalizedThumbPath))
+            {
+                return "0";
+            }
+
+            string fingerprint =
+                $"{sourceKind ?? ""}|{normalizedThumbPath}|{fileStamp.FileLength}|{fileStamp.LastWriteTicks}";
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint));
+            return Convert.ToHexString(hash).ToLowerInvariant();
+        }
+
+        private static bool IsUsableExistingPath(string path)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
@@ -624,6 +768,21 @@ namespace IndigoMovieManager.Skin.Runtime
             {
                 return false;
             }
+        }
+
+        private static bool IsSameNameSourceImagePathByString(
+            string movieFullPath,
+            string thumbPath
+        )
+        {
+            if (string.IsNullOrWhiteSpace(movieFullPath) || string.IsNullOrWhiteSpace(thumbPath))
+            {
+                return false;
+            }
+
+            return PathsEqual(thumbPath, Path.ChangeExtension(movieFullPath, ".jpg"))
+                || PathsEqual(thumbPath, Path.ChangeExtension(movieFullPath, ".jpeg"))
+                || PathsEqual(thumbPath, Path.ChangeExtension(movieFullPath, ".png"));
         }
 
         private static bool IsMissingMoviePlaceholderPath(string path)
@@ -709,18 +868,24 @@ namespace IndigoMovieManager.Skin.Runtime
                 long lastWriteTicks,
                 long fileLength,
                 WhiteBrowserSkinThumbnailSizeInfo sizeInfo,
+                string sourceKind,
+                string thumbRevision,
                 LinkedListNode<string> node
             )
             {
                 LastWriteTicks = lastWriteTicks;
                 FileLength = fileLength;
                 SizeInfo = sizeInfo;
+                SourceKind = sourceKind ?? "";
+                ThumbRevision = thumbRevision ?? "";
                 Node = node;
             }
 
             public long LastWriteTicks { get; }
             public long FileLength { get; }
             public WhiteBrowserSkinThumbnailSizeInfo SizeInfo { get; }
+            public string SourceKind { get; }
+            public string ThumbRevision { get; }
             public LinkedListNode<string> Node { get; }
         }
     }

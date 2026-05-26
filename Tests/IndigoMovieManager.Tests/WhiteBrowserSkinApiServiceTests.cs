@@ -106,18 +106,14 @@ public sealed class WhiteBrowserSkinApiServiceTests
         Assert.That(resolvedPayload.Items.Length, Is.EqualTo(1));
 
         WhiteBrowserSkinMovieDto dto = resolvedPayload.Items[0];
-        string expectedRevision = ComputeExpectedThumbRevision(
-            thumbPath,
-            WhiteBrowserSkinThumbnailSourceKinds.ManagedThumbnail
-        );
         Assert.Multiple(() =>
         {
             Assert.That(dto.DbIdentity, Is.Not.Empty);
             Assert.That(dto.RecordKey, Is.EqualTo($"{dto.DbIdentity}:7"));
-            Assert.That(dto.ThumbRevision, Is.EqualTo(expectedRevision));
+            Assert.That(dto.ThumbRevision, Is.EqualTo("0"));
             Assert.That(
                 dto.ThumbUrl,
-                Is.EqualTo("https://thum.local/movie.%23abc123.jpg?rev=" + expectedRevision)
+                Is.EqualTo("https://thum.local/movie.%23abc123.jpg?rev=0")
             );
             Assert.That(
                 dto.ThumbSourceKind,
@@ -448,7 +444,7 @@ public sealed class WhiteBrowserSkinApiServiceTests
     }
 
     [Test]
-    public async Task HandleUpdate_CacheOnly時はWBメタから軽く寸法を返せる()
+    public async Task HandleUpdate_CacheOnly時はWBメタがあっても未キャッシュなら既定寸法で返せる()
     {
         string root = CreateTempDirectory("imm-webview-api-cacheonly-size");
         string thumbRoot = Path.Combine(root, "thum");
@@ -497,10 +493,10 @@ public sealed class WhiteBrowserSkinApiServiceTests
         Assert.Multiple(() =>
         {
             Assert.That(dto.MovieId, Is.EqualTo(10));
-            Assert.That(dto.ThumbNaturalWidth, Is.EqualTo(320));
-            Assert.That(dto.ThumbNaturalHeight, Is.EqualTo(180));
-            Assert.That(dto.ThumbSheetColumns, Is.EqualTo(2));
-            Assert.That(dto.ThumbSheetRows, Is.EqualTo(2));
+            Assert.That(dto.ThumbNaturalWidth, Is.EqualTo(160));
+            Assert.That(dto.ThumbNaturalHeight, Is.EqualTo(120));
+            Assert.That(dto.ThumbSheetColumns, Is.EqualTo(1));
+            Assert.That(dto.ThumbSheetRows, Is.EqualTo(1));
             Assert.That(dto.ThumbRevision, Is.Not.Empty);
         });
     }

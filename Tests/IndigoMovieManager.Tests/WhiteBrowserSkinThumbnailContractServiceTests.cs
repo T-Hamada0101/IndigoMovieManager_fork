@@ -242,7 +242,7 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
     }
 
     [Test]
-    public void Create_CacheOnlyは未キャッシュ時もWBメタから軽くサイズを返せる()
+    public void Create_CacheOnlyは未キャッシュ時にファイルを読まず既定寸法へ縮退する()
     {
         string tempRoot = CreateTempDirectory("imm-wbskin-cacheonly-hit");
         try
@@ -279,17 +279,23 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
             // 1 度 FullSync で確定値を作ると、その後の CacheOnly はキャッシュ値を返せる。
             _ = service.Create(movie, fullSyncContext);
             WhiteBrowserSkinThumbnailContractDto hit = service.Create(movie, cacheOnlyContext);
+            string expectedRevision = ComputeExpectedThumbRevision(
+                thumbPath,
+                WhiteBrowserSkinThumbnailSourceKinds.ManagedThumbnail
+            );
 
             Assert.Multiple(() =>
             {
-                Assert.That(miss.ThumbNaturalWidth, Is.EqualTo(360));
-                Assert.That(miss.ThumbNaturalHeight, Is.EqualTo(90));
-                Assert.That(miss.ThumbSheetColumns, Is.EqualTo(3));
+                Assert.That(miss.ThumbNaturalWidth, Is.EqualTo(0));
+                Assert.That(miss.ThumbNaturalHeight, Is.EqualTo(0));
+                Assert.That(miss.ThumbSheetColumns, Is.EqualTo(1));
                 Assert.That(miss.ThumbSheetRows, Is.EqualTo(1));
+                Assert.That(miss.ThumbRevision, Is.EqualTo("0"));
                 Assert.That(hit.ThumbNaturalWidth, Is.EqualTo(360));
                 Assert.That(hit.ThumbNaturalHeight, Is.EqualTo(90));
                 Assert.That(hit.ThumbSheetColumns, Is.EqualTo(3));
                 Assert.That(hit.ThumbSheetRows, Is.EqualTo(1));
+                Assert.That(hit.ThumbRevision, Is.EqualTo(expectedRevision));
             });
         }
         finally
@@ -339,8 +345,9 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
 
             Assert.Multiple(() =>
             {
-                Assert.That(cacheOnly.ThumbNaturalWidth, Is.EqualTo(360));
-                Assert.That(cacheOnly.ThumbNaturalHeight, Is.EqualTo(90));
+                Assert.That(cacheOnly.ThumbNaturalWidth, Is.EqualTo(0));
+                Assert.That(cacheOnly.ThumbNaturalHeight, Is.EqualTo(0));
+                Assert.That(cacheOnly.ThumbRevision, Is.EqualTo("0"));
                 Assert.That(fullSync.ThumbNaturalWidth, Is.EqualTo(320));
                 Assert.That(fullSync.ThumbNaturalHeight, Is.EqualTo(240));
                 Assert.That(fullSync.ThumbSheetColumns, Is.EqualTo(3));
@@ -354,7 +361,7 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
     }
 
     [Test]
-    public void Create_CacheOnlyはサムネ更新後に古いサイズキャッシュを返さない()
+    public void Create_CacheOnlyはキャッシュ済み寸法をファイルスタンプ確認なしで返す()
     {
         string tempRoot = CreateTempDirectory("imm-wbskin-cacheonly-stamp-refresh");
         try
@@ -384,6 +391,10 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
             };
 
             _ = service.Create(movie, context);
+            string cachedRevision = ComputeExpectedThumbRevision(
+                thumbPath,
+                WhiteBrowserSkinThumbnailSourceKinds.ManagedThumbnail
+            );
 
             Thread.Sleep(20);
             CreateManagedThumbnailWithMetadata(
@@ -402,16 +413,71 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
 
             Assert.Multiple(() =>
             {
-                Assert.That(after.ThumbNaturalWidth, Is.EqualTo(320));
-                Assert.That(after.ThumbNaturalHeight, Is.EqualTo(240));
-                Assert.That(after.ThumbSheetColumns, Is.EqualTo(2));
-                Assert.That(after.ThumbSheetRows, Is.EqualTo(2));
+                Assert.That(after.ThumbNaturalWidth, Is.EqualTo(360));
+                Assert.That(after.ThumbNaturalHeight, Is.EqualTo(90));
+                Assert.That(after.ThumbSheetColumns, Is.EqualTo(3));
+                Assert.That(after.ThumbSheetRows, Is.EqualTo(1));
+                Assert.That(after.ThumbRevision, Is.EqualTo(cachedRevision));
             });
         }
         finally
         {
             TryDeleteDirectory(tempRoot);
         }
+    }
+
+    [Test]
+    public void SourcePolicy_CacheOnly軽量helperは同期ファイルIOとWBメタ読みへ進まない()
+    {
+        string source = GetRepoText(
+            "WhiteBrowserSkin",
+            "Runtime",
+            "WhiteBrowserSkinThumbnailContractService.cs"
+        );
+        string createMethod = ExtractMethod(
+            source,
+            "public WhiteBrowserSkinThumbnailContractDto Create("
+        );
+        string thumbPathMethod = ExtractMethod(
+            source,
+            "private static string ResolveThumbPathForCacheOnly("
+        );
+        string sourceKindMethod = ExtractMethod(
+            source,
+            "private static string ResolveSourceKindForCacheOnly("
+        );
+        string sizeInfoMethod = ExtractMethod(
+            source,
+            "private static WhiteBrowserSkinThumbnailSizeInfo ResolveSizeInfoForCacheOnly("
+        );
+        string revisionMethod = ExtractMethod(
+            source,
+            "private static string BuildThumbRevisionForCacheOnly("
+        );
+        string cachedRevisionMethod = ExtractMethod(
+            source,
+            "private static bool TryGetCachedThumbRevisionWithoutFileStamp("
+        );
+        string cachedSourceKindMethod = ExtractMethod(
+            source,
+            "private static bool TryGetCachedSourceKindWithoutFileStamp("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(createMethod, Does.Contain("normalizedContext.ResolveMode"));
+            AssertCacheOnlyHelperDoesNotReadFiles(thumbPathMethod);
+            AssertCacheOnlyHelperDoesNotReadFiles(sourceKindMethod);
+            AssertCacheOnlyHelperDoesNotReadFiles(sizeInfoMethod);
+            AssertCacheOnlyHelperDoesNotReadFiles(revisionMethod);
+            AssertCacheOnlyHelperDoesNotReadFiles(cachedRevisionMethod);
+            AssertCacheOnlyHelperDoesNotReadFiles(cachedSourceKindMethod);
+            Assert.That(sizeInfoMethod, Does.Not.Contain("TryReadSizeInfoFileStamp("));
+            Assert.That(sizeInfoMethod, Does.Not.Contain("ThumbInfo"));
+            Assert.That(sizeInfoMethod, Does.Not.Contain("GetThumbInfo("));
+            Assert.That(sourceKindMethod, Does.Not.Contain("HasMarker("));
+            Assert.That(thumbPathMethod, Does.Not.Contain("TryResolveSameNameThumbnailSourceImagePath("));
+        });
     }
 
     [Test]
@@ -657,5 +723,63 @@ public sealed class WhiteBrowserSkinThumbnailContractServiceTests
         {
             // 一時ファイルの後始末は失敗しても本質ではない。
         }
+    }
+
+    private static void AssertCacheOnlyHelperDoesNotReadFiles(string methodSource)
+    {
+        Assert.That(methodSource, Does.Not.Contain("Path.Exists("));
+        Assert.That(methodSource, Does.Not.Contain("File.Exists("));
+        Assert.That(methodSource, Does.Not.Contain("Directory.Exists("));
+        Assert.That(methodSource, Does.Not.Contain("new FileInfo("));
+        Assert.That(methodSource, Does.Not.Contain("FileInfo "));
+        Assert.That(methodSource, Does.Not.Contain("FileStream"));
+        Assert.That(methodSource, Does.Not.Contain("BitmapDecoder"));
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        while (current != null)
+        {
+            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return string.Empty;
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int braceStart = source.IndexOf('{', start);
+        Assert.That(braceStart, Is.GreaterThanOrEqualTo(0));
+
+        int depth = 0;
+        for (int index = braceStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の終端が見つかりません。");
+        return string.Empty;
     }
 }

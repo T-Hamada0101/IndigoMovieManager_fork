@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 に外部 skin サムネ契約生成の `CacheOnly` 経路を、既存パス文字列・placeholder/error 判定・既存サイズ/revisionキャッシュだけで返す軽量経路へ寄せた。未キャッシュ時だけ寸法と revision を安全値へ縮退し、`FullSync` / 更新 callback 側で正確化するため、visible range 応答中のファイル存在確認・スタンプ確認・WB メタ読みを避ける。
 - 2026-05-27 に外部 skin host prepare の HTML 存在確認と WebView2 userDataFolder 作成を背景 helper へ逃がし、戻った後の stale guard と navigate / WebView2 操作の UI 側責務を維持した。fallback log ボタンも Explorer 引数判定だけを背景化し、Explorer 起動は UI 側に残した
 - 2026-05-27 に `CommonSettingsWindow` の skin selector 初期化 / Activated 更新を `GetAvailableSkinDefinitionsAsync()` へ寄せ、catalog 走査は `Task.Run` 背景実行、設定画面への反映は revision guard 後に限定した。同期 API は互換維持のため残す。
 - 2026-05-26 に `refresh end` を早期 stale / teardown skip でも必ず出す形へ寄せ、`catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を zero 込みの同一 payload で読めるようにした。これにより cached catalog / minimal chrome reload / explicit reload / fallback retry の区別を保ったまま、完了判定を 1 行で閉じやすくした
