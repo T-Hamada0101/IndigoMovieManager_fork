@@ -296,6 +296,7 @@ namespace IndigoMovieManager
 
             int msec = 0;
             string moviePath = "";
+            string playbackMoviePath = "";
             MovieRecords mv = new();
             bool notBookmark = true;
 
@@ -318,6 +319,7 @@ namespace IndigoMovieManager
                             )
                             .First();
                         var BookMarkedFilePath = bookmarkedMv.Movie_Path;
+                        playbackMoviePath = BookMarkedFilePath;
                         msec = await ResolveBookmarkPlaybackMillisecondsAsync(
                             BookMarkedFilePath,
                             mv.Score
@@ -341,9 +343,11 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                moviePath = $"\"{mv.Movie_Path}\"";
+                string selectedMoviePath = mv.Movie_Path;
+                playbackMoviePath = selectedMoviePath;
+                moviePath = $"\"{selectedMoviePath}\"";
 
-                if (!Path.Exists(mv.Movie_Path))
+                if (!await MoviePathExistsForPlaybackAsync(selectedMoviePath))
                 {
                     return;
                 }
@@ -366,7 +370,7 @@ namespace IndigoMovieManager
 
             if (!string.IsNullOrEmpty(playerParam))
             {
-                playerParam = playerParam.Replace("<file>", $"{mv.Movie_Path}");
+                playerParam = playerParam.Replace("<file>", $"{playbackMoviePath}");
                 playerParam = playerParam.Replace("<ms>", $"{msec}");
             }
 
@@ -430,6 +434,17 @@ namespace IndigoMovieManager
                 );
                 return;
             }
+        }
+
+        private static Task<bool> MoviePathExistsForPlaybackAsync(string movieFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(movieFullPath))
+            {
+                return Task.FromResult(false);
+            }
+
+            // 再生入口の実ファイル確認は環境次第で詰まるため、UIスレッドから切り離す。
+            return Task.Run(() => Path.Exists(movieFullPath));
         }
 
         private static Task<int> ResolveBookmarkPlaybackMillisecondsAsync(

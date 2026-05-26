@@ -145,6 +145,26 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayMovie_Click_通常再生の存在確認は背景へ逃がす()
+    {
+        string source = GetMainWindowPlayerSourceText();
+        string playMethod = GetMethodBlock(source, "public async void PlayMovie_Click(");
+        string existsAsyncMethod = GetMethodBlock(
+            source,
+            "private static Task<bool> MoviePathExistsForPlaybackAsync("
+        );
+
+        Assert.That(playMethod, Does.Contain("string selectedMoviePath = mv.Movie_Path;"));
+        Assert.That(playMethod, Does.Contain("playbackMoviePath = selectedMoviePath;"));
+        Assert.That(playMethod, Does.Contain("playerParam.Replace(\"<file>\", $\"{playbackMoviePath}\")"));
+        Assert.That(playMethod, Does.Contain("await MoviePathExistsForPlaybackAsync(selectedMoviePath)"));
+        Assert.That(playMethod, Does.Not.Contain("Path.Exists(mv.Movie_Path)"));
+        Assert.That(existsAsyncMethod, Does.Contain("Task.Run(() => Path.Exists(movieFullPath))"));
+        Assert.That(existsAsyncMethod, Does.Contain("string.IsNullOrWhiteSpace(movieFullPath)"));
+        Assert.That(existsAsyncMethod, Does.Contain("Task.FromResult(false)"));
+    }
+
+    [Test]
     public void PlayMovie_Click_サムネイル再生位置の解析は背景へ逃がす()
     {
         string playerSource = GetMainWindowPlayerSourceText();

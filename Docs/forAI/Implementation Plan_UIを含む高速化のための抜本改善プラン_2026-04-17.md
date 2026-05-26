@@ -5,6 +5,7 @@
 変更概要:
 - 2026-05-26 のサブ5.5追加で、詳細サムネ表示モード切替と Log タブ debug カテゴリ切替に残っていた `Properties.Settings.Default.Save()` 直呼びを `QueueApplicationSettingsSave(...)` へ寄せ、UI 操作中の設定ファイル I/O を共通の背景保存キューへ逃がした。
 - 2026-05-26 のサブ5.5追加で、Thumbnail 成功後の main tab 後段 `FilterAndSort(sortId, true)` を廃止し、失敗キャッシュ無効化、上側タブ visible refresh、preferred key revision、下部 ERROR/進捗 snapshot 予約へ寄せた。サムネERROR順だけは順序が変わるため、DB 再読込ではなく現在一覧の `SortDataAsync("28")` に限定する。
+- 2026-05-26 のサブ5.5追加で、Player 通常再生入口の `Path.Exists(mv.Movie_Path)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、存在確認中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、Debug タブの「現在サムネイルを削除」に残っていた `Directory.Exists` / `Directory.Delete(..., true)` を `Task.Run` へ逃がし、削除中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、起動 fallback と段階ロード中 sort 変更の `FilterAndSort(..., true)` は DB 正本復旧・全件順序復旧の許容 fallback として分類し、Debug タブのサムネイル全削除後 `FilterAndSort(..., true)` は表示モデルのサムネパスクリア、visible refresh、進捗/ERROR snapshot 予約へ置き換えた。
 - 2026-05-26 のサブ5.5で、外部 skin API の sort は通常時 `SortDataAsync(...)` を await する経路へ寄せ、`FilterAndSort(resolvedSortId, true)` の全件 reload fallback を通常経路から外した。起動 partial feed 中だけは全件順序の正しさを守るため `partial-feed-needs-complete-source` として分類ログを残し、startup feed をキャンセルしてから正規の後着キャンセル付き reload へ戻す。
@@ -428,6 +429,7 @@
 - 詳細パネル、タグ、bookmark などの補助 UI は、表示された時だけ decode / bind を始める。
 - Player / UpperTabs の追加・ fullscreen・表示切替は、watch / thumbnail / skin の背後処理と同時に走っても UI スレッドを長く掴まない形へ寄せる。
 - WebView Player の動画切り替えでは、ホスト側音量適用中の通知を保存せず、切り替え直後の 100% 既定音量通知でユーザー音量を上書きしない。
+- Player 通常再生前の実ファイル存在確認は、UI 側では選択パス snapshot だけにして `Task.Run` helper へ逃がす。存在しない時の早期 return と、その後のサムネイル再生位置解析・外部プレイヤー起動順は維持する。
 - Bookmark 追加は、UI 側で選択行・再生位置・DB パスだけ snapshot し、動画メタ取得と DB 登録は背景へ逃がす。DB 切替後着は現在 DB 一致で捨てる。
 - Bookmark 削除も、UI 側では対象 ID と DB パスだけ snapshot し、DB 書き込みは背景へ逃がす。
 - Player 再生時の統計保存も、UI 側では表示値更新だけ先に行い、DB 書き込みは背景へ逃がす。
