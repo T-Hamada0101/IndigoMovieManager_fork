@@ -297,6 +297,16 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     {
         string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
         string chromeSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Chrome.cs");
+        string hostSource = GetRepoText(
+            "WhiteBrowserSkin",
+            "Host",
+            "WhiteBrowserSkinHostControl.xaml.cs"
+        );
+        string renderCoordinatorSource = GetRepoText(
+            "WhiteBrowserSkin",
+            "Runtime",
+            "WhiteBrowserSkinRenderCoordinator.cs"
+        );
         string prepareMethod = GetMethodBlock(
             refreshSource,
             "private async Task<WhiteBrowserSkinHostOperationResult> TryPrepareExternalSkinHostAsync("
@@ -312,6 +322,14 @@ public sealed class ExternalSkinHeaderChromePolicyTests
         string openLogHelper = GetMethodBlock(
             chromeSource,
             "private static Task<ExternalSkinFallbackLogExplorerTarget> ResolveExternalSkinFallbackLogExplorerTargetAsync("
+        );
+        string navigateMethod = GetMethodBlock(
+            hostSource,
+            "public async Task<WhiteBrowserSkinHostOperationResult> TryNavigateAsync("
+        );
+        string asyncBuildMethod = GetMethodBlock(
+            renderCoordinatorSource,
+            "public Task<WhiteBrowserSkinRenderDocument> BuildInitialDocumentAsync("
         );
         int prepareBeforeIoGuardIndex = prepareMethod.IndexOf(
             "\"prepare-before-navigate\"",
@@ -342,21 +360,43 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(openLogHelper, Does.Contain("File.Exists(logPath)"));
             Assert.That(openLogHelper, Does.Contain("Directory.Exists(targetDirectory)"));
             Assert.That(openLogHelper, Does.Not.Contain("Process.Start("));
+
+            Assert.That(navigateMethod, Does.Contain("await runtimeBridge.HandleSkinLeaveAsync()"));
+            Assert.That(navigateMethod, Does.Contain("await renderCoordinator.BuildInitialDocumentAsync("));
+            Assert.That(navigateMethod, Does.Not.Contain("renderCoordinator.BuildInitialDocument("));
+            Assert.That(navigateMethod, Does.Contain("await ResumeOnHostDispatcherAsync()"));
+            Assert.That(navigateMethod, Does.Contain("await NavigateToStringAsync(document.Html)"));
+            Assert.That(asyncBuildMethod, Does.Contain("Task.Run(() => BuildInitialDocument("));
         });
     }
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        string[] startDirectories =
+        [
+            Environment.GetEnvironmentVariable("IMM_REPO_ROOT") ?? "",
+            TestContext.CurrentContext.TestDirectory,
+            TestContext.CurrentContext.WorkDirectory,
+            Directory.GetCurrentDirectory(),
+        ];
+        foreach (string startDirectory in startDirectories)
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            if (string.IsNullOrWhiteSpace(startDirectory))
             {
-                return File.ReadAllText(candidate);
+                continue;
             }
 
-            current = current.Parent;
+            DirectoryInfo? current = new(startDirectory);
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");

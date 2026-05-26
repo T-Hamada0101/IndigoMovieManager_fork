@@ -75,10 +75,19 @@ namespace IndigoMovieManager.Skin.Host
 
             // 旧ページの終了 callback を先に返してから、新しい skin を流し込む。
             await runtimeBridge.HandleSkinLeaveAsync();
-            WhiteBrowserSkinRenderDocument document = renderCoordinator.BuildInitialDocument(
+            WhiteBrowserSkinRenderDocument document = await renderCoordinator.BuildInitialDocumentAsync(
                 skinRootPath,
                 skinHtmlPath
             );
+            await ResumeOnHostDispatcherAsync();
+            if (disposed)
+            {
+                return WhiteBrowserSkinHostOperationResult.CreateSkipped(
+                    requestedSkinName ?? "",
+                    "External skin host is already disposed."
+                );
+            }
+
             await NavigateToStringAsync(document.Html);
             return WhiteBrowserSkinHostOperationResult.CreateSuccess(requestedSkinName);
         }
@@ -223,6 +232,17 @@ namespace IndigoMovieManager.Skin.Host
             }
 
             await navigationCompleted.Task;
+        }
+
+        private Task ResumeOnHostDispatcherAsync()
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                return Task.CompletedTask;
+            }
+
+            // 背景で document を作った後も、WebView2 実体操作は必ず host の UI Dispatcher へ戻す。
+            return Dispatcher.InvokeAsync(() => { }).Task;
         }
     }
 }

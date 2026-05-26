@@ -88,6 +88,43 @@ public sealed class WhiteBrowserSkinRenderCoordinatorTests
     }
 
     [Test]
+    public async Task BuildInitialDocumentAsync_同じskinHtmlでは正規化済みdocumentを再利用できる()
+    {
+        string skinRootPath = WhiteBrowserSkinTestData.CreateSkinRootCopy(
+            ["WhiteBrowserDefaultList"],
+            rewriteHtmlAsShiftJis: true
+        );
+
+        try
+        {
+            string htmlPath = WhiteBrowserSkinTestData.GetFixtureHtmlPath(
+                skinRootPath,
+                "WhiteBrowserDefaultList"
+            );
+            WhiteBrowserSkinRenderCoordinator coordinator = new();
+
+            WhiteBrowserSkinRenderDocument first = await coordinator.BuildInitialDocumentAsync(
+                skinRootPath,
+                htmlPath
+            );
+            WhiteBrowserSkinRenderDocument second = await coordinator.BuildInitialDocumentAsync(
+                skinRootPath,
+                htmlPath
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ReferenceEquals(first, second), Is.True);
+                Assert.That(first.Html, Does.Contain("scroll-id : scroll;"));
+            });
+        }
+        finally
+        {
+            WhiteBrowserSkinTestData.DeleteDirectorySafe(skinRootPath);
+        }
+    }
+
+    [Test]
     public void BuildInitialDocument_skinHtml更新時はキャッシュを差し替える()
     {
         string skinRootPath = Path.Combine(

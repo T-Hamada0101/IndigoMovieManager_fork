@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5 Worker B 継続で、`WhiteBrowserSkinHostControl.TryNavigateAsync(...)` から同期 `BuildInitialDocument(...)` 呼び出しを外し、`BuildInitialDocumentAsync(...)` 経由で HTML 読み込み / encoding normalize / document cache 判定を `Task.Run` 背景側へ逃がした。WebView2 attach、`HandleSkinLeaveAsync()`、`NavigateToStringAsync(...)` は UI 側に残し、document cache の path / mtime / length 意味論は維持する。
 - 2026-05-27 のサブ5.5 Worker B で、`ApplySkinByName(...)` の外部 skin 初期タブ復元に、同一 DB + 同一 skin の直前解決結果を使う軽量 cache を追加した。`persisted` cache を最優先に読む順序は維持し、背景保存成功後の `LastUpperTab` が直前 fallback に覆われないようにしたため、同名 `changeSkin` / 連続 apply 時の `SelectProfileValue(...)` 再読取だけを減らす。
 - 2026-05-27 のサブ5.5 Worker N で、catalog explicit load の snapshot 生成に残っていた `File.Exists(...) -> FileInfo` の二重 probe を `TryGetFileMetadata(...)` へ集約した。前回 HTML 維持判定は directory 列挙と metadata 取得へ任せ、同一 html path の存在確認を重ねずに、HTML 実ファイルの length / last write による鮮度意味論は維持する。
 - 2026-05-27 に `GetCachedAvailableSkinDefinitions()` の初回 cache 空時 fallback を catalog load から built-in 共有定義 + 現在外部 skin の missing 補完へ変更した。ヘッダー表示同期は既存 snapshot だけに閉じ、外部 skin 追加 / HTML 更新の鮮度確認は `GetAvailableSkinDefinitions()` / `GetAvailableSkinDefinitionsAsync()` / `RefreshCurrentSkinDefinitionAsync()` 側へ残す。

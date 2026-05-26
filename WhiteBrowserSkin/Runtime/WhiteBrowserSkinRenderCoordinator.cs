@@ -77,6 +77,15 @@ namespace IndigoMovieManager.Skin.Runtime
             return document;
         }
 
+        public Task<WhiteBrowserSkinRenderDocument> BuildInitialDocumentAsync(
+            string skinRootPath,
+            string skinHtmlPath
+        )
+        {
+            // HTML 読み込みと正規化はファイル I/O を伴うため、host 側の UI 継続から外す。
+            return Task.Run(() => BuildInitialDocument(skinRootPath, skinHtmlPath));
+        }
+
         private sealed record CachedRenderDocument(
             string SkinRootPath,
             string SkinHtmlPath,
