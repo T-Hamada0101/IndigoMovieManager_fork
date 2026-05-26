@@ -434,14 +434,13 @@ namespace IndigoMovieManager.Skin
                     if (
                         previousItem.DirectoryLastWriteTicks == directoryLastWriteTicks
                         && !string.IsNullOrWhiteSpace(previousItem.HtmlPath)
-                        && File.Exists(previousItem.HtmlPath)
+                        && TryGetFileMetadata(previousItem.HtmlPath, out CatalogFileMetadata cachedHtmlMetadata)
                     )
                     {
-                        FileInfo cachedHtmlInfo = new(previousItem.HtmlPath);
                         if (
-                            string.Equals(previousItem.HtmlPath, cachedHtmlInfo.FullName, StringComparison.OrdinalIgnoreCase)
-                            && previousItem.HtmlLength == cachedHtmlInfo.Length
-                            && previousItem.HtmlLastWriteTicks == cachedHtmlInfo.LastWriteTimeUtc.Ticks
+                            string.Equals(previousItem.HtmlPath, cachedHtmlMetadata.FullPath, StringComparison.OrdinalIgnoreCase)
+                            && previousItem.HtmlLength == cachedHtmlMetadata.Length
+                            && previousItem.HtmlLastWriteTicks == cachedHtmlMetadata.LastWriteTicks
                         )
                         {
                             CatalogSnapshotItem reusedItem = new(
@@ -449,8 +448,8 @@ namespace IndigoMovieManager.Skin
                                 directoryName,
                                 previousItem.HtmlPath,
                                 directoryLastWriteTicks: directoryLastWriteTicks,
-                                htmlLength: cachedHtmlInfo.Length,
-                                htmlLastWriteTicks: cachedHtmlInfo.LastWriteTimeUtc.Ticks
+                                htmlLength: cachedHtmlMetadata.Length,
+                                htmlLastWriteTicks: cachedHtmlMetadata.LastWriteTicks
                             );
                             reusedItemCount++;
                             AppendSnapshotItemSignature(signature, reusedItem);
@@ -632,12 +631,17 @@ namespace IndigoMovieManager.Skin
             }
 
             string htmlPath = snapshotItem.HtmlPath ?? "";
-            if (string.IsNullOrWhiteSpace(htmlPath) || !File.Exists(htmlPath))
+            if (string.IsNullOrWhiteSpace(htmlPath))
             {
                 return null;
             }
 
-            string html = ReadSkinHtmlText(htmlPath);
+            string html = TryReadSkinHtmlText(htmlPath);
+            if (html == null)
+            {
+                return null;
+            }
+
             WhiteBrowserSkinConfig config = ParseConfig(html);
             string preferredTabStateName = ResolvePreferredTabStateName(directoryName, config);
 
@@ -754,13 +758,12 @@ namespace IndigoMovieManager.Skin
             string filePath
         )
         {
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            if (!TryGetFileMetadata(filePath, out CatalogFileMetadata metadata))
             {
                 return (null, 0, 0);
             }
 
-            FileInfo fileInfo = new(filePath);
-            return (fileInfo.FullName, fileInfo.Length, fileInfo.LastWriteTimeUtc.Ticks);
+            return (metadata.FullPath, metadata.Length, metadata.LastWriteTicks);
         }
 
         private static string TryResolvePreferredCachedHtmlPath(
@@ -783,12 +786,49 @@ namespace IndigoMovieManager.Skin
                 return null;
             }
 
-            if (!File.Exists(previousItem.HtmlPath))
+            // 存在確認は後続の directory 列挙と metadata 取得へ任せ、同一 HTML への probe を重ねない。
+            return previousItem.HtmlPath;
+        }
+
+        private static bool TryGetFileMetadata(string filePath, out CatalogFileMetadata metadata)
+        {
+            metadata = default;
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                FileInfo fileInfo = new(filePath);
+                if (!fileInfo.Exists)
+                {
+                    return false;
+                }
+
+                metadata = new CatalogFileMetadata(
+                    fileInfo.FullName,
+                    fileInfo.Length,
+                    fileInfo.LastWriteTimeUtc.Ticks
+                );
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is NotSupportedException)
+            {
+                return false;
+            }
+        }
+
+        private static string TryReadSkinHtmlText(string htmlPath)
+        {
+            try
+            {
+                return ReadSkinHtmlText(htmlPath);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
                 return null;
             }
-
-            return previousItem.HtmlPath;
         }
 
         private static string ReadSkinHtmlText(string htmlPath)
@@ -1032,6 +1072,22 @@ namespace IndigoMovieManager.Skin
             internal long DirectoryLastWriteTicks { get; }
             internal long HtmlLength { get; }
             internal long HtmlLastWriteTicks { get; }
+        }
+
+        private readonly struct CatalogFileMetadata
+        {
+            internal CatalogFileMetadata(string fullPath, long length, long lastWriteTicks)
+            {
+                FullPath = fullPath ?? "";
+                Length = length;
+                LastWriteTicks = lastWriteTicks;
+            }
+
+            internal string FullPath { get; }
+
+            internal long Length { get; }
+
+            internal long LastWriteTicks { get; }
         }
     }
 }

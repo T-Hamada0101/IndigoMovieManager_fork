@@ -721,6 +721,35 @@ public sealed class WhiteBrowserSkinCatalogCacheTelemetryTests
         }
     }
 
+    [Test]
+    public void Load_catalog明示読込ではhtml存在確認とmetadata取得を同じhelperへ寄せる()
+    {
+        string source = GetRepoText("WhiteBrowserSkin", "WhiteBrowserSkinCatalogService.cs");
+        string snapshotMethod = GetMethodBlock(
+            source,
+            "private static CatalogSnapshot BuildCatalogSnapshot("
+        );
+        string candidateMethod = GetMethodBlock(
+            source,
+            "private static (string HtmlPath, long HtmlLength, long HtmlLastWriteTicks) CreateSkinHtmlCandidate("
+        );
+        string preferredMethod = GetMethodBlock(
+            source,
+            "private static string TryResolvePreferredCachedHtmlPath("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshotMethod, Does.Contain("TryGetFileMetadata(previousItem.HtmlPath"));
+            Assert.That(snapshotMethod, Does.Not.Contain("File.Exists(previousItem.HtmlPath)"));
+            Assert.That(snapshotMethod, Does.Not.Contain("FileInfo cachedHtmlInfo"));
+            Assert.That(candidateMethod, Does.Contain("TryGetFileMetadata(filePath"));
+            Assert.That(candidateMethod, Does.Not.Contain("File.Exists(filePath)"));
+            Assert.That(candidateMethod, Does.Not.Contain("FileInfo fileInfo = new(filePath)"));
+            Assert.That(preferredMethod, Does.Not.Contain("File.Exists(previousItem.HtmlPath)"));
+        });
+    }
+
     private static string CreateSkinRootWithSingleSkin(string skinName, string configBody)
     {
         string rootPath = Path.Combine(
@@ -759,5 +788,52 @@ public sealed class WhiteBrowserSkinCatalogCacheTelemetryTests
         {
             // テスト後掃除の失敗は本体判定を優先する。
         }
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        while (current != null)
+        {
+            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return string.Empty;
+    }
+
+    private static string GetMethodBlock(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終了が見つかりません。");
+        return string.Empty;
     }
 }
