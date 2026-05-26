@@ -358,6 +358,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(prepareMethod, Does.Contain("filePrepareElapsedMilliseconds"));
             Assert.That(prepareMethod, Does.Contain("hostNavigateElapsedMilliseconds"));
             Assert.That(prepareMethod, Does.Contain("\"HostNavigateReturnedNull\""));
+            Assert.That(prepareMethod, Does.Contain("External skin host navigate returned null."));
             Assert.That(prepareMethod, Does.Not.Contain("navigateResult ?? WhiteBrowserSkinHostOperationResult.CreateSuccess("));
             Assert.That(prepareMethod, Does.Not.Contain("File.Exists("));
             Assert.That(prepareMethod, Does.Not.Contain("Directory.CreateDirectory("));

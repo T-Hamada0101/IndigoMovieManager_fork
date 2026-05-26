@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 の gpt-5.5 Newton で、`WhiteBrowserSkinHostOperationResult.WithTimings(...)` の timing 契約をテスト固定した。成功 / failure / skip の factory 初期値は 0 埋め、負値 / `NaN` / `Infinity` は 0 丸め、未指定 timing は既存値保持として、`HostNavigateReturnedNull` 経路の観測値も破綻しないことを確認できるようにした。
 - 2026-05-27 のサブ5.5 Worker B Round 6 で、外部 skin host navigate が万一 `null` result を返した場合に success 扱いへ寄せず、`HostNavigateReturnedNull` の failure として fallback 診断へ流すようにした。Round 5 の `file_prepare_ms` / `host_navigate_ms` もこの失敗結果へ保持する。
 - 2026-05-27 のサブ5.5 Worker B Round 5 で、`skin-webview refresh end` に `prepare_ms` / `file_prepare_ms` / `host_navigate_ms` / `initial_doc_ms` / `navigate_to_string_ms` を追加した。外部 skin refresh の 500〜900ms 台が host 準備、HTML/file 準備、初期 document 生成、WebView `NavigateToString` のどこで膨らんだか実機ログ 1 行から切り分ける。
 - 2026-05-27 のサブ5.5 Worker B Round 4 で、外部 skin host refresh scheduler の実行中 pending reason に batch と同じ優先度選択を適用した。`header-reload` / `fallback-notice-retry` の CatalogRefresh 要求が後続の `minimal-chrome-reload` / `dbinfo-*` で上書きされないようにし、採用された reason に対応する request trace を残す。
