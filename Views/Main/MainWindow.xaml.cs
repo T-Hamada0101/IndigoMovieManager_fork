@@ -1413,7 +1413,8 @@ namespace IndigoMovieManager
             // OnモードはEverything停止中でも、filesystem fallback走査のためポーリングを止めない。
             bool keepPollingForFallback = (int)mode == 2;
             string dbPath = MainVM.DbInfo.DBFullPath;
-            if (string.IsNullOrWhiteSpace(dbPath) || !Path.Exists(dbPath))
+            bool dbPathExists = !string.IsNullOrWhiteSpace(dbPath) && Path.Exists(dbPath);
+            if (!dbPathExists)
             {
                 Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
                 return false;
@@ -1421,11 +1422,25 @@ namespace IndigoMovieManager
 
             try
             {
-                string[] watchFolders = GetEverythingPollEligibleWatchFoldersSnapshot(dbPath);
+                string[] watchFolders = GetEverythingPollEligibleWatchFoldersSnapshot(
+                    dbPath,
+                    isDbPathKnownToExist: true
+                );
                 Volatile.Write(
                     ref _lastEverythingPollEligibleWatchFolderCount,
                     watchFolders?.Length ?? 0
                 );
+
+                bool PollPathExists(string path)
+                {
+                    // DB本体はこの周回の入口で確認済みなので、policy のDB判定で同じprobeを重ねない。
+                    if (AreSameMainDbPath(path, dbPath))
+                    {
+                        return dbPathExists;
+                    }
+
+                    return Path.Exists(path);
+                }
 
                 return ShouldRunEverythingWatchPollPolicy(
                     IsStartupFeedPartialActive,
@@ -1434,7 +1449,7 @@ namespace IndigoMovieManager
                     keepPollingForFallback,
                     dbPath,
                     watchFolders,
-                    Path.Exists,
+                    PollPathExists,
                     _ => true
                 );
             }

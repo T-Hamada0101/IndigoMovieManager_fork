@@ -37,7 +37,8 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(dbPath) || !Path.Exists(dbPath))
+            Func<string, bool> exists = pathExists ?? Path.Exists;
+            if (string.IsNullOrWhiteSpace(dbPath) || !exists(dbPath))
             {
                 return false;
             }
@@ -47,7 +48,6 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            Func<string, bool> exists = pathExists ?? Path.Exists;
             foreach (string watchFolder in watchFolders)
             {
                 if (!exists(watchFolder))

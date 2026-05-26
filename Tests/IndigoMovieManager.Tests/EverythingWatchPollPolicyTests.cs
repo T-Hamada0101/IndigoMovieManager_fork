@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Data;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -155,6 +156,85 @@ public sealed class EverythingWatchPollPolicyTests
         {
             System.IO.File.Delete(dbPath);
         }
+    }
+
+    [Test]
+    public void ShouldRunEverythingWatchPoll_DB存在判定も注入delegateを使う()
+    {
+        string dbPath = @"X:\dummy\main.wb";
+        List<string> probedPaths = [];
+
+        bool result = MainWindow.ShouldRunEverythingWatchPollPolicy(
+            isStartupFeedPartialActive: false,
+            isIntegrationConfigured: true,
+            canUseAvailability: true,
+            keepPollingForFallback: false,
+            dbPath: dbPath,
+            watchFolders: [@"E:\Movies"],
+            pathExists: path =>
+            {
+                probedPaths.Add(path);
+                return path == dbPath || path == @"E:\Movies";
+            },
+            isEverythingEligiblePath: _ => true
+        );
+
+        Assert.That(result, Is.True);
+        Assert.That(probedPaths, Is.EqualTo(new[] { dbPath, @"E:\Movies" }));
+    }
+
+    [Test]
+    public void ShouldRunEverythingWatchPoll_DBが無い時はwatch判定へ進まない()
+    {
+        int pathProbeCount = 0;
+        int eligibleCheckCount = 0;
+
+        bool result = MainWindow.ShouldRunEverythingWatchPollPolicy(
+            isStartupFeedPartialActive: false,
+            isIntegrationConfigured: true,
+            canUseAvailability: true,
+            keepPollingForFallback: false,
+            dbPath: @"X:\dummy\missing.wb",
+            watchFolders: [@"E:\Movies"],
+            pathExists: _ =>
+            {
+                pathProbeCount++;
+                return false;
+            },
+            isEverythingEligiblePath: _ =>
+            {
+                eligibleCheckCount++;
+                return true;
+            }
+        );
+
+        Assert.That(result, Is.False);
+        Assert.That(pathProbeCount, Is.EqualTo(1));
+        Assert.That(eligibleCheckCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ShouldRunEverythingWatchPoll_watch存在確認後にeligible判定する()
+    {
+        List<string> eligibleCheckedPaths = [];
+
+        bool result = MainWindow.ShouldRunEverythingWatchPollPolicy(
+            isStartupFeedPartialActive: false,
+            isIntegrationConfigured: true,
+            canUseAvailability: true,
+            keepPollingForFallback: false,
+            dbPath: @"X:\dummy\main.wb",
+            watchFolders: [@"E:\Missing", @"F:\Movies"],
+            pathExists: path => path != @"E:\Missing",
+            isEverythingEligiblePath: path =>
+            {
+                eligibleCheckedPaths.Add(path);
+                return path == @"F:\Movies";
+            }
+        );
+
+        Assert.That(result, Is.True);
+        Assert.That(eligibleCheckedPaths, Is.EqualTo(new[] { @"F:\Movies" }));
     }
 
     [Test]

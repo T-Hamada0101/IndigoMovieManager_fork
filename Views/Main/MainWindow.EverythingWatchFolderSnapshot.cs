@@ -14,9 +14,15 @@ namespace IndigoMovieManager
         private readonly object _everythingPollWatchFolderSnapshotSync = new();
 
         // DB切替や監視設定変更までは、watch一覧の再読込を避けて poll 判定を軽く保つ。
-        private string[] GetEverythingPollWatchFoldersSnapshot(string dbPath)
+        private string[] GetEverythingPollWatchFoldersSnapshot(
+            string dbPath,
+            bool isDbPathKnownToExist = false
+        )
         {
-            if (string.IsNullOrWhiteSpace(dbPath) || !Path.Exists(dbPath))
+            if (
+                string.IsNullOrWhiteSpace(dbPath)
+                || (!isDbPathKnownToExist && !Path.Exists(dbPath))
+            )
             {
                 return [];
             }
@@ -45,9 +51,15 @@ namespace IndigoMovieManager
         }
 
         // drive 種別や NTFS 判定は毎周やらず、watch 一覧が変わった時だけまとめて評価する。
-        private string[] GetEverythingPollEligibleWatchFoldersSnapshot(string dbPath)
+        private string[] GetEverythingPollEligibleWatchFoldersSnapshot(
+            string dbPath,
+            bool isDbPathKnownToExist = false
+        )
         {
-            if (string.IsNullOrWhiteSpace(dbPath) || !Path.Exists(dbPath))
+            if (
+                string.IsNullOrWhiteSpace(dbPath)
+                || (!isDbPathKnownToExist && !Path.Exists(dbPath))
+            )
             {
                 return [];
             }
@@ -60,7 +72,10 @@ namespace IndigoMovieManager
                 }
             }
 
-            string[] watchFolders = GetEverythingPollWatchFoldersSnapshot(dbPath);
+            string[] watchFolders = GetEverythingPollWatchFoldersSnapshot(
+                dbPath,
+                isDbPathKnownToExist: true
+            );
             string[] eligibleWatchFolders = ExtractEverythingEligibleWatchFolders(
                 watchFolders,
                 watchFolder => IsEverythingEligiblePath(watchFolder, out _)
