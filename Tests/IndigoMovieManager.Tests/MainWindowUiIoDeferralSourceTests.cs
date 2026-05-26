@@ -27,6 +27,39 @@ public sealed class MainWindowUiIoDeferralSourceTests
     }
 
     [Test]
+    public void StartupEverythingLiteRoot存在確認は背景Planで実行し後着Guard後に流す()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
+        string queueMethod = ExtractMethod(
+            source,
+            "private void QueueEverythingLiteWatchRootPrewarm()"
+        );
+        string runMethod = ExtractMethod(
+            source,
+            "private async Task RunEverythingLiteWatchRootPrewarmAsync("
+        );
+        string planMethod = ExtractMethod(
+            source,
+            "private EverythingLiteWatchRootPrewarmPlan PrewarmEverythingLiteWatchRoots("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool IsEverythingLiteWatchRootPrewarmCurrent("
+        );
+
+        Assert.That(queueMethod, Does.Contain("RunEverythingLiteWatchRootPrewarmAsync("));
+        Assert.That(queueMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(runMethod, Does.Contain("Task.Run("));
+        Assert.That(runMethod, Does.Contain("PrewarmEverythingLiteWatchRoots("));
+        Assert.That(runMethod, Does.Contain("IsEverythingLiteWatchRootPrewarmCurrent("));
+        Assert.That(runMethod, Does.Contain("DispatcherPriority.Background"));
+        Assert.That(planMethod, Does.Contain("Path.Exists(watchRoot)"));
+        Assert.That(guardMethod, Does.Contain("_startupLoadCoordinator.IsCurrent(revision)"));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(guardMethod, Does.Contain("watchRoots.All("));
+    }
+
+    [Test]
     public void ContentRenderedではThumbnailProgressSnapshotを直接更新しない()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");

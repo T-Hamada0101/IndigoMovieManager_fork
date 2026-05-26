@@ -385,12 +385,98 @@ namespace IndigoMovieManager
             string providerKey = FileIndexProviderFactory.NormalizeProviderKey(
                 Properties.Settings.Default.FileIndexProvider
             );
-            _ = Task.Run(
-                () => PrewarmEverythingLiteWatchRoots(dbFullPath, integrationMode, providerKey)
+            int revision = _startupSessionRevision;
+            _ = RunEverythingLiteWatchRootPrewarmAsync(
+                dbFullPath,
+                integrationMode,
+                providerKey,
+                revision
             );
         }
 
-        private void PrewarmEverythingLiteWatchRoots(
+        private async Task RunEverythingLiteWatchRootPrewarmAsync(
+            string dbFullPath,
+            IntegrationMode integrationMode,
+            string providerKey,
+            int revision
+        )
+        {
+            EverythingLiteWatchRootPrewarmPlan plan;
+            try
+            {
+                plan = await Task.Run(
+                        () => PrewarmEverythingLiteWatchRoots(
+                            dbFullPath,
+                            integrationMode,
+                            providerKey
+                        )
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"everythinglite root prewarm failed: db='{dbFullPath}' err='{ex.GetType().Name}: {ex.Message}'"
+                );
+                return;
+            }
+
+            if (plan.WatchRoots.Count < 1)
+            {
+                return;
+            }
+
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            bool isCurrent;
+            try
+            {
+                isCurrent = await Dispatcher
+                    .InvokeAsync(
+                        () =>
+                            IsEverythingLiteWatchRootPrewarmCurrent(
+                                plan.DbFullPath,
+                                revision,
+                                plan.WatchRoots
+                            ),
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+
+            if (!isCurrent)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"everythinglite root prewarm skipped by stale state: revision={revision} db='{plan.DbFullPath}'"
+                );
+                return;
+            }
+
+            foreach (string watchRoot in plan.WatchRoots)
+            {
+                EverythingLiteProvider.PrewarmRootIndex(watchRoot);
+            }
+
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"everythinglite root prewarm queued: count={plan.WatchRoots.Count} db='{plan.DbFullPath}'"
+            );
+        }
+
+        private EverythingLiteWatchRootPrewarmPlan PrewarmEverythingLiteWatchRoots(
             string dbFullPath,
             IntegrationMode integrationMode,
             string providerKey
@@ -398,13 +484,13 @@ namespace IndigoMovieManager
         {
             if (!_indexProviderFacade.IsIntegrationConfigured(integrationMode))
             {
-                return;
+                return EverythingLiteWatchRootPrewarmPlan.Empty(dbFullPath);
             }
 
             AvailabilityResult availability = _indexProviderFacade.CheckAvailability(integrationMode);
             if (!availability.CanUse)
             {
-                return;
+                return EverythingLiteWatchRootPrewarmPlan.Empty(dbFullPath);
             }
 
             if (
@@ -415,7 +501,7 @@ namespace IndigoMovieManager
                 )
             )
             {
-                return;
+                return EverythingLiteWatchRootPrewarmPlan.Empty(dbFullPath);
             }
 
             DataTable watchTable = GetWatchTableSnapshot(
@@ -424,7 +510,7 @@ namespace IndigoMovieManager
             );
             if (watchTable == null || watchTable.Rows.Count < 1)
             {
-                return;
+                return EverythingLiteWatchRootPrewarmPlan.Empty(dbFullPath);
             }
 
             HashSet<string> queuedRoots = new(StringComparer.OrdinalIgnoreCase);
@@ -440,16 +526,44 @@ namespace IndigoMovieManager
                 {
                     continue;
                 }
-
-                EverythingLiteProvider.PrewarmRootIndex(watchRoot);
             }
 
-            if (queuedRoots.Count > 0)
+            return new EverythingLiteWatchRootPrewarmPlan(dbFullPath, queuedRoots.ToList());
+        }
+
+        private bool IsEverythingLiteWatchRootPrewarmCurrent(
+            string dbFullPath,
+            int revision,
+            IReadOnlyCollection<string> watchRoots
+        )
+        {
+            if (watchRoots.Count < 1)
             {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"everythinglite root prewarm queued: count={queuedRoots.Count} db='{dbFullPath}'"
-                );
+                return false;
+            }
+
+            if (revision > 0 && !_startupLoadCoordinator.IsCurrent(revision))
+            {
+                return false;
+            }
+
+            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                return false;
+            }
+
+            // 背景で確定した root だけを後段へ流し、空文字や壊れた値は UI 戻り時に捨てる。
+            return watchRoots.All(root => !string.IsNullOrWhiteSpace(root));
+        }
+
+        private sealed record EverythingLiteWatchRootPrewarmPlan(
+            string DbFullPath,
+            IReadOnlyList<string> WatchRoots
+        )
+        {
+            internal static EverythingLiteWatchRootPrewarmPlan Empty(string dbFullPath)
+            {
+                return new EverythingLiteWatchRootPrewarmPlan(dbFullPath, []);
             }
         }
 

@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5 Worker C で、起動 light services の EverythingLite watch root prewarm は UI 側で DB / provider / revision の snapshot だけを取り、watch root の `Path.Exists` を含む plan 作成を `Task.Run` 背景 helper へ逃がした。戻り時は startup revision / 現在 DB / root snapshot を guard し、古い起動要求や DB 切替後着の root prewarm を捨てる。
 - 2026-05-27 のサブ5.5 Worker A追加で、起動 `ContentRendered` 直後の `AutoOpen` / `LastDoc` 自動DB切替は設定値を snapshot してから `Task.Run` の存在確認へ逃がし、UI 復帰後に `AutoOpen` / `LastDoc` / window closing / dispatcher shutdown guard を通した時だけ `TrySwitchMainDb(..., StartupAutoOpen)` を実行する形へ寄せた。
 - 2026-05-27 のサブ5.5 Worker B 追加で、新規DB作成ダイアログ後の `Path.Exists(...)` と `TryCreateDatabase(...)` を path snapshot 後の `Task.Run` helper へ逃がし、ダイアログ表示、既存ファイル警告、作成失敗表示、`TrySwitchMainDb(...)` は UI 側に残した。watch folder drop から空DB状態で新規作成へ進む経路も async 化し、作成完了後は DB 切替が途中で起きていない時だけ新DBへ切り替える。
 - 2026-05-27 のサブ5.5追加で、単発 `DataRowToViewData(...)` の表示用レコード生成を背景 `Task.Run` + `MovieRecordBulkBuildCache` 経路へ寄せ、サムネ候補探索と動画本体 `Path.Exists` を UI スレッドから外した。watch 経由の単発追加は DB snapshot 一致時だけ UI へ反映し、追加後の動画存在状態は `QueueMovieExistsRefresh([item], revision)` で後追い反映する。
