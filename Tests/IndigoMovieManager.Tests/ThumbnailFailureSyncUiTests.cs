@@ -85,46 +85,55 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
-    public void ShouldRequestMainTabFullReloadAfterThumbnailSuccess_直接反映済みならFalseを返す()
+    public void ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess_直接反映済みならFalseを返す()
     {
         QueueObj preferred = new() { Priority = ThumbnailQueuePriority.Preferred };
         QueueObj normal = new() { Priority = ThumbnailQueuePriority.Normal };
 
         Assert.That(
-            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            MainWindow.ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                 preferred,
                 appliedDirectlyToMainMovie: true
             ),
             Is.False
         );
         Assert.That(
-            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            MainWindow.ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                 preferred,
                 appliedDirectlyToMainMovie: false
             ),
             Is.True
         );
         Assert.That(
-            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            MainWindow.ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                 normal,
                 appliedDirectlyToMainMovie: false
             ),
             Is.False
         );
         Assert.That(
-            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            MainWindow.ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                 shouldRefreshVisibleUi: true,
                 appliedDirectlyToMainMovie: true
             ),
             Is.False
         );
         Assert.That(
-            MainWindow.ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            MainWindow.ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                 shouldRefreshVisibleUi: true,
                 appliedDirectlyToMainMovie: false
             ),
             Is.True
         );
+    }
+
+    [Test]
+    public void ShouldResortAfterThumbnailSuccessLocalRefresh_サムネERROR順だけTrue()
+    {
+        Assert.That(MainWindow.ShouldResortAfterThumbnailSuccessLocalRefresh("28"), Is.True);
+        Assert.That(MainWindow.ShouldResortAfterThumbnailSuccessLocalRefresh(" 28 "), Is.True);
+        Assert.That(MainWindow.ShouldResortAfterThumbnailSuccessLocalRefresh("0"), Is.False);
+        Assert.That(MainWindow.ShouldResortAfterThumbnailSuccessLocalRefresh(null), Is.False);
     }
 
     [Test]
@@ -250,6 +259,32 @@ public sealed class ThumbnailFailureSyncUiTests
         Assert.That(policyIndex, Is.GreaterThanOrEqualTo(0));
         Assert.That(refreshIndex, Is.GreaterThan(policyIndex));
         Assert.That(progressIndex, Is.GreaterThan(refreshIndex));
+    }
+
+    [Test]
+    public void サムネ成功後段はDB再読込ではなく局所refreshへ寄せる()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
+            .Replace("\r\n", "\n");
+        string tickMethod = ExtractMethod(
+            source,
+            "private async void ThumbnailSuccessMainTabReloadTimer_Tick("
+        );
+        string refreshMethod = ExtractMethod(
+            source,
+            "private async Task RefreshMainTabLocallyAfterThumbnailSuccessAsync("
+        );
+
+        Assert.That(tickMethod, Does.Contain("thumbnail success local refresh:"));
+        Assert.That(tickMethod, Does.Contain("RefreshMainTabLocallyAfterThumbnailSuccessAsync("));
+        Assert.That(tickMethod, Does.Not.Contain("FilterAndSort("));
+        Assert.That(refreshMethod, Does.Contain("InvalidateThumbnailErrorRecords(refreshIfVisible: true);"));
+        Assert.That(refreshMethod, Does.Contain("RequestUpperTabVisibleRangeRefresh("));
+        Assert.That(refreshMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(refreshMethod, Does.Contain("await SortDataAsync(sortId);"));
+        Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
     }
 
     private static string GetRepoText(params string[] relativePathParts)

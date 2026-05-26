@@ -451,13 +451,13 @@ namespace IndigoMovieManager
                                     updatedMovie != null
                                 );
                                 if (
-                                    ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                                    ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                                         queueObj,
                                         updatedMovie != null
                                     )
                                 )
                                 {
-                                    RequestMainTabFullReloadAfterThumbnailSuccess(
+                                    RequestMainTabLocalRefreshAfterThumbnailSuccess(
                                         "preferred-create-success"
                                     );
                                 }
@@ -537,19 +537,19 @@ namespace IndigoMovieManager
         }
 
         // 対象 MovieRecords へ直接反映できた時は forced rebind と visible refresh で足りる。
-        // main 一覧に対象が見つからない時だけ、最後の保険として Reload 相当へ戻す。
-        internal static bool ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+        // main 一覧に対象が見つからない時だけ、最後の保険として局所 refresh を予約する。
+        internal static bool ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
             QueueObj queueObj,
             bool appliedDirectlyToMainMovie
         )
         {
-            return ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+            return ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                 ShouldRefreshVisibleThumbnailUiAfterCreate(queueObj),
                 appliedDirectlyToMainMovie
             );
         }
 
-        internal static bool ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+        internal static bool ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
             bool shouldRefreshVisibleUi,
             bool appliedDirectlyToMainMovie
         )

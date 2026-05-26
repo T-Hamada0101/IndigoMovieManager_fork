@@ -4,6 +4,7 @@
 
 変更概要:
 - 2026-05-26 のサブ5.5追加で、詳細サムネ表示モード切替と Log タブ debug カテゴリ切替に残っていた `Properties.Settings.Default.Save()` 直呼びを `QueueApplicationSettingsSave(...)` へ寄せ、UI 操作中の設定ファイル I/O を共通の背景保存キューへ逃がした。
+- 2026-05-26 のサブ5.5追加で、Thumbnail 成功後の main tab 後段 `FilterAndSort(sortId, true)` を廃止し、失敗キャッシュ無効化、上側タブ visible refresh、preferred key revision、下部 ERROR/進捗 snapshot 予約へ寄せた。サムネERROR順だけは順序が変わるため、DB 再読込ではなく現在一覧の `SortDataAsync("28")` に限定する。
 - 2026-05-26 のサブ5.5追加で、Debug タブの「現在サムネイルを削除」に残っていた `Directory.Exists` / `Directory.Delete(..., true)` を `Task.Run` へ逃がし、削除中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、起動 fallback と段階ロード中 sort 変更の `FilterAndSort(..., true)` は DB 正本復旧・全件順序復旧の許容 fallback として分類し、Debug タブのサムネイル全削除後 `FilterAndSort(..., true)` は表示モデルのサムネパスクリア、visible refresh、進捗/ERROR snapshot 予約へ置き換えた。
 - 2026-05-26 のサブ5.5で、外部 skin API の sort は通常時 `SortDataAsync(...)` を await する経路へ寄せ、`FilterAndSort(resolvedSortId, true)` の全件 reload fallback を通常経路から外した。起動 partial feed 中だけは全件順序の正しさを守るため `partial-feed-needs-complete-source` として分類ログを残し、startup feed をキャンセルしてから正規の後着キャンセル付き reload へ戻す。
@@ -523,7 +524,7 @@
 5. 完了: skin は DB 分離ではなく、`refresh` / `stale` / `catalog` / `navigate` 削減と `refresh end` の `elapsed_ms` / `catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` で完了判定できるログ基盤へ寄せた。
 6. 完了: 物理動画削除後の `FilterAndSort(..., true)` は、DB 削除成功 ID だけを表示モデルから差分削除する局所反映へ寄せた。物理ファイル削除に失敗しても、既存挙動と同じく DB から消えた行を一覧正本として扱い、失敗は警告表示と watcher 復帰に委ねる。
 7. 完了: visible-first は、viewport 一時未計測時に同一タブ・同一 source revision の preferred key snapshot を保持し、不要な画像再評価を抑えるようにした。
-8. 完了: サブ5.5追加で、起動 fallback の `FilterAndSort(sortId, true)` は first-page 起動失敗時の DB 初期読込復旧、段階ロード中 sort 変更の `FilterAndSort(id.ToString(), true)` は新 sort の全件順序復旧として許容 fallback に分類した。Debug タブのサムネイル全削除後は DB 再読込をやめ、読み込み済み `MovieRecords` のサムネパスと ERROR 件数を局所クリアし、visible refresh と snapshot 予約だけへ寄せた。
+8. 完了: サブ5.5追加で、起動 fallback の `FilterAndSort(sortId, true)` は first-page 起動失敗時の DB 初期読込復旧、段階ロード中 sort 変更の `FilterAndSort(id.ToString(), true)` は新 sort の全件順序復旧として許容 fallback に分類した。Debug タブのサムネイル全削除後と Thumbnail 成功後の main tab 後段は DB 再読込をやめ、読み込み済み `MovieRecords` のサムネパス/ERROR 件数や visible refresh、preferred key revision、snapshot 予約へ寄せた。サムネERROR順だけは順序変化を拾うため、現在一覧の in-memory sort に限定する。
 9. 完了: Bookmark タブの view refresh は `ObservableCollection` 通知へ任せ、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけに絞った。
 10. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が Player / 他の許容 fallback / 実機画像供給のどこにあるかを決める。
 

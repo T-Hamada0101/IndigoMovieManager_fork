@@ -657,13 +657,13 @@ namespace IndigoMovieManager
                                         appliedToUi
                                     );
                                     if (
-                                        ShouldRequestMainTabFullReloadAfterThumbnailSuccess(
+                                        ShouldRequestMainTabLocalRefreshAfterThumbnailSuccess(
                                             shouldRefreshVisibleUi: true,
                                             appliedDirectlyToMainMovie: appliedToUi
                                         )
                                     )
                                     {
-                                        RequestMainTabFullReloadAfterThumbnailSuccess(
+                                        RequestMainTabLocalRefreshAfterThumbnailSuccess(
                                             "manual-rescue-immediate-reflect"
                                         );
                                     }
@@ -908,12 +908,12 @@ namespace IndigoMovieManager
             return !appliedDirectlyToMainMovie;
         }
 
-        // 画像差し替えだけで届かない表示は、Reload 相当の再構築を短く圧縮して後段で1回だけ流す。
-        private void RequestMainTabFullReloadAfterThumbnailSuccess(string reason)
+        // 画像差し替えだけで届かない表示は、軽い局所更新を短く圧縮して後段で1回だけ流す。
+        private void RequestMainTabLocalRefreshAfterThumbnailSuccess(string reason)
         {
             if (!Dispatcher.CheckAccess())
             {
-                _ = Dispatcher.InvokeAsync(() => RequestMainTabFullReloadAfterThumbnailSuccess(reason));
+                _ = Dispatcher.InvokeAsync(() => RequestMainTabLocalRefreshAfterThumbnailSuccess(reason));
                 return;
             }
 
@@ -952,8 +952,8 @@ namespace IndigoMovieManager
             _thumbnailSuccessMainTabReloadTimer.Tick += ThumbnailSuccessMainTabReloadTimer_Tick;
         }
 
-        // 連続成功時も最新1回のフル再構築だけ走らせ、Reloadボタンと同じ反映筋へ寄せる。
-        private void ThumbnailSuccessMainTabReloadTimer_Tick(object sender, EventArgs e)
+        // 連続成功時も最新1回へ圧縮し、DB再読込ではなく見えているサムネ表示だけを揺すり直す。
+        private async void ThumbnailSuccessMainTabReloadTimer_Tick(object sender, EventArgs e)
         {
             StopDispatcherTimerSafely(
                 _thumbnailSuccessMainTabReloadTimer,
@@ -972,9 +972,39 @@ namespace IndigoMovieManager
             string sortId = MainVM?.DbInfo?.Sort ?? "0";
             DebugRuntimeLog.Write(
                 "thumbnail-sync",
-                $"thumbnail success full reload: sort={sortId} reason={_thumbnailSuccessMainTabReloadReason}"
+                $"thumbnail success local refresh: sort={sortId} reason={_thumbnailSuccessMainTabReloadReason}"
             );
-            FilterAndSort(sortId, true);
+            await RefreshMainTabLocallyAfterThumbnailSuccessAsync(
+                sortId,
+                _thumbnailSuccessMainTabReloadReason
+            );
+        }
+
+        // サムネ成功はDB正本を変えないため、一覧全件reloadではなくBindingとsnapshotの再評価に閉じる。
+        private async Task RefreshMainTabLocallyAfterThumbnailSuccessAsync(
+            string sortId,
+            string reason
+        )
+        {
+            InvalidateThumbnailErrorRecords(refreshIfVisible: true);
+            RequestUpperTabVisibleRangeRefresh(
+                immediate: true,
+                reason: string.IsNullOrWhiteSpace(reason) ? "thumbnail-success" : reason
+            );
+            RefreshUpperTabPreferredMoviePathKeysRevision();
+            RequestThumbnailErrorSnapshotRefresh();
+            RequestThumbnailProgressSnapshotRefresh();
+
+            if (ShouldResortAfterThumbnailSuccessLocalRefresh(sortId))
+            {
+                // サムネERROR順だけは成功で順序が変わるため、DB再読込なしの現在一覧sortに留める。
+                await SortDataAsync(sortId);
+            }
+        }
+
+        internal static bool ShouldResortAfterThumbnailSuccessLocalRefresh(string sortId)
+        {
+            return string.Equals(sortId?.Trim(), "28", StringComparison.Ordinal);
         }
     }
 }
