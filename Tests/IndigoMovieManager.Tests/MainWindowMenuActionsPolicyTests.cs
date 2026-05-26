@@ -116,13 +116,19 @@ public sealed class MainWindowMenuActionsPolicyTests
     public void RenameFile_watcher抑止はfinallyで復旧する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
-        string renameMethod = GetMethodBlock(source, "private void RenameFile_Click(");
+        string renameMethod = GetMethodBlock(source, "private async void RenameFile_Click(");
+        string moveMethod = GetMethodBlock(
+            source,
+            "private static string TryMoveMovieFileInBackground("
+        );
 
         Assert.That(renameMethod, Does.Contain("SetFileWatchersEnabled(destFolder, enabled: false);"));
         Assert.That(renameMethod, Does.Contain("try"));
-        Assert.That(renameMethod, Does.Contain("RenameThumb(destMoveFile, mv.Movie_Path);"));
+        Assert.That(renameMethod, Does.Contain("await Task.Run("));
+        Assert.That(renameMethod, Does.Contain("await RenameThumbAsync(destMoveFile, oldMoviePath);"));
         Assert.That(renameMethod, Does.Contain("finally"));
         Assert.That(renameMethod, Does.Contain("RestoreFileWatchers(suppressedWatchers);"));
+        Assert.That(moveMethod, Does.Contain("mvFile.MoveTo(destinationPath, true);"));
         Assert.That(renameMethod, Does.Not.Contain("watcher.EnableRaisingEvents = false;"));
         Assert.That(renameMethod, Does.Not.Contain("watcher.EnableRaisingEvents = true;"));
     }

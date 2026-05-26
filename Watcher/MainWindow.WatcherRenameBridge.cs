@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using IndigoMovieManager.Thumbnail;
@@ -11,6 +12,35 @@ namespace IndigoMovieManager
 {
     internal static class ThumbnailRenameAssetTransferHelper
     {
+        internal sealed class ThumbnailPathSnapshot
+        {
+            public string ThumbPathSmall { get; init; } = "";
+            public string ThumbPathBig { get; init; } = "";
+            public string ThumbPathGrid { get; init; } = "";
+            public string ThumbPathList { get; init; } = "";
+            public string ThumbPathBig10 { get; init; } = "";
+            public string ThumbDetail { get; init; } = "";
+        }
+
+        internal sealed class ThumbnailRenameFileOperation
+        {
+            public string SourcePath { get; init; } = "";
+            public string DestinationPath { get; init; } = "";
+        }
+
+        internal static ThumbnailPathSnapshot CreatePathSnapshot(MovieRecords movie)
+        {
+            return new ThumbnailPathSnapshot
+            {
+                ThumbPathSmall = movie?.ThumbPathSmall ?? "",
+                ThumbPathBig = movie?.ThumbPathBig ?? "",
+                ThumbPathGrid = movie?.ThumbPathGrid ?? "",
+                ThumbPathList = movie?.ThumbPathList ?? "",
+                ThumbPathBig10 = movie?.ThumbPathBig10 ?? "",
+                ThumbDetail = movie?.ThumbDetail ?? "",
+            };
+        }
+
         // 現在表示中の実サムネと、旧命名で残っているjpgをまとめて新名へ寄せる。
         internal static void RenameThumbnailFiles(
             MovieRecords movie,
@@ -19,14 +49,32 @@ namespace IndigoMovieManager
             string newFullPath
         )
         {
-            if (movie == null || string.IsNullOrWhiteSpace(thumbnailRoot) || !Directory.Exists(thumbnailRoot))
+            IReadOnlyList<ThumbnailRenameFileOperation> operations = RenameThumbnailFiles(
+                CreatePathSnapshot(movie),
+                thumbnailRoot,
+                oldFullPath,
+                newFullPath
+            );
+            ApplyRenamedThumbnailPaths(movie, operations);
+        }
+
+        // ファイル確認と再帰列挙は背景側で行えるよう、UIオブジェクトではなくパスsnapshotだけを見る。
+        internal static IReadOnlyList<ThumbnailRenameFileOperation> RenameThumbnailFiles(
+            ThumbnailPathSnapshot snapshot,
+            string thumbnailRoot,
+            string oldFullPath,
+            string newFullPath
+        )
+        {
+            List<ThumbnailRenameFileOperation> operations = [];
+            if (snapshot == null || string.IsNullOrWhiteSpace(thumbnailRoot) || !Directory.Exists(thumbnailRoot))
             {
-                return;
+                return operations;
             }
 
             foreach (
                 string sourcePath in EnumerateThumbnailSourcePaths(
-                    movie,
+                    snapshot,
                     thumbnailRoot,
                     oldFullPath
                 )
@@ -42,9 +90,15 @@ namespace IndigoMovieManager
                     continue;
                 }
 
-                UpdateMovieThumbnailPath(movie, sourcePath, destinationPath);
                 if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
                 {
+                    operations.Add(
+                        new ThumbnailRenameFileOperation
+                        {
+                            SourcePath = sourcePath,
+                            DestinationPath = destinationPath,
+                        }
+                    );
                     continue;
                 }
 
@@ -59,7 +113,17 @@ namespace IndigoMovieManager
                 {
                     ThumbnailPathResolver.RememberSuccessThumbnailPath(destinationPath);
                 }
+
+                operations.Add(
+                    new ThumbnailRenameFileOperation
+                    {
+                        SourcePath = sourcePath,
+                        DestinationPath = destinationPath,
+                    }
+                );
             }
+
+            return operations;
         }
 
         internal static string TryBuildRenamedThumbnailPath(
@@ -117,7 +181,7 @@ namespace IndigoMovieManager
 
         // まず表示中のパスを尊重し、その後で旧命名の取りこぼしだけを追加で拾う。
         private static IEnumerable<string> EnumerateThumbnailSourcePaths(
-            MovieRecords movie,
+            ThumbnailPathSnapshot snapshot,
             string thumbnailRoot,
             string oldFullPath
         )
@@ -125,12 +189,12 @@ namespace IndigoMovieManager
             HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
             string oldBody = Path.GetFileNameWithoutExtension(oldFullPath) ?? "";
 
-            TryAddThumbnailPath(paths, movie.ThumbPathSmall, thumbnailRoot, oldBody);
-            TryAddThumbnailPath(paths, movie.ThumbPathBig, thumbnailRoot, oldBody);
-            TryAddThumbnailPath(paths, movie.ThumbPathGrid, thumbnailRoot, oldBody);
-            TryAddThumbnailPath(paths, movie.ThumbPathList, thumbnailRoot, oldBody);
-            TryAddThumbnailPath(paths, movie.ThumbPathBig10, thumbnailRoot, oldBody);
-            TryAddThumbnailPath(paths, movie.ThumbDetail, thumbnailRoot, oldBody);
+            TryAddThumbnailPath(paths, snapshot.ThumbPathSmall, thumbnailRoot, oldBody);
+            TryAddThumbnailPath(paths, snapshot.ThumbPathBig, thumbnailRoot, oldBody);
+            TryAddThumbnailPath(paths, snapshot.ThumbPathGrid, thumbnailRoot, oldBody);
+            TryAddThumbnailPath(paths, snapshot.ThumbPathList, thumbnailRoot, oldBody);
+            TryAddThumbnailPath(paths, snapshot.ThumbPathBig10, thumbnailRoot, oldBody);
+            TryAddThumbnailPath(paths, snapshot.ThumbDetail, thumbnailRoot, oldBody);
 
             if (string.IsNullOrWhiteSpace(oldBody))
             {
@@ -208,6 +272,26 @@ namespace IndigoMovieManager
         }
 
         // UIが握っている各表示先パスも同時に差し替え、リロード前の見た目崩れを防ぐ。
+        internal static void ApplyRenamedThumbnailPaths(
+            MovieRecords movie,
+            IReadOnlyList<ThumbnailRenameFileOperation> operations
+        )
+        {
+            if (movie == null || operations == null)
+            {
+                return;
+            }
+
+            foreach (ThumbnailRenameFileOperation operation in operations)
+            {
+                UpdateMovieThumbnailPath(
+                    movie,
+                    operation.SourcePath,
+                    operation.DestinationPath
+                );
+            }
+        }
+
         private static void UpdateMovieThumbnailPath(
             MovieRecords movie,
             string sourcePath,
@@ -243,6 +327,41 @@ namespace IndigoMovieManager
 
     public partial class MainWindow
     {
+        private int _renameBridgeRevision;
+
+        private sealed class RenameBridgeUiSnapshot
+        {
+            public int Revision { get; init; }
+            public string DbFullPath { get; init; } = "";
+            public string CurrentSort { get; init; } = "";
+            public string ThumbnailRoot { get; init; } = "";
+            public string BookmarkFolder { get; init; } = "";
+            public RenameBridgeMovieSnapshot[] Movies { get; init; } = [];
+            public WatchChangedMovie[] ChangedMovies { get; init; } = [];
+        }
+
+        private sealed class RenameBridgeMovieSnapshot
+        {
+            public MovieRecords UiRecord { get; init; }
+            public long MovieId { get; init; }
+            public string MoviePath { get; init; } = "";
+            public string MovieName { get; init; } = "";
+            public string Kana { get; init; } = "";
+            public string Roma { get; init; } = "";
+            public ThumbnailRenameAssetTransferHelper.ThumbnailPathSnapshot ThumbnailSnapshot { get; init; }
+        }
+
+        private sealed class RenameBridgeBackgroundResult
+        {
+            public List<RenameBridgeThumbnailApplyItem> ThumbnailApplyItems { get; } = [];
+        }
+
+        private sealed class RenameBridgeThumbnailApplyItem
+        {
+            public MovieRecords UiRecord { get; init; }
+            public IReadOnlyList<ThumbnailRenameAssetTransferHelper.ThumbnailRenameFileOperation> Operations { get; init; } = [];
+        }
+
         // テスト/既存呼び出し側向けに、rename 入口の薄い橋渡しを維持する。
         internal static void ProcessRenamedWatchEventDirect(
             string eFullPath,
@@ -307,120 +426,317 @@ namespace IndigoMovieManager
         {
             try
             {
-                List<WatchChangedMovie> changedMovies = [];
-                foreach (
-                    var item in MainVM.MovieRecs.Where(x =>
-                        IsMoviePathMatchForRename(x?.Movie_Path, oldFullPath)
-                    )
-                )
-                {
-                    item.Movie_Path = eFullPath;
-                    item.Movie_Name = Path.GetFileNameWithoutExtension(eFullPath).ToLower();
-                    string persistedKana = JapaneseKanaProvider.GetKanaForPersistence(
-                        item.Movie_Name,
-                        item.Movie_Path
-                    );
-                    string persistedRoma = JapaneseKanaProvider.GetRomaFromKanaForPersistence(
-                        persistedKana
-                    );
-                    item.Kana = persistedKana;
-                    item.Roma = persistedRoma;
-
-                    // DB更新は rename bridge 側へ寄せ、watch イベントと同じ責務領域で扱う。
-                    _mainDbMovieMutationFacade.UpdateMoviePath(
-                        MainVM.DbInfo.DBFullPath,
-                        item.Movie_Id,
-                        item.Movie_Path
-                    );
-                    _mainDbMovieMutationFacade.UpdateMovieName(
-                        MainVM.DbInfo.DBFullPath,
-                        item.Movie_Id,
-                        item.Movie_Name
-                    );
-                    _mainDbMovieMutationFacade.UpdateKana(
-                        MainVM.DbInfo.DBFullPath,
-                        item.Movie_Id,
-                        persistedKana
-                    );
-                    _mainDbMovieMutationFacade.UpdateRoma(
-                        MainVM.DbInfo.DBFullPath,
-                        item.Movie_Id,
-                        persistedRoma
-                    );
-                    changedMovies.Add(
-                        new WatchChangedMovie(
-                            item.Movie_Path,
-                            WatchMovieChangeKind.None,
-                            WatchMovieDirtyFields.MovieName
-                                | WatchMovieDirtyFields.MoviePath
-                                | WatchMovieDirtyFields.Kana
-                        )
-                    );
-
-                    var checkFileName = Path.GetFileNameWithoutExtension(oldFullPath);
-                    string thumbFolder = ResolveCurrentThumbnailRoot();
-
-                    ThumbnailRenameAssetTransferHelper.RenameThumbnailFiles(
-                        item,
-                        thumbFolder,
-                        oldFullPath,
-                        eFullPath
-                    );
-
-                    string bookmarkFolder = ResolveBookmarkFolderPath();
-
-                    if (Path.Exists(bookmarkFolder))
-                    {
-                        var di = new DirectoryInfo(bookmarkFolder);
-                        EnumerationOptions enumOption = new() { RecurseSubdirectories = true };
-                        IEnumerable<FileInfo> ssFiles = di.EnumerateFiles(
-                            $"*{checkFileName}*.jpg",
-                            enumOption
-                        );
-                        foreach (var bookMarkJpg in ssFiles)
-                        {
-                            string dstFile = BuildBookmarkRenameDestinationPath(
-                                bookMarkJpg.FullName,
-                                checkFileName,
-                                item.Movie_Name
-                            );
-                            if (
-                                !string.IsNullOrWhiteSpace(dstFile)
-                                && !string.Equals(
-                                    bookMarkJpg.FullName,
-                                    dstFile,
-                                    StringComparison.OrdinalIgnoreCase
-                                )
-                            )
-                            {
-                                File.Move(bookMarkJpg.FullName, dstFile, true);
-                            }
-                        }
-
-                        UpdateBookmarkRename(
-                            MainVM.DbInfo.DBFullPath,
-                            checkFileName,
-                            item.Movie_Name
-                        );
-                    }
-                }
+                RenameBridgeUiSnapshot snapshot = await CreateRenameBridgeUiSnapshotAsync(
+                    eFullPath,
+                    oldFullPath
+                );
 
                 // Created 直後に rename されて旧パスが未登録だった場合は、
                 // rename だけでは取り込めないため watch scan へ再合流して最終整合を回収する。
-                if (changedMovies.Count < 1)
+                if (snapshot.Movies.Length < 1)
                 {
-                    TryQueueWatchScanForUntrackedRename(eFullPath, oldFullPath);
+                    await TryQueueWatchScanForUntrackedRenameAsync(eFullPath, oldFullPath);
                     return;
                 }
 
-                string currentSort = MainVM?.DbInfo?.Sort ?? "";
-                await Dispatcher.InvokeAsync(() => ReloadBookmarkTabData());
-                await RefreshMovieViewAfterRenameAsync(currentSort, changedMovies);
+                RenameBridgeBackgroundResult result = await Task.Run(
+                    () => RunRenameBridgeBackgroundWork(snapshot, eFullPath, oldFullPath)
+                );
+
+                if (!CanApplyRenameBridgeResult(snapshot))
+                {
+                    DebugRuntimeLog.Write(
+                        "watch",
+                        $"rename bridge result skipped: reason=stale-or-db-changed revision={snapshot.Revision} db='{snapshot.DbFullPath}'"
+                    );
+                    return;
+                }
+
+                await Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (!CanApplyRenameBridgeResult(snapshot))
+                        {
+                            return;
+                        }
+
+                        ApplyRenameBridgeBackgroundResultOnUiThread(result);
+                        ReloadBookmarkTabData();
+                    },
+                    System.Windows.Threading.DispatcherPriority.Background
+                );
+
+                if (!CanApplyRenameBridgeResult(snapshot))
+                {
+                    return;
+                }
+
+                await RefreshMovieViewAfterRenameAsync(snapshot.CurrentSort, snapshot.ChangedMovies);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"rename bridge failed: old='{oldFullPath}' new='{eFullPath}' err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+        }
+
+        private Task<RenameBridgeUiSnapshot> CreateRenameBridgeUiSnapshotAsync(
+            string eFullPath,
+            string oldFullPath
+        )
+        {
+            if (Dispatcher == null || Dispatcher.CheckAccess())
+            {
+                return Task.FromResult(CreateRenameBridgeUiSnapshotOnUiThread(eFullPath, oldFullPath));
+            }
+
+            return Dispatcher
+                .InvokeAsync(
+                    () => CreateRenameBridgeUiSnapshotOnUiThread(eFullPath, oldFullPath),
+                    System.Windows.Threading.DispatcherPriority.Background
+                )
+                .Task;
+        }
+
+        private RenameBridgeUiSnapshot CreateRenameBridgeUiSnapshotOnUiThread(
+            string eFullPath,
+            string oldFullPath
+        )
+        {
+            int revision = Interlocked.Increment(ref _renameBridgeRevision);
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            string movieName = Path.GetFileNameWithoutExtension(eFullPath).ToLower();
+            string thumbnailRoot = ResolveCurrentThumbnailRoot();
+            string bookmarkFolder = ResolveBookmarkFolderPath();
+            List<RenameBridgeMovieSnapshot> movies = [];
+            List<WatchChangedMovie> changedMovies = [];
+
+            foreach (
+                MovieRecords item in MainVM?.MovieRecs?.Where(x =>
+                    IsMoviePathMatchForRename(x?.Movie_Path, oldFullPath)
+                ) ?? []
+            )
+            {
+                item.Movie_Path = eFullPath;
+                item.Movie_Name = movieName;
+                string persistedKana = JapaneseKanaProvider.GetKanaForPersistence(
+                    item.Movie_Name,
+                    item.Movie_Path
+                );
+                string persistedRoma = JapaneseKanaProvider.GetRomaFromKanaForPersistence(
+                    persistedKana
+                );
+                item.Kana = persistedKana;
+                item.Roma = persistedRoma;
+
+                movies.Add(
+                    new RenameBridgeMovieSnapshot
+                    {
+                        UiRecord = item,
+                        MovieId = item.Movie_Id,
+                        MoviePath = item.Movie_Path,
+                        MovieName = item.Movie_Name,
+                        Kana = persistedKana,
+                        Roma = persistedRoma,
+                        ThumbnailSnapshot = ThumbnailRenameAssetTransferHelper.CreatePathSnapshot(item),
+                    }
+                );
+                changedMovies.Add(
+                    new WatchChangedMovie(
+                        item.Movie_Path,
+                        WatchMovieChangeKind.None,
+                        WatchMovieDirtyFields.MovieName
+                            | WatchMovieDirtyFields.MoviePath
+                            | WatchMovieDirtyFields.Kana
+                    )
+                );
+            }
+
+            return new RenameBridgeUiSnapshot
+            {
+                Revision = revision,
+                DbFullPath = dbFullPath,
+                CurrentSort = MainVM?.DbInfo?.Sort ?? "",
+                ThumbnailRoot = thumbnailRoot,
+                BookmarkFolder = bookmarkFolder,
+                Movies = movies.ToArray(),
+                ChangedMovies = changedMovies.ToArray(),
+            };
+        }
+
+        private RenameBridgeBackgroundResult RunRenameBridgeBackgroundWork(
+            RenameBridgeUiSnapshot snapshot,
+            string eFullPath,
+            string oldFullPath
+        )
+        {
+            RenameBridgeBackgroundResult result = new();
+            if (snapshot == null || string.IsNullOrWhiteSpace(snapshot.DbFullPath))
+            {
+                return result;
+            }
+
+            string oldFileName = Path.GetFileNameWithoutExtension(oldFullPath) ?? "";
+            foreach (RenameBridgeMovieSnapshot movie in snapshot.Movies)
+            {
+                if (!IsRenameBridgeRevisionCurrent(snapshot.Revision))
+                {
+                    break;
+                }
+
+                PersistRenameBridgeMovieSnapshot(snapshot.DbFullPath, movie);
+                IReadOnlyList<ThumbnailRenameAssetTransferHelper.ThumbnailRenameFileOperation> operations =
+                    ThumbnailRenameAssetTransferHelper.RenameThumbnailFiles(
+                        movie.ThumbnailSnapshot,
+                        snapshot.ThumbnailRoot,
+                        oldFullPath,
+                        eFullPath
+                    );
+                result.ThumbnailApplyItems.Add(
+                    new RenameBridgeThumbnailApplyItem
+                    {
+                        UiRecord = movie.UiRecord,
+                        Operations = operations,
+                    }
+                );
+            }
+
+            if (
+                IsRenameBridgeRevisionCurrent(snapshot.Revision)
+                && snapshot.Movies.Length > 0
+                && !string.IsNullOrWhiteSpace(oldFileName)
+                && Directory.Exists(snapshot.BookmarkFolder)
+            )
+            {
+                RenameBookmarkAssetsInBackground(
+                    snapshot.DbFullPath,
+                    snapshot.BookmarkFolder,
+                    oldFileName,
+                    snapshot.Movies[0].MovieName
+                );
+            }
+
+            return result;
+        }
+
+        private void PersistRenameBridgeMovieSnapshot(
+            string dbFullPath,
+            RenameBridgeMovieSnapshot movie
+        )
+        {
+            try
+            {
+                // DB更新は背景側でまとめて流し、UIに残すのは表示モデル更新だけにする。
+                _mainDbMovieMutationFacade.UpdateMoviePath(dbFullPath, movie.MovieId, movie.MoviePath);
+                _mainDbMovieMutationFacade.UpdateMovieName(dbFullPath, movie.MovieId, movie.MovieName);
+                _mainDbMovieMutationFacade.UpdateKana(dbFullPath, movie.MovieId, movie.Kana);
+                _mainDbMovieMutationFacade.UpdateRoma(dbFullPath, movie.MovieId, movie.Roma);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"rename bridge movie persist failed: db='{dbFullPath}' movie_id={movie.MovieId} err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+        }
+
+        private static void RenameBookmarkAssetsInBackground(
+            string dbFullPath,
+            string bookmarkFolder,
+            string oldFileName,
+            string newMovieName
+        )
+        {
+            try
+            {
+                DirectoryInfo directory = new(bookmarkFolder);
+                EnumerationOptions enumOption = new() { RecurseSubdirectories = true };
+                foreach (FileInfo bookMarkJpg in directory.EnumerateFiles($"*{oldFileName}*.jpg", enumOption))
+                {
+                    string destinationPath = BuildBookmarkRenameDestinationPath(
+                        bookMarkJpg.FullName,
+                        oldFileName,
+                        newMovieName
+                    );
+                    if (
+                        !string.IsNullOrWhiteSpace(destinationPath)
+                        && !string.Equals(
+                            bookMarkJpg.FullName,
+                            destinationPath,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                    {
+                        File.Move(bookMarkJpg.FullName, destinationPath, true);
+                    }
+                }
+
+                UpdateBookmarkRename(dbFullPath, oldFileName, newMovieName);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch",
+                    $"rename bridge bookmark move failed: db='{dbFullPath}' folder='{bookmarkFolder}' err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+        }
+
+        private void ApplyRenameBridgeBackgroundResultOnUiThread(RenameBridgeBackgroundResult result)
+        {
+            if (result == null)
+            {
+                return;
+            }
+
+            foreach (RenameBridgeThumbnailApplyItem item in result.ThumbnailApplyItems)
+            {
+                ThumbnailRenameAssetTransferHelper.ApplyRenamedThumbnailPaths(
+                    item.UiRecord,
+                    item.Operations
+                );
+            }
+        }
+
+        private bool CanApplyRenameBridgeResult(RenameBridgeUiSnapshot snapshot)
+        {
+            return snapshot != null
+                && IsRenameBridgeRevisionCurrent(snapshot.Revision)
+                && Dispatcher != null
+                && !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished
+                && AreSameMainDbPath(snapshot.DbFullPath, MainVM?.DbInfo?.DBFullPath ?? "");
+        }
+
+        private bool IsRenameBridgeRevisionCurrent(int revision)
+        {
+            return revision == Volatile.Read(ref _renameBridgeRevision) && !IsWatchEventShutdownRequested();
         }
 
         // 旧パス未登録の rename は scan 本流へ戻し、Created -> Renamed 連鎖の取りこぼしを防ぐ。
+        private async Task TryQueueWatchScanForUntrackedRenameAsync(
+            string newFullPath,
+            string oldFullPath
+        )
+        {
+            bool shouldQueue = await Task.Run(
+                () => ShouldQueueWatchScanForUntrackedRename(newFullPath, oldFullPath)
+            );
+            if (!shouldQueue)
+            {
+                return;
+            }
+
+            DebugRuntimeLog.Write(
+                "watch",
+                $"rename without tracked movie rerouted to queued watch scan: old='{oldFullPath}' new='{newFullPath}'"
+            );
+            _ = QueueCheckFolderAsync(CheckMode.Watch, $"renamed-untracked:{newFullPath}");
+        }
+
         private void TryQueueWatchScanForUntrackedRename(string newFullPath, string oldFullPath)
         {
             if (!ShouldQueueWatchScanForUntrackedRename(newFullPath, oldFullPath))

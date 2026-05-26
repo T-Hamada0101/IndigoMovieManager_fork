@@ -556,7 +556,7 @@ namespace IndigoMovieManager
             Clipboard.SetText(string.Join(Environment.NewLine, paths));
         }
 
-        private void RenameFile_Click(object sender, RoutedEventArgs e)
+        private async void RenameFile_Click(object sender, RoutedEventArgs e)
         {
             string keyName = "";
             if (sender is not MenuItem menuItem)
@@ -622,34 +622,53 @@ namespace IndigoMovieManager
             var newExt = dt.Ext;
 
             // 実体ファイルのリネームと新旧ファイルパス作成。
-            FileInfo mvFile = new(mv.Movie_Path);
+            string oldMoviePath = mv.Movie_Path;
             var destMoveFile = mv.Movie_Path.Replace(checkFileName, newFilePath);
             var destFolder = Path.GetDirectoryName(destMoveFile);
             destMoveFile = destMoveFile.Replace(checkExt, newExt);
-            try
-            {
-                mvFile.MoveTo(destMoveFile, true);
-            }
-            catch (IOException ex)
-            {
-                MessageBox.Show(
-                    $"ファイルのリネームに失敗しました。\n{ex.Message}",
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error
-                );
-                return;
-            }
 
             FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(destFolder, enabled: false);
             try
             {
-                // 監視時のリネーム処理の実体を呼び出す。
-                RenameThumb(destMoveFile, mv.Movie_Path);
+                string moveFailureMessage = await Task.Run(
+                    () => TryMoveMovieFileInBackground(oldMoviePath, destMoveFile)
+                );
+                if (!string.IsNullOrWhiteSpace(moveFailureMessage))
+                {
+                    MessageBox.Show(
+                        $"ファイルのリネームに失敗しました。\n{moveFailureMessage}",
+                        Assembly.GetExecutingAssembly().GetName().Name,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error
+                    );
+                    return;
+                }
+
+                // 監視時のリネーム処理の実体を呼び出し、背景DB/サムネ移送まで同じ抑止範囲で閉じる。
+                await RenameThumbAsync(destMoveFile, oldMoviePath);
             }
             finally
             {
                 RestoreFileWatchers(suppressedWatchers);
+            }
+        }
+
+        // 実体ファイルのMoveは遅い媒体でUIを塞ぐため、結果メッセージだけをUIへ戻す。
+        private static string TryMoveMovieFileInBackground(string sourcePath, string destinationPath)
+        {
+            try
+            {
+                FileInfo mvFile = new(sourcePath);
+                mvFile.MoveTo(destinationPath, true);
+                return "";
+            }
+            catch (IOException ex)
+            {
+                return ex.Message;
+            }
+            catch (Exception ex)
+            {
+                return string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
             }
         }
 
