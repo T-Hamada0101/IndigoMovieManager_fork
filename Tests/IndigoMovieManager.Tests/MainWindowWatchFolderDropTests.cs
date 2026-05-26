@@ -86,7 +86,26 @@ public sealed class MainWindowWatchFolderDropTests
     }
 
     [Test]
-    public void ResolveDroppedMainDbPath_wbだけを切替対象として返す()
+    public void CanAcceptWatchFolderDrop_wb候補は存在確認なしで受け付ける()
+    {
+        string tempRoot = CreateTempDirectory();
+
+        try
+        {
+            string dbPath = Path.Combine(tempRoot, "network-like-drop.wb");
+
+            bool result = MainWindow.CanAcceptWatchFolderDrop("", [dbPath]);
+
+            Assert.That(result, Is.True);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public void ResolveDroppedMainDbPath_wb候補だけを存在確認なしで返す()
     {
         string tempRoot = CreateTempDirectory();
 
@@ -95,11 +114,33 @@ public sealed class MainWindowWatchFolderDropTests
             string textFile = Path.Combine(tempRoot, "memo.txt");
             string dbPath = Path.Combine(tempRoot, "main.WB");
             File.WriteAllText(textFile, "sample");
-            File.WriteAllText(dbPath, "sample");
 
             string result = MainWindow.ResolveDroppedMainDbPath([textFile, dbPath]);
 
             Assert.That(result, Is.EqualTo(Path.GetFullPath(dbPath)));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ResolveExistingDroppedMainDbPathAsync_Drop確定後だけ存在するwbを返す()
+    {
+        string tempRoot = CreateTempDirectory();
+
+        try
+        {
+            string missingDbPath = Path.Combine(tempRoot, "missing.wb");
+            string existingDbPath = Path.Combine(tempRoot, "main.wb");
+            File.WriteAllText(existingDbPath, "sample");
+
+            string result = await MainWindow.ResolveExistingDroppedMainDbPathAsync(
+                [missingDbPath, existingDbPath]
+            );
+
+            Assert.That(result, Is.EqualTo(Path.GetFullPath(existingDbPath)));
         }
         finally
         {
@@ -155,6 +196,33 @@ public sealed class MainWindowWatchFolderDropTests
         Assert.That(source, Does.Not.Contain("task.Result"));
         Assert.That(backgroundMethod, Does.Contain("SQLite.GetData("));
         Assert.That(backgroundMethod, Does.Contain("SQLite.InsertWatchTable("));
+    }
+
+    [Test]
+    public void MainWindowDrop_DB存在確認はDragOver判定からDrop背景処理へ分離されている()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WatchFolderDrop.cs");
+        string canAcceptMethod = GetMethodBlock(
+            source,
+            "internal static bool CanAcceptWatchFolderDrop("
+        );
+        string resolveCandidateMethod = GetMethodBlock(
+            source,
+            "internal static string ResolveDroppedMainDbPath("
+        );
+        string resolveExistingMethod = GetMethodBlock(
+            source,
+            "internal static Task<string> ResolveExistingDroppedMainDbPathAsync("
+        );
+        string dropMethod = GetMethodBlock(source, "private async void MainWindow_Drop(");
+
+        Assert.That(canAcceptMethod, Does.Not.Contain("File.Exists("));
+        Assert.That(canAcceptMethod, Does.Not.Contain("WatchFolderDropRegistrationPolicy.CanAccept("));
+        Assert.That(resolveCandidateMethod, Does.Not.Contain("File.Exists("));
+        Assert.That(resolveExistingMethod, Does.Contain("Task.Run("));
+        Assert.That(resolveExistingMethod, Does.Contain("File.Exists("));
+        Assert.That(dropMethod, Does.Contain("await ResolveExistingDroppedMainDbPathAsync("));
+        Assert.That(dropMethod, Does.Contain("CanContinueDroppedMainDbSwitch("));
     }
 
     private static string CreateTempDirectory()

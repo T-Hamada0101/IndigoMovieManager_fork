@@ -22,14 +22,14 @@ namespace IndigoMovieManager
             Failed = 2,
         }
 
-        // 有効なフォルダドロップだけ受け付け、DB未選択時の分岐は drop 時点で処理する。
+        // DragOverでは存在確認を避け、フォルダらしいパスと .wb 候補だけで受け付けを決める。
         internal static bool CanAcceptWatchFolderDrop(
             string dbFullPath,
             IEnumerable<string> droppedPaths
         )
         {
-            IEnumerable<string> paths = droppedPaths ?? [];
-            return WatchFolderDropRegistrationPolicy.CanAccept(paths)
+            string[] paths = [.. droppedPaths ?? []];
+            return HasPotentialWatchFolderDropPath(paths)
                 || !string.IsNullOrWhiteSpace(ResolveDroppedMainDbPath(paths));
         }
 
@@ -43,7 +43,7 @@ namespace IndigoMovieManager
             e.Handled = true;
         }
 
-        private void MainWindow_Drop(object sender, DragEventArgs e)
+        private async void MainWindow_Drop(object sender, DragEventArgs e)
         {
             // .wb はDB切替、フォルダは watch テーブルへ直接追加として扱い、混在時は先にDBを切り替える。
             string[] droppedPaths = GetWatchFolderDroppedPaths(e.Data);
@@ -53,30 +53,44 @@ namespace IndigoMovieManager
                 return;
             }
 
-            string droppedMainDbPath = ResolveDroppedMainDbPath(droppedPaths);
-            if (!string.IsNullOrWhiteSpace(droppedMainDbPath))
+            e.Handled = true;
+            string dbFullPathAtDrop = MainVM?.DbInfo?.DBFullPath ?? "";
+            string droppedMainDbCandidatePath = ResolveDroppedMainDbPath(droppedPaths);
+            if (!string.IsNullOrWhiteSpace(droppedMainDbCandidatePath))
             {
-                if (!HandleDroppedMainDbSwitch(droppedMainDbPath))
+                string droppedMainDbPath = await ResolveExistingDroppedMainDbPathAsync(droppedPaths);
+                if (!CanContinueDroppedMainDbSwitch(dbFullPathAtDrop))
                 {
-                    e.Handled = true;
                     return;
+                }
+
+                if (string.IsNullOrWhiteSpace(droppedMainDbPath))
+                {
+                    if (!WatchFolderDropRegistrationPolicy.CanAccept(droppedPaths))
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    if (!HandleDroppedMainDbSwitch(droppedMainDbPath))
+                    {
+                        return;
+                    }
                 }
             }
 
             if (!WatchFolderDropRegistrationPolicy.CanAccept(droppedPaths))
             {
-                e.Handled = true;
                 return;
             }
 
             if (!EnsureMainDbReadyForWatchFolderDrop())
             {
-                e.Handled = true;
                 return;
             }
 
             QueueDroppedWatchFolders(droppedPaths);
-            e.Handled = true;
         }
 
         // 新規開始では、最初のフォルダドロップからそのままDB作成へ進める。
@@ -127,8 +141,40 @@ namespace IndigoMovieManager
             return dataObject.GetData(DataFormats.FileDrop) as string[] ?? [];
         }
 
-        // file drop の中から、切替対象にできる .wb だけを拾う。
+        // DragOverではI/Oを掘らず、文字列として .wb 候補かどうかだけを拾う。
         internal static string ResolveDroppedMainDbPath(IEnumerable<string> droppedPaths)
+        {
+            foreach (string normalizedPath in EnumerateDroppedMainDbCandidatePaths(droppedPaths))
+            {
+                return normalizedPath;
+            }
+
+            return "";
+        }
+
+        // Drop確定後だけ、存在確認を背景で行い、UIスレッドをネットワークパス待ちに巻き込まない。
+        internal static Task<string> ResolveExistingDroppedMainDbPathAsync(
+            IEnumerable<string> droppedPaths
+        )
+        {
+            string[] droppedPathSnapshot = [.. droppedPaths ?? []];
+            return Task.Run(() =>
+            {
+                foreach (string normalizedPath in EnumerateDroppedMainDbCandidatePaths(droppedPathSnapshot))
+                {
+                    if (File.Exists(normalizedPath))
+                    {
+                        return normalizedPath;
+                    }
+                }
+
+                return "";
+            });
+        }
+
+        private static IEnumerable<string> EnumerateDroppedMainDbCandidatePaths(
+            IEnumerable<string> droppedPaths
+        )
         {
             foreach (string droppedPath in droppedPaths ?? [])
             {
@@ -138,20 +184,58 @@ namespace IndigoMovieManager
                     continue;
                 }
 
-                if (!File.Exists(normalizedPath))
+                if (
+                    !string.Equals(
+                        Path.GetExtension(normalizedPath),
+                        ".wb",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
                 {
                     continue;
                 }
 
-                if (!string.Equals(Path.GetExtension(normalizedPath), ".wb", StringComparison.OrdinalIgnoreCase))
+                yield return normalizedPath;
+            }
+        }
+
+        // 監視フォルダのDragOverは、拡張子つきファイルらしいものだけ弾く軽量判定に留める。
+        private static bool HasPotentialWatchFolderDropPath(IEnumerable<string> droppedPaths)
+        {
+            foreach (string droppedPath in droppedPaths ?? [])
+            {
+                string normalizedPath = NormalizeDroppedMainDbPath(droppedPath);
+                if (string.IsNullOrWhiteSpace(normalizedPath))
                 {
                     continue;
                 }
 
-                return normalizedPath;
+                if (string.IsNullOrWhiteSpace(Path.GetExtension(normalizedPath)))
+                {
+                    return true;
+                }
             }
 
-            return "";
+            return false;
+        }
+
+        private bool CanContinueDroppedMainDbSwitch(string dbFullPathAtDrop)
+        {
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return false;
+            }
+
+            string currentDbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (
+                string.IsNullOrWhiteSpace(dbFullPathAtDrop)
+                && string.IsNullOrWhiteSpace(currentDbFullPath)
+            )
+            {
+                return true;
+            }
+
+            return AreSameMainDbPath(dbFullPathAtDrop, currentDbFullPath);
         }
 
         // .wb ドロップ時は同一DBの再オープンを避け、結果をトーストで返す。

@@ -4,6 +4,7 @@
 
 変更概要:
 - 2026-05-26 のサブ5.5追加で、Debug タブのExplorer起動前に残っていた `File.Exists` / `Directory.Exists` を path snapshot 後の `Task.Run` helper へ逃がし、Explorer起動と未存在メッセージだけを revision / shutdown guard 後に UI へ戻す形にした。
+- 2026-05-26 のサブ5.5追加で、Explorer drag/drop の .wb 判定に残っていた `File.Exists` を DragOver から外し、Drop 確定後の `Task.Run` 存在確認と DB 一致/shutdown guard へ分離した。
 - 2026-05-26 のサブ5.5追加で、メニューの「親フォルダを開く」に残っていた `Path.Exists(mv.Movie_Path)` / `Path.Exists(mv.Dir)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、ネットワークパス確認中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、Log タブ preview 更新に残っていた `File.Exists` / `File.GetLastWriteTimeUtc` / 末尾 preview 読みを `Task.Run` helper へ逃がし、後着 request id guard で古い preview が最新表示を上書きしないようにした。
 - 2026-05-26 のサブ5.5追加で、ExtDetail の explorer 選択リンクと詳細サムネ watcher 後段に残っていた `Path.Exists(...)` を snapshot 後の `Task.Run` helper へ寄せ、クリックや watcher 反映時に UI スレッドでファイル存在確認を掘らない形へ寄せた。
