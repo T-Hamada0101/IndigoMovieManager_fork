@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5 Worker A で、DuplicateVideos タブの左代表サムネ/右詳細行生成に残っていた行ごとの動画本体 `File.Exists(...)` とサムネ `File.Exists(...)` を、背景処理内のフォルダ単位 `HashSet` lookup へ寄せた。サムネ出力フォルダはタブごと、動画本体は親フォルダごとに一度だけ列挙し、大件数重複グループでの N×probe を減らす。
 - 2026-05-27 のサブ5.5 Worker A で、メニューのファイル移動に残っていた `File.Move(...)` と行ごとの `Refresh()` を UI クリック処理から外した。選択行と移動先を snapshot して物理 Move は `Task.Run` 背景処理へ逃がし、完了後は DB パス保存要求、`MovieRecords` のパス/フォルダ/存在状態更新、必要時のパス sort 再適用だけを UI へ戻す。
 - 2026-05-27 のサブ5.5 Worker M で、監視フォルダ編集画面と MainWindow の folder drop 判定に残っていた `Directory.Exists(...)` を DragOver / Drop 事前判定から外した。`CanAccept(...)` は文字列正規化と拡張子なし候補だけを見る軽量判定へ寄せ、Drop確定後だけ `BuildAfterDropExistenceCheck(...)` を `Task.Run` 背景処理で実行する。WatchWindow は drop revision と `DispatcherPriority.Background` の UI 戻しを通し、古い存在確認結果が新しいドロップ結果を上書きしないようにした。
 - 2026-05-27 のサブ5.5 Worker N で、skin catalog explicit load の HTML snapshot 生成に残っていた `File.Exists(...) -> FileInfo` の二重 probe を `TryGetFileMetadata(...)` へ集約した。cached 一覧の軽量化とは分離し、明示 reload / 一覧取得時の HTML length / last write 鮮度確認は維持したまま、同一 html path への存在確認往復を減らした。

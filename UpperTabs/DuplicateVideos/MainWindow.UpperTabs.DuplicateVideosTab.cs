@@ -38,6 +38,14 @@ namespace IndigoMovieManager
         private long _upperTabDuplicateGroupRefreshRevision;
         private long _upperTabDuplicateDetailRefreshRevision;
 
+        private sealed class UpperTabDuplicateLookupContext
+        {
+            public Dictionary<int, string> ThumbnailOutPathsByTab { get; } = [];
+            public Dictionary<int, HashSet<string>> ThumbnailFileNamesByTab { get; } = [];
+            public Dictionary<string, HashSet<string>> MovieFileNamesByDirectory { get; } =
+                new(StringComparer.OrdinalIgnoreCase);
+        }
+
         // 重複動画タブのItemsSourceと初期表示を結び、起動直後でも空状態を安定させる。
         private void InitializeUpperTabDuplicateVideosTab()
         {
@@ -354,8 +362,17 @@ namespace IndigoMovieManager
                 return [];
             }
 
-            List<UpperTabDuplicateGroupViewModel> result = new(groups.Count);
-            foreach (UpperTabDuplicateGroupSummary group in SortUpperTabDuplicateGroups(groups, sortKey))
+            UpperTabDuplicateGroupSummary[] sortedGroups =
+                SortUpperTabDuplicateGroups(groups, sortKey).ToArray();
+            UpperTabDuplicateLookupContext lookupContext = BuildUpperTabDuplicateLookupContext(
+                sortedGroups.Select(group => group.Representative),
+                dbName,
+                thumbFolder,
+                UpperTabGridFixedIndex
+            );
+
+            List<UpperTabDuplicateGroupViewModel> result = new(sortedGroups.Length);
+            foreach (UpperTabDuplicateGroupSummary group in sortedGroups)
             {
                 result.Add(
                     new UpperTabDuplicateGroupViewModel
@@ -368,7 +385,8 @@ namespace IndigoMovieManager
                             group.Representative.Hash,
                             dbName,
                             thumbFolder,
-                            fallbackThumbnailPath
+                            fallbackThumbnailPath,
+                            lookupContext
                         ),
                         RepresentativeMovieName = UpperTabDuplicateVideoAnalyzer.BuildDisplayMovieName(
                             group.Representative.MovieName,
@@ -483,6 +501,13 @@ namespace IndigoMovieManager
 
             long maxSize = items.Max(x => x.MovieSize);
             long minSize = items.Min(x => x.MovieSize);
+            UpperTabDuplicateLookupContext lookupContext = BuildUpperTabDuplicateLookupContext(
+                items,
+                dbName,
+                thumbFolder,
+                UpperTabGridFixedIndex,
+                UpperTabBig10FixedIndex
+            );
             List<UpperTabDuplicateItemViewModel> result = new(items.Count);
             foreach (UpperTabDuplicateMovieRecord item in items)
             {
@@ -490,7 +515,8 @@ namespace IndigoMovieManager
                     item,
                     dbName,
                     thumbFolder,
-                    fallbackThumbnailPath
+                    fallbackThumbnailPath,
+                    lookupContext
                 );
                 result.Add(
                     new UpperTabDuplicateItemViewModel
@@ -537,7 +563,8 @@ namespace IndigoMovieManager
             UpperTabDuplicateMovieRecord source,
             string dbName,
             string thumbFolder,
-            string fallbackThumbnailPath
+            string fallbackThumbnailPath,
+            UpperTabDuplicateLookupContext lookupContext
         )
         {
             string displayName = UpperTabDuplicateVideoAnalyzer.BuildDisplayMovieName(
@@ -553,7 +580,8 @@ namespace IndigoMovieManager
                 source.Hash,
                 dbName,
                 thumbFolder,
-                fallbackThumbnailPath
+                fallbackThumbnailPath,
+                lookupContext
             );
             string big10ThumbnailPath = ResolveUpperTabDuplicateThumbnailPath(
                 UpperTabBig10FixedIndex,
@@ -562,7 +590,8 @@ namespace IndigoMovieManager
                 source.Hash,
                 dbName,
                 thumbFolder,
-                fallbackThumbnailPath
+                fallbackThumbnailPath,
+                lookupContext
             );
 
             return new MovieRecords
@@ -583,7 +612,7 @@ namespace IndigoMovieManager
                 ThumbDetail = gridThumbnailPath,
                 Drive = Path.GetPathRoot(source.MoviePath ?? "") ?? "",
                 Dir = Path.GetDirectoryName(source.MoviePath ?? "") ?? "",
-                IsExists = File.Exists(source.MoviePath ?? ""),
+                IsExists = IsUpperTabDuplicateMovieKnownToExist(source.MoviePath, lookupContext),
                 Ext = extension,
             };
         }
@@ -595,34 +624,119 @@ namespace IndigoMovieManager
             string hash,
             string dbName,
             string thumbFolder,
-            string fallbackThumbnailPath
+            string fallbackThumbnailPath,
+            UpperTabDuplicateLookupContext lookupContext
         )
         {
-            string outPath = ResolveThumbnailOutPath(tabIndex, dbName, thumbFolder);
-            string primaryPath = Thumbnail.ThumbnailPathResolver.BuildThumbnailPath(
-                outPath,
-                moviePath,
-                hash
-            );
-            if (File.Exists(primaryPath))
+            if (
+                lookupContext != null
+                && lookupContext.ThumbnailOutPathsByTab.TryGetValue(tabIndex, out string outPath)
+                && lookupContext.ThumbnailFileNamesByTab.TryGetValue(
+                    tabIndex,
+                    out HashSet<string> existingFileNames
+                )
+            )
             {
-                return primaryPath;
-            }
-
-            if (!string.IsNullOrWhiteSpace(movieName))
-            {
-                string legacyNamePath = Thumbnail.ThumbnailPathResolver.BuildThumbnailPath(
-                    outPath,
-                    movieName,
-                    hash
-                );
-                if (File.Exists(legacyNamePath))
+                string primaryFileName = ThumbnailPathResolver.BuildThumbnailFileName(moviePath, hash);
+                if (existingFileNames.Contains(primaryFileName))
                 {
-                    return legacyNamePath;
+                    return Path.Combine(outPath, primaryFileName);
+                }
+
+                if (!string.IsNullOrWhiteSpace(movieName))
+                {
+                    string legacyFileName = ThumbnailPathResolver.BuildThumbnailFileName(
+                        movieName,
+                        hash
+                    );
+                    if (existingFileNames.Contains(legacyFileName))
+                    {
+                        return Path.Combine(outPath, legacyFileName);
+                    }
                 }
             }
 
             return fallbackThumbnailPath;
+        }
+
+        private UpperTabDuplicateLookupContext BuildUpperTabDuplicateLookupContext(
+            IEnumerable<UpperTabDuplicateMovieRecord> records,
+            string dbName,
+            string thumbFolder,
+            params int[] tabIndices
+        )
+        {
+            UpperTabDuplicateMovieRecord[] recordSnapshots = records?.ToArray() ?? [];
+            UpperTabDuplicateLookupContext lookupContext = new();
+
+            foreach (int tabIndex in (tabIndices ?? []).Distinct())
+            {
+                string outPath = ResolveThumbnailOutPath(tabIndex, dbName, thumbFolder);
+                lookupContext.ThumbnailOutPathsByTab[tabIndex] = outPath;
+                lookupContext.ThumbnailFileNamesByTab[tabIndex] = BuildThumbnailFileNameLookup(outPath);
+            }
+
+            foreach (
+                string directoryPath in recordSnapshots
+                    .Select(record => Path.GetDirectoryName(record.MoviePath ?? "") ?? "")
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+            )
+            {
+                // 動画本体の存在確認も、行ごとの probe ではなく親フォルダ単位の一覧へ寄せる。
+                lookupContext.MovieFileNamesByDirectory[directoryPath] =
+                    BuildUpperTabDuplicateFileNameLookup(directoryPath);
+            }
+
+            return lookupContext;
+        }
+
+        private static HashSet<string> BuildUpperTabDuplicateFileNameLookup(string directoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(directoryPath))
+            {
+                return [];
+            }
+
+            try
+            {
+                return Directory
+                    .EnumerateFiles(directoryPath)
+                    .Select(Path.GetFileName)
+                    .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return [];
+            }
+        }
+
+        private static bool IsUpperTabDuplicateMovieKnownToExist(
+            string moviePath,
+            UpperTabDuplicateLookupContext lookupContext
+        )
+        {
+            if (string.IsNullOrWhiteSpace(moviePath) || lookupContext == null)
+            {
+                return false;
+            }
+
+            string directoryPath = Path.GetDirectoryName(moviePath) ?? "";
+            string fileName = Path.GetFileName(moviePath);
+            if (
+                string.IsNullOrWhiteSpace(directoryPath)
+                || string.IsNullOrWhiteSpace(fileName)
+                || !lookupContext.MovieFileNamesByDirectory.TryGetValue(
+                    directoryPath,
+                    out HashSet<string> fileNames
+                )
+            )
+            {
+                return false;
+            }
+
+            return fileNames.Contains(fileName);
         }
 
         // 重複動画タブの右ペインは独自ViewModelを持つため、通常生成成功時に行画像を差し替える。
@@ -776,15 +890,7 @@ namespace IndigoMovieManager
                 newMovieName,
                 updatedSummary.Value.Representative.MoviePath
             );
-            group.RepresentativeThumbnailPath = ResolveUpperTabDuplicateThumbnailPath(
-                UpperTabGridFixedIndex,
-                updatedSummary.Value.Representative.MoviePath,
-                newMovieName,
-                updatedSummary.Value.Hash,
-                MainVM?.DbInfo?.DBName ?? "",
-                MainVM?.DbInfo?.ThumbFolder ?? "",
-                Path.Combine(AppContext.BaseDirectory, "Images", "errorGrid.jpg")
-            );
+            // 名前変更時は既に表示済みの代表サムネを維持し、UI上の存在確認へ戻らない。
         }
 
         // 右上の5x2は Big10 サムネを使い、無いものだけ差し込み生成へ回す。

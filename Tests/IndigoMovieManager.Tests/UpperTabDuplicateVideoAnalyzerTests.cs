@@ -118,6 +118,45 @@ public sealed class UpperTabDuplicateVideoAnalyzerTests
     }
 
     [Test]
+    public void DuplicateVideos_存在確認はフォルダ単位lookupへ寄せる()
+    {
+        string source = GetRepoText(
+            "UpperTabs",
+            "DuplicateVideos",
+            "MainWindow.UpperTabs.DuplicateVideosTab.cs"
+        );
+        string detailItemsMethod = GetMethodBlock(
+            source,
+            "private UpperTabDuplicateItemViewModel[] BuildUpperTabDuplicateDetailItems("
+        );
+        string groupItemsMethod = GetMethodBlock(
+            source,
+            "private UpperTabDuplicateGroupViewModel[] BuildUpperTabDuplicateGroupItems("
+        );
+        string lookupMethod = GetMethodBlock(
+            source,
+            "private UpperTabDuplicateLookupContext BuildUpperTabDuplicateLookupContext("
+        );
+        string movieRecordMethod = GetMethodBlock(
+            source,
+            "private MovieRecords BuildUpperTabDuplicateMovieRecord("
+        );
+        string thumbnailResolveMethod = GetMethodBlock(
+            source,
+            "private string ResolveUpperTabDuplicateThumbnailPath("
+        );
+
+        Assert.That(source, Does.Not.Contain("File.Exists("));
+        Assert.That(detailItemsMethod, Does.Contain("BuildUpperTabDuplicateLookupContext("));
+        Assert.That(groupItemsMethod, Does.Contain("BuildUpperTabDuplicateLookupContext("));
+        Assert.That(lookupMethod, Does.Contain("BuildThumbnailFileNameLookup(outPath)"));
+        Assert.That(lookupMethod, Does.Contain("BuildUpperTabDuplicateFileNameLookup(directoryPath)"));
+        Assert.That(movieRecordMethod, Does.Contain("IsUpperTabDuplicateMovieKnownToExist("));
+        Assert.That(thumbnailResolveMethod, Does.Contain("ThumbnailPathResolver.BuildThumbnailFileName("));
+        Assert.That(thumbnailResolveMethod, Does.Not.Contain("Path.Exists("));
+    }
+
+    [Test]
     public void ExtractProbText_prob付きファイル名から抽出する()
     {
         string result = UpperTabDuplicateVideoAnalyzer.ExtractProbText(
