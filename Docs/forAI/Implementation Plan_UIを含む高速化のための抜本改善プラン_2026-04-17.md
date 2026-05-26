@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5 Worker K で、起動時 dock layout 復元の候補ファイル存在確認、`layout.xml` 読み込み、互換テキスト検証を `Task.Run` 背景処理へ逃がした。UI スレッドでは `DispatcherPriority.ContextIdle` で読み込み済みテキストを `XmlLayoutSerializer.Deserialize(new StringReader(...))` へ渡すだけにし、壊れた通常 layout の backup と default layout fallback の意味論は維持する。
 - 2026-05-27 のサブ5.5 Worker G で、DB切替時に呼ばれる SavedSearch 読込を `SavedSearchTabPresenter` 側の `Task.Run` 背景読込へ寄せた。要求ごとの DB path snapshot と reload revision で後着結果を捨て、非表示時は既存 dirty/pending 経路へ載せることで、UI スレッド上の tagbar SQLite read を避ける。
 - 2026-05-27 のサブ5.5 Worker F で、DB切替直後の検索履歴 `GetHistoryTable(...)` 同期読込を `QueueSearchHistoryReload(...)` へ置き換えた。履歴候補は DB パスと検索欄テキストを snapshot してから `Task.Run` で背景読込し、UI 復帰時は request stamp / `AreSameMainDbPath(...)` / dispatcher shutdown guard を通った時だけ反映するため、first-page / input ready を履歴 DB read で塞がない。
 - 2026-05-27 のサブ5.5 Worker H で、skin selector 表示同期の `GetCachedAvailableSkinDefinitions()` は初回でも catalog load / 署名確認へ進まず、共有 built-in 定義と現在外部 skin の missing 補完だけで軽量 snapshot を返す形へ寄せた。外部 skin 追加 / HTML 更新の鮮度確認は `GetAvailableSkinDefinitions()` / async 一覧取得 / `RefreshCurrentSkinDefinitionAsync()` 側へ残す。

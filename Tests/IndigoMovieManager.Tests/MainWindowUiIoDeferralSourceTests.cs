@@ -332,8 +332,45 @@ public sealed class MainWindowUiIoDeferralSourceTests
     {
         string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
 
-        Assert.That(source, Does.Contain("using var reader = new StringReader(layoutText);"));
+        Assert.That(source, Does.Contain("using var reader = new StringReader(loadResult.LayoutText);"));
         Assert.That(source, Does.Not.Contain("using var reader = new StreamReader(layoutFilePath);"));
+    }
+
+    [Test]
+    public void レイアウト復元入口はファイルIOを直接実行しない()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string restoreMethod = ExtractMethod(source, "private void TryRestoreDockLayout()");
+        string restoreFileMethod = ExtractMethod(
+            source,
+            "private async Task<bool> TryRestoreDockLayoutFromFile("
+        );
+        string loadMethod = ExtractMethod(
+            source,
+            "private DockLayoutRestoreFileLoadResult LoadDockLayoutRestoreText("
+        );
+        string deserializeMethod = ExtractMethod(
+            source,
+            "private bool TryDeserializeDockLayoutText("
+        );
+
+        Assert.That(restoreMethod, Does.Contain("RunRestoreDockLayoutAsync();"));
+        Assert.That(restoreMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(restoreMethod, Does.Not.Contain("File.ReadAllText("));
+
+        Assert.That(restoreFileMethod, Does.Contain("Task.Run("));
+        Assert.That(restoreFileMethod, Does.Contain("LoadDockLayoutRestoreText("));
+        Assert.That(restoreFileMethod, Does.Contain("DispatcherPriority.ContextIdle"));
+        Assert.That(restoreFileMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(restoreFileMethod, Does.Not.Contain("File.ReadAllText("));
+
+        Assert.That(loadMethod, Does.Contain("Path.Exists(layoutFilePath)"));
+        Assert.That(loadMethod, Does.Contain("File.ReadAllText(layoutFilePath)"));
+        Assert.That(loadMethod, Does.Contain("FindMissingRequiredDockLayoutReason("));
+
+        Assert.That(deserializeMethod, Does.Contain("new StringReader(loadResult.LayoutText)"));
+        Assert.That(deserializeMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(deserializeMethod, Does.Not.Contain("File.ReadAllText("));
     }
 
     private static string GetRepoText(params string[] relativePathParts)

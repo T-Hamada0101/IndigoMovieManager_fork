@@ -744,42 +744,156 @@ namespace IndigoMovieManager
         /// </summary>
         private void TryRestoreDockLayout()
         {
-            if (TryRestoreDockLayoutFromFile(DockLayoutFileName, backupInvalidLayout: true))
-            {
-                return;
-            }
+            _ = RunRestoreDockLayoutAsync();
+        }
 
-            _ = TryRestoreDockLayoutFromFile(DefaultDockLayoutFileName, backupInvalidLayout: false);
+        private async Task RunRestoreDockLayoutAsync()
+        {
+            try
+            {
+                if (await TryRestoreDockLayoutFromFile(DockLayoutFileName, backupInvalidLayout: true))
+                {
+                    return;
+                }
+
+                _ = await TryRestoreDockLayoutFromFile(
+                    DefaultDockLayoutFileName,
+                    backupInvalidLayout: false
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "layout",
+                    $"layout restore task failed. reason={ex.GetType().Name}: {ex.Message}"
+                );
+            }
         }
 
         /// <summary>
         /// 指定ファイルのレイアウト復元を試みる。
         /// 通常 layout.xml は互換外時に退避し、default 側は壊れていても静かに無視する。
         /// </summary>
-        private bool TryRestoreDockLayoutFromFile(string layoutFilePath, bool backupInvalidLayout)
+        private async Task<bool> TryRestoreDockLayoutFromFile(
+            string layoutFilePath,
+            bool backupInvalidLayout
+        )
         {
-            if (!Path.Exists(layoutFilePath))
+            bool shouldShowThumbnailErrorBottomTab = ShouldShowThumbnailErrorBottomTab;
+            bool shouldShowDebugTab = ShouldShowDebugTab;
+            DockLayoutRestoreFileLoadResult loadResult = await Task.Run(
+                    () =>
+                        LoadDockLayoutRestoreText(
+                            layoutFilePath,
+                            backupInvalidLayout,
+                            shouldShowThumbnailErrorBottomTab,
+                            shouldShowDebugTab
+                        )
+                )
+                .ConfigureAwait(false);
+
+            if (loadResult.LayoutText == null)
             {
                 return false;
             }
 
             try
             {
-                // 新しいツールタブを含まない古いレイアウトは互換外として扱う。
+                return await Dispatcher.InvokeAsync(
+                        () => TryDeserializeDockLayoutText(loadResult),
+                        DispatcherPriority.ContextIdle
+                    )
+                    .Task;
+            }
+            catch (TaskCanceledException ex)
+            {
+                DebugRuntimeLog.Write(
+                    "layout",
+                    $"layout restore dispatch canceled. file='{layoutFilePath}' reason={ex.Message}"
+                );
+                return false;
+            }
+            catch (InvalidOperationException ex)
+            {
+                DebugRuntimeLog.Write(
+                    "layout",
+                    $"layout restore dispatch failed. file='{layoutFilePath}' reason={ex.Message}"
+                );
+                return false;
+            }
+        }
+
+        private DockLayoutRestoreFileLoadResult LoadDockLayoutRestoreText(
+            string layoutFilePath,
+            bool backupInvalidLayout,
+            bool shouldShowThumbnailErrorBottomTab,
+            bool shouldShowDebugTab
+        )
+        {
+            if (!Path.Exists(layoutFilePath))
+            {
+                return DockLayoutRestoreFileLoadResult.Missing(layoutFilePath, backupInvalidLayout);
+            }
+
+            try
+            {
+                // ファイルI/Oと互換テキスト検証は背景側で済ませ、起動直列のUI待ちを増やさない。
                 string layoutText = File.ReadAllText(layoutFilePath);
-                string invalidReason = ValidateDockLayoutText(layoutText);
+                string invalidReason = FindMissingRequiredDockLayoutReason(
+                    layoutText,
+                    shouldShowThumbnailErrorBottomTab,
+                    shouldShowDebugTab
+                );
+
                 if (!string.IsNullOrEmpty(invalidReason))
                 {
                     if (backupInvalidLayout)
                     {
                         BackupLegacyDockLayout(layoutFilePath, invalidReason);
                     }
-                    return false;
+
+                    return DockLayoutRestoreFileLoadResult.Invalid(
+                        layoutFilePath,
+                        backupInvalidLayout
+                    );
                 }
 
+                return DockLayoutRestoreFileLoadResult.Ready(
+                    layoutFilePath,
+                    backupInvalidLayout,
+                    layoutText
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "layout",
+                    $"layout restore read failed. file='{layoutFilePath}' reason={ex.Message}"
+                );
+                if (backupInvalidLayout)
+                {
+                    BackupLegacyDockLayout(layoutFilePath, "deserialize-failed");
+                }
+
+                return DockLayoutRestoreFileLoadResult.Invalid(
+                    layoutFilePath,
+                    backupInvalidLayout
+                );
+            }
+        }
+
+        private bool TryDeserializeDockLayoutText(DockLayoutRestoreFileLoadResult loadResult)
+        {
+            if (loadResult.LayoutText == null)
+            {
+                return false;
+            }
+
+            try
+            {
                 XmlLayoutSerializer layoutSerializer = new(uxDockingManager);
-                // 互換チェックで読んだ文字列をそのまま使い、同一ファイルの再読込を避ける。
-                using var reader = new StringReader(layoutText);
+                // 背景側で検証済みの文字列だけを渡し、UI側ではファイルを掘り直さない。
+                using var reader = new StringReader(loadResult.LayoutText);
                 layoutSerializer.Deserialize(reader);
                 return true;
             }
@@ -787,12 +901,15 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "layout",
-                    $"layout restore failed. file='{layoutFilePath}' reason={ex.Message}"
+                    $"layout restore failed. file='{loadResult.LayoutFilePath}' reason={ex.Message}"
                 );
-                if (backupInvalidLayout)
+                if (loadResult.BackupInvalidLayout)
                 {
-                    BackupLegacyDockLayout(layoutFilePath, "deserialize-failed");
+                    _ = Task.Run(
+                        () => BackupLegacyDockLayout(loadResult.LayoutFilePath, "deserialize-failed")
+                    );
                 }
+
                 return false;
             }
         }
@@ -872,6 +989,50 @@ namespace IndigoMovieManager
             }
 
             return "";
+        }
+
+        private sealed record DockLayoutRestoreFileLoadResult(
+            string LayoutFilePath,
+            bool BackupInvalidLayout,
+            string LayoutText
+        )
+        {
+            public static DockLayoutRestoreFileLoadResult Missing(
+                string layoutFilePath,
+                bool backupInvalidLayout
+            )
+            {
+                return new DockLayoutRestoreFileLoadResult(
+                    layoutFilePath,
+                    backupInvalidLayout,
+                    null
+                );
+            }
+
+            public static DockLayoutRestoreFileLoadResult Invalid(
+                string layoutFilePath,
+                bool backupInvalidLayout
+            )
+            {
+                return new DockLayoutRestoreFileLoadResult(
+                    layoutFilePath,
+                    backupInvalidLayout,
+                    null
+                );
+            }
+
+            public static DockLayoutRestoreFileLoadResult Ready(
+                string layoutFilePath,
+                bool backupInvalidLayout,
+                string layoutText
+            )
+            {
+                return new DockLayoutRestoreFileLoadResult(
+                    layoutFilePath,
+                    backupInvalidLayout,
+                    layoutText
+                );
+            }
         }
 
         // 下部の常設タブは、古いレイアウト復元や誤操作で木から外れても保存前に必ず戻す。
