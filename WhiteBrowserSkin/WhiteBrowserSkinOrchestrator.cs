@@ -26,11 +26,13 @@ namespace IndigoMovieManager.Skin
         private readonly Func<int, string> resolveUpperTabStateNameByFixedIndex;
         private readonly Func<WhiteBrowserSkinStatePersistRequest, bool> enqueuePersistRequest;
         private readonly Action<WhiteBrowserSkinStatePersistRequest> fallbackPersistRequest;
+        private readonly Func<string, string, string, string> selectProfileValue;
         private readonly string skinRootPath;
 
         private IReadOnlyList<WhiteBrowserSkinDefinition> availableSkinDefinitions =
             Array.Empty<WhiteBrowserSkinDefinition>();
         private WhiteBrowserSkinDefinition activeSkinDefinition;
+        private InitialTabResolution lastInitialTabResolution;
 
         public WhiteBrowserSkinOrchestrator(
             Func<string> getCurrentDbFullPath,
@@ -43,7 +45,8 @@ namespace IndigoMovieManager.Skin
             Func<int, string> resolveUpperTabStateNameByFixedIndex,
             Func<WhiteBrowserSkinStatePersistRequest, bool> enqueuePersistRequest,
             Action<WhiteBrowserSkinStatePersistRequest> fallbackPersistRequest = null,
-            string skinRootPath = ""
+            string skinRootPath = "",
+            Func<string, string, string, string> selectProfileValue = null
         )
         {
             this.getCurrentDbFullPath =
@@ -71,6 +74,7 @@ namespace IndigoMovieManager.Skin
             this.enqueuePersistRequest =
                 enqueuePersistRequest ?? throw new ArgumentNullException(nameof(enqueuePersistRequest));
             this.fallbackPersistRequest = fallbackPersistRequest;
+            this.selectProfileValue = selectProfileValue ?? SelectProfileValue;
             this.skinRootPath = string.IsNullOrWhiteSpace(skinRootPath)
                 ? WhiteBrowserSkinCatalogService.ResolveSkinRootPath(AppContext.BaseDirectory)
                 : skinRootPath;
@@ -154,11 +158,22 @@ namespace IndigoMovieManager.Skin
                 return false;
             }
 
+            string previousSkinName = getCurrentSkinNameFromViewModel()?.Trim() ?? "";
+            bool isSameSkinApply = string.Equals(
+                previousSkinName,
+                definition.Name,
+                StringComparison.OrdinalIgnoreCase
+            );
+
             activeSkinDefinition = definition;
             setCurrentSkinNameToViewModel(definition.Name);
 
             string dbFullPath = getCurrentDbFullPath() ?? "";
-            string targetTabStateName = ResolveInitialTabStateNameForSkin(definition, dbFullPath);
+            string targetTabStateName = ResolveInitialTabStateNameForSkin(
+                definition,
+                dbFullPath,
+                isSameSkinApply
+            );
             selectUpperTabDefaultViewBySkinName(targetTabStateName);
 
             if (persistToCurrentDb && !string.IsNullOrWhiteSpace(dbFullPath))
@@ -413,7 +428,8 @@ namespace IndigoMovieManager.Skin
 
         private string ResolveInitialTabStateNameForSkin(
             WhiteBrowserSkinDefinition definition,
-            string dbFullPath
+            string dbFullPath,
+            bool allowSameSkinResolvedCache
         )
         {
             if (definition == null)
@@ -435,31 +451,134 @@ namespace IndigoMovieManager.Skin
                         SkinProfileLastUpperTabKey,
                         out string cachedTabState
                     )
-                    && !string.IsNullOrWhiteSpace(cachedTabState)
                 )
                 {
-                    return normalizeTabStateName(cachedTabState);
+                    string cachedResolvedTabStateName = !string.IsNullOrWhiteSpace(cachedTabState)
+                        ? normalizeTabStateName(cachedTabState)
+                        : ResolvePreferredTabStateName(definition);
+                    RememberInitialTabResolution(
+                        dbFullPath,
+                        definition.Name,
+                        cachedResolvedTabStateName
+                    );
+                    return cachedResolvedTabStateName;
                 }
 
-                string savedTabState = SelectProfileValue(
+                if (
+                    allowSameSkinResolvedCache
+                    && TryGetRememberedInitialTabResolution(
+                        dbFullPath,
+                        definition.Name,
+                        out string rememberedTabStateName
+                    )
+                )
+                {
+                    return rememberedTabStateName;
+                }
+
+                string savedTabState = selectProfileValue(
                     dbFullPath,
                     definition.Name,
                     SkinProfileLastUpperTabKey
                 );
                 if (!string.IsNullOrWhiteSpace(savedTabState))
                 {
+                    string savedResolvedTabStateName = normalizeTabStateName(savedTabState);
                     WhiteBrowserSkinProfileValueCache.RecordPersisted(
                         dbFullPath,
                         definition.Name,
                         SkinProfileLastUpperTabKey,
                         savedTabState
                     );
-                    return normalizeTabStateName(savedTabState);
+                    RememberInitialTabResolution(
+                        dbFullPath,
+                        definition.Name,
+                        savedResolvedTabStateName
+                    );
+                    return savedResolvedTabStateName;
                 }
             }
 
-            return normalizeTabStateName(definition.PreferredTabStateName);
+            string preferredTabStateName = ResolvePreferredTabStateName(definition);
+            RememberInitialTabResolution(dbFullPath, definition.Name, preferredTabStateName);
+            return preferredTabStateName;
         }
+
+        private string ResolvePreferredTabStateName(WhiteBrowserSkinDefinition definition)
+        {
+            return normalizeTabStateName(definition?.PreferredTabStateName);
+        }
+
+        private void RememberInitialTabResolution(
+            string dbFullPath,
+            string skinName,
+            string tabStateName
+        )
+        {
+            string dbIdentity = WhiteBrowserSkinDbIdentity.NormalizeMainDbPath(dbFullPath);
+            string normalizedSkinName = skinName?.Trim() ?? "";
+            string normalizedTabStateName = normalizeTabStateName(tabStateName);
+            if (
+                string.IsNullOrWhiteSpace(dbIdentity)
+                || string.IsNullOrWhiteSpace(normalizedSkinName)
+                || string.IsNullOrWhiteSpace(normalizedTabStateName)
+            )
+            {
+                lastInitialTabResolution = default;
+                return;
+            }
+
+            // 同じ skin を連続適用した時だけ使う一時結果として持ち、DB 読み取りを重ねない。
+            lastInitialTabResolution = new InitialTabResolution(
+                dbIdentity,
+                normalizedSkinName,
+                normalizedTabStateName
+            );
+        }
+
+        private bool TryGetRememberedInitialTabResolution(
+            string dbFullPath,
+            string skinName,
+            out string tabStateName
+        )
+        {
+            tabStateName = "";
+            string dbIdentity = WhiteBrowserSkinDbIdentity.NormalizeMainDbPath(dbFullPath);
+            string normalizedSkinName = skinName?.Trim() ?? "";
+            if (
+                string.IsNullOrWhiteSpace(dbIdentity)
+                || string.IsNullOrWhiteSpace(normalizedSkinName)
+                || string.IsNullOrWhiteSpace(lastInitialTabResolution.DbIdentity)
+            )
+            {
+                return false;
+            }
+
+            if (
+                !string.Equals(
+                    lastInitialTabResolution.DbIdentity,
+                    dbIdentity,
+                    StringComparison.Ordinal
+                )
+                || !string.Equals(
+                    lastInitialTabResolution.SkinName,
+                    normalizedSkinName,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                return false;
+            }
+
+            tabStateName = lastInitialTabResolution.TabStateName;
+            return !string.IsNullOrWhiteSpace(tabStateName);
+        }
+
+        private readonly record struct InitialTabResolution(
+            string DbIdentity,
+            string SkinName,
+            string TabStateName
+        );
 
         private WhiteBrowserSkinDefinition CreateMissingExternalDefinition(string skinName)
         {

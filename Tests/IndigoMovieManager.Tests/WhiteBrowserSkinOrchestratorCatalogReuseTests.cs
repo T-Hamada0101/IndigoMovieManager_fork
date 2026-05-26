@@ -208,6 +208,108 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public void ApplySkinByName同一外部skin再適用は初期タブ解決を再利用する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ProfileColdGrid");
+        string currentSkinName = "";
+        int profileReadCount = 0;
+        List<string> selectedTabs = [];
+        string dbFullPath = Path.Combine(Path.GetTempPath(), "profile-cold.wb");
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                currentDbFullPath: dbFullPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? ""),
+                selectProfileValue: (_, _, _) =>
+                {
+                    profileReadCount++;
+                    return "";
+                }
+            );
+
+            _ = orchestrator.GetAvailableSkinDefinitions();
+            bool firstApplied = orchestrator.ApplySkinByName(
+                "ProfileColdGrid",
+                persistToCurrentDb: false
+            );
+            bool secondApplied = orchestrator.ApplySkinByName(
+                "ProfileColdGrid",
+                persistToCurrentDb: false
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstApplied, Is.True);
+                Assert.That(secondApplied, Is.True);
+                Assert.That(profileReadCount, Is.EqualTo(1));
+                Assert.That(selectedTabs, Is.EqualTo(new[] { "DefaultGrid", "DefaultGrid" }));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
+    public void ApplySkinByName初期タブ解決cacheよりpersistedCacheを優先する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ProfilePersistedGrid");
+        string currentSkinName = "";
+        int profileReadCount = 0;
+        List<string> selectedTabs = [];
+        string dbFullPath = Path.Combine(Path.GetTempPath(), "profile-persisted.wb");
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                currentDbFullPath: dbFullPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? ""),
+                selectProfileValue: (_, _, _) =>
+                {
+                    profileReadCount++;
+                    return "";
+                }
+            );
+
+            _ = orchestrator.GetAvailableSkinDefinitions();
+            bool firstApplied = orchestrator.ApplySkinByName(
+                "ProfilePersistedGrid",
+                persistToCurrentDb: false
+            );
+            WhiteBrowserSkinProfileValueCache.RecordPersisted(
+                dbFullPath,
+                "ProfilePersistedGrid",
+                "LastUpperTab",
+                "DefaultList"
+            );
+            bool secondApplied = orchestrator.ApplySkinByName(
+                "ProfilePersistedGrid",
+                persistToCurrentDb: false
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstApplied, Is.True);
+                Assert.That(secondApplied, Is.True);
+                Assert.That(profileReadCount, Is.EqualTo(1));
+                Assert.That(selectedTabs, Is.EqualTo(new[] { "DefaultGrid", "DefaultList" }));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void GetCurrentSkinDefinitionは未ロードのbuilt_in_skinならcatalog署名確認へ進まない()
     {
         string rootPath = CreateSkinRootWithSingleSkin("ExternalForColdCurrentBuiltIn");
@@ -741,11 +843,13 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
         string skinRootPath,
         Func<string> getCurrentSkinNameFromViewModel,
         Action<string> setCurrentSkinNameToViewModel,
-        Action<string>? selectUpperTabDefaultViewBySkinName = null
+        Action<string>? selectUpperTabDefaultViewBySkinName = null,
+        string currentDbFullPath = "",
+        Func<string, string, string, string>? selectProfileValue = null
     )
     {
         return new WhiteBrowserSkinOrchestrator(
-            getCurrentDbFullPath: () => "",
+            getCurrentDbFullPath: () => currentDbFullPath,
             getCurrentSkinNameFromViewModel: getCurrentSkinNameFromViewModel,
             setCurrentSkinNameToViewModel: setCurrentSkinNameToViewModel,
             normalizeTabStateName: skinName => string.IsNullOrWhiteSpace(skinName) ? "DefaultGrid" : skinName,
@@ -754,7 +858,8 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
             resolvePersistedSkinNameByTabIndex: _ => "DefaultGrid",
             resolveUpperTabStateNameByFixedIndex: _ => "DefaultGrid",
             enqueuePersistRequest: _ => true,
-            skinRootPath: skinRootPath
+            skinRootPath: skinRootPath,
+            selectProfileValue: selectProfileValue
         );
     }
 
