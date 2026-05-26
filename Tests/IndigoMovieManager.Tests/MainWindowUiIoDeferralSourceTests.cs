@@ -38,6 +38,69 @@ public sealed class MainWindowUiIoDeferralSourceTests
     }
 
     [Test]
+    public void ContentRenderedではStartupAutoOpenLastDoc存在確認を直接実行しない()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string contentRendered = ExtractMethod(source, "private void MainWindow_ContentRendered(");
+
+        Assert.That(contentRendered, Does.Contain("QueueStartupAutoOpenLastDocSwitch();"));
+        Assert.That(contentRendered, Does.Not.Contain("Path.Exists("));
+        Assert.That(contentRendered, Does.Not.Contain("TrySwitchMainDb("));
+    }
+
+    [Test]
+    public void StartupAutoOpenLastDoc存在確認は背景で実行しUI側で切り替える()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string queueMethod = ExtractMethod(
+            source,
+            "private void QueueStartupAutoOpenLastDocSwitch()"
+        );
+        string runMethod = ExtractMethod(
+            source,
+            "private async Task RunStartupAutoOpenLastDocSwitchAsync("
+        );
+
+        Assert.That(queueMethod, Does.Contain("bool autoOpenSnapshot"));
+        Assert.That(queueMethod, Does.Contain("string lastDocSnapshot"));
+        Assert.That(queueMethod, Does.Contain("RunStartupAutoOpenLastDocSwitchAsync("));
+        Assert.That(runMethod, Does.Contain("Task.Run(() => Path.Exists(lastDocSnapshot))"));
+        Assert.That(runMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(
+            runMethod,
+            Does.Contain("TrySwitchMainDb(lastDocSnapshot, MainDbSwitchSource.StartupAutoOpen);")
+        );
+    }
+
+    [Test]
+    public void StartupAutoOpenLastDoc復帰前に設定Snapshotと終了状態を確認する()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string runMethod = ExtractMethod(
+            source,
+            "private async Task RunStartupAutoOpenLastDocSwitchAsync("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool IsStartupAutoOpenLastDocSnapshotCurrent("
+        );
+        string shutdownMethod = ExtractMethod(
+            source,
+            "private bool IsStartupAutoOpenLastDocSwitchShutdownStarted()"
+        );
+
+        Assert.That(runMethod, Does.Contain("IsStartupAutoOpenLastDocSwitchShutdownStarted()"));
+        Assert.That(runMethod, Does.Contain("IsStartupAutoOpenLastDocSnapshotCurrent("));
+        Assert.That(guardMethod, Does.Contain("autoOpenSnapshot"));
+        Assert.That(guardMethod, Does.Contain("Properties.Settings.Default.AutoOpen"));
+        Assert.That(guardMethod, Does.Contain("Properties.Settings.Default.LastDoc"));
+        Assert.That(guardMethod, Does.Contain("StringComparison.Ordinal"));
+        Assert.That(shutdownMethod, Does.Contain("Volatile.Read(ref _mainWindowClosingStarted)"));
+        Assert.That(shutdownMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+        Assert.That(shutdownMethod, Does.Contain("Dispatcher.HasShutdownFinished"));
+    }
+
+    [Test]
     public void Startup軽サービスでThumbnailProgressSnapshot更新を予約する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.Startup.cs");

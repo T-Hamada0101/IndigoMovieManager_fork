@@ -78,6 +78,7 @@ namespace IndigoMovieManager
         private const string DockLayoutFileName = "layout.xml";
         private const string DefaultDockLayoutFileName = "layout.default.xml";
         private const string ExtensionBottomTabContentId = "ToolExtension";
+        private int _mainWindowClosingStarted;
         private const string BookmarkBottomTabContentId = "ToolBookmark";
         private const string SavedSearchBottomTabContentId = "ToolTagBar";
         private const string ThumbnailProgressContentId = "ToolThumbnailProgress";
@@ -469,29 +470,7 @@ namespace IndigoMovieManager
                 // 画面外へ飛んだ設定値を補正しつつロケーションとサイズを復元する。
                 RestoreWindowBoundsSafely();
 
-                //前回起動時のファイルを開く処理
-                if (Properties.Settings.Default.AutoOpen)
-                {
-                    if (Properties.Settings.Default.LastDoc != null)
-                    {
-                        if (Path.Exists(Properties.Settings.Default.LastDoc))
-                        {
-                            if (Properties.Settings.Default.AutoOpen)
-                            {
-                                // 起動直後の初回描画を先に通し、その後で最初のDB切替・system読込を流す。
-                                _ = Dispatcher.BeginInvoke(
-                                    DispatcherPriority.Background,
-                                    new Action(() =>
-                                        TrySwitchMainDb(
-                                            Properties.Settings.Default.LastDoc,
-                                            MainDbSwitchSource.StartupAutoOpen
-                                        )
-                                    )
-                                );
-                            }
-                        }
-                    }
-                }
+                QueueStartupAutoOpenLastDocSwitch();
 
                 EnsureThumbnailProgressUiTimerRunning();
                 TryStartInitialThumbnailFailureSync();
@@ -504,6 +483,116 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.TaskEnd(nameof(MainWindow_ContentRendered));
             }
+        }
+
+        private void QueueStartupAutoOpenLastDocSwitch()
+        {
+            bool autoOpenSnapshot = Properties.Settings.Default.AutoOpen;
+            string lastDocSnapshot = Properties.Settings.Default.LastDoc ?? "";
+
+            if (!autoOpenSnapshot || string.IsNullOrWhiteSpace(lastDocSnapshot))
+            {
+                return;
+            }
+
+            // 初回描画を先に通し、LastDoc の存在確認だけを背景へ逃がして UI 入力を塞がない。
+            _ = RunStartupAutoOpenLastDocSwitchAsync(autoOpenSnapshot, lastDocSnapshot);
+        }
+
+        private async Task RunStartupAutoOpenLastDocSwitchAsync(
+            bool autoOpenSnapshot,
+            string lastDocSnapshot
+        )
+        {
+            bool lastDocExists;
+            try
+            {
+                lastDocExists = await Task.Run(() => Path.Exists(lastDocSnapshot))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "startup",
+                    $"startup auto-open LastDoc exists failed: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+                return;
+            }
+
+            if (!lastDocExists || IsStartupAutoOpenLastDocSwitchShutdownStarted())
+            {
+                return;
+            }
+
+            try
+            {
+                await Dispatcher.InvokeAsync(
+                        () =>
+                        {
+                            if (
+                                !IsStartupAutoOpenLastDocSnapshotCurrent(
+                                    autoOpenSnapshot,
+                                    lastDocSnapshot
+                                )
+                            )
+                            {
+                                return;
+                            }
+
+                            TrySwitchMainDb(lastDocSnapshot, MainDbSwitchSource.StartupAutoOpen);
+                        },
+                        DispatcherPriority.Background
+                    )
+                    .Task;
+            }
+            catch (TaskCanceledException ex)
+            {
+                DebugRuntimeLog.Write(
+                    "startup",
+                    $"startup auto-open LastDoc dispatch canceled: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+            catch (InvalidOperationException ex)
+            {
+                DebugRuntimeLog.Write(
+                    "startup",
+                    $"startup auto-open LastDoc dispatch failed: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "startup",
+                    $"startup auto-open LastDoc switch failed: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+        }
+
+        private bool IsStartupAutoOpenLastDocSnapshotCurrent(
+            bool autoOpenSnapshot,
+            string lastDocSnapshot
+        )
+        {
+            if (IsStartupAutoOpenLastDocSwitchShutdownStarted())
+            {
+                return false;
+            }
+
+            return autoOpenSnapshot
+                && Properties.Settings.Default.AutoOpen
+                && !string.IsNullOrWhiteSpace(lastDocSnapshot)
+                && string.Equals(
+                    Properties.Settings.Default.LastDoc ?? "",
+                    lastDocSnapshot,
+                    StringComparison.Ordinal
+                );
+        }
+
+        private bool IsStartupAutoOpenLastDocSwitchShutdownStarted()
+        {
+            return Volatile.Read(ref _mainWindowClosingStarted) != 0
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished;
         }
 
         /// <summary>
@@ -528,6 +617,7 @@ namespace IndigoMovieManager
                 }
             }
 
+            Volatile.Write(ref _mainWindowClosingStarted, 1);
             bool skipProcessWideShutdownSideEffects = SkipMainWindowClosingSideEffectsForTesting;
 
             try
