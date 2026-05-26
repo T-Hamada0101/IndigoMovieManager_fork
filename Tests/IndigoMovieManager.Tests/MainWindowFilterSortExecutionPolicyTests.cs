@@ -134,6 +134,43 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void BootNewDb_検索履歴初期読込は背景へ逃がす()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string bootMethod = GetMethodBlock(mainWindowSource, "private void BootNewDb(");
+        string queueMethod = GetMethodBlock(
+            mainWindowSource,
+            "private void QueueSearchHistoryReload("
+        );
+        string asyncMethod = GetMethodBlock(
+            mainWindowSource,
+            "private async Task ReloadSearchHistoryForDbSwitchAsync("
+        );
+
+        Assert.That(bootMethod, Does.Contain("QueueSearchHistoryReload(dbFullPath);"));
+        Assert.That(bootMethod, Does.Not.Contain("GetHistoryTable("));
+        Assert.That(bootMethod, Does.Not.Contain("SearchHistoryService.LoadLatestHistory("));
+        Assert.That(queueMethod, Does.Contain("string dbFullPathSnapshot = dbFullPath ?? \"\";"));
+        Assert.That(queueMethod, Does.Contain("string searchTextSnapshot = SearchBox?.Text ?? \"\";"));
+        Assert.That(queueMethod, Does.Contain("Interlocked.Increment(ref _searchHistoryRefreshStamp);"));
+        Assert.That(asyncMethod, Does.Contain("Task.Run("));
+        Assert.That(asyncMethod, Does.Contain("SearchHistoryService.LoadLatestHistory(dbFullPathSnapshot)"));
+        Assert.That(asyncMethod, Does.Contain(".InvokeAsync("));
+        Assert.That(asyncMethod, Does.Contain("DispatcherPriority.Background"));
+        Assert.That(asyncMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+        Assert.That(asyncMethod, Does.Contain("Dispatcher.HasShutdownFinished"));
+        Assert.That(asyncMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(
+            asyncMethod,
+            Does.Contain("ApplySearchHistoryRecords(records, SearchBox?.Text ?? searchTextSnapshot)")
+        );
+        Assert.That(asyncMethod, Does.Contain("history reload failed:"));
+        Assert.That(asyncMethod, Does.Contain("history reload apply failed:"));
+        Assert.That(asyncMethod, Does.Not.Contain("ContinueWith("));
+        Assert.That(asyncMethod, Does.Not.Contain("task.Result"));
+    }
+
+    [Test]
     public void SearchBox_TextChangedの検索解除は検索正本へ合流する()
     {
         string searchSource = GetRepoText("Views", "Main", "MainWindow.Search.cs");

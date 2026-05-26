@@ -4,6 +4,7 @@
 
 変更概要:
 - 2026-05-27 のサブ5.5 Worker G で、DB切替時に呼ばれる SavedSearch 読込を `SavedSearchTabPresenter` 側の `Task.Run` 背景読込へ寄せた。要求ごとの DB path snapshot と reload revision で後着結果を捨て、非表示時は既存 dirty/pending 経路へ載せることで、UI スレッド上の tagbar SQLite read を避ける。
+- 2026-05-27 のサブ5.5 Worker F で、DB切替直後の検索履歴 `GetHistoryTable(...)` 同期読込を `QueueSearchHistoryReload(...)` へ置き換えた。履歴候補は DB パスと検索欄テキストを snapshot してから `Task.Run` で背景読込し、UI 復帰時は request stamp / `AreSameMainDbPath(...)` / dispatcher shutdown guard を通った時だけ反映するため、first-page / input ready を履歴 DB read で塞がない。
 - 2026-05-27 のサブ5.5 Worker D で、Everything poll policy の DB path 存在確認を watch folder と同じ `pathExists` delegate 経由へ統一した。instance 側で確認した DB 存在結果を snapshot 取得と policy 判定へ引き継ぎ、DB / watch folder 大件数時に同じ DB path の filesystem probe を重ねない形へ寄せた。
 - 2026-05-27 のサブ5.5 Worker E で、Thumbnail ERROR タブの手動再読込、一覧クリア、選択/一括救済投入後に残っていた `Refresh()` 全体再描画を外し、`RefreshThumbnailErrorRecords(force: true)`、上側 visible range refresh、下部進捗 snapshot 予約へ寄せた。救済投入 core から UI 更新を外し、背景投入完了後に UI 側で1回だけ局所反映する。
 - 2026-05-27 のサブ5.5 Worker C で、起動 light services の EverythingLite watch root prewarm は UI 側で DB / provider / revision の snapshot だけを取り、watch root の `Path.Exists` を含む plan 作成を `Task.Run` 背景 helper へ逃がした。戻り時は startup revision / 現在 DB / root snapshot を guard し、古い起動要求や DB 切替後着の root prewarm を捨てる。
@@ -426,6 +427,7 @@
 - 起動時 read model を first-page 用と background append 用に明確分離する。
 - `CreateWatcher()`、bookmark reload、tag / queue warm path を UI 入力可能後へ順次開始する。
 - `OpenDatafile(...)` 後に必要な同期仕事をさらに削り、「表示」「操作可能」「常駐起動完了」を別イベントとして扱う。
+- DB切替直後の検索履歴候補読込は、`BootNewDb(...)` 内で直接 `SearchHistoryService.LoadLatestHistory(...)` を呼ばず、背景読込と後着 guard 付きの UI 反映へ送る。
 - `ThumbnailProgress` snapshot は `ContentRendered` 直後に直接作らず、first-page 後の startup light services から既存の coalesce 経路へ予約する。
 - fallback 起動も `QueueStartupThumbnailProgressSnapshotRefresh()` へ合流し、直接更新を増やさずに進捗表示の置き去りを抑える。
 - warm start 用の補助 cache を使う場合も `LocalAppData` 配下に限定し、壊れても DB fallback に戻せる形を守る。

@@ -1668,8 +1668,8 @@ namespace IndigoMovieManager
                 ResetMainHeaderCounts();
                 QueueRegisteredMovieCountRefresh(dbFullPath);
 
-                ShowUiHangDbSwitchStatus("DB切替: 履歴を読込中");
-                GetHistoryTable(dbFullPath);
+                ShowUiHangDbSwitchStatus("DB切替: 履歴読込を予約中");
+                QueueSearchHistoryReload(dbFullPath);
                 ReloadSavedSearchItems();
 
                 if (MainVM.DbInfo.Skin != null)
@@ -1814,17 +1814,96 @@ namespace IndigoMovieManager
             }
         }
 
-        /// <summary>
-        /// historyテーブルから過去の検索歴を引っぱり出し、重複を消し飛ばしてスマートな検索候補を作るぜ！🧠
-        /// </summary>
-        private void GetHistoryTable(string dbFullPath)
+        // DB切替時の履歴読込は初期表示を待たせず、候補リストだけを後から差し替える。
+        private void QueueSearchHistoryReload(string dbFullPath)
         {
-            // 現在のテキストを一時保存
-            string currentText = SearchBox?.Text ?? "";
-            ApplySearchHistoryRecords(
-                SearchHistoryService.LoadLatestHistory(dbFullPath),
-                currentText
+            string dbFullPathSnapshot = dbFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(dbFullPathSnapshot))
+            {
+                return;
+            }
+
+            // DB切替直後は first-page / input ready を先に通し、履歴候補だけを後追いで差し替える。
+            string searchTextSnapshot = SearchBox?.Text ?? "";
+            long reloadStamp = Interlocked.Increment(ref _searchHistoryRefreshStamp);
+            _ = ReloadSearchHistoryForDbSwitchAsync(
+                dbFullPathSnapshot,
+                searchTextSnapshot,
+                reloadStamp
             );
+        }
+
+        private async Task ReloadSearchHistoryForDbSwitchAsync(
+            string dbFullPathSnapshot,
+            string searchTextSnapshot,
+            long reloadStamp
+        )
+        {
+            History[] records;
+            try
+            {
+                records = await Task.Run(() =>
+                        SearchHistoryService.LoadLatestHistory(dbFullPathSnapshot)
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "search-history",
+                    $"history reload failed: db='{dbFullPathSnapshot}' err='{ex.Message}'"
+                );
+                return;
+            }
+
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                await Dispatcher
+                    .InvokeAsync(
+                        () =>
+                        {
+                            if (
+                                Dispatcher.HasShutdownStarted
+                                || Dispatcher.HasShutdownFinished
+                                || reloadStamp != _searchHistoryRefreshStamp
+                                || !AreSameMainDbPath(
+                                    dbFullPathSnapshot,
+                                    MainVM?.DbInfo?.DBFullPath ?? ""
+                                )
+                            )
+                            {
+                                return;
+                            }
+
+                            // 読込中にユーザー入力が進んでいれば現在値を優先し、未生成時だけ起動時 snapshot に戻す。
+                            ApplySearchHistoryRecords(records, SearchBox?.Text ?? searchTextSnapshot);
+                        },
+                        DispatcherPriority.Background
+                    )
+                    .Task.ConfigureAwait(false);
+            }
+            catch (TaskCanceledException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (InvalidOperationException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "search-history",
+                    $"history reload apply failed: db='{dbFullPathSnapshot}' err='{ex.Message}'"
+                );
+            }
         }
 
         private void ApplySearchHistoryRecords(IEnumerable<History> historyRecords, string currentText)
