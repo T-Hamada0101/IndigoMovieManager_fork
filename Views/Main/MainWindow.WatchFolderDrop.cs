@@ -85,7 +85,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!EnsureMainDbReadyForWatchFolderDrop())
+            if (!await EnsureMainDbReadyForWatchFolderDropAsync())
             {
                 return;
             }
@@ -94,14 +94,14 @@ namespace IndigoMovieManager
         }
 
         // 新規開始では、最初のフォルダドロップからそのままDB作成へ進める。
-        private bool EnsureMainDbReadyForWatchFolderDrop()
+        private async Task<bool> EnsureMainDbReadyForWatchFolderDropAsync()
         {
             if (!string.IsNullOrWhiteSpace(MainVM?.DbInfo?.DBFullPath))
             {
                 return true;
             }
 
-            return TryCreateMainDbFromDialog();
+            return await TryCreateMainDbFromDialogAsync();
         }
 
         // 監視フォルダ編集ダイアログを開く入口を1か所へ寄せ、メニュー起動とドロップ起動を揃える。

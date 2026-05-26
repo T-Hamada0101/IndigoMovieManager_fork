@@ -71,6 +71,48 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void 新規DB作成ダイアログ後のI_Oは背景へ逃がす()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string clickMethod = GetMethodBlock(source, "private async void BtnNew_Click(");
+        string dialogMethod = GetMethodBlock(source, "private async Task<bool> TryCreateMainDbFromDialogAsync(");
+        string backgroundMethod = GetMethodBlock(
+            source,
+            "private static Task<MainDbCreateDialogBackgroundResult> CreateMainDbFromDialogInBackgroundAsync("
+        );
+
+        Assert.That(clickMethod, Does.Contain("await TryCreateMainDbFromDialogAsync();"));
+        Assert.That(clickMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(clickMethod, Does.Not.Contain("TryCreateDatabase("));
+        Assert.That(dialogMethod, Does.Contain("CreateMainDbFromDialogInBackgroundAsync(dbFullPathSnapshot)"));
+        Assert.That(dialogMethod, Does.Contain("TrySwitchMainDb(dbFullPathSnapshot, MainDbSwitchSource.New)"));
+        Assert.That(dialogMethod, Does.Contain("RememberMainDbDialogDirectory(dbFullPathSnapshot);"));
+        Assert.That(dialogMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(dialogMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(dialogMethod, Does.Not.Contain("TryCreateDatabase("));
+        Assert.That(backgroundMethod, Does.Contain("Task.Run("));
+        Assert.That(backgroundMethod, Does.Contain("Path.Exists(dbFullPathSnapshot)"));
+        Assert.That(backgroundMethod, Does.Contain("TryCreateDatabase(dbFullPathSnapshot"));
+    }
+
+    [Test]
+    public void WatchFolderDropの新規DB作成待ちはasync経路へ寄せる()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WatchFolderDrop.cs");
+        string dropMethod = GetMethodBlock(source, "private async void MainWindow_Drop(");
+        string ensureMethod = GetMethodBlock(
+            source,
+            "private async Task<bool> EnsureMainDbReadyForWatchFolderDropAsync("
+        );
+
+        Assert.That(dropMethod, Does.Contain("await EnsureMainDbReadyForWatchFolderDropAsync()"));
+        Assert.That(dropMethod, Does.Not.Contain("TryCreateMainDbFromDialog"));
+        Assert.That(ensureMethod, Does.Contain("await TryCreateMainDbFromDialogAsync();"));
+        Assert.That(ensureMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(ensureMethod, Does.Not.Contain("TryCreateDatabase("));
+    }
+
+    [Test]
     public void RenameFile_watcher抑止はfinallyで復旧する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");

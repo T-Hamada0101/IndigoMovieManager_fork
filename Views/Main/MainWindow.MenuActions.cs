@@ -57,6 +57,19 @@ namespace IndigoMovieManager
             public List<MovieRecords> DeletedRecords { get; init; } = new();
         }
 
+        private enum MainDbCreateDialogBackgroundStatus
+        {
+            Created = 0,
+            AlreadyExists = 1,
+            Failed = 2,
+        }
+
+        private sealed class MainDbCreateDialogBackgroundResult
+        {
+            public MainDbCreateDialogBackgroundStatus Status { get; init; }
+            public string ErrorMessage { get; init; } = "";
+        }
+
         private static readonly Brush DeleteDialogOrangeBrush = new SolidColorBrush(
             Color.FromRgb(239, 108, 0)
         );
@@ -2118,13 +2131,13 @@ namespace IndigoMovieManager
             Close();
         }
 
-        private void BtnNew_Click(object sender, RoutedEventArgs e)
+        private async void BtnNew_Click(object sender, RoutedEventArgs e)
         {
-            TryCreateMainDbFromDialog();
+            await TryCreateMainDbFromDialogAsync();
         }
 
         // .wb 新規作成ダイアログを共通化し、ドロップ導線からも同じ処理を再利用する。
-        private bool TryCreateMainDbFromDialog()
+        private async Task<bool> TryCreateMainDbFromDialogAsync()
         {
             var sfd = new SaveFileDialog
             {
@@ -2139,22 +2152,29 @@ namespace IndigoMovieManager
             var result = sfd.ShowDialog();
             if (result == true)
             {
-                RememberMainDbDialogDirectory(sfd.FileName);
-                if (Path.Exists(sfd.FileName))
+                string dbFullPathBeforeCreate = MainVM?.DbInfo?.DBFullPath ?? "";
+                string dbFullPathSnapshot = sfd.FileName;
+                RememberMainDbDialogDirectory(dbFullPathSnapshot);
+
+                MainDbCreateDialogBackgroundResult createResult =
+                    await CreateMainDbFromDialogInBackgroundAsync(dbFullPathSnapshot);
+
+                if (createResult.Status == MainDbCreateDialogBackgroundStatus.AlreadyExists)
                 {
                     MessageBox.Show(
-                        $"{sfd.FileName}は既に存在します。",
+                        $"{dbFullPathSnapshot}は既に存在します。",
                         "新規作成",
                         MessageBoxButton.OK,
                         MessageBoxImage.Information
                     );
                     return false;
                 }
-                if (!TryCreateDatabase(sfd.FileName, out string createError))
+
+                if (createResult.Status == MainDbCreateDialogBackgroundStatus.Failed)
                 {
                     MessageBox.Show(
                         this,
-                        $"新規DBを作成できませんでした。\n{createError}",
+                        $"新規DBを作成できませんでした。\n{createResult.ErrorMessage}",
                         Assembly.GetExecutingAssembly().GetName().Name,
                         MessageBoxButton.OK,
                         MessageBoxImage.Error
@@ -2162,10 +2182,56 @@ namespace IndigoMovieManager
                     return false;
                 }
 
-                return TrySwitchMainDb(sfd.FileName, MainDbSwitchSource.New);
+                if (
+                    !AreSameMainDbPath(
+                        dbFullPathBeforeCreate,
+                        MainVM?.DbInfo?.DBFullPath ?? ""
+                    )
+                )
+                {
+                    DebugRuntimeLog.Write(
+                        "ui-tempo",
+                        $"new main db switch skipped: reason=db-changed created='{dbFullPathSnapshot}'"
+                    );
+                    return false;
+                }
+
+                return TrySwitchMainDb(dbFullPathSnapshot, MainDbSwitchSource.New);
             }
 
             return false;
+        }
+
+        // 新規DB作成のファイル存在確認とSQLite初期化は、遅い媒体でUIを塞がないよう背景へ逃がす。
+        private static Task<MainDbCreateDialogBackgroundResult> CreateMainDbFromDialogInBackgroundAsync(
+            string dbFullPath
+        )
+        {
+            string dbFullPathSnapshot = dbFullPath ?? "";
+            return Task.Run(() =>
+            {
+                if (Path.Exists(dbFullPathSnapshot))
+                {
+                    return new MainDbCreateDialogBackgroundResult
+                    {
+                        Status = MainDbCreateDialogBackgroundStatus.AlreadyExists,
+                    };
+                }
+
+                if (!TryCreateDatabase(dbFullPathSnapshot, out string createError))
+                {
+                    return new MainDbCreateDialogBackgroundResult
+                    {
+                        Status = MainDbCreateDialogBackgroundStatus.Failed,
+                        ErrorMessage = createError,
+                    };
+                }
+
+                return new MainDbCreateDialogBackgroundResult
+                {
+                    Status = MainDbCreateDialogBackgroundStatus.Created,
+                };
+            });
         }
 
         /// <summary>
