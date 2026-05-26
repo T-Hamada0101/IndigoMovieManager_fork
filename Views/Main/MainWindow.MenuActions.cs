@@ -57,6 +57,21 @@ namespace IndigoMovieManager
             public List<MovieRecords> DeletedRecords { get; init; } = new();
         }
 
+        private sealed class MovieMoveSnapshot
+        {
+            public MovieRecords UiRecord { get; init; }
+            public long MovieId { get; init; }
+            public string SourcePath { get; init; } = "";
+            public string DestinationPath { get; init; } = "";
+            public string DestinationFolder { get; init; } = "";
+        }
+
+        private sealed class MovieMoveBackgroundResult
+        {
+            public List<MovieMoveSnapshot> MovedSnapshots { get; init; } = new();
+            public List<string> MoveFailureMessages { get; init; } = new();
+        }
+
         private enum MainDbCreateDialogBackgroundStatus
         {
             Created = 0,
@@ -196,23 +211,7 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(destFolder, enabled: false);
-                try
-                {
-                    foreach (var rec in mv)
-                    {
-                        var destName = Path.Combine(dlg.FolderName, Path.GetFileName(rec.Movie_Path));
-                        File.Move(rec.Movie_Path, destName, true);
-                        rec.Movie_Path = destName;
-                        rec.Dir = destFolder;
-                        QueueMoviePathPersist(MainVM?.DbInfo?.DBFullPath ?? "", rec.Movie_Id, destName);
-                        Refresh();
-                    }
-                }
-                finally
-                {
-                    RestoreFileWatchers(suppressedWatchers);
-                }
+                QueueMovieFileMove(mv, destFolder);
             }
         }
 
@@ -368,6 +367,220 @@ namespace IndigoMovieManager
 
             MessageBox.Show(
                 $"一部のコピーに失敗しました。{Environment.NewLine}{message}",
+                Assembly.GetExecutingAssembly().GetName().Name,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning
+            );
+        }
+
+        // 移動は大容量・ネットワークパスで詰まりやすいので、物理MoveをUIスレッドから外す。
+        private void QueueMovieFileMove(IReadOnlyList<MovieRecords> records, string destFolder)
+        {
+            if (records == null || records.Count == 0 || string.IsNullOrWhiteSpace(destFolder))
+            {
+                return;
+            }
+
+            string dbFullPathSnapshot = MainVM?.DbInfo?.DBFullPath ?? "";
+            MovieMoveSnapshot[] moveRequests = records
+                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Movie_Path))
+                .Select(x => new MovieMoveSnapshot
+                {
+                    UiRecord = x,
+                    MovieId = x.Movie_Id,
+                    SourcePath = x.Movie_Path,
+                    DestinationPath = Path.Combine(destFolder, Path.GetFileName(x.Movie_Path)),
+                    DestinationFolder = destFolder,
+                })
+                .ToArray();
+            if (moveRequests.Length == 0)
+            {
+                return;
+            }
+
+            FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(destFolder, enabled: false);
+            _ = Task.Run(() =>
+            {
+                MovieMoveBackgroundResult moveResult = MoveMovieFilesInBackground(moveRequests);
+                try
+                {
+                    _ = Dispatcher.InvokeAsync(
+                        () =>
+                            _ = CompleteMovieFileMoveOnUiAsync(
+                                moveResult,
+                                suppressedWatchers,
+                                dbFullPathSnapshot
+                            ),
+                        System.Windows.Threading.DispatcherPriority.Background
+                    );
+                }
+                catch (Exception ex)
+                {
+                    RestoreFileWatchers(suppressedWatchers);
+                    DebugRuntimeLog.Write(
+                        "file-move",
+                        $"move completion dispatch failed: moved={moveResult.MovedSnapshots.Count} err='{ex.GetType().Name}: {ex.Message}'"
+                    );
+                }
+            });
+        }
+
+        private static MovieMoveBackgroundResult MoveMovieFilesInBackground(
+            IReadOnlyList<MovieMoveSnapshot> moveRequests
+        )
+        {
+            MovieMoveBackgroundResult result = new();
+            foreach (MovieMoveSnapshot request in moveRequests ?? [])
+            {
+                try
+                {
+                    File.Move(request.SourcePath, request.DestinationPath, overwrite: true);
+                    result.MovedSnapshots.Add(request);
+                }
+                catch (Exception ex)
+                {
+                    AddFileMoveFailure(
+                        result.MoveFailureMessages,
+                        request.SourcePath,
+                        request.DestinationPath,
+                        ex
+                    );
+                }
+            }
+
+            return result;
+        }
+
+        private async Task CompleteMovieFileMoveOnUiAsync(
+            MovieMoveBackgroundResult moveResult,
+            IReadOnlyList<FileSystemWatcher> suppressedWatchers,
+            string dbFullPathSnapshot
+        )
+        {
+            try
+            {
+                RestoreFileWatchers(suppressedWatchers);
+
+                foreach (MovieMoveSnapshot movedSnapshot in moveResult?.MovedSnapshots ?? [])
+                {
+                    QueueMoviePathPersist(
+                        dbFullPathSnapshot,
+                        movedSnapshot.MovieId,
+                        movedSnapshot.DestinationPath
+                    );
+                }
+
+                int reflectedCount = ReflectMovedMovieRecordsOnUi(
+                    moveResult?.MovedSnapshots,
+                    dbFullPathSnapshot
+                );
+                ShowFileMoveFailureSummary(moveResult?.MoveFailureMessages);
+
+                if (reflectedCount < 1)
+                {
+                    return;
+                }
+
+                string sortId = MainVM?.DbInfo?.Sort ?? "";
+                if (sortId is "14" or "15")
+                {
+                    await SortDataAsync(sortId);
+                }
+                else
+                {
+                    NotifyUpperTabViewportSourceChanged();
+                    RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "movie-move");
+                }
+
+                DebugRuntimeLog.Write(
+                    "file-move",
+                    $"move ui reflected: moved={reflectedCount} sort={sortId}"
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "file-move",
+                    $"move completion failed: err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+        }
+
+        private int ReflectMovedMovieRecordsOnUi(
+            IReadOnlyList<MovieMoveSnapshot> movedSnapshots,
+            string dbFullPathSnapshot
+        )
+        {
+            if (movedSnapshots == null || movedSnapshots.Count == 0)
+            {
+                return 0;
+            }
+
+            if (!AreSameMainDbPath(dbFullPathSnapshot, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                DebugRuntimeLog.Write(
+                    "file-move",
+                    $"move ui reflect skipped: reason=db-changed moved={movedSnapshots.Count}"
+                );
+                return 0;
+            }
+
+            int reflectedCount = 0;
+            foreach (MovieMoveSnapshot movedSnapshot in movedSnapshots)
+            {
+                MovieRecords record = movedSnapshot?.UiRecord;
+                if (record == null)
+                {
+                    continue;
+                }
+
+                // 物理Move成功後の事実値だけを反映し、一覧の全件再読込はwatcherへ戻さない。
+                record.Movie_Path = movedSnapshot.DestinationPath;
+                record.Dir = movedSnapshot.DestinationFolder;
+                record.Drive = Path.GetPathRoot(movedSnapshot.DestinationPath) ?? "";
+                record.IsExists = true;
+                reflectedCount++;
+            }
+
+            return reflectedCount;
+        }
+
+        private static void AddFileMoveFailure(
+            List<string> moveFailureMessages,
+            string sourcePath,
+            string destinationPath,
+            Exception exception
+        )
+        {
+            string reason = string.IsNullOrWhiteSpace(exception?.Message)
+                ? exception?.GetType().Name ?? "理由不明"
+                : exception.Message;
+            moveFailureMessages.Add($"{sourcePath ?? ""} -> {destinationPath ?? ""} ({reason})");
+            DebugRuntimeLog.Write(
+                "file-move",
+                $"move failed: source='{sourcePath ?? ""}' dest='{destinationPath ?? ""}' reason='{reason}'"
+            );
+        }
+
+        private static void ShowFileMoveFailureSummary(List<string> moveFailureMessages)
+        {
+            if (moveFailureMessages == null || moveFailureMessages.Count == 0)
+            {
+                return;
+            }
+
+            const int maxVisibleFailures = 5;
+            string message = string.Join(
+                Environment.NewLine,
+                moveFailureMessages.Take(maxVisibleFailures)
+            );
+            if (moveFailureMessages.Count > maxVisibleFailures)
+            {
+                message += $"{Environment.NewLine}...他 {moveFailureMessages.Count - maxVisibleFailures} 件";
+            }
+
+            MessageBox.Show(
+                $"一部の移動に失敗しました。{Environment.NewLine}{message}",
                 Assembly.GetExecutingAssembly().GetName().Name,
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning

@@ -28,9 +28,25 @@ public sealed class MainWindowMenuActionsPolicyTests
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
         string moveMethod = GetMethodBlock(source, "private void MenuCopyAndMove_Click(");
+        string moveQueueMethod = GetMethodBlock(source, "private void QueueMovieFileMove(");
+        string moveBackgroundMethod = GetMethodBlock(
+            source,
+            "private static MovieMoveBackgroundResult MoveMovieFilesInBackground("
+        );
+        string moveCompletionMethod = GetMethodBlock(
+            source,
+            "private async Task CompleteMovieFileMoveOnUiAsync("
+        );
         string persistMethod = GetMethodBlock(source, "private void QueueMoviePathPersist(");
 
-        Assert.That(moveMethod, Does.Contain("QueueMoviePathPersist("));
+        Assert.That(moveMethod, Does.Contain("QueueMovieFileMove(mv, destFolder);"));
+        Assert.That(moveMethod, Does.Not.Contain("File.Move("));
+        Assert.That(moveMethod, Does.Not.Contain("Refresh();"));
+        Assert.That(moveQueueMethod, Does.Contain("Task.Run("));
+        Assert.That(moveBackgroundMethod, Does.Contain("File.Move("));
+        Assert.That(moveCompletionMethod, Does.Contain("QueueMoviePathPersist("));
+        Assert.That(moveCompletionMethod, Does.Contain("ReflectMovedMovieRecordsOnUi("));
+        Assert.That(moveCompletionMethod, Does.Contain("await SortDataAsync(sortId);"));
         Assert.That(moveMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
         Assert.That(persistMethod, Does.Contain("Task.Run("));
         Assert.That(persistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
@@ -46,8 +62,6 @@ public sealed class MainWindowMenuActionsPolicyTests
 
         Assert.That(copyMoveMethod, Does.Contain("QueueMovieFileCopy(mv, destFolder);"));
         Assert.That(copyMoveMethod, Does.Not.Contain("File.Copy("));
-        Assert.That(copyMoveMethod, Does.Contain("try"));
-        Assert.That(copyMoveMethod, Does.Contain("finally"));
         Assert.That(copyQueueMethod, Does.Contain("Task.Run("));
         Assert.That(copyQueueMethod, Does.Contain("File.Copy("));
         Assert.That(copyQueueMethod, Does.Contain("RestoreFileWatchers("));
