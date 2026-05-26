@@ -4,6 +4,7 @@
 
 変更概要:
 - 2026-05-26 のサブ5.5追加で、メニューの「親フォルダを開く」に残っていた `Path.Exists(mv.Movie_Path)` / `Path.Exists(mv.Dir)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、ネットワークパス確認中も UI スレッドの入力/描画を塞ぎにくくした。
+- 2026-05-26 のサブ5.5追加で、Log タブ preview 更新に残っていた `File.Exists` / `File.GetLastWriteTimeUtc` / 末尾 preview 読みを `Task.Run` helper へ逃がし、後着 request id guard で古い preview が最新表示を上書きしないようにした。
 - 2026-05-26 のサブ5.5追加で、詳細サムネ表示モード切替と Log タブ debug カテゴリ切替に残っていた `Properties.Settings.Default.Save()` 直呼びを `QueueApplicationSettingsSave(...)` へ寄せ、UI 操作中の設定ファイル I/O を共通の背景保存キューへ逃がした。
 - 2026-05-26 のサブ5.5追加で、Thumbnail 成功後の main tab 後段 `FilterAndSort(sortId, true)` を廃止し、失敗キャッシュ無効化、上側タブ visible refresh、preferred key revision、下部 ERROR/進捗 snapshot 予約へ寄せた。サムネERROR順だけは順序が変わるため、DB 再読込ではなく現在一覧の `SortDataAsync("28")` に限定する。
 - 2026-05-26 のサブ5.5追加で、Player 通常再生入口の `Path.Exists(mv.Movie_Path)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、存在確認中も UI スレッドの入力/描画を塞ぎにくくした。
@@ -333,6 +334,7 @@
 - manual rescue 即時反映も同じ基準に寄せ、直接反映できた成功では後段 full reload を予約しない。
 - rescued sync の定期反映では FailureDb / progress 更新を維持しつつ、選択中レコードへ当たった時だけ `Refresh()` を許可する。
 - Rescue 履歴は選択変更時に FailureDb を UI スレッドで読まず、背景読込と revision guard 付き反映へ寄せる。
+- Log タブ preview は UI 側で表示対象パスと active / force 判定だけを取り、ファイル存在確認、mtime、末尾 preview 読みは背景 helper へ逃がし、後着 request id guard で古い結果を捨てる。
 - `ThumbnailProgress` の enqueue / 初期作成数反映は `ThumbnailProgressRuntime.CurrentVersion` の差分 guard を通し、runtime 状態が変わらない時は snapshot 予約を増やさない。
 - `fire-and-forget` で逃がすだけにせず、bounded drain、timeout ログ、fault ログを持つ scheduler / persister / queue へ寄せる。
 - `Watcher.cs` の薄化は、UI thread 滞在、queue 境界、shutdown 境界、観測性の改善につながる場合だけ進める。

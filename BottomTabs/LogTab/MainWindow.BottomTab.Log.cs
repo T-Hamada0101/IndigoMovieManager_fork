@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using AvalonDock.Layout;
@@ -16,6 +17,7 @@ namespace IndigoMovieManager
         private const int LogPreviewMaxChars = 16000;
 
         private DateTime _logTabLastWriteTimeUtc = DateTime.MinValue;
+        private int _logTabPreviewRequestId;
         private DispatcherTimer _logTabRefreshTimer;
         private LogTabPresenter _logTabPresenter;
 
@@ -142,7 +144,7 @@ namespace IndigoMovieManager
         }
 
         // Logタブ前面時だけ末尾を軽く読み直し、切替状態も合わせて見せる。
-        private void RefreshLogTabPreview(bool force = false)
+        private async void RefreshLogTabPreview(bool force = false)
         {
             if (
                 !ShouldShowDebugTab
@@ -158,21 +160,35 @@ namespace IndigoMovieManager
             SetTextIfChanged(LogTabViewHost.LogPathTextBlock, logPath);
             SetTextIfChanged(LogTabViewHost.LogSwitchInfoTextBlock, BuildLogSwitchSummaryText());
 
-            DateTime lastWriteTimeUtc = File.Exists(logPath)
-                ? File.GetLastWriteTimeUtc(logPath)
-                : DateTime.MinValue;
-            if (!force && lastWriteTimeUtc == _logTabLastWriteTimeUtc)
+            int requestId = ++_logTabPreviewRequestId;
+            DateTime previousLastWriteTimeUtc = _logTabLastWriteTimeUtc;
+            LogPreviewSnapshot snapshot = await Task.Run(
+                () => LoadLogPreviewSnapshot(logPath, previousLastWriteTimeUtc, force)
+            );
+
+            // 後から来た更新だけを採用し、古いpreviewで現在表示を巻き戻さない。
+            if (
+                requestId != _logTabPreviewRequestId
+                || !ShouldShowDebugTab
+                || LogTabViewHost?.LogTextBox == null
+                || LogTabViewHost?.LogInfoTextBlock == null
+            )
             {
                 return;
             }
 
-            _logTabLastWriteTimeUtc = lastWriteTimeUtc;
-            SetTextIfChanged(LogTabViewHost.LogTextBox, ReadLogPreview(logPath));
+            if (!snapshot.HasChanged)
+            {
+                return;
+            }
+
+            _logTabLastWriteTimeUtc = snapshot.LastWriteTimeUtc;
+            SetTextIfChanged(LogTabViewHost.LogTextBox, snapshot.PreviewText);
             SetTextIfChanged(
                 LogTabViewHost.LogInfoTextBlock,
-                lastWriteTimeUtc == DateTime.MinValue
+                snapshot.LastWriteTimeUtc == DateTime.MinValue
                     ? "debug-runtime.log はまだ作成されていません。"
-                    : $"最終更新: {lastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
+                    : $"最終更新: {snapshot.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
             );
 
             if (force)
@@ -191,6 +207,62 @@ namespace IndigoMovieManager
         private void LogRefreshPreview_Click(object sender, RoutedEventArgs e)
         {
             RefreshLogTabPreview(force: true);
+        }
+
+        private static LogPreviewSnapshot LoadLogPreviewSnapshot(
+            string logPath,
+            DateTime previousLastWriteTimeUtc,
+            bool force
+        )
+        {
+            try
+            {
+                DateTime lastWriteTimeUtc = File.Exists(logPath)
+                    ? File.GetLastWriteTimeUtc(logPath)
+                    : DateTime.MinValue;
+                if (!force && lastWriteTimeUtc == previousLastWriteTimeUtc)
+                {
+                    return new LogPreviewSnapshot(
+                        hasChanged: false,
+                        lastWriteTimeUtc,
+                        previewText: string.Empty
+                    );
+                }
+
+                return new LogPreviewSnapshot(
+                    hasChanged: true,
+                    lastWriteTimeUtc,
+                    previewText: ReadLogPreview(logPath)
+                );
+            }
+            catch (Exception ex)
+            {
+                return new LogPreviewSnapshot(
+                    hasChanged: true,
+                    DateTime.MinValue,
+                    $"debug-runtime.log の確認に失敗しました: {ex.Message}"
+                );
+            }
+        }
+
+        private sealed class LogPreviewSnapshot
+        {
+            public LogPreviewSnapshot(
+                bool hasChanged,
+                DateTime lastWriteTimeUtc,
+                string previewText
+            )
+            {
+                HasChanged = hasChanged;
+                LastWriteTimeUtc = lastWriteTimeUtc;
+                PreviewText = previewText;
+            }
+
+            public bool HasChanged { get; }
+
+            public DateTime LastWriteTimeUtc { get; }
+
+            public string PreviewText { get; }
         }
 
         private static string BuildLogSwitchSummaryText()
