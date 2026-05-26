@@ -62,13 +62,53 @@ public sealed class ThumbnailErrorSourceTests
             source,
             "private async Task RefreshThumbnailErrorRecordsCoreAsync("
         );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool ShouldSkipThumbnailErrorRefreshUiApply("
+        );
 
         Assert.That(captureMethod, Does.Contain("DbFullPath = MainVM?.DbInfo?.DBFullPath ?? \"\""));
         Assert.That(captureMethod, Does.Not.Contain("ResolveCurrentThumbnailFailureDbService("));
         Assert.That(coreMethod, Does.Contain(".Run(() => BuildThumbnailErrorRefreshResult(context))"));
-        Assert.That(coreMethod, Does.Contain("AreSameMainDbPath("));
-        Assert.That(coreMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
-        Assert.That(coreMethod, Does.Contain("Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);"));
+        Assert.That(coreMethod, Does.Contain("ShouldSkipThumbnailErrorRefreshUiApply(context)"));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(guardMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+        Assert.That(guardMethod, Does.Contain("Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);"));
+    }
+
+    [Test]
+    public void ThumbnailErrorSnapshot反映は後着要求がある時に古い結果を適用しない()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string coreMethod = ExtractMethod(
+            source,
+            "private async Task RefreshThumbnailErrorRecordsCoreAsync("
+        );
+        string guardMethod = ExtractMethod(
+            source,
+            "private bool ShouldSkipThumbnailErrorRefreshUiApply("
+        );
+
+        Assert.That(coreMethod, Does.Contain("ShouldSkipThumbnailErrorRefreshUiApply(context)"));
+        Assert.That(
+            coreMethod.IndexOf("ShouldSkipThumbnailErrorRefreshUiApply(context)", StringComparison.Ordinal),
+            Is.LessThan(coreMethod.IndexOf("ApplyThumbnailErrorSortMarkerCounts(", StringComparison.Ordinal))
+        );
+        Assert.That(
+            coreMethod.IndexOf("ShouldSkipThumbnailErrorRefreshUiApply(context)", StringComparison.Ordinal),
+            Is.LessThan(coreMethod.IndexOf("ReplaceThumbnailErrorRecs(result.Items)", StringComparison.Ordinal))
+        );
+        Assert.That(
+            coreMethod.IndexOf("ShouldSkipThumbnailErrorRefreshUiApply(context)", StringComparison.Ordinal),
+            Is.LessThan(coreMethod.IndexOf("SortData(\"28\")", StringComparison.Ordinal))
+        );
+        Assert.That(
+            guardMethod,
+            Does.Contain("Interlocked.CompareExchange(ref _thumbnailErrorRecordsDirty, 0, 0) == 1")
+        );
+        Assert.That(guardMethod, Does.Contain("newer request pending"));
+        Assert.That(guardMethod, Does.Not.Contain("ReplaceThumbnailErrorRecs("));
+        Assert.That(guardMethod, Does.Not.Contain("SortData(\"28\")"));
     }
 
     [Test]

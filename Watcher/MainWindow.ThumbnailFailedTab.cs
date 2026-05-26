@@ -245,17 +245,8 @@ namespace IndigoMovieManager
                     .InvokeAsync(
                         () =>
                         {
-                            if (
-                                Dispatcher.HasShutdownStarted
-                                || Dispatcher.HasShutdownFinished
-                                || !AreSameMainDbPath(
-                                    context.DbFullPath,
-                                    MainVM?.DbInfo?.DBFullPath ?? ""
-                                )
-                            )
+                            if (ShouldSkipThumbnailErrorRefreshUiApply(context))
                             {
-                                // 背景集計の後着は現在DBへ混ぜず、次の要求で新DBの snapshot を作り直す。
-                                Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);
                                 return;
                             }
 
@@ -315,6 +306,32 @@ namespace IndigoMovieManager
                     );
                 }
             }
+        }
+
+        private bool ShouldSkipThumbnailErrorRefreshUiApply(ThumbnailErrorRefreshContext context)
+        {
+            if (
+                Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+                || !AreSameMainDbPath(context.DbFullPath, MainVM?.DbInfo?.DBFullPath ?? "")
+            )
+            {
+                // 背景集計の後着は現在DBへ混ぜず、次の要求で新DBの snapshot を作り直す。
+                Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);
+                return true;
+            }
+
+            if (Interlocked.CompareExchange(ref _thumbnailErrorRecordsDirty, 0, 0) == 1)
+            {
+                // 実行中に次要求が来ている時は、古い一覧を一瞬だけ描かずに次の集計へ譲る。
+                DebugRuntimeLog.Write(
+                    "thumbnail-error-tab",
+                    "error tab refresh apply skipped: newer request pending"
+                );
+                return true;
+            }
+
+            return false;
         }
 
         private ThumbnailErrorRefreshResult BuildThumbnailErrorRefreshResult(
