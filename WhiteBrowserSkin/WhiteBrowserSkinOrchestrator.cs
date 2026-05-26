@@ -95,14 +95,9 @@ namespace IndigoMovieManager.Skin
 
         public IReadOnlyList<WhiteBrowserSkinDefinition> GetCachedAvailableSkinDefinitions()
         {
-            if (availableSkinDefinitions.Count < 1)
-            {
-                ReloadAvailableSkinDefinitions();
-            }
-
             // ヘッダーの表示同期では catalog の署名確認を繰り返さず、
-            // 直近の一覧 snapshot だけを組み直して UI 更新コストを抑える。
-            return BuildAvailableSkinDefinitionSnapshot();
+            // 初回でも built-in と現在名の missing 補完だけで軽い snapshot を返す。
+            return BuildCachedAvailableSkinDefinitionSnapshot();
         }
 
         public string GetCurrentSkinName()
@@ -323,18 +318,20 @@ namespace IndigoMovieManager.Skin
         {
             string currentSkinName = GetCurrentSkinName();
             WhiteBrowserSkinDefinition currentDefinition = activeSkinDefinition;
+            WhiteBrowserSkinDefinition loadedCurrentDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(
+                    availableSkinDefinitions,
+                    currentSkinName
+                );
             if (
                 currentDefinition == null
                 || !string.Equals(currentDefinition.Name, currentSkinName, StringComparison.OrdinalIgnoreCase)
+                || (currentDefinition.IsMissing && loadedCurrentDefinition != null)
             )
             {
                 // 一覧 snapshot のために catalog を掘り直さず、今ロード済みの definitions だけで現在 skin を解決する。
                 currentDefinition =
-                    WhiteBrowserSkinCatalogService.TryResolveExactByName(
-                        availableSkinDefinitions,
-                        currentSkinName
-                    )
-                    ?? CreateMissingExternalDefinition(currentSkinName);
+                    loadedCurrentDefinition ?? CreateMissingExternalDefinition(currentSkinName);
                 activeSkinDefinition = currentDefinition;
             }
 
@@ -352,6 +349,66 @@ namespace IndigoMovieManager.Skin
 
             List<WhiteBrowserSkinDefinition> snapshot = [.. availableSkinDefinitions, currentDefinition];
             return snapshot;
+        }
+
+        private IReadOnlyList<WhiteBrowserSkinDefinition> BuildCachedAvailableSkinDefinitionSnapshot()
+        {
+            IReadOnlyList<WhiteBrowserSkinDefinition> snapshotBase =
+                availableSkinDefinitions.Count > 0
+                    ? availableSkinDefinitions
+                    : WhiteBrowserSkinCatalogService.GetBuiltInDefinitions();
+            string currentSkinName = NormalizeStoredSkinNameForCachedSnapshot(
+                getCurrentSkinNameFromViewModel(),
+                snapshotBase
+            );
+            WhiteBrowserSkinDefinition currentDefinition = activeSkinDefinition;
+            WhiteBrowserSkinDefinition cachedCurrentDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(snapshotBase, currentSkinName);
+            if (
+                currentDefinition == null
+                || !string.Equals(currentDefinition.Name, currentSkinName, StringComparison.OrdinalIgnoreCase)
+                || (currentDefinition.IsMissing && cachedCurrentDefinition != null)
+            )
+            {
+                // cached API では外部 skin の鮮度確認を明示 reload 側へ任せ、
+                // 今ある snapshot と built-in 共有定義だけで現在表示名を守る。
+                currentDefinition = cachedCurrentDefinition ?? CreateMissingExternalDefinition(currentSkinName);
+                activeSkinDefinition = currentDefinition;
+            }
+
+            if (
+                currentDefinition == null
+                || !currentDefinition.IsMissing
+                || WhiteBrowserSkinCatalogService.TryResolveExactByName(
+                    snapshotBase,
+                    currentDefinition.Name
+                ) != null
+            )
+            {
+                return snapshotBase;
+            }
+
+            List<WhiteBrowserSkinDefinition> snapshot = [.. snapshotBase, currentDefinition];
+            return snapshot;
+        }
+
+        private static string NormalizeStoredSkinNameForCachedSnapshot(
+            string skinName,
+            IReadOnlyList<WhiteBrowserSkinDefinition> loadedDefinitions
+        )
+        {
+            string normalizedSkinName = skinName?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(normalizedSkinName))
+            {
+                return DefaultGridSkinName;
+            }
+
+            WhiteBrowserSkinDefinition exactDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(
+                    loadedDefinitions,
+                    normalizedSkinName
+                );
+            return exactDefinition?.Name ?? normalizedSkinName;
         }
 
         private string ResolveInitialTabStateNameForSkin(

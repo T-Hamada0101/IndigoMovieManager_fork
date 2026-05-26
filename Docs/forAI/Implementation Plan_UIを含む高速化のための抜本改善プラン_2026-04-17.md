@@ -5,6 +5,7 @@
 変更概要:
 - 2026-05-27 のサブ5.5 Worker G で、DB切替時に呼ばれる SavedSearch 読込を `SavedSearchTabPresenter` 側の `Task.Run` 背景読込へ寄せた。要求ごとの DB path snapshot と reload revision で後着結果を捨て、非表示時は既存 dirty/pending 経路へ載せることで、UI スレッド上の tagbar SQLite read を避ける。
 - 2026-05-27 のサブ5.5 Worker F で、DB切替直後の検索履歴 `GetHistoryTable(...)` 同期読込を `QueueSearchHistoryReload(...)` へ置き換えた。履歴候補は DB パスと検索欄テキストを snapshot してから `Task.Run` で背景読込し、UI 復帰時は request stamp / `AreSameMainDbPath(...)` / dispatcher shutdown guard を通った時だけ反映するため、first-page / input ready を履歴 DB read で塞がない。
+- 2026-05-27 のサブ5.5 Worker H で、skin selector 表示同期の `GetCachedAvailableSkinDefinitions()` は初回でも catalog load / 署名確認へ進まず、共有 built-in 定義と現在外部 skin の missing 補完だけで軽量 snapshot を返す形へ寄せた。外部 skin 追加 / HTML 更新の鮮度確認は `GetAvailableSkinDefinitions()` / async 一覧取得 / `RefreshCurrentSkinDefinitionAsync()` 側へ残す。
 - 2026-05-27 のサブ5.5 Worker D で、Everything poll policy の DB path 存在確認を watch folder と同じ `pathExists` delegate 経由へ統一した。instance 側で確認した DB 存在結果を snapshot 取得と policy 判定へ引き継ぎ、DB / watch folder 大件数時に同じ DB path の filesystem probe を重ねない形へ寄せた。
 - 2026-05-27 のサブ5.5 Worker E で、Thumbnail ERROR タブの手動再読込、一覧クリア、選択/一括救済投入後に残っていた `Refresh()` 全体再描画を外し、`RefreshThumbnailErrorRecords(force: true)`、上側 visible range refresh、下部進捗 snapshot 予約へ寄せた。救済投入 core から UI 更新を外し、背景投入完了後に UI 側で1回だけ局所反映する。
 - 2026-05-27 のサブ5.5 Worker C で、起動 light services の EverythingLite watch root prewarm は UI 側で DB / provider / revision の snapshot だけを取り、watch root の `Path.Exists` を含む plan 作成を `Task.Run` 背景 helper へ逃がした。戻り時は startup revision / 現在 DB / root snapshot を guard し、古い起動要求や DB 切替後着の root prewarm を捨てる。
@@ -504,6 +505,7 @@
 - 外部 skin の明示 reload で必要な catalog load は background へ逃がし、UI 側は結果 snapshot の採用と host prepare に集中させる。
 - `header-reload` / `fallback-notice-retry` は `CatalogRefresh` として `dbinfo-*` より強く batch に残し、`minimal-chrome-reload` は cached definition の host 再準備に留める。
 - 同期 `GetCurrentExternalSkinDefinition()` は cached snapshot 専用とし、catalog 再確認は `GetCurrentExternalSkinDefinitionAsync(...)` から `RefreshCurrentSkinDefinitionAsync()` へ流す。
+- `GetCachedAvailableSkinDefinitions()` は cache が空でも catalog load へ戻らず、built-in 共有定義と現在外部 skin の missing 補完だけで表示同期を成立させる。鮮度確認は明示 reload / 設定画面の一覧取得へ閉じ込める。
 - `SelectProfileValue(...)` を cold path に閉じ込め、session cache と persisted 値の責務差を明示する。
 
 完了条件:

@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 に `GetCachedAvailableSkinDefinitions()` の初回 cache 空時 fallback を catalog load から built-in 共有定義 + 現在外部 skin の missing 補完へ変更した。ヘッダー表示同期は既存 snapshot だけに閉じ、外部 skin 追加 / HTML 更新の鮮度確認は `GetAvailableSkinDefinitions()` / `GetAvailableSkinDefinitionsAsync()` / `RefreshCurrentSkinDefinitionAsync()` 側へ残す。
 - 2026-05-27 に外部 skin サムネ契約生成の `CacheOnly` 経路を、既存パス文字列・placeholder/error 判定・既存サイズ/revisionキャッシュだけで返す軽量経路へ寄せた。未キャッシュ時だけ寸法と revision を安全値へ縮退し、`FullSync` / 更新 callback 側で正確化するため、visible range 応答中のファイル存在確認・スタンプ確認・WB メタ読みを避ける。
 - 2026-05-27 に外部 skin host prepare の HTML 存在確認と WebView2 userDataFolder 作成を背景 helper へ逃がし、戻った後の stale guard と navigate / WebView2 操作の UI 側責務を維持した。fallback log ボタンも Explorer 引数判定だけを背景化し、Explorer 起動は UI 側に残した
 - 2026-05-27 に `CommonSettingsWindow` の skin selector 初期化 / Activated 更新を `GetAvailableSkinDefinitionsAsync()` へ寄せ、catalog 走査は `Task.Run` 背景実行、設定画面への反映は revision guard 後に限定した。同期 API は互換維持のため残す。
@@ -346,6 +347,7 @@ skin 名解決や minimal chrome 同期のたびに、catalog を常時総なめ
 - 2026-05-25: reason 判定を `CatalogRefresh` / `CachedSnapshot` へ分けた。共通ヘッダー `header-reload` と `fallback-notice-retry` は外部 skin の更新・削除・不足 HTML 復旧を拾うため catalog 再確認を維持し、`minimal-chrome-reload` は cached definition で host 再準備だけ行う
 - 2026-05-25: batch reason 優先度は `CatalogRefresh` 系を最上位、`dbinfo-*` を次点、`minimal-chrome-reload` を cached 系として下位に固定した。これにより、同一 batch 内で DB 変更通知が後から来ても、ユーザー明示 reload / fallback retry の catalog 再確認を落とさない
 - 2026-05-25: 同期 `GetCurrentExternalSkinDefinition()` から `forceCatalogRefresh` 引数を外し、同期 `RefreshCurrentExternalSkinDefinition()` を削除した。catalog 再確認は `GetCurrentExternalSkinDefinitionAsync(ExternalSkinDefinitionRefreshMode.CatalogRefresh)` と `RefreshCurrentSkinDefinitionAsync()` の流れに限定する
+- 2026-05-27: `GetCachedAvailableSkinDefinitions()` は cache 空でも `WhiteBrowserSkinCatalogService.Load(...)` を呼ばない。初回ヘッダー同期は built-in 共有定義を土台にし、現在値が外部 skin なら missing external 定義を足して表示名を守る。明示 `GetAvailableSkinDefinitions()` は従来どおり catalog 署名確認へ進み、外部 skin の実体を取り直す。
 - `MainWindow.WebViewSkin` の batch begin / flush ログと合わせ、`skin-webview` と `skin-catalog` を同じ `debug-runtime.log` だけで並べて追える状態にした
 - `skin-webview` の `refresh deferred / queued / batch begin / batch flush` には `batch=btXXXX` と `request=rqXXXX` の短い識別子も載せ、同じ切替単位の流れを 1 本で追いやすくした
 - `request=rqXXXX` は `host prepare begin` / `host navigate failed` / `refresh skipped stale` / `host presentation` にも引き継ぎ、queue された refresh が apply 完了までどう流れたかを追いやすくした

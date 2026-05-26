@@ -488,6 +488,88 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public void CachedAvailableSkinDefinitions初回はbuilt_in_snapshotだけでcatalogを読まない()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ColdHeaderExternalGrid");
+        string currentSkinName = "DefaultGrid";
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? ""
+            );
+
+            IReadOnlyList<WhiteBrowserSkinDefinition> cachedDefinitions =
+                orchestrator.GetCachedAvailableSkinDefinitions();
+            WhiteBrowserSkinDefinition builtInDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(cachedDefinitions, "DefaultGrid");
+            WhiteBrowserSkinDefinition externalDefinition =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(cachedDefinitions, "ColdHeaderExternalGrid");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(builtInDefinition, Is.Not.Null);
+                Assert.That(builtInDefinition.IsBuiltIn, Is.True);
+                Assert.That(externalDefinition, Is.Null);
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadHitCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogSignatureBuildCountForTesting(), Is.EqualTo(0));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
+    public void CachedAvailableSkinDefinitions初回は現在外部skinをmissing補完してcatalogを読まない()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ColdCurrentExternalGrid");
+        string currentSkinName = "ColdCurrentExternalGrid";
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? ""
+            );
+
+            IReadOnlyList<WhiteBrowserSkinDefinition> cachedDefinitions =
+                orchestrator.GetCachedAvailableSkinDefinitions();
+            WhiteBrowserSkinDefinition cachedCurrent =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(cachedDefinitions, "ColdCurrentExternalGrid");
+
+            IReadOnlyList<WhiteBrowserSkinDefinition> loadedDefinitions =
+                orchestrator.GetAvailableSkinDefinitions();
+            WhiteBrowserSkinDefinition loadedCurrent =
+                WhiteBrowserSkinCatalogService.TryResolveExactByName(loadedDefinitions, "ColdCurrentExternalGrid");
+            WhiteBrowserSkinDefinition currentAfterLoad = orchestrator.GetCurrentSkinDefinition();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cachedCurrent, Is.Not.Null);
+                Assert.That(cachedCurrent.IsMissing, Is.True);
+                Assert.That(cachedCurrent.DisplayName, Is.EqualTo("ColdCurrentExternalGrid (Missing External)"));
+                Assert.That(loadedCurrent, Is.Not.Null);
+                Assert.That(loadedCurrent.IsMissing, Is.False);
+                Assert.That(loadedCurrent.DisplayName, Is.EqualTo("ColdCurrentExternalGrid (External)"));
+                Assert.That(currentAfterLoad, Is.SameAs(loadedCurrent));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadMissCountForTesting(), Is.EqualTo(1));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogLoadHitCountForTesting(), Is.EqualTo(0));
+                Assert.That(WhiteBrowserSkinCatalogService.GetCatalogSignatureBuildCountForTesting(), Is.EqualTo(1));
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void ApplySkinByName後にhtml更新が入ると次回一覧取得でcatalog_cacheを再読込する()
     {
         string rootPath = CreateSkinRootWithSingleSkin("ReloadOrchestratorGrid", thumbWidth: 160);

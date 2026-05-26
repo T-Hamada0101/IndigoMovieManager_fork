@@ -335,6 +335,11 @@ namespace IndigoMovieManager.Skin
             return SharedBuiltInDefinitions.FirstOrDefault(x => NameComparer.Equals(x.Name, normalizedSkinName));
         }
 
+        internal static IReadOnlyList<WhiteBrowserSkinDefinition> GetBuiltInDefinitions()
+        {
+            return SharedBuiltInDefinitions;
+        }
+
         private static WhiteBrowserSkinDefinition CreateBuiltIn(string skinName)
         {
             return new WhiteBrowserSkinDefinition(
