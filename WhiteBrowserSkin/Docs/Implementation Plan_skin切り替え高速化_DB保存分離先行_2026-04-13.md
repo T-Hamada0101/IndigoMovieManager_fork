@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5 Worker B Round 3 で、外部 skin 初期タブ解決の短命 cache に `PreferredTabStateName` を含め、catalog reload / `RefreshCurrentSkinDefinition(...)` / `RefreshCurrentSkinDefinitionAsync(...)` 後に同名 skin の HTML/config 更新で preferred tab が変わった場合は再解決するようにした。`persisted` cache 優先と、preferred tab が変わらない同一 skin 連続 apply の DB read 抑制は維持する。
 - 2026-05-27 のサブ5.5 Worker B 継続で、`WhiteBrowserSkinHostControl.TryNavigateAsync(...)` から同期 `BuildInitialDocument(...)` 呼び出しを外し、`BuildInitialDocumentAsync(...)` 経由で HTML 読み込み / encoding normalize / document cache 判定を `Task.Run` 背景側へ逃がした。WebView2 attach、`HandleSkinLeaveAsync()`、`NavigateToStringAsync(...)` は UI 側に残し、document cache の path / mtime / length 意味論は維持する。
 - 2026-05-27 のサブ5.5 Worker B で、`ApplySkinByName(...)` の外部 skin 初期タブ復元に、同一 DB + 同一 skin の直前解決結果を使う軽量 cache を追加した。`persisted` cache を最優先に読む順序は維持し、背景保存成功後の `LastUpperTab` が直前 fallback に覆われないようにしたため、同名 `changeSkin` / 連続 apply 時の `SelectProfileValue(...)` 再読取だけを減らす。
 - 2026-05-27 のサブ5.5 Worker N で、catalog explicit load の snapshot 生成に残っていた `File.Exists(...) -> FileInfo` の二重 probe を `TryGetFileMetadata(...)` へ集約した。前回 HTML 維持判定は directory 列挙と metadata 取得へ任せ、同一 html path の存在確認を重ねずに、HTML 実ファイルの length / last write による鮮度意味論は維持する。

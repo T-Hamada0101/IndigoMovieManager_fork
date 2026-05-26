@@ -310,6 +310,160 @@ public sealed class WhiteBrowserSkinOrchestratorCatalogReuseTests
     }
 
     [Test]
+    public void RefreshCurrentSkinDefinition後にpreferredタブが変われば初期タブを再解決する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ProfileRefreshGrid", thumbWidth: 160);
+        string htmlPath = Path.Combine(rootPath, "ProfileRefreshGrid", "ProfileRefreshGrid.htm");
+        string currentSkinName = "";
+        int profileReadCount = 0;
+        List<string> selectedTabs = [];
+        string dbFullPath = Path.Combine(Path.GetTempPath(), "profile-refresh.wb");
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                currentDbFullPath: dbFullPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? ""),
+                selectProfileValue: (_, _, _) =>
+                {
+                    profileReadCount++;
+                    return "";
+                }
+            );
+
+            _ = orchestrator.GetAvailableSkinDefinitions();
+            bool firstApplied = orchestrator.ApplySkinByName(
+                "ProfileRefreshGrid",
+                persistToCurrentDb: false
+            );
+            bool secondApplied = orchestrator.ApplySkinByName(
+                "ProfileRefreshGrid",
+                persistToCurrentDb: false
+            );
+
+            File.WriteAllText(
+                htmlPath,
+                """
+                <html>
+                <body>
+                  <div id="config">
+                    thum-width : 60;
+                    thum-height : 60;
+                    thum-column : 1;
+                    thum-row : 1;
+                  </div>
+                </body>
+                </html>
+                """
+            );
+            File.SetLastWriteTimeUtc(htmlPath, DateTime.UtcNow.AddSeconds(5));
+
+            WhiteBrowserSkinDefinition refreshed = orchestrator.RefreshCurrentSkinDefinition();
+            bool thirdApplied = orchestrator.ApplySkinByName(
+                "ProfileRefreshGrid",
+                persistToCurrentDb: false
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstApplied, Is.True);
+                Assert.That(secondApplied, Is.True);
+                Assert.That(thirdApplied, Is.True);
+                Assert.That(refreshed.PreferredTabStateName, Is.EqualTo("DefaultList"));
+                Assert.That(profileReadCount, Is.EqualTo(2));
+                Assert.That(
+                    selectedTabs,
+                    Is.EqualTo(new[] { "DefaultGrid", "DefaultGrid", "DefaultList" })
+                );
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
+    public async Task RefreshCurrentSkinDefinitionAsync後にpreferredタブが変われば初期タブを再解決する()
+    {
+        string rootPath = CreateSkinRootWithSingleSkin("ProfileAsyncRefreshGrid", thumbWidth: 160);
+        string htmlPath = Path.Combine(rootPath, "ProfileAsyncRefreshGrid", "ProfileAsyncRefreshGrid.htm");
+        string currentSkinName = "";
+        int profileReadCount = 0;
+        List<string> selectedTabs = [];
+        string dbFullPath = Path.Combine(Path.GetTempPath(), "profile-async-refresh.wb");
+
+        try
+        {
+            WhiteBrowserSkinOrchestrator orchestrator = CreateOrchestrator(
+                skinRootPath: rootPath,
+                currentDbFullPath: dbFullPath,
+                getCurrentSkinNameFromViewModel: () => currentSkinName,
+                setCurrentSkinNameToViewModel: skinName => currentSkinName = skinName ?? "",
+                selectUpperTabDefaultViewBySkinName: tabStateName => selectedTabs.Add(tabStateName ?? ""),
+                selectProfileValue: (_, _, _) =>
+                {
+                    profileReadCount++;
+                    return "";
+                }
+            );
+
+            _ = orchestrator.GetAvailableSkinDefinitions();
+            bool firstApplied = orchestrator.ApplySkinByName(
+                "ProfileAsyncRefreshGrid",
+                persistToCurrentDb: false
+            );
+            bool secondApplied = orchestrator.ApplySkinByName(
+                "ProfileAsyncRefreshGrid",
+                persistToCurrentDb: false
+            );
+
+            File.WriteAllText(
+                htmlPath,
+                """
+                <html>
+                <body>
+                  <div id="config">
+                    thum-width : 60;
+                    thum-height : 60;
+                    thum-column : 1;
+                    thum-row : 1;
+                  </div>
+                </body>
+                </html>
+                """
+            );
+            File.SetLastWriteTimeUtc(htmlPath, DateTime.UtcNow.AddSeconds(5));
+
+            WhiteBrowserSkinDefinition refreshed = await orchestrator.RefreshCurrentSkinDefinitionAsync();
+            bool thirdApplied = orchestrator.ApplySkinByName(
+                "ProfileAsyncRefreshGrid",
+                persistToCurrentDb: false
+            );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstApplied, Is.True);
+                Assert.That(secondApplied, Is.True);
+                Assert.That(thirdApplied, Is.True);
+                Assert.That(refreshed.PreferredTabStateName, Is.EqualTo("DefaultList"));
+                Assert.That(profileReadCount, Is.EqualTo(2));
+                Assert.That(
+                    selectedTabs,
+                    Is.EqualTo(new[] { "DefaultGrid", "DefaultGrid", "DefaultList" })
+                );
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(rootPath);
+        }
+    }
+
+    [Test]
     public void GetCurrentSkinDefinitionは未ロードのbuilt_in_skinならcatalog署名確認へ進まない()
     {
         string rootPath = CreateSkinRootWithSingleSkin("ExternalForColdCurrentBuiltIn");

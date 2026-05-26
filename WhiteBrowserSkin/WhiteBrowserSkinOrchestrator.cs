@@ -444,6 +444,7 @@ namespace IndigoMovieManager.Skin
 
             if (!string.IsNullOrWhiteSpace(dbFullPath))
             {
+                string preferredTabStateName = ResolvePreferredTabStateName(definition);
                 if (
                     WhiteBrowserSkinProfileValueCache.TryGetPersistedValue(
                         dbFullPath,
@@ -459,6 +460,7 @@ namespace IndigoMovieManager.Skin
                     RememberInitialTabResolution(
                         dbFullPath,
                         definition.Name,
+                        preferredTabStateName,
                         cachedResolvedTabStateName
                     );
                     return cachedResolvedTabStateName;
@@ -469,6 +471,7 @@ namespace IndigoMovieManager.Skin
                     && TryGetRememberedInitialTabResolution(
                         dbFullPath,
                         definition.Name,
+                        preferredTabStateName,
                         out string rememberedTabStateName
                     )
                 )
@@ -493,15 +496,21 @@ namespace IndigoMovieManager.Skin
                     RememberInitialTabResolution(
                         dbFullPath,
                         definition.Name,
+                        preferredTabStateName,
                         savedResolvedTabStateName
                     );
                     return savedResolvedTabStateName;
                 }
             }
 
-            string preferredTabStateName = ResolvePreferredTabStateName(definition);
-            RememberInitialTabResolution(dbFullPath, definition.Name, preferredTabStateName);
-            return preferredTabStateName;
+            string fallbackPreferredTabStateName = ResolvePreferredTabStateName(definition);
+            RememberInitialTabResolution(
+                dbFullPath,
+                definition.Name,
+                fallbackPreferredTabStateName,
+                fallbackPreferredTabStateName
+            );
+            return fallbackPreferredTabStateName;
         }
 
         private string ResolvePreferredTabStateName(WhiteBrowserSkinDefinition definition)
@@ -512,15 +521,18 @@ namespace IndigoMovieManager.Skin
         private void RememberInitialTabResolution(
             string dbFullPath,
             string skinName,
+            string preferredTabStateName,
             string tabStateName
         )
         {
             string dbIdentity = WhiteBrowserSkinDbIdentity.NormalizeMainDbPath(dbFullPath);
             string normalizedSkinName = skinName?.Trim() ?? "";
+            string normalizedPreferredTabStateName = normalizeTabStateName(preferredTabStateName);
             string normalizedTabStateName = normalizeTabStateName(tabStateName);
             if (
                 string.IsNullOrWhiteSpace(dbIdentity)
                 || string.IsNullOrWhiteSpace(normalizedSkinName)
+                || string.IsNullOrWhiteSpace(normalizedPreferredTabStateName)
                 || string.IsNullOrWhiteSpace(normalizedTabStateName)
             )
             {
@@ -532,6 +544,7 @@ namespace IndigoMovieManager.Skin
             lastInitialTabResolution = new InitialTabResolution(
                 dbIdentity,
                 normalizedSkinName,
+                normalizedPreferredTabStateName,
                 normalizedTabStateName
             );
         }
@@ -539,15 +552,18 @@ namespace IndigoMovieManager.Skin
         private bool TryGetRememberedInitialTabResolution(
             string dbFullPath,
             string skinName,
+            string preferredTabStateName,
             out string tabStateName
         )
         {
             tabStateName = "";
             string dbIdentity = WhiteBrowserSkinDbIdentity.NormalizeMainDbPath(dbFullPath);
             string normalizedSkinName = skinName?.Trim() ?? "";
+            string normalizedPreferredTabStateName = normalizeTabStateName(preferredTabStateName);
             if (
                 string.IsNullOrWhiteSpace(dbIdentity)
                 || string.IsNullOrWhiteSpace(normalizedSkinName)
+                || string.IsNullOrWhiteSpace(normalizedPreferredTabStateName)
                 || string.IsNullOrWhiteSpace(lastInitialTabResolution.DbIdentity)
             )
             {
@@ -565,6 +581,11 @@ namespace IndigoMovieManager.Skin
                     normalizedSkinName,
                     StringComparison.OrdinalIgnoreCase
                 )
+                || !string.Equals(
+                    lastInitialTabResolution.PreferredTabStateName,
+                    normalizedPreferredTabStateName,
+                    StringComparison.Ordinal
+                )
             )
             {
                 return false;
@@ -577,6 +598,7 @@ namespace IndigoMovieManager.Skin
         private readonly record struct InitialTabResolution(
             string DbIdentity,
             string SkinName,
+            string PreferredTabStateName,
             string TabStateName
         );
 
