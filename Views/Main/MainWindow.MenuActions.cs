@@ -2215,7 +2215,7 @@ namespace IndigoMovieManager
                     return false;
                 }
 
-                return TrySwitchMainDb(dbFullPathSnapshot, MainDbSwitchSource.New);
+                return await TrySwitchMainDb(dbFullPathSnapshot, MainDbSwitchSource.New);
             }
 
             return false;
@@ -2286,13 +2286,13 @@ namespace IndigoMovieManager
             }
         }
 
-        private void BtnOpen_Click(object sender, RoutedEventArgs e)
+        private async void BtnOpen_Click(object sender, RoutedEventArgs e)
         {
-            TryOpenMainDbFromDialog();
+            await TryOpenMainDbFromDialogAsync();
         }
 
         // .wb 選択ダイアログを共通化し、ドロップ導線からも同じ処理を再利用する。
-        private bool TryOpenMainDbFromDialog()
+        private async Task<bool> TryOpenMainDbFromDialogAsync()
         {
             var ofd = new OpenFileDialog
             {
@@ -2309,7 +2309,7 @@ namespace IndigoMovieManager
             if (result == true)
             {
                 RememberMainDbDialogDirectory(ofd.FileName);
-                return TrySwitchMainDb(ofd.FileName, MainDbSwitchSource.OpenDialog);
+                return await TrySwitchMainDb(ofd.FileName, MainDbSwitchSource.OpenDialog);
             }
 
             return false;
@@ -2550,7 +2550,7 @@ namespace IndigoMovieManager
             }
         }
 
-        private void MenuRecentTree_Click(object sender, RoutedEventArgs e)
+        private async void MenuRecentTree_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button item)
             {
@@ -2559,7 +2559,7 @@ namespace IndigoMovieManager
                     var tag = item.Tag.ToString();
                     if (tag != RECENT_OPEN_FILE_LABEL)
                     {
-                        _ = TrySwitchMainDb(tag, MainDbSwitchSource.RecentMenu);
+                        await TrySwitchMainDb(tag, MainDbSwitchSource.RecentMenu);
                     }
                     else
                     {

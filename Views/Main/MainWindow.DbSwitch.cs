@@ -1,6 +1,11 @@
+using System.Data;
 using System.IO;
+using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using IndigoMovieManager.Thumbnail.QueueDb;
+using static IndigoMovieManager.DB.SQLite;
 
 namespace IndigoMovieManager
 {
@@ -14,6 +19,15 @@ namespace IndigoMovieManager
             MainDbSwitchSource Source
         );
 
+        private sealed class MainDbSwitchPreflightResult
+        {
+            public bool IsValid { get; init; }
+            public string SchemaError { get; init; } = "";
+            public DataTable SystemData { get; init; }
+        }
+
+        private int _mainDbSwitchPreflightRevision;
+
         internal enum MainDbSwitchSource
         {
             New,
@@ -24,7 +38,7 @@ namespace IndigoMovieManager
         }
 
         // MainDB切り替えの入口を1か所へ寄せ、保存順と成功後処理を揃える。
-        private bool TrySwitchMainDb(string dbFullPath, MainDbSwitchSource source)
+        private async Task<bool> TrySwitchMainDb(string dbFullPath, MainDbSwitchSource source)
         {
             using IDisposable uiHangScope = TrackUiHangActivity(
                 source == MainDbSwitchSource.StartupAutoOpen
@@ -38,12 +52,44 @@ namespace IndigoMovieManager
             }
 
             bool switchSucceeded = false;
-            ShowUiHangDbSwitchStatus("DB切替: 切替準備中");
-            RunMainDbPreSwitch(context);
+            bool transitionStarted = false;
+            int preflightRevision = Interlocked.Increment(ref _mainDbSwitchPreflightRevision);
             try
             {
+                ShowUiHangDbSwitchStatus("DB切替: スキーマと設定を確認中");
+                MainDbSwitchPreflightResult preflightResult =
+                    await RunMainDbSwitchPreflightAsync(context, preflightRevision);
+                if (!IsMainDbSwitchPreflightCurrent(context, preflightRevision))
+                {
+                    DebugRuntimeLog.Write(
+                        "db",
+                        $"switch preflight skipped: reason=stale revision={preflightRevision} target='{context.TargetDbFullPath}'"
+                    );
+                    return false;
+                }
+
+                if (!preflightResult.IsValid)
+                {
+                    DebugRuntimeLog.Write(
+                        "db",
+                        $"open canceled: schema validation failed. db='{context.TargetDbFullPath}', reason='{preflightResult.SchemaError}'"
+                    );
+                    MessageBox.Show(
+                        this,
+                        BuildMainDbValidationFailureMessage(preflightResult.SchemaError),
+                        Assembly.GetExecutingAssembly().GetName().Name,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error
+                    );
+                    return false;
+                }
+
+                ShowUiHangDbSwitchStatus("DB切替: 切替準備中");
+                RunMainDbPreSwitch(context);
+                transitionStarted = true;
+
                 ShowUiHangDbSwitchStatus("DB切替: DBを開いています");
-                if (!TryActivateMainDbSession(context))
+                if (!TryActivateMainDbSession(context, preflightResult))
                 {
                     return false;
                 }
@@ -55,14 +101,33 @@ namespace IndigoMovieManager
                 switchSucceeded = true;
                 return true;
             }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "db",
+                    $"switch failed: target='{context.TargetDbFullPath}', source={context.Source}, err='{ex.GetType().Name}: {ex.Message}'"
+                );
+                MessageBox.Show(
+                    this,
+                    $"データベースを開けませんでした。\n{ex.Message}",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error
+                );
+                return false;
+            }
             finally
             {
-                ShowUiHangDbSwitchStatus(
-                    switchSucceeded
-                        ? "DB切替: 最終調整を実行中"
-                        : "DB切替: 失敗後処理を実行中"
-                );
-                CompleteMainDbSwitchTransition(switchSucceeded);
+                if (transitionStarted)
+                {
+                    ShowUiHangDbSwitchStatus(
+                        switchSucceeded
+                            ? "DB切替: 最終調整を実行中"
+                            : "DB切替: 失敗後処理を実行中"
+                    );
+                    CompleteMainDbSwitchTransition(switchSucceeded);
+                }
+
                 HideUiHangDbSwitchStatus();
             }
         }
@@ -126,9 +191,70 @@ namespace IndigoMovieManager
         }
 
         // DB本体の切り替えはここでだけ行い、失敗時は後段へ進ませない。
-        private bool TryActivateMainDbSession(MainDbSwitchContext context)
+        private bool TryActivateMainDbSession(
+            MainDbSwitchContext context,
+            MainDbSwitchPreflightResult preflightResult
+        )
         {
-            return OpenDatafile(context.TargetDbFullPath);
+            return OpenDatafile(context.TargetDbFullPath, preflightResult.SystemData);
+        }
+
+        // 旧DBを止める前に、重い検証と system 読込だけを背景で済ませる。
+        private Task<MainDbSwitchPreflightResult> RunMainDbSwitchPreflightAsync(
+            MainDbSwitchContext context,
+            int revision
+        )
+        {
+            string targetDbFullPath = context.TargetDbFullPath;
+            return Task.Run(() =>
+            {
+                DebugRuntimeLog.Write(
+                    "db",
+                    $"switch preflight start: revision={revision} target='{targetDbFullPath}' source={context.Source}"
+                );
+
+                if (!TryValidateMainDatabaseSchema(targetDbFullPath, out string schemaError))
+                {
+                    return new MainDbSwitchPreflightResult
+                    {
+                        IsValid = false,
+                        SchemaError = schemaError,
+                    };
+                }
+
+                DataTable loadedSystemData = _mainDbMovieReadFacade.LoadSystemTable(
+                    targetDbFullPath
+                );
+                DebugRuntimeLog.Write(
+                    "db",
+                    $"switch preflight end: revision={revision} target='{targetDbFullPath}' system_rows={loadedSystemData?.Rows.Count ?? 0}"
+                );
+
+                return new MainDbSwitchPreflightResult
+                {
+                    IsValid = true,
+                    SystemData = loadedSystemData,
+                };
+            });
+        }
+
+        // preflight 完了後に別切替が始まっていたら、古い検証結果は使わない。
+        private bool IsMainDbSwitchPreflightCurrent(
+            MainDbSwitchContext context,
+            int revision
+        )
+        {
+            if (revision != Volatile.Read(ref _mainDbSwitchPreflightRevision))
+            {
+                return false;
+            }
+
+            string currentDbFullPath = NormalizeMainDbPath(MainVM?.DbInfo?.DBFullPath ?? "");
+            return string.Equals(
+                currentDbFullPath,
+                context.CurrentDbFullPath,
+                StringComparison.OrdinalIgnoreCase
+            );
         }
 
         // open成功後のRecent/LastDoc更新をここへ集約する。

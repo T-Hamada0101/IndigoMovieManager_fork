@@ -85,7 +85,7 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(clickMethod, Does.Not.Contain("Path.Exists("));
         Assert.That(clickMethod, Does.Not.Contain("TryCreateDatabase("));
         Assert.That(dialogMethod, Does.Contain("CreateMainDbFromDialogInBackgroundAsync(dbFullPathSnapshot)"));
-        Assert.That(dialogMethod, Does.Contain("TrySwitchMainDb(dbFullPathSnapshot, MainDbSwitchSource.New)"));
+        Assert.That(dialogMethod, Does.Contain("await TrySwitchMainDb(dbFullPathSnapshot, MainDbSwitchSource.New)"));
         Assert.That(dialogMethod, Does.Contain("RememberMainDbDialogDirectory(dbFullPathSnapshot);"));
         Assert.That(dialogMethod, Does.Contain("AreSameMainDbPath("));
         Assert.That(dialogMethod, Does.Not.Contain("Path.Exists("));

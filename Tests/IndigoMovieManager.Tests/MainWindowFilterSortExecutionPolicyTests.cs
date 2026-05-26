@@ -137,7 +137,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void BootNewDb_検索履歴初期読込は背景へ逃がす()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
-        string bootMethod = GetMethodBlock(mainWindowSource, "private void BootNewDb(");
+        string bootMethod = GetMethodBlock(
+            mainWindowSource,
+            "private void BootNewDb(string dbFullPath, DataTable preflightSystemData)"
+        );
         string queueMethod = GetMethodBlock(
             mainWindowSource,
             "private void QueueSearchHistoryReload("

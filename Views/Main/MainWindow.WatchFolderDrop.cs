@@ -73,7 +73,7 @@ namespace IndigoMovieManager
                 }
                 else
                 {
-                    if (!HandleDroppedMainDbSwitch(droppedMainDbPath))
+                    if (!await HandleDroppedMainDbSwitchAsync(droppedMainDbPath))
                     {
                         return;
                     }
@@ -239,7 +239,7 @@ namespace IndigoMovieManager
         }
 
         // .wb ドロップ時は同一DBの再オープンを避け、結果をトーストで返す。
-        private bool HandleDroppedMainDbSwitch(string droppedMainDbPath)
+        private async Task<bool> HandleDroppedMainDbSwitchAsync(string droppedMainDbPath)
         {
             if (string.IsNullOrWhiteSpace(droppedMainDbPath))
             {
@@ -252,7 +252,7 @@ namespace IndigoMovieManager
                 return true;
             }
 
-            bool switched = TrySwitchMainDb(droppedMainDbPath, MainDbSwitchSource.DragDrop);
+            bool switched = await TrySwitchMainDb(droppedMainDbPath, MainDbSwitchSource.DragDrop);
             ShowDroppedMainDbSwitchToast(
                 droppedMainDbPath,
                 switched

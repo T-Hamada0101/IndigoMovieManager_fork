@@ -98,11 +98,58 @@ public sealed class MainWindowUiIoDeferralSourceTests
         Assert.That(queueMethod, Does.Contain("string lastDocSnapshot"));
         Assert.That(queueMethod, Does.Contain("RunStartupAutoOpenLastDocSwitchAsync("));
         Assert.That(runMethod, Does.Contain("Task.Run(() => Path.Exists(lastDocSnapshot))"));
-        Assert.That(runMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(runMethod, Does.Contain("Dispatcher.InvokeAsync"));
         Assert.That(
             runMethod,
-            Does.Contain("TrySwitchMainDb(lastDocSnapshot, MainDbSwitchSource.StartupAutoOpen);")
+            Does.Contain("return TrySwitchMainDb(")
         );
+    }
+
+    [Test]
+    public void DbSwitch_preflightは旧DB停止前に背景で実行しsystemDataをBootへ渡す()
+    {
+        string dbSwitchSource = GetRepoText("Views", "Main", "MainWindow.DbSwitch.cs");
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string switchMethod = ExtractMethod(
+            dbSwitchSource,
+            "private async Task<bool> TrySwitchMainDb("
+        );
+        string preflightMethod = ExtractMethod(
+            dbSwitchSource,
+            "private Task<MainDbSwitchPreflightResult> RunMainDbSwitchPreflightAsync("
+        );
+        string activateMethod = ExtractMethod(
+            dbSwitchSource,
+            "private bool TryActivateMainDbSession("
+        );
+        string openMethod = ExtractMethod(
+            mainWindowSource,
+            "private bool OpenDatafile(string dbFullPath, DataTable preflightSystemData = null)"
+        );
+        string bootMethod = ExtractMethod(
+            mainWindowSource,
+            "private void BootNewDb(string dbFullPath, DataTable preflightSystemData)"
+        );
+        string systemMethod = ExtractMethod(
+            mainWindowSource,
+            "private void GetSystemTable(string dbPath, DataTable preflightSystemData = null)"
+        );
+
+        Assert.That(switchMethod, Does.Contain("await RunMainDbSwitchPreflightAsync("));
+        Assert.That(switchMethod, Does.Contain("IsMainDbSwitchPreflightCurrent("));
+        Assert.That(switchMethod.IndexOf("RunMainDbPreSwitch(", StringComparison.Ordinal), Is.GreaterThan(switchMethod.IndexOf("preflightResult.IsValid", StringComparison.Ordinal)));
+        Assert.That(preflightMethod, Does.Contain("Task.Run("));
+        Assert.That(preflightMethod, Does.Contain("TryValidateMainDatabaseSchema(targetDbFullPath"));
+        Assert.That(preflightMethod, Does.Contain("_mainDbMovieReadFacade.LoadSystemTable("));
+        Assert.That(activateMethod, Does.Contain("preflightResult.SystemData"));
+        Assert.That(openMethod, Does.Contain("if (preflightSystemData == null)"));
+        Assert.That(openMethod, Does.Contain("open fallback preflight: synchronous schema validation"));
+        Assert.That(openMethod, Does.Contain("TryValidateMainDatabaseSchema(dbFullPath"));
+        Assert.That(openMethod, Does.Not.Contain("_mainDbMovieReadFacade.LoadSystemTable("));
+        Assert.That(openMethod, Does.Contain("BootNewDb(dbFullPath, preflightSystemData);"));
+        Assert.That(bootMethod, Does.Contain("GetSystemTable(dbFullPath, preflightSystemData);"));
+        Assert.That(systemMethod, Does.Contain("system fallback load: synchronous system read"));
+        Assert.That(systemMethod, Does.Contain("systemData = preflightSystemData ?? _mainDbMovieReadFacade.LoadSystemTable(dbPath);"));
     }
 
     [Test]

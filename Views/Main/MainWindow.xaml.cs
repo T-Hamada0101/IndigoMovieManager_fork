@@ -526,7 +526,7 @@ namespace IndigoMovieManager
 
             try
             {
-                await Dispatcher.InvokeAsync(
+                await Dispatcher.InvokeAsync<Task>(
                         () =>
                         {
                             if (
@@ -536,14 +536,17 @@ namespace IndigoMovieManager
                                 )
                             )
                             {
-                                return;
+                                return Task.CompletedTask;
                             }
 
-                            TrySwitchMainDb(lastDocSnapshot, MainDbSwitchSource.StartupAutoOpen);
+                            return TrySwitchMainDb(
+                                lastDocSnapshot,
+                                MainDbSwitchSource.StartupAutoOpen
+                            );
                         },
                         DispatcherPriority.Background
                     )
-                    .Task;
+                    .Task.Unwrap();
             }
             catch (TaskCanceledException ex)
             {
@@ -1706,7 +1709,7 @@ namespace IndigoMovieManager
         /// データベースをパカッと開き、画面表示から履歴、監視モードまですべてを今のDB色に染め上げる超重要メソッド！🎨
         /// 内部は「旧DBの完全シャットダウン」→「新DBの起動」の2フェーズ構成で安全に切り替える！🛡️
         /// </summary>
-        private bool OpenDatafile(string dbFullPath)
+        private bool OpenDatafile(string dbFullPath, DataTable preflightSystemData = null)
         {
             Stopwatch sw = Stopwatch.StartNew();
             DebugRuntimeLog.TaskStart(nameof(OpenDatafile), $"db='{dbFullPath}'");
@@ -1715,22 +1718,29 @@ namespace IndigoMovieManager
 
             try
             {
-                // 先にスキーマ検証し、NGなら現DBを維持したまま中断する。
-                ShowUiHangDbSwitchStatus("DB切替: スキーマを確認中");
-                if (!TryValidateMainDatabaseSchema(dbFullPath, out string schemaError))
+                if (preflightSystemData == null)
                 {
+                    // 互換直呼びだけは安全側へ倒し、旧DB停止前に従来同等の同期検証を通す。
+                    ShowUiHangDbSwitchStatus("DB切替: スキーマを確認中");
                     DebugRuntimeLog.Write(
                         "db",
-                        $"open canceled: schema validation failed. db='{dbFullPath}', reason='{schemaError}'"
+                        $"open fallback preflight: synchronous schema validation. db='{dbFullPath}'"
                     );
-                    MessageBox.Show(
-                        this,
-                        BuildMainDbValidationFailureMessage(schemaError),
-                        Assembly.GetExecutingAssembly().GetName().Name,
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Error
-                    );
-                    return false;
+                    if (!TryValidateMainDatabaseSchema(dbFullPath, out string schemaError))
+                    {
+                        DebugRuntimeLog.Write(
+                            "db",
+                            $"open canceled: schema validation failed. db='{dbFullPath}', reason='{schemaError}'"
+                        );
+                        MessageBox.Show(
+                            this,
+                            BuildMainDbValidationFailureMessage(schemaError),
+                            Assembly.GetExecutingAssembly().GetName().Name,
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error
+                        );
+                        return false;
+                    }
                 }
 
                 ShowUiHangDbSwitchStatus("DB切替: rescue worker を停止中");
@@ -1742,7 +1752,7 @@ namespace IndigoMovieManager
 
                 // === Phase 2: 新DBの起動 ===
                 ShowUiHangDbSwitchStatus("DB切替: 新DBを起動中");
-                BootNewDb(dbFullPath);
+                BootNewDb(dbFullPath, preflightSystemData);
                 isOpened = true;
                 return true;
             }
@@ -1816,12 +1826,17 @@ namespace IndigoMovieManager
         /// </summary>
         private void BootNewDb(string dbFullPath)
         {
+            BootNewDb(dbFullPath, null);
+        }
+
+        private void BootNewDb(string dbFullPath, DataTable preflightSystemData)
+        {
             using (BeginExternalSkinHostRefreshBatch("dbinfo-DBFullPath"))
             {
                 MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbFullPath);
                 MainVM.DbInfo.DBFullPath = dbFullPath;
                 ShowUiHangDbSwitchStatus("DB切替: system 設定を読込中");
-                GetSystemTable(dbFullPath);
+                GetSystemTable(dbFullPath, preflightSystemData);
                 MainVM.ReplaceMovieRecs([]);
                 MainVM.ReplaceFilteredMovieRecs([], FilteredMovieRecsUpdateMode.Reset);
                 filterList = [];
@@ -2095,12 +2110,20 @@ namespace IndigoMovieManager
         /// <summary>
         /// systemテーブルに眠るスキン・ソート・フォルダ設定を呼び覚まし、アプリの見た目と挙動に魂を吹き込む！✨
         /// </summary>
-        private void GetSystemTable(string dbPath)
+        private void GetSystemTable(string dbPath, DataTable preflightSystemData = null)
         {
             if (!string.IsNullOrEmpty(dbPath))
             {
-                // system 読みは facade へ寄せ、UI 側は反映だけに絞る。
-                systemData = _mainDbMovieReadFacade.LoadSystemTable(dbPath);
+                // preflight 済みの system を受け取り、UI 側では表示設定の反映だけに絞る。
+                if (preflightSystemData == null)
+                {
+                    DebugRuntimeLog.Write(
+                        "db",
+                        $"system fallback load: synchronous system read. db='{dbPath}'"
+                    );
+                }
+
+                systemData = preflightSystemData ?? _mainDbMovieReadFacade.LoadSystemTable(dbPath);
 
                 var skin = SelectSystemTable("skin");
                 // 永続値は raw skin 名を残し、表示側だけで安全に built-in へフォールバックする。
