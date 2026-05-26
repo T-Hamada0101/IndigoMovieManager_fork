@@ -639,6 +639,45 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void OpenMovieInPlayerTabAsync_存在確認はuser_priority開始前に背景へ逃がす()
+    {
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string openMovieMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private async Task OpenMovieInPlayerTabAsync("
+        );
+        string existsMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private static Task<bool> PlayerTabMoviePathExistsInBackgroundAsync("
+        );
+        string stillCurrentMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private static bool IsPlayerTabMoviePathStillCurrent("
+        );
+
+        int existsAwaitIndex = openMovieMethod.IndexOf(
+            "await PlayerTabMoviePathExistsInBackgroundAsync(moviePath)",
+            StringComparison.Ordinal
+        );
+        int beginPriorityIndex = openMovieMethod.IndexOf(
+            "BeginUserPriorityWork(\"player\");",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(openMovieMethod, Does.Contain("string moviePath = movie?.Movie_Path;"));
+        Assert.That(openMovieMethod, Does.Not.Contain("Path.Exists(movie.Movie_Path)"));
+        Assert.That(openMovieMethod, Does.Contain("uxVideoPlayer == null"));
+        Assert.That(openMovieMethod, Does.Contain("Dispatcher?.HasShutdownStarted == true"));
+        Assert.That(openMovieMethod, Does.Contain("IsPlayerTabMoviePathStillCurrent(movie, moviePath)"));
+        Assert.That(existsAwaitIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(beginPriorityIndex, Is.GreaterThan(existsAwaitIndex));
+        Assert.That(existsMethod, Does.Contain("Task.Run(() =>"));
+        Assert.That(existsMethod, Does.Contain("return Path.Exists(moviePath);"));
+        Assert.That(existsMethod, Does.Contain("Task.FromResult(false)"));
+        Assert.That(stillCurrentMethod, Does.Contain("movie.Movie_Path"));
+    }
+
+    [Test]
     public void ResetWebViewPlayerSurface_WebView停止時もpending_user_priorityを解除する()
     {
         // WebView の NavigationCompleted が後着しても、reset 側で優先区間を確実に畳む。

@@ -340,11 +340,27 @@ namespace IndigoMovieManager
             bool syncPlayerSelection = true
         )
         {
+            string moviePath = movie?.Movie_Path;
             if (
                 movie == null
-                || string.IsNullOrWhiteSpace(movie.Movie_Path)
-                || !Path.Exists(movie.Movie_Path)
+                || string.IsNullOrWhiteSpace(moviePath)
                 || uxVideoPlayer == null
+            )
+            {
+                return;
+            }
+
+            // ネットワークパス確認は UI から逃がし、存在しない時は優先区間を張らずに戻る。
+            if (!await PlayerTabMoviePathExistsInBackgroundAsync(moviePath))
+            {
+                return;
+            }
+
+            if (
+                Dispatcher?.HasShutdownStarted == true
+                || Dispatcher?.HasShutdownFinished == true
+                || uxVideoPlayer == null
+                || !IsPlayerTabMoviePathStillCurrent(movie, moviePath)
             )
             {
                 return;
@@ -370,6 +386,13 @@ namespace IndigoMovieManager
 
                         SelectUpperTabByFixedIndex(PlayerTabIndex);
                         await WaitForPlayerDispatcherBackgroundAsync();
+                        if (
+                            uxVideoPlayer == null
+                            || !IsPlayerTabMoviePathStillCurrent(movie, moviePath)
+                        )
+                        {
+                            return;
+                        }
                     }
                     finally
                     {
@@ -386,10 +409,11 @@ namespace IndigoMovieManager
 
                 // プレイヤータブの通常再生は WebView2 を正面採用し、
                 // 手動サムネ位置合わせだけ従来の MediaElement を残す。
-                if (ShouldUseWebViewPlayerForPlayerTab(movie.Movie_Path, focusTimeSlider))
+                if (ShouldUseWebViewPlayerForPlayerTab(moviePath, focusTimeSlider))
                 {
                     releaseUserPriorityOnExit = !await OpenMovieInWebViewPlayerAsync(
                         movie,
+                        moviePath,
                         startMilliseconds,
                         playImmediately,
                         mute
@@ -414,15 +438,15 @@ namespace IndigoMovieManager
                 bool sourceChanged =
                     !string.Equals(
                         _currentPlayerMoviePath,
-                        movie.Movie_Path,
+                        moviePath,
                         System.StringComparison.OrdinalIgnoreCase
                     )
                     || uxVideoPlayer.Source == null;
                 if (sourceChanged)
                 {
                     uxVideoPlayer.Stop();
-                    uxVideoPlayer.Source = new System.Uri(movie.Movie_Path);
-                    _currentPlayerMoviePath = movie.Movie_Path;
+                    uxVideoPlayer.Source = new System.Uri(moviePath);
+                    _currentPlayerMoviePath = moviePath;
                     MarkPlayerUserPriorityReleasePending();
                     releaseUserPriorityOnExit = false;
                     return;
@@ -439,20 +463,61 @@ namespace IndigoMovieManager
             }
         }
 
+        private static Task<bool> PlayerTabMoviePathExistsInBackgroundAsync(string moviePath)
+        {
+            if (string.IsNullOrWhiteSpace(moviePath))
+            {
+                return Task.FromResult(false);
+            }
+
+            return Task.Run(() =>
+            {
+                try
+                {
+                    return Path.Exists(moviePath);
+                }
+                catch (Exception ex)
+                {
+                    DebugRuntimeLog.Write("ui-tempo", $"player path exists failed: {ex.Message}");
+                    return false;
+                }
+            });
+        }
+
+        private static bool IsPlayerTabMoviePathStillCurrent(MovieRecords movie, string moviePath)
+        {
+            return movie != null
+                && string.Equals(
+                    movie.Movie_Path,
+                    moviePath,
+                    System.StringComparison.OrdinalIgnoreCase
+                );
+        }
+
         // MediaElement が苦手な形式だけ、Chromium の HTML5 video へ切り替えて再生互換を確保する。
         private async Task<bool> OpenMovieInWebViewPlayerAsync(
             MovieRecords movie,
+            string moviePath,
             int startMilliseconds,
             bool playImmediately,
             bool mute
         )
         {
-            if (movie == null || string.IsNullOrWhiteSpace(movie.Movie_Path) || uxWebVideoPlayer == null)
+            if (
+                movie == null
+                || string.IsNullOrWhiteSpace(moviePath)
+                || uxWebVideoPlayer == null
+            )
             {
                 return false;
             }
 
             if (!await EnsureWebVideoPlayerReadyAsync())
+            {
+                return false;
+            }
+
+            if (!IsPlayerTabMoviePathStillCurrent(movie, moviePath) || uxWebVideoPlayer == null)
             {
                 return false;
             }
@@ -474,19 +539,19 @@ namespace IndigoMovieManager
             bool sourceChanged =
                 !string.Equals(
                     _currentWebViewPlayerPath,
-                    movie.Movie_Path,
+                    moviePath,
                     System.StringComparison.OrdinalIgnoreCase
                 )
                 || uxWebVideoPlayer.Source == null
                 || !string.Equals(
                     uxWebVideoPlayer.Source.LocalPath,
-                    movie.Movie_Path,
+                    moviePath,
                     System.StringComparison.OrdinalIgnoreCase
                 );
             if (sourceChanged)
             {
-                uxWebVideoPlayer.Source = new System.Uri(movie.Movie_Path);
-                _currentWebViewPlayerPath = movie.Movie_Path;
+                uxWebVideoPlayer.Source = new System.Uri(moviePath);
+                _currentWebViewPlayerPath = moviePath;
                 MarkPlayerUserPriorityReleasePending();
                 return true;
             }
