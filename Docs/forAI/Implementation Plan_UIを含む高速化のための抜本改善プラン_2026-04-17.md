@@ -4,6 +4,7 @@
 
 変更概要:
 - 2026-05-27 のサブ5.5 Worker D で、Everything poll policy の DB path 存在確認を watch folder と同じ `pathExists` delegate 経由へ統一した。instance 側で確認した DB 存在結果を snapshot 取得と policy 判定へ引き継ぎ、DB / watch folder 大件数時に同じ DB path の filesystem probe を重ねない形へ寄せた。
+- 2026-05-27 のサブ5.5 Worker E で、Thumbnail ERROR タブの手動再読込、一覧クリア、選択/一括救済投入後に残っていた `Refresh()` 全体再描画を外し、`RefreshThumbnailErrorRecords(force: true)`、上側 visible range refresh、下部進捗 snapshot 予約へ寄せた。救済投入 core から UI 更新を外し、背景投入完了後に UI 側で1回だけ局所反映する。
 - 2026-05-27 のサブ5.5 Worker C で、起動 light services の EverythingLite watch root prewarm は UI 側で DB / provider / revision の snapshot だけを取り、watch root の `Path.Exists` を含む plan 作成を `Task.Run` 背景 helper へ逃がした。戻り時は startup revision / 現在 DB / root snapshot を guard し、古い起動要求や DB 切替後着の root prewarm を捨てる。
 - 2026-05-27 のサブ5.5 Worker A追加で、起動 `ContentRendered` 直後の `AutoOpen` / `LastDoc` 自動DB切替は設定値を snapshot してから `Task.Run` の存在確認へ逃がし、UI 復帰後に `AutoOpen` / `LastDoc` / window closing / dispatcher shutdown guard を通した時だけ `TrySwitchMainDb(..., StartupAutoOpen)` を実行する形へ寄せた。
 - 2026-05-27 のサブ5.5 Worker B 追加で、新規DB作成ダイアログ後の `Path.Exists(...)` と `TryCreateDatabase(...)` を path snapshot 後の `Task.Run` helper へ逃がし、ダイアログ表示、既存ファイル警告、作成失敗表示、`TrySwitchMainDb(...)` は UI 側に残した。watch folder drop から空DB状態で新規作成へ進む経路も async 化し、作成完了後は DB 切替が途中で起きていない時だけ新DBへ切り替える。

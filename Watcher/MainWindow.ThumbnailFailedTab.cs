@@ -1773,18 +1773,37 @@ namespace IndigoMovieManager
 
             if (queuedCount > 0)
             {
-                RefreshThumbnailErrorRecords(force: true);
+                Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);
             }
             return new ThumbnailErrorBulkRescueResult(movieCount, acceptedMovieCount, queuedCount);
+        }
+
+        // 手動操作後は一覧全体を揺すらず、ERROR集計と見えている上側サムネだけを更新する。
+        private void RefreshThumbnailErrorManualOperationUi(string reason, bool selectFirstItem)
+        {
+            RefreshThumbnailErrorRecords(force: true);
+            if (selectFirstItem)
+            {
+                SelectFirstItem();
+            }
+
+            RequestUpperTabVisibleRangeRefresh(
+                immediate: true,
+                reason: string.IsNullOrWhiteSpace(reason)
+                    ? "thumbnail-error-manual"
+                    : reason
+            );
+            RequestThumbnailProgressSnapshotRefresh();
         }
 
         // ERROR タブは重い選択復元をやめ、再読込後は必要時だけ先頭へ寄せる。
         private void ReloadThumbnailErrorListButton_Click(object sender, RoutedEventArgs e)
         {
             DebugRuntimeLog.Write("thumbnail-error-tab", "error tab reload clicked");
-            RefreshThumbnailErrorRecords(force: true);
-            SelectFirstItem();
-            Refresh();
+            RefreshThumbnailErrorManualOperationUi(
+                reason: "thumbnail-error-reload",
+                selectFirstItem: true
+            );
         }
 
         // 表示中の ERROR マーカーと FailureDb 行をまとめて消し、一覧を空にする。
@@ -1841,9 +1860,10 @@ namespace IndigoMovieManager
                     $"error tab clear clicked: visible={clearResult.VisibleCount} deleted_markers={clearResult.DeletedMarkerCount} deleted_failure_rows={clearResult.DeletedFailureCount}"
                 );
 
-                RefreshThumbnailErrorRecords(force: true);
-                SelectFirstItem();
-                Refresh();
+                RefreshThumbnailErrorManualOperationUi(
+                    reason: "thumbnail-error-clear",
+                    selectFirstItem: true
+                );
             }
             catch (Exception ex)
             {
@@ -2088,7 +2108,13 @@ namespace IndigoMovieManager
             {
                 Mouse.OverrideCursor = null;
                 Interlocked.Exchange(ref _thumbnailErrorBulkRescueRunning, 0);
-                Refresh();
+                if (preferredResult.QueuedTabCount + normalResult.QueuedTabCount > 0)
+                {
+                    RefreshThumbnailErrorManualOperationUi(
+                        reason: "thumbnail-error-rescue",
+                        selectFirstItem: false
+                    );
+                }
             }
 
             return new ThumbnailErrorBulkRescueResult(

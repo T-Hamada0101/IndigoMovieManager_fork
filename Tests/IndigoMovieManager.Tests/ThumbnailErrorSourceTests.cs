@@ -191,6 +191,47 @@ public sealed class ThumbnailErrorSourceTests
     }
 
     [Test]
+    public void ThumbnailError手動操作後は全体Refreshではなく局所更新に寄せる()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string helperMethod = ExtractMethod(
+            source,
+            "private void RefreshThumbnailErrorManualOperationUi("
+        );
+        string reloadMethod = ExtractMethod(
+            source,
+            "private void ReloadThumbnailErrorListButton_Click("
+        );
+        string clearMethod = ExtractMethod(
+            source,
+            "private async void ClearThumbnailErrorListButton_Click("
+        );
+        string bulkMethod = ExtractMethod(
+            source,
+            "private async Task<ThumbnailErrorBulkRescueResult> RunThumbnailErrorBulkRescueAsync("
+        );
+        string enqueueMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorBulkRescueResult EnqueueThumbnailErrorRecordsToRescue("
+        );
+
+        Assert.That(helperMethod, Does.Contain("RefreshThumbnailErrorRecords(force: true);"));
+        Assert.That(helperMethod, Does.Contain("RequestUpperTabVisibleRangeRefresh("));
+        Assert.That(helperMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+        Assert.That(helperMethod, Does.Not.Match("(?m)^\\s*Refresh\\(\\);"));
+
+        Assert.That(reloadMethod, Does.Contain("RefreshThumbnailErrorManualOperationUi("));
+        Assert.That(clearMethod, Does.Contain("RefreshThumbnailErrorManualOperationUi("));
+        Assert.That(bulkMethod, Does.Contain("RefreshThumbnailErrorManualOperationUi("));
+        Assert.That(reloadMethod, Does.Not.Match("(?m)^\\s*Refresh\\(\\);"));
+        Assert.That(clearMethod, Does.Not.Match("(?m)^\\s*Refresh\\(\\);"));
+        Assert.That(bulkMethod, Does.Not.Match("(?m)^\\s*Refresh\\(\\);"));
+
+        Assert.That(enqueueMethod, Does.Contain("Interlocked.Exchange(ref _thumbnailErrorRecordsDirty, 1);"));
+        Assert.That(enqueueMethod, Does.Not.Contain("RefreshThumbnailErrorRecords(force: true);"));
+    }
+
+    [Test]
     public void DisplayError救済のFailureDb履歴読み取りはtabErrorPlaceholderだけに限定する()
     {
         string rescueLaneSource = GetRepoText("Thumbnail", "MainWindow.ThumbnailRescueLane.cs");
