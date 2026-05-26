@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.IO;
+using System.Threading.Tasks;
 using IndigoMovieManager.Converter;
 using System.Windows;
 using System.Windows.Data;
@@ -58,7 +59,7 @@ namespace IndigoMovieManager.UserControls
         // キャッシュ無効化は呼び出し元で NoLockImageConverter.InvalidateFilePath を先に実行済み。
         private void RefreshDetailThumbnailImage()
         {
-            Dispatcher.BeginInvoke(
+            _ = Dispatcher.BeginInvoke(
                 new Action(() =>
                 {
                     // GetBindingExpression は MultiBinding に null を返すため、
@@ -363,7 +364,7 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
-        private void DetailThumbnailFileWatcher_Changed(object sender, FileSystemEventArgs e)
+        private async void DetailThumbnailFileWatcher_Changed(object sender, FileSystemEventArgs e)
         {
             if (!string.Equals(
                 ResolveWatchedDetailThumbnailPath(e.FullPath),
@@ -374,20 +375,35 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            Dispatcher.BeginInvoke(
+            string watchedPathSnapshot = _watchedDetailThumbnailPath;
+            MovieRecords subscribedRecordSnapshot = _subscribedRecord;
+            if (subscribedRecordSnapshot == null || string.IsNullOrWhiteSpace(watchedPathSnapshot))
+            {
+                return;
+            }
+
+            // ファイル生成直後の存在確認は背景へ逃がし、UI は画像差し替えだけを受け持つ。
+            if (!await PathExistsInBackgroundAsync(watchedPathSnapshot))
+            {
+                return;
+            }
+
+            _ = Dispatcher.BeginInvoke(
                 new Action(() =>
                 {
-                    if (_subscribedRecord == null || string.IsNullOrWhiteSpace(_watchedDetailThumbnailPath))
+                    if (
+                        !ReferenceEquals(_subscribedRecord, subscribedRecordSnapshot)
+                        || !string.Equals(
+                            _watchedDetailThumbnailPath,
+                            watchedPathSnapshot,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
                     {
                         return;
                     }
 
-                    if (!Path.Exists(_watchedDetailThumbnailPath))
-                    {
-                        return;
-                    }
-
-                    NoLockImageConverter.InvalidateFilePath(_watchedDetailThumbnailPath);
+                    NoLockImageConverter.InvalidateFilePath(watchedPathSnapshot);
                     RefreshDetailThumbnailImage();
                     StopDetailThumbnailFileWatcher();
                 }),
@@ -433,18 +449,33 @@ namespace IndigoMovieManager.UserControls
             RefreshDetailThumbnailImage();
         }
 
-        private void Hyperlink_Click(object sender, RoutedEventArgs e)
+        private async void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
             // 親フォルダ上で対象ファイルを選択状態で開く。
             var item = sender as Hyperlink;
             if (item != null)
             {
                 MovieRecords mv = item.DataContext as MovieRecords;
-                if (mv != null && Path.Exists(mv.Movie_Path))
+                if (mv != null)
                 {
-                    Process.Start("explorer.exe", $"/select,{mv.Movie_Path}");
+                    string moviePath = mv.Movie_Path;
+                    // クリック直後はパスの snapshot だけ取り、存在確認は UI スレッドから外す。
+                    if (await PathExistsInBackgroundAsync(moviePath))
+                    {
+                        Process.Start("explorer.exe", $"/select,{moviePath}");
+                    }
                 }
             }
+        }
+
+        private static Task<bool> PathExistsInBackgroundAsync(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return Task.FromResult(false);
+            }
+
+            return Task.Run(() => Path.Exists(path));
         }
 
         private async void FileNameLink_Click(object sender, RoutedEventArgs e)

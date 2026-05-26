@@ -5,6 +5,7 @@
 変更概要:
 - 2026-05-26 のサブ5.5追加で、メニューの「親フォルダを開く」に残っていた `Path.Exists(mv.Movie_Path)` / `Path.Exists(mv.Dir)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、ネットワークパス確認中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、Log タブ preview 更新に残っていた `File.Exists` / `File.GetLastWriteTimeUtc` / 末尾 preview 読みを `Task.Run` helper へ逃がし、後着 request id guard で古い preview が最新表示を上書きしないようにした。
+- 2026-05-26 のサブ5.5追加で、ExtDetail の explorer 選択リンクと詳細サムネ watcher 後段に残っていた `Path.Exists(...)` を snapshot 後の `Task.Run` helper へ寄せ、クリックや watcher 反映時に UI スレッドでファイル存在確認を掘らない形へ寄せた。
 - 2026-05-26 のサブ5.5追加で、詳細サムネ表示モード切替と Log タブ debug カテゴリ切替に残っていた `Properties.Settings.Default.Save()` 直呼びを `QueueApplicationSettingsSave(...)` へ寄せ、UI 操作中の設定ファイル I/O を共通の背景保存キューへ逃がした。
 - 2026-05-26 のサブ5.5追加で、Thumbnail 成功後の main tab 後段 `FilterAndSort(sortId, true)` を廃止し、失敗キャッシュ無効化、上側タブ visible refresh、preferred key revision、下部 ERROR/進捗 snapshot 予約へ寄せた。サムネERROR順だけは順序が変わるため、DB 再読込ではなく現在一覧の `SortDataAsync("28")` に限定する。
 - 2026-05-26 のサブ5.5追加で、Player 通常再生入口の `Path.Exists(mv.Movie_Path)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、存在確認中も UI スレッドの入力/描画を塞ぎにくくした。
