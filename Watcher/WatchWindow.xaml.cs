@@ -6,7 +6,9 @@ using System.ComponentModel;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace IndigoMovieManager
 {
@@ -22,6 +24,7 @@ namespace IndigoMovieManager
         private readonly string _dbFullPath;
         private readonly string[] _initialDroppedPaths;
         private bool _initialDropApplied;
+        private int _dropApplyRevision;
 
         // 監視フォルダ編集画面の初期化。
         // DBのwatch設定を読み込み、ViewModelへバインドする。
@@ -38,7 +41,7 @@ namespace IndigoMovieManager
             _initialDroppedPaths = initialDroppedPaths?.ToArray() ?? [];
         }
 
-        private void WatchWindow_Loaded(object sender, RoutedEventArgs e)
+        private async void WatchWindow_Loaded(object sender, RoutedEventArgs e)
         {
             // メイン画面から渡された初期ドロップ候補は、画面表示後に1回だけ流し込む。
             if (_initialDropApplied || _initialDroppedPaths.Length == 0)
@@ -47,7 +50,7 @@ namespace IndigoMovieManager
             }
 
             _initialDropApplied = true;
-            ApplyDroppedDirectories(_initialDroppedPaths, showSummary: true);
+            await ApplyDroppedDirectoriesAsync(_initialDroppedPaths, showSummary: true);
         }
 
         private void WatchWindowClosing(object sender, CancelEventArgs e)
@@ -127,12 +130,12 @@ namespace IndigoMovieManager
             e.Handled = true;
         }
 
-        private void WatchWindow_Drop(object sender, DragEventArgs e)
+        private async void WatchWindow_Drop(object sender, DragEventArgs e)
         {
             // 既存登録と重複しないフォルダだけ、新規監視フォルダとして末尾へ追加する。
             string[] droppedPaths = GetDroppedPaths(e.Data);
-            ApplyDroppedDirectories(droppedPaths, showSummary: true);
             e.Handled = true;
+            await ApplyDroppedDirectoriesAsync(droppedPaths, showSummary: true);
         }
 
         // Explorer から渡されるファイルドロップ配列を安全に取り出す。
@@ -147,15 +150,71 @@ namespace IndigoMovieManager
         }
 
         // メイン画面経由でも本画面への直接ドロップでも、同じ登録ロジックへ寄せる。
-        private void ApplyDroppedDirectories(
+        private async Task ApplyDroppedDirectoriesAsync(
             IEnumerable<string> droppedPaths,
             bool showSummary
         )
         {
-            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.Build(
-                droppedPaths,
-                WatchVM.WatchRecs.Select(item => item.Dir)
-            );
+            string[] droppedPathSnapshot = [.. droppedPaths ?? []];
+            string[] existingDirectorySnapshot = [.. WatchVM.WatchRecs.Select(item => item.Dir)];
+            int applyRevision = ++_dropApplyRevision;
+            WatchFolderDropResult result;
+            try
+            {
+                result = await Task.Run(
+                        () =>
+                            WatchFolderDropRegistrationPolicy.BuildAfterDropExistenceCheck(
+                                droppedPathSnapshot,
+                                existingDirectorySnapshot
+                            )
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-drop",
+                    $"watch window drop failed: err='{ex.GetBaseException().Message}'"
+                );
+                return;
+            }
+
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                await Dispatcher.InvokeAsync(
+                    () => ApplyDroppedDirectoriesOnUi(result, showSummary, applyRevision),
+                    DispatcherPriority.Background
+                )
+                .Task;
+            }
+            catch (InvalidOperationException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+            catch (TaskCanceledException) when (
+                Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished
+            )
+            {
+            }
+        }
+
+        // 背景の存在確認が戻った後、最新要求だけをUIへ反映する。
+        private void ApplyDroppedDirectoriesOnUi(
+            WatchFolderDropResult result,
+            bool showSummary,
+            int applyRevision
+        )
+        {
+            if (applyRevision != _dropApplyRevision)
+            {
+                return;
+            }
 
             foreach (string directoryPath in result.DirectoriesToAdd)
             {

@@ -11,11 +11,19 @@ namespace IndigoMovieManager
         // ドロップされたパスの中に、登録可能なフォルダが1件でも含まれるかを返す。
         internal static bool CanAccept(IEnumerable<string> droppedPaths)
         {
-            return Build(droppedPaths, Array.Empty<string>()).DirectoriesToAdd.Count > 0;
+            foreach (string droppedPath in droppedPaths ?? Array.Empty<string>())
+            {
+                if (HasPotentialDirectoryDropPath(droppedPath))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        // 既存登録と照合しながら、追加対象とスキップ件数をまとめる。
-        internal static WatchFolderDropResult Build(
+        // Drop確定後の背景処理専用。ここだけ実在確認を行い、UIイベントをI/O待ちへ巻き込まない。
+        internal static WatchFolderDropResult BuildAfterDropExistenceCheck(
             IEnumerable<string> droppedPaths,
             IEnumerable<string> existingDirectories
         )
@@ -53,6 +61,15 @@ namespace IndigoMovieManager
             }
 
             return new WatchFolderDropResult(directoriesToAdd, duplicateCount, invalidCount);
+        }
+
+        // DragOverでは文字列としてフォルダ候補かだけを見る。
+        // 実在確認はDrop確定後の背景処理へ送る。
+        private static bool HasPotentialDirectoryDropPath(string droppedPath)
+        {
+            string normalizedDroppedDirectory = NormalizeDirectoryPath(droppedPath);
+            return !string.IsNullOrEmpty(normalizedDroppedDirectory)
+                && string.IsNullOrWhiteSpace(Path.GetExtension(normalizedDroppedDirectory));
         }
 
         // 比較用にパス表記を正規化し、壊れた入力は空扱いへ落とす。

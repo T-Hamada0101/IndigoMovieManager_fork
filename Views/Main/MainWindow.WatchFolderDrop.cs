@@ -66,7 +66,7 @@ namespace IndigoMovieManager
 
                 if (string.IsNullOrWhiteSpace(droppedMainDbPath))
                 {
-                    if (!WatchFolderDropRegistrationPolicy.CanAccept(droppedPaths))
+                    if (!HasPotentialWatchFolderDropPath(droppedPaths))
                     {
                         return;
                     }
@@ -80,7 +80,7 @@ namespace IndigoMovieManager
                 }
             }
 
-            if (!WatchFolderDropRegistrationPolicy.CanAccept(droppedPaths))
+            if (!HasPotentialWatchFolderDropPath(droppedPaths))
             {
                 return;
             }
@@ -405,7 +405,7 @@ namespace IndigoMovieManager
             const string watchTableSql = "SELECT * FROM watch";
             DataTable currentWatchData = SQLite.GetData(dbFullPath, watchTableSql);
             WatchTableRowNormalizer.Normalize(currentWatchData);
-            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.Build(
+            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.BuildAfterDropExistenceCheck(
                 droppedPaths,
                 EnumerateWatchDirectories(currentWatchData)
             );

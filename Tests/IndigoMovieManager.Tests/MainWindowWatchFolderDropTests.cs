@@ -225,6 +225,44 @@ public sealed class MainWindowWatchFolderDropTests
         Assert.That(dropMethod, Does.Contain("CanContinueDroppedMainDbSwitch("));
     }
 
+    [Test]
+    public void WatchWindowDrop_フォルダ存在確認はDragOverからDrop背景処理へ分離されている()
+    {
+        string watchWindowSource = GetRepoText("Watcher", "WatchWindow.xaml.cs");
+        string policySource = GetRepoText("Watcher", "WatchFolderDropRegistrationPolicy.cs");
+        string dragOverMethod = GetMethodBlock(
+            watchWindowSource,
+            "private void WatchWindow_PreviewDragOver("
+        );
+        string dropMethod = GetMethodBlock(watchWindowSource, "private async void WatchWindow_Drop(");
+        string applyAsyncMethod = GetMethodBlock(
+            watchWindowSource,
+            "private async Task ApplyDroppedDirectoriesAsync("
+        );
+        string applyUiMethod = GetMethodBlock(
+            watchWindowSource,
+            "private void ApplyDroppedDirectoriesOnUi("
+        );
+        string canAcceptMethod = GetMethodBlock(
+            policySource,
+            "internal static bool CanAccept("
+        );
+        string existsCheckMethod = GetMethodBlock(
+            policySource,
+            "internal static WatchFolderDropResult BuildAfterDropExistenceCheck("
+        );
+
+        Assert.That(dragOverMethod, Does.Contain("WatchFolderDropRegistrationPolicy.CanAccept("));
+        Assert.That(dragOverMethod, Does.Not.Contain("BuildAfterDropExistenceCheck("));
+        Assert.That(dropMethod, Does.Contain("await ApplyDroppedDirectoriesAsync("));
+        Assert.That(applyAsyncMethod, Does.Contain("Task.Run("));
+        Assert.That(applyAsyncMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(applyAsyncMethod, Does.Contain("DispatcherPriority.Background"));
+        Assert.That(applyUiMethod, Does.Contain("applyRevision != _dropApplyRevision"));
+        Assert.That(canAcceptMethod, Does.Not.Contain("Directory.Exists("));
+        Assert.That(existsCheckMethod, Does.Contain("Directory.Exists("));
+    }
+
     private static string CreateTempDirectory()
     {
         string path = Path.Combine(

@@ -16,7 +16,7 @@ public sealed class WatchFolderDropRegistrationPolicyTests
             string existingDirectory = Directory.CreateDirectory(Path.Combine(tempRoot, "existing")).FullName;
             string newDirectory = Directory.CreateDirectory(Path.Combine(tempRoot, "new")).FullName;
 
-            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.Build(
+            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.BuildAfterDropExistenceCheck(
                 [newDirectory],
                 [existingDirectory]
             );
@@ -42,7 +42,7 @@ public sealed class WatchFolderDropRegistrationPolicyTests
             string filePath = Path.Combine(tempRoot, "sample.txt");
             File.WriteAllText(filePath, "sample");
 
-            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.Build(
+            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.BuildAfterDropExistenceCheck(
                 [existingDirectory, filePath, existingDirectory],
                 [existingDirectory]
             );
@@ -69,7 +69,7 @@ public sealed class WatchFolderDropRegistrationPolicyTests
             ).FullName;
             string duplicatedDirectory = existingDirectory.ToUpperInvariant();
 
-            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.Build(
+            WatchFolderDropResult result = WatchFolderDropRegistrationPolicy.BuildAfterDropExistenceCheck(
                 [duplicatedDirectory],
                 [existingDirectory]
             );
@@ -103,6 +103,33 @@ public sealed class WatchFolderDropRegistrationPolicyTests
         {
             Directory.Delete(tempRoot, recursive: true);
         }
+    }
+
+    [Test]
+    public void CanAccept_存在確認なしでフォルダ候補を受け付ける()
+    {
+        string tempRoot = CreateTempDirectory();
+
+        try
+        {
+            string missingDirectoryPath = Path.Combine(tempRoot, "network-like-drop");
+
+            bool result = WatchFolderDropRegistrationPolicy.CanAccept([missingDirectoryPath]);
+
+            Assert.That(result, Is.True);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public void CanAccept_拡張子付きファイル候補だけなら受け付けない()
+    {
+        bool result = WatchFolderDropRegistrationPolicy.CanAccept([@"C:\movie\sample.txt"]);
+
+        Assert.That(result, Is.False);
     }
 
     [Test]
