@@ -816,7 +816,10 @@ namespace IndigoMovieManager
                     "skin-webview",
                     $"host prepare begin: request={requestTraceId} skin='{requestedSkinName}' reason={reason}"
                 );
-                if (string.IsNullOrWhiteSpace(definition.HtmlPath) || !File.Exists(definition.HtmlPath))
+                string userDataFolder = ResolveExternalSkinUserDataFolder();
+                ExternalSkinHostFilePreparationResult filePreparation =
+                    await PrepareExternalSkinHostFileSystemAsync(definition.HtmlPath, userDataFolder);
+                if (!filePreparation.HtmlExists)
                 {
                     DebugRuntimeLog.RecordSkinNavigateSkipped();
                     DebugRuntimeLog.Write(
@@ -829,16 +832,29 @@ namespace IndigoMovieManager
                     );
                 }
 
+                if (
+                    TrySkipStaleExternalSkinRefresh(
+                        generation,
+                        reason,
+                        requestTraceId,
+                        "prepare-before-navigate"
+                    )
+                )
+                {
+                    return WhiteBrowserSkinHostOperationResult.CreateSkipped(
+                        ResolveRequestedSkinName(definition),
+                        "Refresh became stale before navigate."
+                    );
+                }
+
                 string skinRootPath = ResolveExternalSkinRootPath();
                 string thumbRootPath = MainVM?.DbInfo?.ThumbFolder ?? "";
-                string userDataFolder = ResolveExternalSkinUserDataFolder();
-                Directory.CreateDirectory(userDataFolder);
 
                 DebugRuntimeLog.RecordSkinNavigateAttempted();
                 navigateAttempted = true;
                 WhiteBrowserSkinHostOperationResult navigateResult = await hostControl.TryNavigateAsync(
                     requestedSkinName,
-                    userDataFolder,
+                    filePreparation.UserDataFolder,
                     skinRootPath,
                     definition.HtmlPath,
                     thumbRootPath
@@ -874,6 +890,32 @@ namespace IndigoMovieManager
                 );
             }
         }
+
+        private static Task<ExternalSkinHostFilePreparationResult> PrepareExternalSkinHostFileSystemAsync(
+            string htmlPath,
+            string userDataFolder
+        )
+        {
+            return Task.Run(
+                () =>
+                {
+                    // HTML確認とWebView2用フォルダ作成は、遅い媒体でもUI継続を止めないよう背景側で済ませる。
+                    bool htmlExists =
+                        !string.IsNullOrWhiteSpace(htmlPath) && File.Exists(htmlPath);
+                    if (htmlExists)
+                    {
+                        Directory.CreateDirectory(userDataFolder);
+                    }
+
+                    return new ExternalSkinHostFilePreparationResult(htmlExists, userDataFolder);
+                }
+            );
+        }
+
+        private readonly record struct ExternalSkinHostFilePreparationResult(
+            bool HtmlExists,
+            string UserDataFolder
+        );
 
         private WhiteBrowserSkinHostOperationResult EvaluateExternalSkinHostOperationResult(
             WhiteBrowserSkinHostOperationResult operationResult,

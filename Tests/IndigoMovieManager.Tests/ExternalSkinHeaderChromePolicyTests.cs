@@ -292,6 +292,59 @@ public sealed class ExternalSkinHeaderChromePolicyTests
         });
     }
 
+    [Test]
+    public void 外部skin_host_prepareとfallback_logは軽いファイルIOを背景helperへ逃がす()
+    {
+        string refreshSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string chromeSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Chrome.cs");
+        string prepareMethod = GetMethodBlock(
+            refreshSource,
+            "private async Task<WhiteBrowserSkinHostOperationResult> TryPrepareExternalSkinHostAsync("
+        );
+        string prepareIoHelper = GetMethodBlock(
+            refreshSource,
+            "private static Task<ExternalSkinHostFilePreparationResult> PrepareExternalSkinHostFileSystemAsync("
+        );
+        string openLogMethod = GetMethodBlock(
+            chromeSource,
+            "private async void ExternalSkinFallbackOpenLogButton_Click("
+        );
+        string openLogHelper = GetMethodBlock(
+            chromeSource,
+            "private static Task<ExternalSkinFallbackLogExplorerTarget> ResolveExternalSkinFallbackLogExplorerTargetAsync("
+        );
+        int prepareBeforeIoGuardIndex = prepareMethod.IndexOf(
+            "\"prepare-before-navigate\"",
+            StringComparison.Ordinal
+        );
+        int prepareIoIndex = prepareMethod.IndexOf(
+            "await PrepareExternalSkinHostFileSystemAsync(",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(prepareMethod, Does.Contain("await PrepareExternalSkinHostFileSystemAsync("));
+            Assert.That(prepareMethod, Does.Not.Contain("File.Exists("));
+            Assert.That(prepareMethod, Does.Not.Contain("Directory.CreateDirectory("));
+            Assert.That(prepareMethod, Does.Contain("\"prepare-before-navigate\""));
+            Assert.That(prepareBeforeIoGuardIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(prepareIoIndex, Is.GreaterThan(prepareBeforeIoGuardIndex));
+            Assert.That(prepareIoHelper, Does.Contain("Task.Run("));
+            Assert.That(prepareIoHelper, Does.Contain("File.Exists(htmlPath)"));
+            Assert.That(prepareIoHelper, Does.Contain("Directory.CreateDirectory(userDataFolder)"));
+
+            Assert.That(openLogMethod, Does.Contain("await ResolveExternalSkinFallbackLogExplorerTargetAsync("));
+            Assert.That(openLogMethod, Does.Contain("Process.Start(\"explorer.exe\", explorerTarget.Arguments);"));
+            Assert.That(openLogMethod, Does.Not.Contain("File.Exists("));
+            Assert.That(openLogMethod, Does.Not.Contain("Directory.Exists("));
+            Assert.That(openLogHelper, Does.Contain("Task.Run("));
+            Assert.That(openLogHelper, Does.Contain("File.Exists(logPath)"));
+            Assert.That(openLogHelper, Does.Contain("Directory.Exists(targetDirectory)"));
+            Assert.That(openLogHelper, Does.Not.Contain("Process.Start("));
+        });
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);

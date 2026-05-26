@@ -1,8 +1,9 @@
 # Implementation Plan: skin切り替え高速化 DB保存分離先行 2026-04-13
 
-最終更新日: 2026-05-26
+最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 に外部 skin host prepare の HTML 存在確認と WebView2 userDataFolder 作成を背景 helper へ逃がし、戻った後の stale guard と navigate / WebView2 操作の UI 側責務を維持した。fallback log ボタンも Explorer 引数判定だけを背景化し、Explorer 起動は UI 側に残した
 - 2026-05-26 に `refresh end` を早期 stale / teardown skip でも必ず出す形へ寄せ、`catalog_*` / `persist_*` / `navigate_*` / `refresh_*_skipped` を zero 込みの同一 payload で読めるようにした。これにより cached catalog / minimal chrome reload / explicit reload / fallback retry の区別を保ったまま、完了判定を 1 行で閉じやすくした
 - 全体プラン見直しを受けて、`skin` 切り替え高速化の中で DB を「先頭の決定打」ではなく「第2群の土台施策」として位置づけ直した
 - `refresh` 起点一本化、stale 判定前倒し、catalog 再走査削減を DB より先に進める順序へ組み替えた

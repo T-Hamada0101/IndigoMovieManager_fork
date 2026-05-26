@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using IndigoMovieManager.Skin;
@@ -256,7 +257,7 @@ namespace IndigoMovieManager
             }
         }
 
-        private void ExternalSkinFallbackOpenLogButton_Click(object sender, RoutedEventArgs e)
+        private async void ExternalSkinFallbackOpenLogButton_Click(object sender, RoutedEventArgs e)
         {
             string logPath = ResolveExternalSkinFallbackLogPath();
 
@@ -268,16 +269,11 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                string targetDirectory = Path.GetDirectoryName(logPath) ?? "";
-                if (File.Exists(logPath))
+                ExternalSkinFallbackLogExplorerTarget explorerTarget =
+                    await ResolveExternalSkinFallbackLogExplorerTargetAsync(logPath);
+                if (explorerTarget.HasTarget)
                 {
-                    Process.Start("explorer.exe", $"/select,{logPath}");
-                    return;
-                }
-
-                if (Directory.Exists(targetDirectory))
-                {
-                    Process.Start("explorer.exe", targetDirectory);
+                    Process.Start("explorer.exe", explorerTarget.Arguments);
                 }
             }
             catch (Exception ex)
@@ -288,6 +284,35 @@ namespace IndigoMovieManager
                 );
             }
         }
+
+        private static Task<ExternalSkinFallbackLogExplorerTarget> ResolveExternalSkinFallbackLogExplorerTargetAsync(
+            string logPath
+        )
+        {
+            return Task.Run(
+                () =>
+                {
+                    // Explorer起動はUI側に残し、存在確認だけを背景へ逃がす。
+                    if (File.Exists(logPath))
+                    {
+                        return new ExternalSkinFallbackLogExplorerTarget($"/select,{logPath}", true);
+                    }
+
+                    string targetDirectory = Path.GetDirectoryName(logPath) ?? "";
+                    if (Directory.Exists(targetDirectory))
+                    {
+                        return new ExternalSkinFallbackLogExplorerTarget(targetDirectory, true);
+                    }
+
+                    return new ExternalSkinFallbackLogExplorerTarget("", false);
+                }
+            );
+        }
+
+        private readonly record struct ExternalSkinFallbackLogExplorerTarget(
+            string Arguments,
+            bool HasTarget
+        );
 
         private void ExternalSkinFallbackOpenRuntimeDownloadButton_Click(
             object sender,
