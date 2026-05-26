@@ -3,6 +3,7 @@
 最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 のサブ5.5追加で、メニューの「親フォルダを開く」に残っていた `Path.Exists(mv.Movie_Path)` / `Path.Exists(mv.Dir)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、ネットワークパス確認中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、詳細サムネ表示モード切替と Log タブ debug カテゴリ切替に残っていた `Properties.Settings.Default.Save()` 直呼びを `QueueApplicationSettingsSave(...)` へ寄せ、UI 操作中の設定ファイル I/O を共通の背景保存キューへ逃がした。
 - 2026-05-26 のサブ5.5追加で、Thumbnail 成功後の main tab 後段 `FilterAndSort(sortId, true)` を廃止し、失敗キャッシュ無効化、上側タブ visible refresh、preferred key revision、下部 ERROR/進捗 snapshot 予約へ寄せた。サムネERROR順だけは順序が変わるため、DB 再読込ではなく現在一覧の `SortDataAsync("28")` に限定する。
 - 2026-05-26 のサブ5.5追加で、Player 通常再生入口の `Path.Exists(mv.Movie_Path)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、存在確認中も UI スレッドの入力/描画を塞ぎにくくした。
@@ -437,6 +438,7 @@
 - タグメニュー、下部タグ編集タブ、タグチップ削除も、UI 側ではタグ表示更新だけ先に行い、DB 書き込みは背景へ逃がす。
 - ファイル移動後の `movie_path` 保存も、表示反映後の背景 DB 書き込みへ寄せる。
 - ファイルコピーは、UI 側でコピー元/先を snapshot してファイル I/O を背景へ逃がす。
+- 親フォルダを開く操作は、UI 側で動画パスと親フォルダだけ snapshot し、存在確認を背景へ逃がしてから Explorer 起動だけ UI へ戻す。
 - ファイルリネームは、watcher 抑止と復旧を `try/finally` で固定してから重い後続処理を薄くする。
 - サムネイルのみ削除は、UI 側で対象とパスを snapshot してファイル削除を背景へ逃がす。
 - Bookmark ラベル再生の FPS 取得も背景化し、再生位置計算中に UI スレッドを掴まないようにする。

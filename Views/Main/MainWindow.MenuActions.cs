@@ -454,13 +454,47 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (Path.Exists(mv.Movie_Path))
+            QueueOpenParentFolderExplorer(mv.Movie_Path, mv.Dir);
+        }
+
+        // ネットワークパス確認でクリック直後のUIを止めないよう、選択パスだけ固めて背景へ渡す。
+        private void QueueOpenParentFolderExplorer(string moviePath, string dir)
+        {
+            if (string.IsNullOrWhiteSpace(moviePath))
             {
-                if (Path.Exists(mv.Dir))
-                {
-                    Process.Start("explorer.exe", $"/select,{mv.Movie_Path}");
-                }
+                return;
             }
+
+            string moviePathSnapshot = moviePath;
+            string dirSnapshot = dir ?? "";
+            _ = Task.Run(
+                () =>
+                {
+                    bool canOpen = false;
+                    try
+                    {
+                        // 実ファイルと親フォルダの存在確認は遅い媒体ほど詰まりやすいので背景で見る。
+                        canOpen = Path.Exists(moviePathSnapshot) && Path.Exists(dirSnapshot);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugRuntimeLog.Write(
+                            "ui-tempo",
+                            $"open parent folder check failed: path='{moviePathSnapshot}' dir='{dirSnapshot}' err='{ex.GetType().Name}'"
+                        );
+                    }
+
+                    if (!canOpen)
+                    {
+                        return;
+                    }
+
+                    _ = Dispatcher.InvokeAsync(() =>
+                    {
+                        Process.Start("explorer.exe", $"/select,{moviePathSnapshot}");
+                    });
+                }
+            );
         }
 
         /// <summary>

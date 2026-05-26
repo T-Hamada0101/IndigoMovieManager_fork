@@ -55,6 +55,22 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void 親フォルダを開く存在確認は背景へ逃がす()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string clickMethod = GetMethodBlock(source, "private void OpenParentFolder_Click(");
+        string queueMethod = GetMethodBlock(source, "private void QueueOpenParentFolderExplorer(");
+
+        Assert.That(clickMethod, Does.Contain("QueueOpenParentFolderExplorer(mv.Movie_Path, mv.Dir);"));
+        Assert.That(clickMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(queueMethod, Does.Contain("Task.Run("));
+        Assert.That(queueMethod, Does.Contain("Path.Exists(moviePathSnapshot)"));
+        Assert.That(queueMethod, Does.Contain("Path.Exists(dirSnapshot)"));
+        Assert.That(queueMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(queueMethod, Does.Contain("Process.Start(\"explorer.exe\""));
+    }
+
+    [Test]
     public void RenameFile_watcher抑止はfinallyで復旧する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
