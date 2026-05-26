@@ -2928,22 +2928,62 @@ namespace IndigoMovieManager
 
         /// <summary>
         /// DBから拾った無骨なレコード1件を、キラキラな表示用（MovieRecords）へ変換する。
-        /// 単発追加では従来どおり実ファイル確認も行い、起動時全件変換だけは別の高速経路へ逃がす。
+        /// 単発追加でもファイル存在確認は背景へ逃がし、UIは表示反映だけに集中する。
         /// </summary>
-        private void DataRowToViewData(DataRow row)
+        private async Task DataRowToViewData(DataRow row, string expectedDbFullPath = "")
         {
-            MovieRecords item = CreateMovieRecordFromDataRow(row);
+            if (row == null)
+            {
+                return;
+            }
+
+            MovieRecordBulkBuildContext bulkContext = Dispatcher.CheckAccess()
+                ? CaptureMovieRecordBulkBuildContext()
+                : await Dispatcher
+                    .InvokeAsync(CaptureMovieRecordBulkBuildContext, DispatcherPriority.Background)
+                    .Task.ConfigureAwait(false);
+
+            MovieRecords item = await Task.Run(() =>
+            {
+                MovieRecordBulkBuildCache bulkCache = BuildMovieRecordBulkBuildCache(bulkContext);
+                return CreateMovieRecordFromDataRow(
+                    row,
+                    bulkContext,
+                    bulkCache,
+                    resolveMovieExists: false
+                );
+            }).ConfigureAwait(false);
             if (item == null)
             {
                 return;
             }
 
-            MainVM.MovieRecs.Add(item);
+            await Dispatcher
+                .InvokeAsync(
+                    () =>
+                    {
+                        if (
+                            !string.IsNullOrWhiteSpace(expectedDbFullPath)
+                            && !AreSameMainDbPath(
+                                expectedDbFullPath,
+                                MainVM?.DbInfo?.DBFullPath ?? ""
+                            )
+                        )
+                        {
+                            return;
+                        }
+
+                        MainVM.MovieRecs.Add(item);
+                        QueueMovieExistsRefresh([item], _filterAndSortRequestRevision);
+                    },
+                    DispatcherPriority.Background
+                )
+                .Task.ConfigureAwait(false);
         }
 
         /// <summary>
         /// DataRow 1行を表示用の MovieRecords に変換する。
-        /// 単発追加では実ファイル存在確認あり、起動時全件変換では BulkBuildCache 経由の高速経路を使う。
+        /// 単発追加・起動時全件変換とも、必要に応じて BulkBuildCache 経由の高速経路を使う。
         /// </summary>
         private MovieRecords CreateMovieRecordFromDataRow(
             DataRow row,

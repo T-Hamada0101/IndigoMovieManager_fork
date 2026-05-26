@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5追加で、単発 `DataRowToViewData(...)` の表示用レコード生成を背景 `Task.Run` + `MovieRecordBulkBuildCache` 経路へ寄せ、サムネ候補探索と動画本体 `Path.Exists` を UI スレッドから外した。watch 経由の単発追加は DB snapshot 一致時だけ UI へ反映し、追加後の動画存在状態は `QueueMovieExistsRefresh([item], revision)` で後追い反映する。
 - 2026-05-27 のサブ5.5追加で、Debug タブの現在DB / FailureDB / QueueDB ファイル削除に残っていた `File.Exists` / `File.Delete` を確認後の `Task.Run` helper へ逃がし、削除失敗時の復旧用存在確認と `LastDoc` 保存も UI 同期 I/O から外した。
 - 2026-05-27 のサブ5.5追加で、外部 skin host prepare の HTML 存在確認と WebView2 userDataFolder 作成を `Task.Run` helper へ逃がし、戻った後の stale guard と navigate / WebView2 操作の UI 側責務を維持した。fallback log ボタンも Explorer 引数判定だけを背景化し、`Process.Start` は UI 側に残した。
 - 2026-05-27 のサブ5.5追加で、設定画面の skin selector 初期化 / Activated 更新に残っていた同期 `GetAvailableSkinDefinitions()` を async 一覧取得へ寄せ、catalog load は `Task.Run` 背景実行、UI 反映は revision guard 後に限定した。

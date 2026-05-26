@@ -42,10 +42,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            await Dispatcher.InvokeAsync(
-                () => DataRowToViewData(targetRow),
-                DispatcherPriority.Background
-            );
+            await DataRowToViewData(targetRow, snapshotDbFullPath);
         }
 
         // 現在の画面ソースに載っている動画パスを、走査側で安全に参照できるようスナップショット化する。

@@ -173,6 +173,46 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void DataRowToViewData_単発追加の存在確認は背景bulk経路と後追い更新へ逃がす()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string method = GetMethodBlock(
+            mainWindowSource,
+            "private async Task DataRowToViewData("
+        );
+        string watcherSource = GetRepoText("Watcher", "MainWindow.WatcherUiBridge.cs");
+        string appendMethod = GetMethodBlock(
+            watcherSource,
+            "private async Task TryAppendMovieToViewByPathAsync("
+        );
+        string compactMethod = string.Concat(method.Where(c => !char.IsWhiteSpace(c)));
+
+        Assert.That(method, Does.Contain("string expectedDbFullPath = \"\""));
+        Assert.That(method, Does.Contain("CaptureMovieRecordBulkBuildContext()"));
+        Assert.That(method, Does.Contain("Task.Run(() =>"));
+        Assert.That(method, Does.Contain("BuildMovieRecordBulkBuildCache(bulkContext)"));
+        Assert.That(method, Does.Contain("CreateMovieRecordFromDataRow("));
+        Assert.That(method, Does.Contain("bulkContext"));
+        Assert.That(method, Does.Contain("bulkCache"));
+        Assert.That(method, Does.Contain("resolveMovieExists: false"));
+        Assert.That(method, Does.Contain("!string.IsNullOrWhiteSpace(expectedDbFullPath)"));
+        Assert.That(method, Does.Contain("AreSameMainDbPath("));
+        Assert.That(method, Does.Contain("expectedDbFullPath,"));
+        Assert.That(
+            compactMethod,
+            Does.Contain("AreSameMainDbPath(expectedDbFullPath,MainVM?.DbInfo?.DBFullPath??\"\")")
+        );
+        Assert.That(
+            method.IndexOf("AreSameMainDbPath(", StringComparison.Ordinal),
+            Is.LessThan(method.IndexOf("MainVM.MovieRecs.Add(item);", StringComparison.Ordinal))
+        );
+        Assert.That(method, Does.Contain("QueueMovieExistsRefresh([item], _filterAndSortRequestRevision);"));
+        Assert.That(method, Does.Not.Contain("CreateMovieRecordFromDataRow(row);"));
+        Assert.That(method, Does.Not.Contain("Path.Exists("));
+        Assert.That(appendMethod, Does.Contain("DataRowToViewData(targetRow, snapshotDbFullPath);"));
+    }
+
+    [Test]
     public void SortDataAsync_大件数sortはbackgroundとrevision_guardへ寄せる()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
