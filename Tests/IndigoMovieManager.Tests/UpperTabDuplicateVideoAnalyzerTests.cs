@@ -73,6 +73,32 @@ public sealed class UpperTabDuplicateVideoAnalyzerTests
     }
 
     [Test]
+    public void ApplyUpperTabDuplicateGroups_代表サムネ解決をTaskRunへ逃がす()
+    {
+        string source = GetRepoText(
+            "UpperTabs",
+            "DuplicateVideos",
+            "MainWindow.UpperTabs.DuplicateVideosTab.cs"
+        );
+        string applyMethod = GetMethodBlock(
+            source,
+            "private async Task ApplyUpperTabDuplicateGroupsAsync("
+        );
+        string sortMethod = GetMethodBlock(
+            source,
+            "private async Task ApplyUpperTabDuplicateGroupSortAsync("
+        );
+
+        Assert.That(source, Does.Contain("_upperTabDuplicateGroupRefreshRevision"));
+        Assert.That(applyMethod, Does.Contain("await ApplyUpperTabDuplicateGroupSortAsync("));
+        Assert.That(sortMethod, Does.Contain("Task.Run("));
+        Assert.That(sortMethod, Does.Contain("BuildUpperTabDuplicateGroupItems("));
+        Assert.That(sortMethod, Does.Contain("Volatile.Read(ref _upperTabDuplicateGroupRefreshRevision)"));
+        Assert.That(applyMethod, Does.Not.Contain("File.Exists("));
+        Assert.That(sortMethod, Does.Not.Contain("File.Exists("));
+    }
+
+    [Test]
     public void ApplySelectedUpperTabDuplicateGroupDetails_revisionで後着を破棄する()
     {
         string source = GetRepoText(

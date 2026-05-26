@@ -1,8 +1,9 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-05-26
+最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 のサブ5.5追加で、DuplicateVideos タブのグループ一覧生成時に残っていた代表サムネ `File.Exists` を左ペイン VM 生成ごと `Task.Run` へ逃がし、後着 group revision guard 後に UI へ反映する形にした。
 - 2026-05-26 のサブ5.5追加で、Debug タブのExplorer起動前に残っていた `File.Exists` / `Directory.Exists` を path snapshot 後の `Task.Run` helper へ逃がし、Explorer起動と未存在メッセージだけを revision / shutdown guard 後に UI へ戻す形にした。
 - 2026-05-26 のサブ5.5追加で、Explorer drag/drop の .wb 判定に残っていた `File.Exists` を DragOver から外し、Drop 確定後の `Task.Run` 存在確認と DB 一致/shutdown guard へ分離した。
 - 2026-05-26 のサブ5.5追加で、メニューの「親フォルダを開く」に残っていた `Path.Exists(mv.Movie_Path)` / `Path.Exists(mv.Dir)` を選択パス snapshot 後の `Task.Run` helper へ逃がし、ネットワークパス確認中も UI スレッドの入力/描画を塞ぎにくくした。

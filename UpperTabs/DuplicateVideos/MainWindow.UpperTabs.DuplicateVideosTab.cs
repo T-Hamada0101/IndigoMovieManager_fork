@@ -35,6 +35,7 @@ namespace IndigoMovieManager
         private UpperTabDuplicateGroupSummary[] _upperTabDuplicateDetectedGroups = [];
         private UpperTabDuplicateVideosPresenter _upperTabDuplicateVideosPresenter;
         private int _upperTabDuplicateDetectRunning;
+        private long _upperTabDuplicateGroupRefreshRevision;
         private long _upperTabDuplicateDetailRefreshRevision;
 
         // 重複動画タブのItemsSourceと初期表示を結び、起動直後でも空状態を安定させる。
@@ -154,7 +155,12 @@ namespace IndigoMovieManager
                     () => UpperTabDuplicateVideoAnalyzer.BuildGroupSummaries(records)
                 );
 
-                ApplyUpperTabDuplicateGroups(groups, dbName, thumbFolder, imagesDirectoryPath);
+                await ApplyUpperTabDuplicateGroupsAsync(
+                    groups,
+                    dbName,
+                    thumbFolder,
+                    imagesDirectoryPath
+                );
 
                 DebugRuntimeLog.Write(
                     "upper-tab-duplicate",
@@ -179,12 +185,12 @@ namespace IndigoMovieManager
             List_SelectionChanged(sender, e);
         }
 
-        private void UpperTabDuplicateVideosGroupSortSelectionChanged(
+        private async void UpperTabDuplicateVideosGroupSortSelectionChanged(
             object sender,
             SelectionChangedEventArgs e
         )
         {
-            ApplyUpperTabDuplicateGroupSort();
+            await ApplyUpperTabDuplicateGroupSortAsync();
         }
 
         private void UpperTabDuplicateVideosPlayRequested(object sender, MouseButtonEventArgs e)
@@ -232,7 +238,7 @@ namespace IndigoMovieManager
             }
         }
 
-        private void ApplyUpperTabDuplicateGroups(
+        private async Task ApplyUpperTabDuplicateGroupsAsync(
             IEnumerable<UpperTabDuplicateGroupSummary> groups,
             string dbName,
             string thumbFolder,
@@ -243,7 +249,7 @@ namespace IndigoMovieManager
             _upperTabDuplicateItems.Clear();
 
             string fallbackThumbnailPath = Path.Combine(imagesDirectoryPath, "errorGrid.jpg");
-            ApplyUpperTabDuplicateGroupSort(dbName, thumbFolder, fallbackThumbnailPath);
+            await ApplyUpperTabDuplicateGroupSortAsync(dbName, thumbFolder, fallbackThumbnailPath);
 
             SetUpperTabDuplicateVideosHeaderSummary(_upperTabDuplicateGroups.Count, 0, "-");
 
@@ -254,35 +260,104 @@ namespace IndigoMovieManager
             }
         }
 
-        private void ApplyUpperTabDuplicateGroupSort()
+        private Task ApplyUpperTabDuplicateGroupSortAsync()
         {
-            ApplyUpperTabDuplicateGroupSort(
+            return ApplyUpperTabDuplicateGroupSortAsync(
                 MainVM?.DbInfo?.DBName ?? "",
                 MainVM?.DbInfo?.ThumbFolder ?? "",
                 Path.Combine(AppContext.BaseDirectory, "Images", "errorGrid.jpg")
             );
         }
 
-        private void ApplyUpperTabDuplicateGroupSort(
+        private async Task ApplyUpperTabDuplicateGroupSortAsync(
             string dbName,
             string thumbFolder,
             string fallbackThumbnailPath
         )
         {
+            long requestRevision = Interlocked.Increment(ref _upperTabDuplicateGroupRefreshRevision);
             UpperTabDuplicateGroupViewModel currentSelection = GetSelectedUpperTabDuplicateGroup();
             string selectedHash = currentSelection?.Hash ?? "";
-            _upperTabDuplicateGroups.Clear();
+            UpperTabDuplicateGroupSummary[] detectedGroups = _upperTabDuplicateDetectedGroups;
+            string sortKey =
+                _upperTabDuplicateVideosPresenter?.GetSelectedSortOption()?.SortKey
+                ?? "duplicate-count";
 
-            IEnumerable<UpperTabDuplicateGroupSummary> sortedGroups =
-                SortUpperTabDuplicateGroups(
-                    _upperTabDuplicateDetectedGroups,
-                    _upperTabDuplicateVideosPresenter?.GetSelectedSortOption()?.SortKey
-                        ?? "duplicate-count"
-                );
-
-            foreach (UpperTabDuplicateGroupSummary group in sortedGroups)
+            UpperTabDuplicateGroupViewModel[] sortedGroupItems;
+            try
             {
-                _upperTabDuplicateGroups.Add(
+                // 代表サムネ確認はファイルI/Oを伴うので、左ペインVM生成ごと背景側で済ませる。
+                sortedGroupItems = await Task.Run(
+                    () => BuildUpperTabDuplicateGroupItems(
+                        detectedGroups,
+                        sortKey,
+                        dbName,
+                        thumbFolder,
+                        fallbackThumbnailPath
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "upper-tab-duplicate",
+                    $"group load failed: sort='{sortKey}' message='{ex.Message}'"
+                );
+                sortedGroupItems = [];
+            }
+
+            if (requestRevision != Volatile.Read(ref _upperTabDuplicateGroupRefreshRevision))
+            {
+                return;
+            }
+
+            _upperTabDuplicateGroups.Clear();
+            foreach (UpperTabDuplicateGroupViewModel groupItem in sortedGroupItems)
+            {
+                _upperTabDuplicateGroups.Add(groupItem);
+            }
+
+            if (_upperTabDuplicateGroups.Count < 1)
+            {
+                Interlocked.Increment(ref _upperTabDuplicateDetailRefreshRevision);
+                _upperTabDuplicateItems.Clear();
+                SetUpperTabDuplicateVideosHeaderSummary(0, 0, "-");
+                ApplyUpperTabExtensionDetail(null);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(selectedHash))
+            {
+                UpperTabDuplicateGroupViewModel reselection = _upperTabDuplicateGroups.FirstOrDefault(
+                    x => string.Equals(x.Hash, selectedHash, StringComparison.OrdinalIgnoreCase)
+                );
+                if (reselection != null)
+                {
+                    GetUpperTabDuplicateGroupSelector().SelectedItem = reselection;
+                    return;
+                }
+            }
+
+            GetUpperTabDuplicateGroupSelector().SelectedIndex = 0;
+        }
+
+        private UpperTabDuplicateGroupViewModel[] BuildUpperTabDuplicateGroupItems(
+            IReadOnlyList<UpperTabDuplicateGroupSummary> groups,
+            string sortKey,
+            string dbName,
+            string thumbFolder,
+            string fallbackThumbnailPath
+        )
+        {
+            if (groups == null || groups.Count < 1)
+            {
+                return [];
+            }
+
+            List<UpperTabDuplicateGroupViewModel> result = new(groups.Count);
+            foreach (UpperTabDuplicateGroupSummary group in SortUpperTabDuplicateGroups(groups, sortKey))
+            {
+                result.Add(
                     new UpperTabDuplicateGroupViewModel
                     {
                         Hash = group.Hash,
@@ -311,24 +386,7 @@ namespace IndigoMovieManager
                 );
             }
 
-            if (_upperTabDuplicateGroups.Count < 1)
-            {
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(selectedHash))
-            {
-                UpperTabDuplicateGroupViewModel reselection = _upperTabDuplicateGroups.FirstOrDefault(
-                    x => string.Equals(x.Hash, selectedHash, StringComparison.OrdinalIgnoreCase)
-                );
-                if (reselection != null)
-                {
-                    GetUpperTabDuplicateGroupSelector().SelectedItem = reselection;
-                    return;
-                }
-            }
-
-            GetUpperTabDuplicateGroupSelector().SelectedIndex = 0;
+            return result.ToArray();
         }
 
         private async void ApplySelectedUpperTabDuplicateGroupDetails()
