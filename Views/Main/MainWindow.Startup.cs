@@ -821,7 +821,7 @@ namespace IndigoMovieManager
             ReloadBookmarkTabData();
             // fallback 起動でも通常起動と同じ遅延予約へ合流し、初期表示の置き去りを防ぐ。
             QueueStartupThumbnailProgressSnapshotRefresh();
-            FilterAndSort(sortId, true);
+            RefreshStartupFallbackMovieView(sortId, revision, warmPathTrigger);
             CreateWatcher();
             if (!_startupInputReadyLogged)
             {
@@ -844,6 +844,68 @@ namespace IndigoMovieManager
                 "fallback",
                 $"count={MainVM.FilteredMovieRecs.Count}"
             );
+        }
+
+        private void RefreshStartupFallbackMovieView(
+            string sortId,
+            int revision,
+            string warmPathTrigger
+        )
+        {
+            int sourceCount = MainVM?.MovieRecs?.Count ?? -1;
+            if (ShouldUseStartupFallbackMemoryRefresh(_startupFeedLoadedAllPages, sourceCount))
+            {
+                LogStartupWarmPathMilestone(
+                    "fallback memory-refresh",
+                    revision,
+                    warmPathTrigger,
+                    StartupSourceLegacyFallback,
+                    "fallback",
+                    $"sort={sortId} source_count={sourceCount}"
+                );
+                _ = RefreshStartupFallbackMovieViewFromCurrentSourceAsync(sortId, revision);
+                return;
+            }
+
+            LogStartupWarmPathMilestone(
+                "fallback full-reload",
+                revision,
+                warmPathTrigger,
+                StartupSourceLegacyFallback,
+                "fallback",
+                $"sort={sortId} source_count={sourceCount} source_complete={_startupFeedLoadedAllPages}"
+            );
+            FilterAndSort(sortId, true);
+        }
+
+        internal static bool ShouldUseStartupFallbackMemoryRefresh(
+            bool startupFeedLoadedAllPages,
+            int sourceCount
+        )
+        {
+            return startupFeedLoadedAllPages && sourceCount >= 0;
+        }
+
+        private async Task RefreshStartupFallbackMovieViewFromCurrentSourceAsync(
+            string sortId,
+            int revision
+        )
+        {
+            try
+            {
+                await RefreshMovieViewFromCurrentSourceAsync(
+                    sortId,
+                    "startup-fallback",
+                    UiHangActivityKind.Startup
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"startup fallback memory refresh failed: revision={revision} err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
         }
 
         private void EnsureStartupBackgroundTasksRunning(string trigger)

@@ -2558,6 +2558,7 @@ namespace IndigoMovieManager
                     sorted,
                     searchCount,
                     resolvedSortId,
+                    resolvedTraceName,
                     out applyResult
                 );
             }
@@ -2571,6 +2572,7 @@ namespace IndigoMovieManager
                             sorted,
                             searchCount,
                             resolvedSortId,
+                            resolvedTraceName,
                             out applyResult
                         );
                     },
@@ -2601,6 +2603,7 @@ namespace IndigoMovieManager
             IReadOnlyList<MovieRecords> sortedMovies,
             int searchCount,
             string resolvedSortId,
+            string visibleRefreshReason,
             out FilteredMovieRecsUpdateResult applyResult
         )
         {
@@ -2638,7 +2641,12 @@ namespace IndigoMovieManager
             if (applyResult.HasChanges)
             {
                 NotifyUpperTabViewportSourceChanged();
-                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "rename");
+                RequestUpperTabVisibleRangeRefresh(
+                    immediate: true,
+                    reason: string.IsNullOrWhiteSpace(visibleRefreshReason)
+                        ? "memory-refresh"
+                        : visibleRefreshReason
+                );
             }
 
             if (string.Equals(resolvedSortId, "28", StringComparison.Ordinal))

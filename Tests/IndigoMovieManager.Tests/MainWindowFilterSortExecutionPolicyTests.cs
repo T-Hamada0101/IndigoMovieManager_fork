@@ -202,6 +202,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(method, Does.Contain("Task.Run("));
         Assert.That(method, Does.Contain("MainVM.FilterMovies("));
         Assert.That(method, Does.Contain("refreshCancellationToken,"));
+        Assert.That(method, Does.Contain("resolvedTraceName"));
         Assert.That(
             method,
             Does.Contain(

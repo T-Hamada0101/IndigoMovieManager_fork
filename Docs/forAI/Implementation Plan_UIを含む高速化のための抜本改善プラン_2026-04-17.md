@@ -3,6 +3,7 @@
 最終更新日: 2026-05-27
 
 変更概要:
+- 2026-05-27 の James / Worker A で、`Views/Main/MainWindow.Startup.cs` の startup fallback に残る `FilterAndSort(sortId, true)` を調査し、DB初期読込前・部分feed中は source 欠落の危険があるため full reload 復旧を残した。そのうえで startup feed が全件を `MovieRecs` へ載せ終えた後の fallback だけは `RefreshMovieViewFromCurrentSourceAsync(..., "startup-fallback", Startup)` へ逃がし、DB再読込なしの既存 in-memory refresh / visible refresh 経路へ合流させた。
 - 2026-05-27 のサブ5.5 Worker A で、Thumbnail ERROR snapshot 要求が下側 ERROR タブ未生成時に即 return していた隙間を埋めた。`Sort=28` かつ bottom tab host なしの時だけ dirty を立てて `RefreshThumbnailErrorRecords()` の sort-count-only 経路へ通し、ERROR UI が無い構成では `ReplaceThumbnailErrorRecs(...)` / progress 更新を増やさず marker 件数だけ追従させる。
 - 2026-05-27 のサブ5.5 Worker A で、Thumbnail ERROR タブの背景 refresh 完了後に後着要求が立っている場合は、古い `result.Items` を UI へ適用せず dirty のまま次の refresh へ回すようにした。`ReplaceThumbnailErrorRecs(...)` と `SortData("28")` は最新要求が残っていない時だけ走り、検索/skin操作裏の ERROR snapshot 反映ちらつきとUI差し替えコストを減らす。
 - 2026-05-27 のサブ5.5 Worker A で、サムネ手動救済 / 直接 index repair のメニュー操作後に残っていた `Refresh()` 全体再描画を、受付数・開始数が 1 件以上の時だけ走る局所更新へ置き換えた。ERROR 表示 stale 化、上側 visible range refresh、preferred key revision、ERROR/進捗 snapshot 予約へ寄せ、空振り時は popup 以外の再描画を増やさない。

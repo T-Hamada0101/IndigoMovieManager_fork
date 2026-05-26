@@ -219,28 +219,49 @@ public sealed class MainWindowUiIoDeferralSourceTests
             "QueueStartupThumbnailProgressSnapshotRefresh();",
             StringComparison.Ordinal
         );
-        int filterIndex = fallbackMethod.IndexOf("FilterAndSort(sortId, true);", StringComparison.Ordinal);
+        int refreshIndex = fallbackMethod.IndexOf(
+            "RefreshStartupFallbackMovieView(sortId, revision, warmPathTrigger);",
+            StringComparison.Ordinal
+        );
         int queueCallCount =
             fallbackMethod.Split("QueueStartupThumbnailProgressSnapshotRefresh();").Length - 1;
 
         Assert.That(queueCallCount, Is.EqualTo(1));
         Assert.That(reloadIndex, Is.LessThan(queueIndex));
-        Assert.That(queueIndex, Is.LessThan(filterIndex));
+        Assert.That(queueIndex, Is.LessThan(refreshIndex));
     }
 
     [Test]
-    public void Fallback起動のFilterAndSortTrueはDB初期読込復旧の許容fallbackとして残す()
+    public void Fallback起動は全件sourceがある時だけmemoryRefreshへ逃がす()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
         string fallbackMethod = ExtractMethod(
             source,
             "private void FallbackToLegacyStartupLoad(string sortId, int revision)"
         );
+        string refreshMethod = ExtractMethod(
+            source,
+            "private void RefreshStartupFallbackMovieView("
+        );
+        string memoryMethod = ExtractMethod(
+            source,
+            "private async Task RefreshStartupFallbackMovieViewFromCurrentSourceAsync("
+        );
 
         Assert.That(fallbackMethod, Does.Contain("CancelStartupFeed(\"startup-fallback\");"));
         Assert.That(fallbackMethod, Does.Contain("StartStartupHeavyServicesIfNeeded("));
-        Assert.That(fallbackMethod, Does.Contain("FilterAndSort(sortId, true);"));
+        Assert.That(fallbackMethod, Does.Contain("RefreshStartupFallbackMovieView(sortId, revision, warmPathTrigger);"));
         Assert.That(fallbackMethod, Does.Contain("CreateWatcher();"));
+        Assert.That(refreshMethod, Does.Contain("ShouldUseStartupFallbackMemoryRefresh("));
+        Assert.That(refreshMethod, Does.Contain("RefreshStartupFallbackMovieViewFromCurrentSourceAsync(sortId, revision);"));
+        Assert.That(refreshMethod, Does.Contain("FilterAndSort(sortId, true);"));
+        Assert.That(memoryMethod, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(memoryMethod, Does.Contain("\"startup-fallback\""));
+        Assert.That(memoryMethod, Does.Contain("UiHangActivityKind.Startup"));
+        Assert.That(MainWindow.ShouldUseStartupFallbackMemoryRefresh(true, 1), Is.True);
+        Assert.That(MainWindow.ShouldUseStartupFallbackMemoryRefresh(true, 0), Is.True);
+        Assert.That(MainWindow.ShouldUseStartupFallbackMemoryRefresh(true, -1), Is.False);
+        Assert.That(MainWindow.ShouldUseStartupFallbackMemoryRefresh(false, 1), Is.False);
     }
 
     [Test]
