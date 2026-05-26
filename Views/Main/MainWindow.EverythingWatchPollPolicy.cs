@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace IndigoMovieManager
 {
@@ -9,6 +10,23 @@ namespace IndigoMovieManager
     {
         private const int EverythingWatchPollCalmStartupGraceMs = 15000;
         private long _everythingWatchPollLoopStartedTick64;
+        private int _everythingWatchPollPlanRevision;
+
+        private readonly record struct EverythingWatchPollPlanRequest(
+            int Revision,
+            bool IsStartupFeedPartialActive,
+            bool IsIntegrationConfigured,
+            bool CanUseAvailability,
+            bool KeepPollingForFallback,
+            string DbPath
+        );
+
+        private readonly record struct EverythingWatchPollPlanResult(
+            int Revision,
+            string DbPath,
+            bool ShouldRun,
+            int EligibleWatchFolderCount
+        );
 
         // Everything poll を走らせるかどうかの pure 判定を、UI本体から切り離してまとめる。
         internal static bool ShouldRunEverythingWatchPollPolicy(
@@ -215,6 +233,7 @@ namespace IndigoMovieManager
             Volatile.Write(ref _lastEverythingPollDelayMs, EverythingWatchPollIntervalMs);
             Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
             Volatile.Write(ref _everythingWatchPollLoopStartedTick64, Environment.TickCount64);
+            Interlocked.Increment(ref _everythingWatchPollPlanRevision);
         }
 
         private bool HasEverythingWatchPollEligibleFolders()
@@ -241,6 +260,146 @@ namespace IndigoMovieManager
             }
 
             return elapsedMs >= EverythingWatchPollCalmStartupGraceMs;
+        }
+
+        // poll入口では軽い状態だけを固定し、DB/フォルダ存在確認とwatch snapshot取得は背景計画へ渡す。
+        private EverythingWatchPollPlanRequest CaptureEverythingWatchPollPlanRequest()
+        {
+            var mode = GetEverythingIntegrationMode();
+            bool isIntegrationConfigured = _indexProviderFacade.IsIntegrationConfigured(mode);
+            var availability = _indexProviderFacade.CheckAvailability(mode);
+            // OnモードはEverything停止中でも、filesystem fallback走査のためポーリングを止めない。
+            bool keepPollingForFallback = (int)mode == 2;
+            string dbPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            int revision = Interlocked.Increment(ref _everythingWatchPollPlanRevision);
+
+            return new EverythingWatchPollPlanRequest(
+                revision,
+                IsStartupFeedPartialActive,
+                isIntegrationConfigured,
+                availability.CanUse,
+                keepPollingForFallback,
+                dbPath
+            );
+        }
+
+        // 重いprobeを背景側でまとめ、戻った結果は revision / DB path / shutdown guard 後だけ採用する。
+        private async Task<bool> ShouldRunEverythingWatchPollPolicyAsync(CancellationToken cancellationToken)
+        {
+            EverythingWatchPollPlanRequest request = CaptureEverythingWatchPollPlanRequest();
+            try
+            {
+                EverythingWatchPollPlanResult result = await Task.Run(
+                        () => BuildEverythingWatchPollPlan(request),
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+
+                if (!IsCurrentEverythingWatchPollPlan(result))
+                {
+                    DebugRuntimeLog.Write(
+                        "watch-check",
+                        $"everything poll plan skipped: reason=stale revision={result.Revision} db='{result.DbPath}'"
+                    );
+                    return false;
+                }
+
+                Volatile.Write(
+                    ref _lastEverythingPollEligibleWatchFolderCount,
+                    result.EligibleWatchFolderCount
+                );
+                return result.ShouldRun;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"everything poll eligibility failed: {ex.Message}"
+                );
+                Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
+                return false;
+            }
+        }
+
+        // DB path の存在確認、watch snapshot取得、watch folder存在確認を同じ背景計画内で直列に閉じる。
+        private EverythingWatchPollPlanResult BuildEverythingWatchPollPlan(
+            EverythingWatchPollPlanRequest request
+        )
+        {
+            if (
+                request.IsStartupFeedPartialActive
+                || !request.IsIntegrationConfigured
+                || (!request.CanUseAvailability && !request.KeepPollingForFallback)
+                || string.IsNullOrWhiteSpace(request.DbPath)
+            )
+            {
+                return new EverythingWatchPollPlanResult(request.Revision, request.DbPath, false, 0);
+            }
+
+            bool dbPathExists = Path.Exists(request.DbPath);
+            if (!dbPathExists)
+            {
+                return new EverythingWatchPollPlanResult(request.Revision, request.DbPath, false, 0);
+            }
+
+            string[] watchFolders = GetEverythingPollEligibleWatchFoldersSnapshot(
+                request.DbPath,
+                isDbPathKnownToExist: true
+            );
+
+            bool PollPathExists(string path)
+            {
+                // DB本体はこの計画内で確認済みなので、policy のDB判定で同じprobeを重ねない。
+                if (AreSameMainDbPath(path, request.DbPath))
+                {
+                    return true;
+                }
+
+                return Path.Exists(path);
+            }
+
+            bool shouldRun = ShouldRunEverythingWatchPollPolicy(
+                request.IsStartupFeedPartialActive,
+                request.IsIntegrationConfigured,
+                request.CanUseAvailability,
+                request.KeepPollingForFallback,
+                request.DbPath,
+                watchFolders,
+                PollPathExists,
+                _ => true
+            );
+
+            return new EverythingWatchPollPlanResult(
+                request.Revision,
+                request.DbPath,
+                shouldRun,
+                watchFolders?.Length ?? 0
+            );
+        }
+
+        private bool IsCurrentEverythingWatchPollPlan(EverythingWatchPollPlanResult result)
+        {
+            if (result.Revision != Volatile.Read(ref _everythingWatchPollPlanRevision))
+            {
+                return false;
+            }
+
+            if (Dispatcher == null || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return false;
+            }
+
+            string currentDbPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            if (string.IsNullOrWhiteSpace(result.DbPath) && string.IsNullOrWhiteSpace(currentDbPath))
+            {
+                return true;
+            }
+
+            return AreSameMainDbPath(result.DbPath, currentDbPath);
         }
     }
 }

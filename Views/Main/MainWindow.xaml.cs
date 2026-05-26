@@ -1459,7 +1459,7 @@ namespace IndigoMovieManager
                         // 明示操作が終わった後の catch-up へ任せ、この周回では入口判定まで進めない。
                         isDeferredByUserPriority = true;
                     }
-                    else if (ShouldRunEverythingWatchPollPolicy())
+                    else if (await ShouldRunEverythingWatchPollPolicyAsync(cts).ConfigureAwait(false))
                     {
                         await QueueCheckFolderAsync(CheckMode.Watch, "EverythingPoll")
                             .ConfigureAwait(false);
@@ -1564,69 +1564,6 @@ namespace IndigoMovieManager
                 _lastEverythingPollDelayMs = delayMs;
             }
             return delayMs;
-        }
-
-        /// <summary>
-        /// 今Everythingポーリングをぶん回すべきか？をクールにジャッジするぜ！😎
-        /// </summary>
-        private bool ShouldRunEverythingWatchPollPolicy()
-        {
-            var mode = GetEverythingIntegrationMode();
-            bool isIntegrationConfigured = _indexProviderFacade.IsIntegrationConfigured(mode);
-            var availability = _indexProviderFacade.CheckAvailability(mode);
-            // OnモードはEverything停止中でも、filesystem fallback走査のためポーリングを止めない。
-            bool keepPollingForFallback = (int)mode == 2;
-            string dbPath = MainVM.DbInfo.DBFullPath;
-            bool dbPathExists = !string.IsNullOrWhiteSpace(dbPath) && Path.Exists(dbPath);
-            if (!dbPathExists)
-            {
-                Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
-                return false;
-            }
-
-            try
-            {
-                string[] watchFolders = GetEverythingPollEligibleWatchFoldersSnapshot(
-                    dbPath,
-                    isDbPathKnownToExist: true
-                );
-                Volatile.Write(
-                    ref _lastEverythingPollEligibleWatchFolderCount,
-                    watchFolders?.Length ?? 0
-                );
-
-                bool PollPathExists(string path)
-                {
-                    // DB本体はこの周回の入口で確認済みなので、policy のDB判定で同じprobeを重ねない。
-                    if (AreSameMainDbPath(path, dbPath))
-                    {
-                        return dbPathExists;
-                    }
-
-                    return Path.Exists(path);
-                }
-
-                return ShouldRunEverythingWatchPollPolicy(
-                    IsStartupFeedPartialActive,
-                    isIntegrationConfigured,
-                    availability.CanUse,
-                    keepPollingForFallback,
-                    dbPath,
-                    watchFolders,
-                    PollPathExists,
-                    _ => true
-                );
-            }
-            catch (Exception ex)
-            {
-                DebugRuntimeLog.Write(
-                    "watch-check",
-                    $"everything poll eligibility failed: {ex.Message}"
-                );
-                Volatile.Write(ref _lastEverythingPollEligibleWatchFolderCount, 0);
-            }
-
-            return false;
         }
 
         /// <summary>

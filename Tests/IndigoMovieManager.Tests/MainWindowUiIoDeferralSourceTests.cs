@@ -420,6 +420,53 @@ public sealed class MainWindowUiIoDeferralSourceTests
         Assert.That(deserializeMethod, Does.Not.Contain("File.ReadAllText("));
     }
 
+    [Test]
+    public void EverythingPoll入口はDB存在確認とwatch存在確認を背景Planへ逃がす()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string policySource = GetRepoText(
+            "Views",
+            "Main",
+            "MainWindow.EverythingWatchPollPolicy.cs"
+        );
+        string loopMethod = ExtractMethod(
+            mainWindowSource,
+            "private async Task RunEverythingWatchPollLoopAsync("
+        );
+        string asyncMethod = ExtractMethod(
+            policySource,
+            "private async Task<bool> ShouldRunEverythingWatchPollPolicyAsync("
+        );
+        string captureMethod = ExtractMethod(
+            policySource,
+            "private EverythingWatchPollPlanRequest CaptureEverythingWatchPollPlanRequest()"
+        );
+        string buildMethod = ExtractMethod(
+            policySource,
+            "private EverythingWatchPollPlanResult BuildEverythingWatchPollPlan("
+        );
+        string guardMethod = ExtractMethod(
+            policySource,
+            "private bool IsCurrentEverythingWatchPollPlan("
+        );
+
+        Assert.That(loopMethod, Does.Contain("await ShouldRunEverythingWatchPollPolicyAsync(cts)"));
+        Assert.That(loopMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(asyncMethod, Does.Contain("Task.Run("));
+        Assert.That(asyncMethod, Does.Contain("BuildEverythingWatchPollPlan(request)"));
+        Assert.That(asyncMethod, Does.Contain("IsCurrentEverythingWatchPollPlan(result)"));
+        Assert.That(asyncMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(captureMethod, Does.Contain("MainVM?.DbInfo?.DBFullPath ?? \"\""));
+        Assert.That(captureMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(buildMethod, Does.Contain("Path.Exists(request.DbPath)"));
+        Assert.That(buildMethod, Does.Contain("GetEverythingPollEligibleWatchFoldersSnapshot("));
+        Assert.That(buildMethod, Does.Contain("isDbPathKnownToExist: true"));
+        Assert.That(buildMethod, Does.Contain("Path.Exists(path)"));
+        Assert.That(guardMethod, Does.Contain("Volatile.Read(ref _everythingWatchPollPlanRevision)"));
+        Assert.That(guardMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+        Assert.That(guardMethod, Does.Contain("AreSameMainDbPath("));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
