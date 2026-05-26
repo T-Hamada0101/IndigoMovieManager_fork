@@ -58,6 +58,7 @@
 ## 正本プランの見方（AI必読）
 - 全体の優先順位と着手順の正本は `AI向け_現在の全体プラン_workthree_2026-03-20.md`
 - ブランチの判断基準と禁止線の正本は `AI向け_ブランチ方針_workthreeユーザー体感テンポ最優先_2026-03-11.md`
+- UI 分離とスムーズ表示の上位ゴールは `Docs\forAI\Goal_UI分離とスムーズ表示アーキテクチャ_2026-05-27.md`
 - UI の詰まり解消と抜本高速化の正本は `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md`
 - `skin` 個別の高速化と保存分離の正本は `WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`
 
