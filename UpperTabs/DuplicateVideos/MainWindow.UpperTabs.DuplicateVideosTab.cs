@@ -20,6 +20,7 @@ namespace IndigoMovieManager
     public partial class MainWindow
     {
         private const int DuplicateVideoTabIndex = 6;
+        private const int UpperTabDuplicateLookupSnapshotMinTargetCount = 16;
         private static readonly FileSizeConverter DuplicateVideoFileSizeConverter = new();
         private readonly ObservableCollection<UpperTabDuplicateGroupViewModel> _upperTabDuplicateGroups =
             [];
@@ -672,23 +673,100 @@ namespace IndigoMovieManager
             foreach (int tabIndex in (tabIndices ?? []).Distinct())
             {
                 string outPath = ResolveThumbnailOutPath(tabIndex, dbName, thumbFolder);
+                HashSet<string> candidateFileNames = BuildUpperTabDuplicateThumbnailCandidateFileNames(
+                    recordSnapshots,
+                    tabIndex
+                );
                 lookupContext.ThumbnailOutPathsByTab[tabIndex] = outPath;
-                lookupContext.ThumbnailFileNamesByTab[tabIndex] = BuildThumbnailFileNameLookup(outPath);
+                lookupContext.ThumbnailFileNamesByTab[tabIndex] =
+                    ShouldUseUpperTabDuplicateDirectorySnapshot(candidateFileNames.Count)
+                        ? BuildThumbnailFileNameLookup(outPath)
+                        : BuildUpperTabDuplicateBoundedThumbnailFileNameLookup(
+                            outPath,
+                            candidateFileNames
+                        );
             }
 
             foreach (
-                string directoryPath in recordSnapshots
-                    .Select(record => Path.GetDirectoryName(record.MoviePath ?? "") ?? "")
-                    .Where(path => !string.IsNullOrWhiteSpace(path))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                IGrouping<string, UpperTabDuplicateMovieRecord> directoryGroup in recordSnapshots
+                    .Where(record => !string.IsNullOrWhiteSpace(record.MoviePath))
+                    .GroupBy(
+                        record => Path.GetDirectoryName(record.MoviePath ?? "") ?? "",
+                        StringComparer.OrdinalIgnoreCase
+                    )
+                    .Where(group => !string.IsNullOrWhiteSpace(group.Key))
             )
             {
-                // 動画本体の存在確認も、行ごとの probe ではなく親フォルダ単位の一覧へ寄せる。
+                string directoryPath = directoryGroup.Key;
+                HashSet<string> candidateFileNames = directoryGroup
+                    .Select(record => Path.GetFileName(record.MoviePath ?? ""))
+                    .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                // 少数候補では巨大フォルダ全列挙を避け、多数候補だけ親フォルダ snapshot へ切り替える。
                 lookupContext.MovieFileNamesByDirectory[directoryPath] =
-                    BuildUpperTabDuplicateFileNameLookup(directoryPath);
+                    ShouldUseUpperTabDuplicateDirectorySnapshot(candidateFileNames.Count)
+                        ? BuildUpperTabDuplicateFileNameLookup(directoryPath)
+                        : BuildUpperTabDuplicateBoundedFileNameLookup(
+                            directoryPath,
+                            candidateFileNames
+                        );
             }
 
             return lookupContext;
+        }
+
+        private static bool ShouldUseUpperTabDuplicateDirectorySnapshot(int targetFileNameCount)
+        {
+            return targetFileNameCount >= UpperTabDuplicateLookupSnapshotMinTargetCount;
+        }
+
+        private static HashSet<string> BuildUpperTabDuplicateThumbnailCandidateFileNames(
+            IReadOnlyList<UpperTabDuplicateMovieRecord> records,
+            int tabIndex
+        )
+        {
+            HashSet<string> candidateFileNames = new(StringComparer.OrdinalIgnoreCase);
+            if (!IsUpperThumbnailTabIndex(tabIndex))
+            {
+                return candidateFileNames;
+            }
+
+            foreach (UpperTabDuplicateMovieRecord record in records ?? [])
+            {
+                AddUpperTabDuplicateThumbnailCandidateFileName(
+                    candidateFileNames,
+                    record.MoviePath,
+                    record.Hash
+                );
+                AddUpperTabDuplicateThumbnailCandidateFileName(
+                    candidateFileNames,
+                    record.MovieName,
+                    record.Hash
+                );
+            }
+
+            return candidateFileNames;
+        }
+
+        private static void AddUpperTabDuplicateThumbnailCandidateFileName(
+            HashSet<string> candidateFileNames,
+            string sourcePathOrName,
+            string hash
+        )
+        {
+            if (
+                candidateFileNames == null
+                || string.IsNullOrWhiteSpace(sourcePathOrName)
+                || string.IsNullOrWhiteSpace(hash)
+            )
+            {
+                return;
+            }
+
+            candidateFileNames.Add(
+                ThumbnailPathResolver.BuildThumbnailFileName(sourcePathOrName, hash)
+            );
         }
 
         private static HashSet<string> BuildUpperTabDuplicateFileNameLookup(string directoryPath)
@@ -710,6 +788,56 @@ namespace IndigoMovieManager
             {
                 return [];
             }
+        }
+
+        private static HashSet<string> BuildUpperTabDuplicateBoundedThumbnailFileNameLookup(
+            string thumbnailOutPath,
+            IReadOnlySet<string> candidateFileNames
+        )
+        {
+            return BuildUpperTabDuplicateBoundedFileNameLookup(
+                thumbnailOutPath,
+                candidateFileNames
+            );
+        }
+
+        private static HashSet<string> BuildUpperTabDuplicateBoundedFileNameLookup(
+            string directoryPath,
+            IReadOnlySet<string> candidateFileNames
+        )
+        {
+            HashSet<string> existingFileNames = new(StringComparer.OrdinalIgnoreCase);
+            if (
+                string.IsNullOrWhiteSpace(directoryPath)
+                || candidateFileNames == null
+                || candidateFileNames.Count < 1
+            )
+            {
+                return existingFileNames;
+            }
+
+            foreach (string fileName in candidateFileNames)
+            {
+                if (string.IsNullOrWhiteSpace(fileName))
+                {
+                    continue;
+                }
+
+                string candidatePath = Path.Combine(directoryPath, fileName);
+                try
+                {
+                    if (File.Exists(candidatePath))
+                    {
+                        existingFileNames.Add(fileName);
+                    }
+                }
+                catch
+                {
+                    // 背景側のbounded probeなので、失敗した候補だけ未存在扱いで先へ進む。
+                }
+            }
+
+            return existingFileNames;
         }
 
         private static bool IsUpperTabDuplicateMovieKnownToExist(

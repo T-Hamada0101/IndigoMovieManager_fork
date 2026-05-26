@@ -118,7 +118,7 @@ public sealed class UpperTabDuplicateVideoAnalyzerTests
     }
 
     [Test]
-    public void DuplicateVideos_存在確認はフォルダ単位lookupへ寄せる()
+    public void DuplicateVideos_存在確認は候補数でboundedと全列挙を切り替える()
     {
         string source = GetRepoText(
             "UpperTabs",
@@ -137,6 +137,14 @@ public sealed class UpperTabDuplicateVideoAnalyzerTests
             source,
             "private UpperTabDuplicateLookupContext BuildUpperTabDuplicateLookupContext("
         );
+        string thresholdMethod = GetMethodBlock(
+            source,
+            "private static bool ShouldUseUpperTabDuplicateDirectorySnapshot("
+        );
+        string boundedMethod = GetMethodBlock(
+            source,
+            "private static HashSet<string> BuildUpperTabDuplicateBoundedFileNameLookup("
+        );
         string movieRecordMethod = GetMethodBlock(
             source,
             "private MovieRecords BuildUpperTabDuplicateMovieRecord("
@@ -146,11 +154,16 @@ public sealed class UpperTabDuplicateVideoAnalyzerTests
             "private string ResolveUpperTabDuplicateThumbnailPath("
         );
 
-        Assert.That(source, Does.Not.Contain("File.Exists("));
+        Assert.That(source, Does.Contain("UpperTabDuplicateLookupSnapshotMinTargetCount"));
         Assert.That(detailItemsMethod, Does.Contain("BuildUpperTabDuplicateLookupContext("));
         Assert.That(groupItemsMethod, Does.Contain("BuildUpperTabDuplicateLookupContext("));
+        Assert.That(lookupMethod, Does.Contain("ShouldUseUpperTabDuplicateDirectorySnapshot("));
+        Assert.That(lookupMethod, Does.Contain("BuildUpperTabDuplicateBoundedThumbnailFileNameLookup("));
+        Assert.That(lookupMethod, Does.Contain("BuildUpperTabDuplicateBoundedFileNameLookup("));
         Assert.That(lookupMethod, Does.Contain("BuildThumbnailFileNameLookup(outPath)"));
         Assert.That(lookupMethod, Does.Contain("BuildUpperTabDuplicateFileNameLookup(directoryPath)"));
+        Assert.That(thresholdMethod, Does.Contain(">= UpperTabDuplicateLookupSnapshotMinTargetCount"));
+        Assert.That(boundedMethod, Does.Contain("File.Exists(candidatePath)"));
         Assert.That(movieRecordMethod, Does.Contain("IsUpperTabDuplicateMovieKnownToExist("));
         Assert.That(thumbnailResolveMethod, Does.Contain("ThumbnailPathResolver.BuildThumbnailFileName("));
         Assert.That(thumbnailResolveMethod, Does.Not.Contain("Path.Exists("));
