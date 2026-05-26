@@ -66,7 +66,7 @@ namespace IndigoMovieManager
             )
             {
                 Properties.Settings.Default.DetailThumbnailMode = normalizedMode;
-                Properties.Settings.Default.Save();
+                QueueApplicationSettingsSave("extension-detail-thumbnail-mode");
             }
 
             ThumbnailDetailModeRuntime.ApplyToProcess(normalizedMode);

@@ -16,6 +16,16 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             "Player",
             "MainWindow.UpperTabs.PlayerFullscreenWindow.cs"
         );
+        string detailThumbnailSource = GetRepoText(
+            "BottomTabs",
+            "Extension",
+            "MainWindow.BottomTab.Extension.DetailThumbnail.cs"
+        );
+        string logTabSource = GetRepoText(
+            "BottomTabs",
+            "LogTab",
+            "MainWindow.BottomTab.Log.cs"
+        );
 
         Assert.That(persistenceSource, Does.Contain("private Task _applicationSettingsSaveTask = Task.CompletedTask;"));
         Assert.That(persistenceSource, Does.Contain("private void QueueApplicationSettingsSave(string reason)"));
@@ -32,6 +42,10 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(mainWindowSource, Does.Contain("WaitForApplicationSettingsSaveForShutdown(\"main-window-closing\")"));
         Assert.That(fullscreenSource, Does.Contain("QueueApplicationSettingsSave(\"player-fullscreen-debug-enable\")"));
         Assert.That(fullscreenSource, Does.Contain("QueueApplicationSettingsSave(\"player-fullscreen-debug-restore\")"));
+        Assert.That(detailThumbnailSource, Does.Contain("QueueApplicationSettingsSave(\"extension-detail-thumbnail-mode\")"));
+        Assert.That(detailThumbnailSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
+        Assert.That(logTabSource, Does.Contain("QueueApplicationSettingsSave(\"log-tab-debug-switch\")"));
+        Assert.That(logTabSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
     }
 
     private static string GetRepoText(params string[] relativePathParts)

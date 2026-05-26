@@ -3,6 +3,7 @@
 最終更新日: 2026-05-26
 
 変更概要:
+- 2026-05-26 のサブ5.5追加で、詳細サムネ表示モード切替と Log タブ debug カテゴリ切替に残っていた `Properties.Settings.Default.Save()` 直呼びを `QueueApplicationSettingsSave(...)` へ寄せ、UI 操作中の設定ファイル I/O を共通の背景保存キューへ逃がした。
 - 2026-05-26 のサブ5.5追加で、Debug タブの「現在サムネイルを削除」に残っていた `Directory.Exists` / `Directory.Delete(..., true)` を `Task.Run` へ逃がし、削除中も UI スレッドの入力/描画を塞ぎにくくした。
 - 2026-05-26 のサブ5.5追加で、起動 fallback と段階ロード中 sort 変更の `FilterAndSort(..., true)` は DB 正本復旧・全件順序復旧の許容 fallback として分類し、Debug タブのサムネイル全削除後 `FilterAndSort(..., true)` は表示モデルのサムネパスクリア、visible refresh、進捗/ERROR snapshot 予約へ置き換えた。
 - 2026-05-26 のサブ5.5で、外部 skin API の sort は通常時 `SortDataAsync(...)` を await する経路へ寄せ、`FilterAndSort(resolvedSortId, true)` の全件 reload fallback を通常経路から外した。起動 partial feed 中だけは全件順序の正しさを守るため `partial-feed-needs-complete-source` として分類ログを残し、startup feed をキャンセルしてから正規の後着キャンセル付き reload へ戻す。
@@ -236,7 +237,7 @@
 - さらに Bookmark ラベル再生の FPS 取得用 `MovieInfo` 生成も背景化し、外部プレイヤー起動前の動画メタ取得で UI を塞がないようにした。
 - さらにサムネイルシート再生位置解析も `Task.Run` へ逃がし、クリック位置からの `ThumbInfo` 読み取りを UI スレッドに残さないようにした。
 - Player 音量設定の実 `Save()` は debounce 後に直列背景保存へ寄せ、スライダー操作中の設定ファイル I/O を UI から外した。
-- MainDB 切替時の `LastDoc` / ダイアログフォルダ保存、終了時の最近使ったファイル保存、Player fullscreen debug の一時設定保存も、共通の背景保存キューへ寄せた。終了時は短時間 drain して保存取りこぼしを防ぐ。
+- MainDB 切替時の `LastDoc` / ダイアログフォルダ保存、終了時の最近使ったファイル保存、Player fullscreen debug、詳細サムネ表示モード、Log タブ debug カテゴリ切替の一時設定保存も、共通の背景保存キューへ寄せた。終了時は短時間 drain して保存取りこぼしを防ぐ。
 - DB 切替後の旧 QueueDB pending 掃除は背景 task へ逃がし、切替成功後の UI 待ちに queue cleanup I/O を残さないようにした。
 - さらに Bookmark reload の dirty 解除を成功反映後へ移し、revision 不一致や DB 切替後着では dirty を消さずに捨てるようにした。
 - さらに起動 deferred services の `CreateWatcher()` も `ApplicationIdle` へ後ろ倒しし、first-page 直後の UI tick に watch table 読込と watcher 配備を詰め込まないようにした。

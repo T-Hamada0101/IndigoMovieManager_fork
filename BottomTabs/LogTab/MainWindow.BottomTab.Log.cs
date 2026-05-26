@@ -183,8 +183,8 @@ namespace IndigoMovieManager
 
         private void LogTabSwitchChanged_Click(object sender, RoutedEventArgs e)
         {
-            // TwoWay バインド済みの設定値をそのまま永続化し、切替結果をすぐ画面へ戻す。
-            Properties.Settings.Default.Save();
+            // TwoWay バインド済みの設定値は、画面反映を先に戻して保存I/Oだけ背景へ逃がす。
+            QueueApplicationSettingsSave("log-tab-debug-switch");
             UpdateLogTabRefreshState(forceRefresh: true);
         }
 
