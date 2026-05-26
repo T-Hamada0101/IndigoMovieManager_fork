@@ -890,11 +890,18 @@ namespace IndigoMovieManager
                 }
 
                 WhiteBrowserSkinHostOperationResult timedNavigateResult =
-                    (navigateResult ?? WhiteBrowserSkinHostOperationResult.CreateSuccess(requestedSkinName))
-                        .WithTimings(
-                            filePrepareElapsedMilliseconds: filePrepareMilliseconds,
-                            hostNavigateElapsedMilliseconds: hostNavigateMilliseconds
-                        );
+                    (
+                        navigateResult
+                        ?? WhiteBrowserSkinHostOperationResult.CreateFailed(
+                            requestedSkinName,
+                            "External skin host navigate returned null.",
+                            "HostNavigateReturnedNull"
+                        )
+                    )
+                    .WithTimings(
+                        filePrepareElapsedMilliseconds: filePrepareMilliseconds,
+                        hostNavigateElapsedMilliseconds: hostNavigateMilliseconds
+                    );
                 return EvaluateExternalSkinHostOperationResult(
                     timedNavigateResult,
                     reason,
