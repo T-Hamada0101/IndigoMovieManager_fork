@@ -19,7 +19,57 @@ public sealed class ExtDetailUiIoPolicyTests
         Assert.That(clickMethod, Does.Contain("await PathExistsInBackgroundAsync(moviePath)"));
         Assert.That(clickMethod, Does.Contain("Process.Start(\"explorer.exe\", $\"/select,{moviePath}\")"));
         Assert.That(clickMethod, Does.Not.Contain("Path.Exists(mv.Movie_Path)"));
-        Assert.That(existsMethod, Does.Contain("Task.Run(() => Path.Exists(path))"));
+        Assert.That(existsMethod, Does.Contain("Task.Run(() =>"));
+        Assert.That(existsMethod, Does.Contain("return Path.Exists(path);"));
+    }
+
+    [Test]
+    public void DetailThumbnailImage_ContextMenuOpening_存在確認は背景へ逃がす()
+    {
+        string source = GetExtDetailSourceText();
+        string openingMethod = ExtractMethod(
+            source,
+            "private async void DetailThumbnailImage_ContextMenuOpening("
+        );
+
+        Assert.That(openingMethod, Does.Contain("string thumbDetailSnapshot = record.ThumbDetail;"));
+        Assert.That(
+            openingMethod,
+            Does.Contain("await HasDetailThumbnailFileAsync(thumbDetailSnapshot)")
+        );
+        Assert.That(openingMethod, Does.Contain("ReferenceEquals(imageElement.DataContext, record)"));
+        Assert.That(openingMethod, Does.Not.Contain("Path.Exists("));
+    }
+
+    [Test]
+    public void ConfigureDetailThumbnailFileWatch_存在確認は背景へ逃がして後着を捨てる()
+    {
+        string source = GetExtDetailSourceText();
+        string configureMethod = ExtractMethod(
+            source,
+            "private async void ConfigureDetailThumbnailFileWatch("
+        );
+        string pathStateMethod = ExtractMethod(
+            source,
+            "private static Task<DetailThumbnailWatchPathState> GetDetailThumbnailWatchPathStateAsync("
+        );
+
+        int existsIndex = configureMethod.IndexOf(
+            "await GetDetailThumbnailWatchPathStateAsync(normalizedTargetPath, directoryPath)",
+            StringComparison.Ordinal
+        );
+        int watcherIndex = configureMethod.IndexOf("new FileSystemWatcher(", StringComparison.Ordinal);
+
+        Assert.That(existsIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(watcherIndex, Is.GreaterThan(existsIndex));
+        Assert.That(configureMethod, Does.Contain("int watchRevision = ++_detailThumbnailWatchRevision;"));
+        Assert.That(configureMethod, Does.Contain("watchRevision != _detailThumbnailWatchRevision"));
+        Assert.That(configureMethod, Does.Contain("ReferenceEquals(_subscribedRecord, subscribedRecordSnapshot)"));
+        Assert.That(configureMethod, Does.Not.Contain("Path.Exists("));
+        Assert.That(configureMethod, Does.Not.Contain("Directory.Exists("));
+        Assert.That(pathStateMethod, Does.Contain("Task.Run(() =>"));
+        Assert.That(pathStateMethod, Does.Contain("Path.Exists(targetPath)"));
+        Assert.That(pathStateMethod, Does.Contain("Directory.Exists(directoryPath)"));
     }
 
     [Test]

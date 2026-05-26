@@ -24,6 +24,7 @@ namespace IndigoMovieManager.UserControls
         private int _detailThumbnailDecodePixelHeight;
         private FileSystemWatcher _detailThumbnailFileWatcher;
         private string _watchedDetailThumbnailPath = "";
+        private int _detailThumbnailWatchRevision;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -107,50 +108,72 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
-        private void DetailThumbnailImage_ContextMenuOpening(
+        private async void DetailThumbnailImage_ContextMenuOpening(
             object sender,
             ContextMenuEventArgs e
         )
         {
-            if (sender is not System.Windows.FrameworkElement imageElement)
+            try
             {
-                return;
-            }
+                if (sender is not System.Windows.FrameworkElement imageElement)
+                {
+                    return;
+                }
 
-            if (imageElement.DataContext is not MovieRecords record)
+                if (imageElement.DataContext is not MovieRecords record)
+                {
+                    return;
+                }
+
+                string thumbDetailSnapshot = record.ThumbDetail;
+
+                // 右クリック時は選択中のパスだけ固定し、存在確認は背景へ逃がす。
+                if (record.IsExists && await HasDetailThumbnailFileAsync(thumbDetailSnapshot))
+                {
+                    return;
+                }
+
+                if (
+                    Dispatcher.HasShutdownStarted
+                    || Dispatcher.HasShutdownFinished
+                    || !ReferenceEquals(imageElement.DataContext, record)
+                    || !string.Equals(
+                        record.ThumbDetail,
+                        thumbDetailSnapshot,
+                        StringComparison.Ordinal
+                    )
+                )
+                {
+                    return;
+                }
+
+                if (Window.GetWindow(this) is not MainWindow ownerWindow)
+                {
+                    return;
+                }
+
+                RefreshDetailThumbnailImage();
+                ownerWindow.ReevaluateActiveExtensionDetailThumbnail();
+            }
+            catch (Exception ex)
             {
-                return;
+                DebugRuntimeLog.Write("ext-detail", $"context thumbnail check failed: {ex.Message}");
             }
-
-            // 右クリック時に「画像未作成」だけ先に通常経路で即時投入し、
-            // 画像が存在する場合は余計な再投入をしない。
-            if (record.IsExists && HasDetailThumbnailFile(record))
-            {
-                return;
-            }
-
-            if (Window.GetWindow(this) is not MainWindow ownerWindow)
-            {
-                return;
-            }
-
-            RefreshDetailThumbnailImage();
-            ownerWindow.ReevaluateActiveExtensionDetailThumbnail();
         }
 
-        private static bool HasDetailThumbnailFile(MovieRecords record)
+        private static Task<bool> HasDetailThumbnailFileAsync(string thumbDetailPath)
         {
-            if (record == null || string.IsNullOrWhiteSpace(record.ThumbDetail))
+            if (string.IsNullOrWhiteSpace(thumbDetailPath))
             {
-                return false;
+                return Task.FromResult(false);
             }
 
-            if (MainWindow.IsThumbnailErrorPlaceholderPath(record.ThumbDetail))
+            if (MainWindow.IsThumbnailErrorPlaceholderPath(thumbDetailPath))
             {
-                return false;
+                return Task.FromResult(false);
             }
 
-            return Path.Exists(record.ThumbDetail);
+            return PathExistsInBackgroundAsync(thumbDetailPath);
         }
 
         public void Refresh()
@@ -299,16 +322,18 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
-        private void ConfigureDetailThumbnailFileWatch()
+        private async void ConfigureDetailThumbnailFileWatch()
         {
             StopDetailThumbnailFileWatcher();
+            int watchRevision = ++_detailThumbnailWatchRevision;
 
-            if (_subscribedRecord == null)
+            MovieRecords subscribedRecordSnapshot = _subscribedRecord;
+            if (subscribedRecordSnapshot == null)
             {
                 return;
             }
 
-            string targetPath = _subscribedRecord.ThumbDetail;
+            string targetPath = subscribedRecordSnapshot.ThumbDetail;
             if (string.IsNullOrWhiteSpace(targetPath) || IsDetailThumbnailPlaceholder(targetPath))
             {
                 return;
@@ -332,14 +357,32 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            if (Path.Exists(normalizedTargetPath))
+            DetailThumbnailWatchPathState pathState =
+                await GetDetailThumbnailWatchPathStateAsync(normalizedTargetPath, directoryPath);
+
+            if (
+                Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+                || watchRevision != _detailThumbnailWatchRevision
+                || !ReferenceEquals(_subscribedRecord, subscribedRecordSnapshot)
+                || !string.Equals(
+                    subscribedRecordSnapshot.ThumbDetail,
+                    targetPath,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                return;
+            }
+
+            if (pathState.TargetExists)
             {
                 NoLockImageConverter.InvalidateFilePath(normalizedTargetPath);
                 RefreshDetailThumbnailImage();
                 return;
             }
 
-            if (!Directory.Exists(directoryPath))
+            if (!pathState.DirectoryExists)
             {
                 return;
             }
@@ -366,49 +409,63 @@ namespace IndigoMovieManager.UserControls
 
         private async void DetailThumbnailFileWatcher_Changed(object sender, FileSystemEventArgs e)
         {
-            if (!string.Equals(
-                ResolveWatchedDetailThumbnailPath(e.FullPath),
-                _watchedDetailThumbnailPath,
-                StringComparison.OrdinalIgnoreCase
-            ))
+            try
             {
-                return;
-            }
-
-            string watchedPathSnapshot = _watchedDetailThumbnailPath;
-            MovieRecords subscribedRecordSnapshot = _subscribedRecord;
-            if (subscribedRecordSnapshot == null || string.IsNullOrWhiteSpace(watchedPathSnapshot))
-            {
-                return;
-            }
-
-            // ファイル生成直後の存在確認は背景へ逃がし、UI は画像差し替えだけを受け持つ。
-            if (!await PathExistsInBackgroundAsync(watchedPathSnapshot))
-            {
-                return;
-            }
-
-            _ = Dispatcher.BeginInvoke(
-                new Action(() =>
+                if (!string.Equals(
+                    ResolveWatchedDetailThumbnailPath(e.FullPath),
+                    _watchedDetailThumbnailPath,
+                    StringComparison.OrdinalIgnoreCase
+                ))
                 {
-                    if (
-                        !ReferenceEquals(_subscribedRecord, subscribedRecordSnapshot)
-                        || !string.Equals(
-                            _watchedDetailThumbnailPath,
-                            watchedPathSnapshot,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    {
-                        return;
-                    }
+                    return;
+                }
 
-                    NoLockImageConverter.InvalidateFilePath(watchedPathSnapshot);
-                    RefreshDetailThumbnailImage();
-                    StopDetailThumbnailFileWatcher();
-                }),
-                System.Windows.Threading.DispatcherPriority.Background
-            );
+                string watchedPathSnapshot = _watchedDetailThumbnailPath;
+                MovieRecords subscribedRecordSnapshot = _subscribedRecord;
+                if (subscribedRecordSnapshot == null || string.IsNullOrWhiteSpace(watchedPathSnapshot))
+                {
+                    return;
+                }
+
+                // ファイル生成直後の存在確認は背景へ逃がし、UI は画像差し替えだけを受け持つ。
+                if (!await PathExistsInBackgroundAsync(watchedPathSnapshot))
+                {
+                    return;
+                }
+
+                if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+                {
+                    return;
+                }
+
+                _ = Dispatcher.BeginInvoke(
+                    new Action(() =>
+                    {
+                        if (
+                            Dispatcher.HasShutdownStarted
+                            || Dispatcher.HasShutdownFinished
+                            || !ReferenceEquals(_subscribedRecord, subscribedRecordSnapshot)
+                            || !string.Equals(
+                                _watchedDetailThumbnailPath,
+                                watchedPathSnapshot,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
+                        {
+                            return;
+                        }
+
+                        NoLockImageConverter.InvalidateFilePath(watchedPathSnapshot);
+                        RefreshDetailThumbnailImage();
+                        StopDetailThumbnailFileWatcher();
+                    }),
+                    System.Windows.Threading.DispatcherPriority.Background
+                );
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write("ext-detail", $"watch thumbnail change failed: {ex.Message}");
+            }
         }
 
         private void DetailThumbnailFileWatcher_Renamed(object sender, RenamedEventArgs e)
@@ -423,6 +480,7 @@ namespace IndigoMovieManager.UserControls
 
         private void StopDetailThumbnailFileWatcher()
         {
+            _detailThumbnailWatchRevision++;
             if (_detailThumbnailFileWatcher != null)
             {
                 try
@@ -475,7 +533,53 @@ namespace IndigoMovieManager.UserControls
                 return Task.FromResult(false);
             }
 
-            return Task.Run(() => Path.Exists(path));
+            return Task.Run(() =>
+            {
+                try
+                {
+                    return Path.Exists(path);
+                }
+                catch (Exception ex)
+                {
+                    DebugRuntimeLog.Write("ext-detail", $"path exists failed: {ex.Message}");
+                    return false;
+                }
+            });
+        }
+
+        private static Task<DetailThumbnailWatchPathState> GetDetailThumbnailWatchPathStateAsync(
+            string targetPath,
+            string directoryPath
+        )
+        {
+            return Task.Run(() =>
+            {
+                try
+                {
+                    return new DetailThumbnailWatchPathState(
+                        Path.Exists(targetPath),
+                        Directory.Exists(directoryPath)
+                    );
+                }
+                catch (Exception ex)
+                {
+                    DebugRuntimeLog.Write("ext-detail", $"watch path check failed: {ex.Message}");
+                    return new DetailThumbnailWatchPathState(false, false);
+                }
+            });
+        }
+
+        private readonly struct DetailThumbnailWatchPathState
+        {
+            public DetailThumbnailWatchPathState(bool targetExists, bool directoryExists)
+            {
+                TargetExists = targetExists;
+                DirectoryExists = directoryExists;
+            }
+
+            public bool TargetExists { get; }
+
+            public bool DirectoryExists { get; }
         }
 
         private async void FileNameLink_Click(object sender, RoutedEventArgs e)
