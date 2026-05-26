@@ -42,6 +42,21 @@ namespace IndigoMovieManager
             Red,
         }
 
+        private sealed class MovieDeleteSnapshot
+        {
+            public MovieRecords UiRecord { get; init; }
+            public long MovieId { get; init; }
+            public string MoviePath { get; init; } = "";
+            public string MovieBody { get; init; } = "";
+            public string Hash { get; init; } = "";
+        }
+
+        private sealed class MovieDeleteBackgroundResult
+        {
+            public List<string> DeleteFailureMessages { get; init; } = new();
+            public List<MovieRecords> DeletedRecords { get; init; } = new();
+        }
+
         private static readonly Brush DeleteDialogOrangeBrush = new SolidColorBrush(
             Color.FromRgb(239, 108, 0)
         );
@@ -841,110 +856,192 @@ namespace IndigoMovieManager
                 return;
             }
 
-            List<string> deleteFailureMessages = new();
-            List<MovieRecords> deletedRecords = new();
-            foreach (var rec in mv)
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            string thumbFolder = ResolveCurrentThumbnailRoot();
+            string thumbOutPath = ResolveCurrentThumbnailOutPath(GetCurrentThumbnailActionTabIndex());
+            bool shouldDeleteThumbnail = dialogWindow.checkBox.IsChecked == true;
+            bool sendThumbnailToRecycleBin = isDeleteWithRecycleMode;
+            bool shouldDeletePhysicalFile =
+                isDeleteFileMode || isDeleteWithRecycleMode || isDeletePermanentMode;
+            bool sendPhysicalToRecycleBin = isDeleteFileMode
+                ? dialogWindow.radioButton1.IsChecked == true
+                : isDeleteWithRecycleMode;
+
+            QueueConfirmedMovieDelete(
+                mv,
+                dbFullPath,
+                thumbFolder,
+                thumbOutPath,
+                shouldDeleteThumbnail,
+                sendThumbnailToRecycleBin,
+                shouldDeletePhysicalFile,
+                sendPhysicalToRecycleBin
+            );
+        }
+
+        // 確認後のDB/ファイルI/Oはsnapshotだけを背景へ渡し、クリック導線をUIへ早く返す。
+        private void QueueConfirmedMovieDelete(
+            IReadOnlyList<MovieRecords> records,
+            string dbFullPath,
+            string thumbFolder,
+            string thumbOutPath,
+            bool shouldDeleteThumbnail,
+            bool sendThumbnailToRecycleBin,
+            bool shouldDeletePhysicalFile,
+            bool sendPhysicalToRecycleBin
+        )
+        {
+            MovieDeleteSnapshot[] deleteSnapshots = records
+                ?.Where(record => record != null)
+                .Select(CreateMovieDeleteSnapshot)
+                .ToArray() ?? [];
+            if (deleteSnapshots.Length == 0 || string.IsNullOrWhiteSpace(dbFullPath))
             {
-                bool shouldDeleteThumbnail = isDeleteThumbnailOnlyMode || dialogWindow.checkBox.IsChecked == true;
-                if (shouldDeleteThumbnail)
+                return;
+            }
+
+            _ = Task.Run(
+                () =>
                 {
-                    DeleteThumbnailsForMovie(
-                        rec,
-                        sendToRecycleBin: isDeleteWithRecycleMode,
-                        deleteFailureMessages
+                    MovieDeleteBackgroundResult result;
+                    try
+                    {
+                        result = DeleteMoviesInBackground(
+                            deleteSnapshots,
+                            dbFullPath,
+                            thumbFolder,
+                            thumbOutPath,
+                            shouldDeleteThumbnail,
+                            sendThumbnailToRecycleBin,
+                            shouldDeletePhysicalFile,
+                            sendPhysicalToRecycleBin
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        result = new MovieDeleteBackgroundResult();
+                        string reason = string.IsNullOrWhiteSpace(ex.Message)
+                            ? ex.GetType().Name
+                            : ex.Message;
+                        AddDeleteFailure(result.DeleteFailureMessages, "削除処理", dbFullPath, reason);
+                    }
+
+                    _ = Dispatcher.InvokeAsync(
+                        () =>
+                        {
+                            ShowDeleteFailureSummary(result.DeleteFailureMessages);
+                            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+                            {
+                                return;
+                            }
+
+                            RefreshVisibleMovieUiAfterMovieDelete(result.DeletedRecords);
+                        }
                     );
                 }
+            );
+        }
 
-                int deletedCount = DeleteMovieTable(MainVM.DbInfo.DBFullPath, rec.Movie_Id);
-                TryAdjustRegisteredMovieCount(MainVM.DbInfo.DBFullPath, -deletedCount);
+        private MovieDeleteBackgroundResult DeleteMoviesInBackground(
+            IReadOnlyList<MovieDeleteSnapshot> deleteSnapshots,
+            string dbFullPath,
+            string thumbFolder,
+            string thumbOutPath,
+            bool shouldDeleteThumbnail,
+            bool sendThumbnailToRecycleBin,
+            bool shouldDeletePhysicalFile,
+            bool sendPhysicalToRecycleBin
+        )
+        {
+            MovieDeleteBackgroundResult result = new();
+            foreach (MovieDeleteSnapshot snapshot in deleteSnapshots)
+            {
+                if (snapshot == null)
+                {
+                    continue;
+                }
+
+                if (shouldDeleteThumbnail)
+                {
+                    try
+                    {
+                        DeleteThumbnailsForMovieCore(
+                            snapshot,
+                            thumbFolder,
+                            thumbOutPath,
+                            sendThumbnailToRecycleBin,
+                            result.DeleteFailureMessages
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        string reason = string.IsNullOrWhiteSpace(ex.Message)
+                            ? ex.GetType().Name
+                            : ex.Message;
+                        AddDeleteFailure(result.DeleteFailureMessages, "サムネイル", snapshot.MoviePath, reason);
+                    }
+                }
+
+                int deletedCount = TryDeleteMovieTableInBackground(
+                    dbFullPath,
+                    snapshot,
+                    result.DeleteFailureMessages
+                );
+                TryAdjustRegisteredMovieCount(dbFullPath, -deletedCount);
                 if (deletedCount > 0)
                 {
-                    deletedRecords.Add(rec);
+                    result.DeletedRecords.Add(snapshot.UiRecord);
                 }
 
-                // 実ファイルの削除、2パターン。
-                if (isDeleteFileMode)
+                if (shouldDeletePhysicalFile)
                 {
-                    if (dialogWindow.radioButton1.IsChecked == true)
-                    {
-                        // ゴミ箱送りでも例外は UI まで上げず、最後にまとめて伝える。
-                        if (
-                            !TryDeletePhysicalFile(
-                                rec.Movie_Path,
-                                sendToRecycleBin: true,
-                                out string failureReason
-                            )
-                        )
-                        {
-                            AddDeleteFailure(
-                                deleteFailureMessages,
-                                "動画",
-                                rec.Movie_Path,
-                                failureReason
-                            );
-                        }
-                    }
-                    else
-                    {
-                        // 実削除でもロックや権限不足はあり得るので安全に縮退する。
-                        if (
-                            !TryDeletePhysicalFile(
-                                rec.Movie_Path,
-                                sendToRecycleBin: false,
-                                out string failureReason
-                            )
-                        )
-                        {
-                            AddDeleteFailure(
-                                deleteFailureMessages,
-                                "動画",
-                                rec.Movie_Path,
-                                failureReason
-                            );
-                        }
-                    }
-                }
-                else if (isDeleteWithRecycleMode)
-                {
-                    // Delキー設定の「動画削除」は常にゴミ箱送りで実行する。
-                    if (
-                        !TryDeletePhysicalFile(
-                            rec.Movie_Path,
-                            sendToRecycleBin: true,
-                            out string failureReason
-                        )
-                    )
-                    {
-                        AddDeleteFailure(
-                            deleteFailureMessages,
-                            "動画",
-                            rec.Movie_Path,
-                            failureReason
-                        );
-                    }
-                }
-                else if (isDeletePermanentMode)
-                {
-                    if (
-                        !TryDeletePhysicalFile(
-                            rec.Movie_Path,
-                            sendToRecycleBin: false,
-                            out string failureReason
-                        )
-                    )
-                    {
-                        AddDeleteFailure(
-                            deleteFailureMessages,
-                            "動画",
-                            rec.Movie_Path,
-                            failureReason
-                        );
-                    }
+                    DeletePhysicalMovieFileInBackground(
+                        snapshot,
+                        sendPhysicalToRecycleBin,
+                        result.DeleteFailureMessages
+                    );
                 }
             }
 
-            ShowDeleteFailureSummary(deleteFailureMessages);
-            RefreshVisibleMovieUiAfterMovieDelete(deletedRecords);
+            return result;
+        }
+
+        private int TryDeleteMovieTableInBackground(
+            string dbFullPath,
+            MovieDeleteSnapshot snapshot,
+            List<string> deleteFailureMessages
+        )
+        {
+            try
+            {
+                return DeleteMovieTable(dbFullPath, snapshot.MovieId);
+            }
+            catch (Exception ex)
+            {
+                string reason = string.IsNullOrWhiteSpace(ex.Message)
+                    ? ex.GetType().Name
+                    : ex.Message;
+                AddDeleteFailure(deleteFailureMessages, "DB", snapshot.MoviePath, reason);
+                return 0;
+            }
+        }
+
+        private static void DeletePhysicalMovieFileInBackground(
+            MovieDeleteSnapshot snapshot,
+            bool sendToRecycleBin,
+            List<string> deleteFailureMessages
+        )
+        {
+            if (
+                !TryDeletePhysicalFile(
+                    snapshot.MoviePath,
+                    sendToRecycleBin,
+                    out string failureReason
+                )
+            )
+            {
+                AddDeleteFailure(deleteFailureMessages, "動画", snapshot.MoviePath, failureReason);
+            }
         }
 
         // DBから消えた行だけを手元の表示モデルから抜き、動画削除後の全件DB再読込を避ける。
@@ -1064,7 +1161,7 @@ namespace IndigoMovieManager
                     {
                         int failureCountBeforeDelete = deleteFailureMessages.Count;
                         DeleteThumbnailsForMovieCore(
-                            rec,
+                            CreateMovieDeleteSnapshot(rec),
                             thumbFolder,
                             thumbOutPath,
                             sendToRecycleBin: false,
@@ -1202,8 +1299,13 @@ namespace IndigoMovieManager
             List<string> deleteFailureMessages
         )
         {
+            if (rec == null)
+            {
+                return;
+            }
+
             DeleteThumbnailsForMovieCore(
-                rec,
+                CreateMovieDeleteSnapshot(rec),
                 ResolveCurrentThumbnailRoot(),
                 ResolveCurrentThumbnailOutPath(GetCurrentThumbnailActionTabIndex()),
                 sendToRecycleBin,
@@ -1211,14 +1313,31 @@ namespace IndigoMovieManager
             );
         }
 
+        private static MovieDeleteSnapshot CreateMovieDeleteSnapshot(MovieRecords record)
+        {
+            return new MovieDeleteSnapshot
+            {
+                UiRecord = record,
+                MovieId = record.Movie_Id,
+                MoviePath = record.Movie_Path ?? "",
+                MovieBody = record.Movie_Body ?? "",
+                Hash = record.Hash ?? "",
+            };
+        }
+
         private void DeleteThumbnailsForMovieCore(
-            MovieRecords rec,
+            MovieDeleteSnapshot snapshot,
             string thumbFolder,
             string thumbOutPath,
             bool sendToRecycleBin,
             List<string> deleteFailureMessages
         )
         {
+            if (snapshot == null)
+            {
+                return;
+            }
+
             if (Path.Exists(thumbFolder))
             {
                 DirectoryInfo di = new(thumbFolder);
@@ -1226,12 +1345,12 @@ namespace IndigoMovieManager
 
                 // 生成時と同じ命名規則を優先し、旧命名は互換フォールバックで拾う。
                 string primaryFileName = ThumbnailPathResolver.BuildThumbnailFileName(
-                    rec.Movie_Path,
-                    rec.Hash
+                    snapshot.MoviePath,
+                    snapshot.Hash
                 );
                 IEnumerable<FileInfo> primaryFiles = di.EnumerateFiles(primaryFileName, enumOption);
 
-                string legacyPattern = $"*{rec.Movie_Body}.#{rec.Hash}*.jpg";
+                string legacyPattern = $"*{snapshot.MovieBody}.#{snapshot.Hash}*.jpg";
                 IEnumerable<FileInfo> legacyFiles = di.EnumerateFiles(legacyPattern, enumOption);
 
                 foreach (
@@ -1259,7 +1378,7 @@ namespace IndigoMovieManager
                 }
             }
 
-            TryDeleteThumbnailErrorMarker(thumbOutPath, rec.Movie_Path);
+            TryDeleteThumbnailErrorMarker(thumbOutPath, snapshot.MoviePath);
         }
 
         // サムネ削除前に画像キャッシュを外し、自前参照で消せない事故を減らす。

@@ -165,16 +165,30 @@ public sealed class MainWindowMenuActionsPolicyTests
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
         string deleteMethod = GetMethodBlock(source, "private void ExecuteDeleteAction(");
+        string queueMethod = GetMethodBlock(source, "private void QueueConfirmedMovieDelete(");
+        string backgroundMethod = GetMethodBlock(source, "private MovieDeleteBackgroundResult DeleteMoviesInBackground(");
+        string dbDeleteMethod = GetMethodBlock(source, "private int TryDeleteMovieTableInBackground(");
+        string fileDeleteMethod = GetMethodBlock(source, "private static void DeletePhysicalMovieFileInBackground(");
         string refreshMethod = GetMethodBlock(
             source,
             "private void RefreshVisibleMovieUiAfterMovieDelete("
         );
 
-        Assert.That(deleteMethod, Does.Contain("List<MovieRecords> deletedRecords = new();"));
-        Assert.That(deleteMethod, Does.Contain("if (deletedCount > 0)"));
-        Assert.That(deleteMethod, Does.Contain("deletedRecords.Add(rec);"));
-        Assert.That(deleteMethod, Does.Contain("RefreshVisibleMovieUiAfterMovieDelete(deletedRecords);"));
+        Assert.That(deleteMethod, Does.Contain("QueueConfirmedMovieDelete("));
+        Assert.That(deleteMethod, Does.Not.Contain("DeleteMovieTable("));
+        Assert.That(deleteMethod, Does.Not.Contain("TryDeletePhysicalFile("));
         Assert.That(deleteMethod, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, true);"));
+        Assert.That(queueMethod, Does.Contain("Task.Run("));
+        Assert.That(queueMethod, Does.Contain("DeleteMoviesInBackground("));
+        Assert.That(queueMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(queueMethod, Does.Contain("ShowDeleteFailureSummary("));
+        Assert.That(queueMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(queueMethod, Does.Contain("RefreshVisibleMovieUiAfterMovieDelete(result.DeletedRecords);"));
+        Assert.That(backgroundMethod, Does.Contain("TryDeleteMovieTableInBackground("));
+        Assert.That(backgroundMethod, Does.Contain("TryAdjustRegisteredMovieCount("));
+        Assert.That(backgroundMethod, Does.Contain("DeletePhysicalMovieFileInBackground("));
+        Assert.That(dbDeleteMethod, Does.Contain("DeleteMovieTable("));
+        Assert.That(fileDeleteMethod, Does.Contain("TryDeletePhysicalFile("));
         Assert.That(refreshMethod, Does.Contain("RemoveDeletedMovieRecordsById(MainVM.MovieRecs, deletedMovieIds);"));
         Assert.That(refreshMethod, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
         Assert.That(refreshMethod, Does.Contain("MainVM.DbInfo.SearchCount = nextFilteredMovies.Length;"));
