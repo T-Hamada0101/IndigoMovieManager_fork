@@ -79,11 +79,12 @@
 - 済: Header Reload は `reload_id` を発行し、`header reload begin/end/failed` と `manual reload deferred scan scheduled/skipped/failed` を同じIDで結ぶ。再読込本体と後続 scan の因果を実機ログだけで追える。
 - 済: Header Reload の `external_skin_refresh_queued` は外部 skin refresh 要求の実受理可否を表す。`QueueExternalSkinHostRefresh(...)` / `ExternalSkinHostRefreshScheduler.Queue(...)` は bool 契約を持ち、teardown / scheduler 未初期化 / dispatcher shutdown / `BeginInvoke` 受理失敗では false を返す。
 - 済: Header Reload の遅延 manual scan は latest-only 化し、古い `reload_id` は `reason=superseded` で skip する。短時間連打でも最新の `Header.ReloadButton:deferred` だけを watch 側へ進める。
+- 済: Header Reload / minimal chrome reload / fallback retry の host clear は `host clear begin/end/failed` で `reason` / `has_host` / `elapsed_ms` を出し、blank 遷移時間を後段 `refresh end` の navigate 系計測と分けて確認できる。
 - 済: watch full fallback は schedule / apply / final 系ログに `recovery_reason` を併記し、`dirty-fields-unsafe:*` など次に削る条件を実機ログだけで選べる。
 - 済: 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じる。
 - 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実際に navigate する時だけ leave callback を送ること。実 navigate へ進む時は旧 reuse key を先に無効化し、same-document skip では外部サムネ許可リストを消さない。
 - 現行実機ログでは `first-page shown` / `input ready` は良好で、次の確認軸は起動後 `CreateWatcher` 約13秒の内訳、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
-- 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれかを確定してから削る。skin は `navigate_skipped` / `navigate_skip_reason` と実WebView2表示崩れの有無を確認する。
+- 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれかを確定してから削る。skin は `host clear end elapsed_ms` と `refresh end host_navigate_ms` / `navigate_to_string_ms`、`navigate_skipped` / `navigate_skip_reason`、実WebView2表示崩れの有無を確認する。
 
 ## 2チーム体制（AI必読）
 - 本線チームは `AI向け_現在の全体プラン_workthree_2026-03-20.md` と `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として進める

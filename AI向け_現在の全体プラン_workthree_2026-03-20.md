@@ -12,6 +12,7 @@
 - 外部 skin refresh 要求は `QueueExternalSkinHostRefresh(...)` / `ExternalSkinHostRefreshScheduler.Queue(...)` の bool 契約で受理可否を返す。Header Reload の `external_skin_refresh_queued` は teardown / scheduler 未初期化 / dispatcher shutdown / `BeginInvoke` 受理失敗では false になり、受理後の WebView 側失敗とは分けて読む。
 - Header Reload の遅延 manual scan は latest-only 化し、古い scan は `reason=superseded` で skip する。これにより連打時も最新 reload の `Header.ReloadButton:deferred` だけを watch 側へ進める。
 - `QueueExternalSkinHostRefresh(...)` の teardown 後 false 契約は runtime test で固定済み。
+- Header Reload / minimal chrome reload / fallback retry の host clear は `host clear begin/end/failed` で `reason` / `has_host` / `elapsed_ms` / 失敗時 `type` を出す。次の実機確認では `host clear end elapsed_ms` と `refresh end host_navigate_ms` / `navigate_to_string_ms` を並べ、Header Reload の体感遅延が blank clear 側か再 navigate 側かを切る。
 - watch full fallback の schedule / apply / final ログへ `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログだけで分類できるようにした。
 - user-priority timeout は runtime release log へ接続し、既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として観測できるようにした。強制解除や新 Scheduler は入れていない。
 - active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実 navigate へ進む時は旧 reuse key と旧 document 用の外部サムネ許可を明示的に切る。明示 reload / catalog refresh / teardown / stale は従来どおり navigate 側へ戻す。
