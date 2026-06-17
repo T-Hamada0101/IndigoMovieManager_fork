@@ -9,6 +9,8 @@
 - manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残すようにした。
 - Header Reload は `header reload begin/end/failed` と後続 `manual reload deferred scan scheduled/skipped/failed` に同じ `reload_id` を出し、短時間に複数回押された時も再読込本体と遅延 scan の因果を追えるようにした。
 - Header Reload の `external_skin_refresh_queued` は、外部 skin refresh 要求が実際に受理された時だけ true になる。`QueueExternalSkinHostRefresh(...)` と `ExternalSkinHostRefreshScheduler.Queue(...)` は bool 契約を持ち、teardown / scheduler 未初期化 / dispatcher shutdown / `BeginInvoke` 受理失敗は false、受理後の WebView runtime / navigate 失敗は refresh 側の失敗ログで扱う。
+- Header Reload の遅延 manual scan は latest-only 化し、短時間に複数回押された時は古い `reload_id` を `manual reload deferred scan skipped: ... reason=superseded` で閉じ、最新の scan だけを `Header.ReloadButton:deferred` へ進める。
+- 外部 skin refresh 要求の teardown 後 false 契約は、`QueueExternalSkinHostRefresh(...)` の runtime test でも固定した。
 - watch full fallback の schedule / apply / final 系ログに `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログで選別できるようにした。
 - user-priority timeout を runtime release log へ接続した。既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として出し、強制解除や新 Scheduler は入れない。
 - active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。PMレビューで skip 前に `onSkinLeave` を送る危険経路を検出し、skip 時は leave callback を送らない順序へ修正した。

@@ -146,6 +146,29 @@ public sealed class MainWindowReloadButtonTests
         Assert.That(MainWindow.IsDeferredManualReloadScanSuperseded(2, 2), Is.False);
     }
 
+    [Test]
+    public async Task RunDeferredManualReloadScanAsync_最新でないscanはqueueへ進まない()
+    {
+        MainWindow window = CreateWindow();
+        SetPrivateField(window, "_deferredManualReloadScanRevision", 2);
+        bool queued = false;
+        window.QueueCheckFolderAsyncForTesting = (_, _) =>
+        {
+            queued = true;
+            return Task.CompletedTask;
+        };
+
+        await InvokePrivateTask(
+            window,
+            "RunDeferredManualReloadScanAsync",
+            "Header.ReloadButton",
+            "hrsuperseded",
+            1
+        );
+
+        Assert.That(queued, Is.False);
+    }
+
     private static MainWindow CreateWindow()
     {
         return (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
@@ -167,5 +190,23 @@ public sealed class MainWindowReloadButtonTests
             BindingFlags.Instance | BindingFlags.NonPublic
         )!;
         return (T)field.GetValue(window)!;
+    }
+
+    private static async Task InvokePrivateTask(
+        MainWindow window,
+        string methodName,
+        params object[] args
+    )
+    {
+        Type[] parameterTypes = args.Select(arg => arg.GetType()).ToArray();
+        MethodInfo method = typeof(MainWindow).GetMethod(
+            methodName,
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            types: parameterTypes,
+            modifiers: null
+        )!;
+        Task task = (Task)method.Invoke(window, args)!;
+        await task;
     }
 }
