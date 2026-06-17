@@ -3,6 +3,7 @@
 最終更新日: 2026-06-18
 
 変更概要:
+- サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せた。選択中詳細のサムネ表示だけを揺すり直し、タグ編集再表示を巻き込まない。
 - `RefreshMovieViewFromCurrentSourceAsync(...)` は、背景 filter / sort だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡すようにした。古い in-memory refresh が UI 反映待ち中に残った場合は `stage=apply-dispatch` でキャンセルしてログへ閉じ、後着の最新要求だけを UI へ適用する。
 - 2026-06-17 の実機 `debug-runtime.log` 調査では、`first-page shown` / `input ready` は良好だった。支配要因候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference に絞った。
 - `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成の遅延要因を次の実機ログで分類できるようにした。
@@ -420,7 +421,7 @@
 - 済: UI スレッド上の DB read/write、catalog scan、file metadata、decode、collection 全差し替えは、確認できた hot path から snapshot / queue / background read へ分離した。
 - 済: preferred サムネ生成成功後も、対象 `MovieRecords` へ直接 path 反映できた場合は `FilterAndSort(..., true)` へ戻さず、forced rebind と visible refresh を優先する。
 - 済: manual rescue 即時反映も同じ基準に寄せ、直接反映できた成功では後段 full reload を予約しない。
-- rescued sync の定期反映では FailureDb / progress 更新を維持しつつ、選択中レコードへ当たった時だけ `Refresh()` を許可する。
+- 済: rescued sync の定期反映では FailureDb / progress 更新を維持しつつ、選択中レコードへ当たった時だけ `RefreshSelectedThumbnailDetail()` で選択中詳細のサムネ表示だけを再評価する。
 - 済: Rescue 履歴は選択変更時に FailureDb を UI スレッドで読まず、背景読込と revision guard 付き反映へ寄せる。
 - 済: Log タブ preview は UI 側で表示対象パスと active / force 判定だけを取り、ファイル存在確認、mtime、末尾 preview 読みは背景 helper へ逃がし、後着 request id guard で古い結果を捨てる。
 - 済: `ThumbnailProgress` の enqueue / 初期作成数反映は `ThumbnailProgressRuntime.CurrentVersion` の差分 guard を通し、runtime 状態が変わらない時は snapshot 予約を増やさない。

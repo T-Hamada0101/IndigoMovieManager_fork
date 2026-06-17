@@ -160,14 +160,18 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
-    public void ShouldRefreshMainViewAfterRescuedSync_選択中へ反映された時だけTrue()
+    public void ShouldRefreshSelectedThumbnailDetailAfterRescuedSync_選択中へ反映された時だけTrue()
     {
         Assert.That(
-            MainWindow.ShouldRefreshMainViewAfterRescuedSync(appliedToSelectedRecord: true),
+            MainWindow.ShouldRefreshSelectedThumbnailDetailAfterRescuedSync(
+                appliedToSelectedRecord: true
+            ),
             Is.True
         );
         Assert.That(
-            MainWindow.ShouldRefreshMainViewAfterRescuedSync(appliedToSelectedRecord: false),
+            MainWindow.ShouldRefreshSelectedThumbnailDetailAfterRescuedSync(
+                appliedToSelectedRecord: false
+            ),
             Is.False
         );
     }
@@ -190,16 +194,16 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
-    public void ShouldRefreshMainViewAfterImmediateThumbnailSuccess_直接反映済みならFalse()
+    public void ShouldRefreshSelectedThumbnailDetailAfterImmediateThumbnailSuccess_直接反映済みならFalse()
     {
         Assert.That(
-            MainWindow.ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+            MainWindow.ShouldRefreshSelectedThumbnailDetailAfterImmediateThumbnailSuccess(
                 appliedDirectlyToMainMovie: true
             ),
             Is.False
         );
         Assert.That(
-            MainWindow.ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+            MainWindow.ShouldRefreshSelectedThumbnailDetailAfterImmediateThumbnailSuccess(
                 appliedDirectlyToMainMovie: false
             ),
             Is.True
@@ -207,7 +211,7 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
-    public void 即時サムネ成功のRefreshは直接反映済みなら省く()
+    public void 即時サムネ成功の詳細更新は直接反映済みなら省く()
     {
         string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
             .Replace("\r\n", "\n");
@@ -216,23 +220,28 @@ public sealed class ThumbnailFailureSyncUiTests
             "private void RefreshVisibleThumbnailUiAfterImmediateThumbnailSuccess("
         );
 
-        int mainViewPolicyIndex = method.IndexOf(
-            "ShouldRefreshMainViewAfterImmediateThumbnailSuccess(",
+        int detailPolicyIndex = method.IndexOf(
+            "ShouldRefreshSelectedThumbnailDetailAfterImmediateThumbnailSuccess(",
             StringComparison.Ordinal
         );
-        int refreshIndex = method.IndexOf("Refresh();", mainViewPolicyIndex, StringComparison.Ordinal);
+        int detailRefreshIndex = method.IndexOf(
+            "RefreshSelectedThumbnailDetail();",
+            detailPolicyIndex,
+            StringComparison.Ordinal
+        );
         int viewportPolicyIndex = method.IndexOf(
             "ShouldRefreshUpperTabViewportAfterImmediateThumbnailSuccess(",
             StringComparison.Ordinal
         );
 
-        Assert.That(mainViewPolicyIndex, Is.GreaterThanOrEqualTo(0));
-        Assert.That(refreshIndex, Is.GreaterThan(mainViewPolicyIndex));
-        Assert.That(viewportPolicyIndex, Is.GreaterThan(refreshIndex));
+        Assert.That(detailPolicyIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(detailRefreshIndex, Is.GreaterThan(detailPolicyIndex));
+        Assert.That(viewportPolicyIndex, Is.GreaterThan(detailRefreshIndex));
+        Assert.That(method, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
     }
 
     [Test]
-    public void RescuedSync完了時はRefreshだけ選択中反映で絞る()
+    public void RescuedSync完了時は詳細更新だけ選択中反映で絞る()
     {
         string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
             .Replace("\r\n", "\n");
@@ -246,10 +255,14 @@ public sealed class ThumbnailFailureSyncUiTests
             StringComparison.Ordinal
         );
         int policyIndex = syncMethod.IndexOf(
-            "ShouldRefreshMainViewAfterRescuedSync(",
+            "ShouldRefreshSelectedThumbnailDetailAfterRescuedSync(",
             StringComparison.Ordinal
         );
-        int refreshIndex = syncMethod.IndexOf("Refresh();", policyIndex, StringComparison.Ordinal);
+        int detailRefreshIndex = syncMethod.IndexOf(
+            "RefreshSelectedThumbnailDetail();",
+            policyIndex,
+            StringComparison.Ordinal
+        );
         int progressIndex = syncMethod.IndexOf(
             "RequestThumbnailProgressSnapshotRefresh();",
             StringComparison.Ordinal
@@ -257,8 +270,9 @@ public sealed class ThumbnailFailureSyncUiTests
 
         Assert.That(invalidateIndex, Is.GreaterThanOrEqualTo(0));
         Assert.That(policyIndex, Is.GreaterThanOrEqualTo(0));
-        Assert.That(refreshIndex, Is.GreaterThan(policyIndex));
-        Assert.That(progressIndex, Is.GreaterThan(refreshIndex));
+        Assert.That(detailRefreshIndex, Is.GreaterThan(policyIndex));
+        Assert.That(progressIndex, Is.GreaterThan(detailRefreshIndex));
+        Assert.That(syncMethod, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
     }
 
     [Test]

@@ -3,6 +3,7 @@
 最終更新日: 2026-06-18
 
 変更概要:
+- サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せた。対象は選択中詳細のサムネ表示だけに絞り、タグ編集再表示を巻き込まない。
 - `RefreshMovieViewFromCurrentSourceAsync(...)` は背景計算だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡すようにした。古い in-memory refresh が UI 反映待ち中に残った時は `stage=apply-dispatch` でキャンセルして閉じ、後着結果だけを UI へ通す。
 - 2026-06-17 のPM判断として、実機 `debug-runtime.log` 調査から `first-page shown` / `input ready` は良好、起動後 `CreateWatcher` と active skin navigate が次の支配要因候補と判断した。
 - 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じるようにした。

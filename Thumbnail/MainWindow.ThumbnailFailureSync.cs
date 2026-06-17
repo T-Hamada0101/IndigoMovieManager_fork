@@ -331,12 +331,12 @@ namespace IndigoMovieManager
                         {
                             InvalidateThumbnailErrorRecords(refreshIfVisible: true);
                             if (
-                                ShouldRefreshMainViewAfterRescuedSync(
+                                ShouldRefreshSelectedThumbnailDetailAfterRescuedSync(
                                     rescuedAppliedToSelectedRecord
                                 )
                             )
                             {
-                                Refresh();
+                                RefreshSelectedThumbnailDetail();
                             }
                             RequestThumbnailProgressSnapshotRefresh();
                         }, DispatcherPriority.Normal, cts)
@@ -600,8 +600,8 @@ namespace IndigoMovieManager
             return new RescuedThumbnailUiApplyResult(appliedCount, appliedToSelectedRecord);
         }
 
-        // rescued sync の汎用反映では、選択中に当たった時だけ詳細を含む Refresh へ進める。
-        internal static bool ShouldRefreshMainViewAfterRescuedSync(
+        // rescued sync の汎用反映では、選択中に当たった時だけサムネ詳細表示を揺すり直す。
+        internal static bool ShouldRefreshSelectedThumbnailDetailAfterRescuedSync(
             bool appliedToSelectedRecord
         )
         {
@@ -870,12 +870,12 @@ namespace IndigoMovieManager
         {
             InvalidateThumbnailErrorRecords(refreshIfVisible: true);
             if (
-                ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+                ShouldRefreshSelectedThumbnailDetailAfterImmediateThumbnailSuccess(
                     appliedDirectlyToMainMovie
                 )
             )
             {
-                Refresh();
+                RefreshSelectedThumbnailDetail();
             }
 
             if (
@@ -894,7 +894,7 @@ namespace IndigoMovieManager
             RequestThumbnailProgressSnapshotRefresh();
         }
 
-        internal static bool ShouldRefreshMainViewAfterImmediateThumbnailSuccess(
+        internal static bool ShouldRefreshSelectedThumbnailDetailAfterImmediateThumbnailSuccess(
             bool appliedDirectlyToMainMovie
         )
         {

@@ -144,8 +144,21 @@ namespace IndigoMovieManager
             ExtensionTabViewHost?.RefreshDetail();
         }
 
+        // サムネイル差し替え時はタグ編集まで触らず、選択中詳細の画像表示だけを揺すり直す。
+        private void RefreshSelectedThumbnailDetail()
+        {
+            MovieRecords mv = GetSelectedItemByTabIndex();
+            if (mv == null)
+            {
+                HideExtensionDetail();
+                return;
+            }
+
+            ShowExtensionDetail(mv);
+        }
+
         /// <summary>
-        /// 画面の全リストを強制アップデート！詳細情報のDataContextもガッツリ再設定して最新の顔を見せるぜ！✨
+        /// 選択中レコードの詳細ペインとタグ編集をまとめて再表示する互換入口。
         /// </summary>
         private void Refresh()
         {
