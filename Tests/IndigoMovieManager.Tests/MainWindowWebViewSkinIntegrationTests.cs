@@ -90,6 +90,37 @@ public sealed class MainWindowWebViewSkinIntegrationTests
     }
 
     [Test]
+    public async Task QueueExternalSkinHostRefresh_teardown後はfalseを返す()
+    {
+        bool accepted = await RunOnStaDispatcherAsync(async () =>
+        {
+            using TestEnvironmentScope scope = TestEnvironmentScope.Create();
+            MainWindow window = CreateHiddenMainWindow();
+
+            try
+            {
+                // teardown 開始後は Header Reload 由来でも refresh 受理済みとして扱わない。
+                _ = InvokePrivateMethod(window, "DisposeExternalSkinHostIntegration");
+                object? result = InvokePrivateMethod(
+                    window,
+                    "QueueExternalSkinHostRefresh",
+                    "header-reload",
+                    "rq-teardown"
+                );
+
+                Assert.That(result, Is.TypeOf<bool>());
+                return (bool)result;
+            }
+            finally
+            {
+                await CloseWindowAsync(window);
+            }
+        });
+
+        Assert.That(accepted, Is.False);
+    }
+
+    [Test]
     public async Task 外部skin有効かつhost_readyならTabsを畳んでhostを表示する()
     {
         HostPresentationSnapshot result = await RunOnStaDispatcherAsync(async () =>
