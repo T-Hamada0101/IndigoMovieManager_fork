@@ -2286,9 +2286,12 @@ namespace IndigoMovieManager
                 Stopwatch dbLoadStopwatch = Stopwatch.StartNew();
                 string dbFullPath = MainVM.DbInfo.DBFullPath;
                 // full reload の movie 読みは facade へ寄せ、並び順の SQL を UI から剥がす。
+                filterAndSortCancellationToken.ThrowIfCancellationRequested();
                 latestMovieData = await Task.Run(
-                    () => _mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id)
+                    () => _mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id),
+                    filterAndSortCancellationToken
                 );
+                filterAndSortCancellationToken.ThrowIfCancellationRequested();
                 dbLoadStopwatch.Stop();
                 dbLoadElapsedMs = dbLoadStopwatch.ElapsedMilliseconds;
                 DebugRuntimeLog.Write(

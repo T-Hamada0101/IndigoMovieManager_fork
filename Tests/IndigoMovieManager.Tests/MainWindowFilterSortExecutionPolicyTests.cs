@@ -260,6 +260,38 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void FilterAndSortAsync_full_reloadのDB読込にも後着キャンセルtokenを通す()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string method = GetMethodBlock(mainWindowSource, "private async Task FilterAndSortAsync(");
+        int loadIndex = method.IndexOf(
+            "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id)",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(loadIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(
+            method.IndexOf(
+                "filterAndSortCancellationToken.ThrowIfCancellationRequested();",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(loadIndex)
+        );
+        Assert.That(
+            method.IndexOf("filterAndSortCancellationToken", loadIndex, StringComparison.Ordinal),
+            Is.GreaterThan(loadIndex)
+        );
+        Assert.That(
+            method.IndexOf(
+                "filterAndSortCancellationToken.ThrowIfCancellationRequested();",
+                loadIndex,
+                StringComparison.Ordinal
+            ),
+            Is.GreaterThan(loadIndex)
+        );
+    }
+
+    [Test]
     public void DataRowToViewData_単発追加の存在確認は背景bulk経路と後追い更新へ逃がす()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
