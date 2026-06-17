@@ -7,10 +7,13 @@ namespace IndigoMovieManager
         // 検索のような明示的ユーザー要求が走っている間は、背後処理を後ろへ逃がして完了を優先する。
         private readonly object _userPriorityWorkSync = new();
         private int _userPriorityWorkCount;
+        private DateTime? _userPriorityWorkStartedUtc;
+        private string _userPriorityWorkBeginReason;
 
         private void BeginUserPriorityWork(string reason)
         {
             bool activated = false;
+            DateTime startedUtc = DateTime.UtcNow;
             if (_userPriorityWorkSync == null)
             {
                 return;
@@ -20,6 +23,11 @@ namespace IndigoMovieManager
             {
                 _userPriorityWorkCount++;
                 activated = _userPriorityWorkCount == 1;
+                if (activated)
+                {
+                    _userPriorityWorkStartedUtc = startedUtc;
+                    _userPriorityWorkBeginReason = reason;
+                }
             }
 
             if (activated)
@@ -33,6 +41,8 @@ namespace IndigoMovieManager
             bool wasActive;
             bool isStillActive;
             bool hasDeferredWatchWork;
+            string beginReason = null;
+            DateTime? startedUtc = null;
             if (_userPriorityWorkSync == null)
             {
                 return;
@@ -48,6 +58,13 @@ namespace IndigoMovieManager
 
                 isStillActive = _userPriorityWorkCount > 0;
                 hasDeferredWatchWork = !isStillActive && ConsumeWatchWorkDeferredForUserPriorityCatchUp();
+                if (!isStillActive)
+                {
+                    beginReason = _userPriorityWorkBeginReason;
+                    startedUtc = _userPriorityWorkStartedUtc;
+                    _userPriorityWorkBeginReason = null;
+                    _userPriorityWorkStartedUtc = null;
+                }
             }
 
             if (!wasActive)
@@ -57,7 +74,20 @@ namespace IndigoMovieManager
 
             if (!isStillActive)
             {
-                DebugRuntimeLog.Write("ui-priority", $"user priority end: reason={reason}");
+                long elapsedMilliseconds = ResolveUserPriorityElapsedMilliseconds(
+                    startedUtc,
+                    DateTime.UtcNow
+                );
+                DebugRuntimeLog.Write(
+                    "ui-priority",
+                    BuildUserPriorityReleaseLogMessage(
+                        beginReason ?? reason,
+                        reason,
+                        elapsedMilliseconds,
+                        UserPriorityReleaseReasonNormal,
+                        hasDeferredWatchWork
+                    )
+                );
             }
 
             if (ShouldQueueBackgroundCatchUpAfterUserPriority(isStillActive, hasDeferredWatchWork))

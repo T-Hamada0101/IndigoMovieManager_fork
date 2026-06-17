@@ -113,6 +113,86 @@ public sealed class WatchUiSuppressionPolicyTests
     }
 
     [Test]
+    public void IsUserPriorityWorkTimedOut_timeout到達時だけTrueを返す()
+    {
+        DateTime startedUtc = new(2026, 6, 17, 0, 0, 0, DateTimeKind.Utc);
+        TimeSpan timeout = TimeSpan.FromSeconds(5);
+
+        Assert.That(
+            MainWindow.IsUserPriorityWorkTimedOut(
+                startedUtc,
+                startedUtc.AddSeconds(5),
+                timeout
+            ),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.IsUserPriorityWorkTimedOut(
+                startedUtc,
+                startedUtc.AddMilliseconds(4999),
+                timeout
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.IsUserPriorityWorkTimedOut(null, startedUtc.AddSeconds(10), timeout),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.IsUserPriorityWorkTimedOut(
+                startedUtc,
+                startedUtc.AddSeconds(10),
+                TimeSpan.Zero
+            ),
+            Is.False
+        );
+    }
+
+    [Test]
+    public void BuildUserPriorityReleaseLogMessage_release契約の項目を残す()
+    {
+        string message = MainWindow.BuildUserPriorityReleaseLogMessage(
+            beginReason: "search",
+            endReason: "search-end",
+            elapsedMilliseconds: 123,
+            releaseReason: MainWindow.UserPriorityReleaseReasonNormal,
+            hasDeferredWatchWork: true
+        );
+
+        Assert.That(
+            message,
+            Is.EqualTo(
+                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=123 release_reason=normal deferred_watch=true"
+            )
+        );
+    }
+
+    [Test]
+    public void ResolveUserPriorityElapsedMilliseconds_開始時刻なしや逆転時は0を返す()
+    {
+        DateTime startedUtc = new(2026, 6, 17, 0, 0, 0, DateTimeKind.Utc);
+
+        Assert.That(
+            MainWindow.ResolveUserPriorityElapsedMilliseconds(
+                startedUtc,
+                startedUtc.AddMilliseconds(42)
+            ),
+            Is.EqualTo(42)
+        );
+        Assert.That(
+            MainWindow.ResolveUserPriorityElapsedMilliseconds(null, startedUtc),
+            Is.EqualTo(0)
+        );
+        Assert.That(
+            MainWindow.ResolveUserPriorityElapsedMilliseconds(
+                startedUtc,
+                startedUtc.AddMilliseconds(-1)
+            ),
+            Is.EqualTo(0)
+        );
+    }
+
+    [Test]
     public void ShouldSkipWatchCatchUpAfterUiSuppression_manual_reloadだけTrueを返す()
     {
         Assert.That(
@@ -421,6 +501,7 @@ public sealed class WatchUiSuppressionPolicyTests
             ParseCheckMode("Watch"),
             @"D:\Db\Main.wb",
             true,
+            false,
             Array.Empty<MainWindow.WatchChangedMovie>()
         );
 
