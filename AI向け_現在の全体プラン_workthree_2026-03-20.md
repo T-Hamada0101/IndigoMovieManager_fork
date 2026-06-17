@@ -504,7 +504,7 @@ DB 施策で固定する設計ルールは次である。
 - delegate facade と host 別 factory の境界を壊していない
 - `skin` の profile write 経路が複数ライターへ再分岐していない
 - Core が `Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM へ依存していない
-- Scheduler が bounded queue、coalesce、latest-only、shutdown bounded drain、user-priority release / timeout log を持つ方向へ進んでいる。user-priority release reason はログ実装済み、timeout は純粋判定 helper までで runtime 接続が後続
+- Scheduler が bounded queue、coalesce、latest-only、shutdown bounded drain、user-priority release / timeout log を持つ方向へ進んでいる。user-priority release reason と timeout runtime release log は実装済みで、強制解除は未導入
 
 ## 11. 関連資料
 
