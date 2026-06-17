@@ -239,20 +239,39 @@ namespace IndigoMovieManager
 
         private async Task ClearExternalSkinHostBeforeRefreshAsync(string reason)
         {
-            if (_externalSkinHostControl == null)
+            Stopwatch clearStopwatch = Stopwatch.StartNew();
+            var hostControl = _externalSkinHostControl;
+            bool hasHost = hostControl != null;
+            string hasHostText = hasHost.ToString().ToLowerInvariant();
+
+            // Header Reload 前の blank 遷移が支配要因か、refresh 本体と分けて追えるようにする。
+            DebugRuntimeLog.Write(
+                "skin-webview",
+                $"host clear begin: reason={reason} has_host={hasHostText}"
+            );
+
+            if (!hasHost)
             {
+                DebugRuntimeLog.Write(
+                    "skin-webview",
+                    $"host clear end: reason={reason} has_host={hasHostText} elapsed_ms={clearStopwatch.ElapsedMilliseconds}"
+                );
                 return;
             }
 
             try
             {
-                await _externalSkinHostControl.ClearAsync();
+                await hostControl.ClearAsync();
+                DebugRuntimeLog.Write(
+                    "skin-webview",
+                    $"host clear end: reason={reason} has_host={hasHostText} elapsed_ms={clearStopwatch.ElapsedMilliseconds}"
+                );
             }
             catch (Exception ex)
             {
                 DebugRuntimeLog.Write(
                     "skin-webview",
-                    $"host clear before refresh failed: err='{ex.GetType().Name}: {ex.Message}' reason={reason}"
+                    $"host clear failed: reason={reason} has_host={hasHostText} type={ex.GetType().Name} elapsed_ms={clearStopwatch.ElapsedMilliseconds} err='{ex.Message}'"
                 );
             }
         }

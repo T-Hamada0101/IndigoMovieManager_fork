@@ -102,6 +102,36 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_host_clearはblank遷移時間をruntime_logへ分けて出す()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Chrome.cs");
+        string method = GetMethodBlock(
+            source,
+            "private async Task ClearExternalSkinHostBeforeRefreshAsync("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(method, Does.Contain("Stopwatch clearStopwatch = Stopwatch.StartNew();"));
+            Assert.That(method, Does.Contain("host clear begin: reason={reason} has_host={hasHostText}"));
+            Assert.That(
+                method,
+                Does.Contain(
+                    "host clear end: reason={reason} has_host={hasHostText} elapsed_ms={clearStopwatch.ElapsedMilliseconds}"
+                )
+            );
+            Assert.That(
+                method,
+                Does.Contain(
+                    "host clear failed: reason={reason} has_host={hasHostText} type={ex.GetType().Name} elapsed_ms={clearStopwatch.ElapsedMilliseconds}"
+                )
+            );
+            Assert.That(method, Does.Contain("await hostControl.ClearAsync();"));
+            Assert.That(method, Does.Not.Contain("throw;"));
+        });
+    }
+
+    [Test]
     public void 外部skin_refresh_reasonごとにcatalog再確認モードを分ける()
     {
         Assert.Multiple(() =>
