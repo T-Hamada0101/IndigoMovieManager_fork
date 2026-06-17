@@ -86,9 +86,9 @@ namespace IndigoMovieManager
                 MainVM.DbInfo.PropertyChanged += MainDbInfo_PropertyChangedForExternalSkin;
             }
 
-            Loaded += (_, _) => QueueExternalSkinHostRefresh("window-loaded");
+            Loaded += (_, _) => _ = QueueExternalSkinHostRefresh("window-loaded");
             Closing += (_, _) => DisposeExternalSkinHostIntegration();
-            QueueExternalSkinHostRefresh("integration-initialized");
+            _ = QueueExternalSkinHostRefresh("integration-initialized");
         }
 
         private void MainDbInfo_PropertyChangedForExternalSkin(
@@ -111,16 +111,16 @@ namespace IndigoMovieManager
                     ResetExternalSkinApiTransientState();
                 }
 
-                QueueExternalSkinHostRefresh($"dbinfo-{propertyName}");
+                _ = QueueExternalSkinHostRefresh($"dbinfo-{propertyName}");
             }
         }
 
         // 同一フレーム内の更新を 1 回へ畳み、DB 切替や skin 切替の揺れを吸収する。
-        private void QueueExternalSkinHostRefresh(string reason, string requestTraceId = null)
+        private bool QueueExternalSkinHostRefresh(string reason, string requestTraceId = null)
         {
             if (IsExternalSkinHostTeardownStarted())
             {
-                return;
+                return false;
             }
 
             string normalizedReason = reason ?? "";
@@ -128,6 +128,17 @@ namespace IndigoMovieManager
                 string.IsNullOrWhiteSpace(requestTraceId)
                     ? CreateExternalSkinHostRefreshTraceId("rq")
                     : requestTraceId;
+            bool hasScheduler = _externalSkinHostRefreshScheduler != null;
+            if (!hasScheduler)
+            {
+                return false;
+            }
+
+            if (!_externalSkinHostRefreshScheduler.CanAcceptQueueRequests)
+            {
+                return false;
+            }
+
             if (_externalSkinHostRefreshBatchDepth > 0)
             {
                 if (string.IsNullOrWhiteSpace(_externalSkinHostRefreshDeferredRequestTraceId))
@@ -148,14 +159,21 @@ namespace IndigoMovieManager
                     normalizedRequestTraceId,
                     _externalSkinHostRefreshBatchDepth
                 );
-                return;
+                // batch 中は即時 enqueue ではなく、flush 時の後続 refresh 要求として受理できたことを返す。
+                return true;
             }
 
+            bool accepted = _externalSkinHostRefreshScheduler.Queue(
+                normalizedReason,
+                normalizedRequestTraceId
+            );
             DebugRuntimeLog.Write(
                 "skin-webview",
-                $"refresh queued: request={normalizedRequestTraceId} hasScheduler={_externalSkinHostRefreshScheduler != null} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason}"
+                accepted
+                    ? $"refresh queued: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason}"
+                    : $"refresh queue rejected: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason}"
             );
-            _externalSkinHostRefreshScheduler?.Queue(normalizedReason, normalizedRequestTraceId);
+            return accepted;
         }
 
         // DB 起動のように複数 PropertyChanged が固まる区間だけ、最後に 1 回へ畳む。
@@ -218,7 +236,7 @@ namespace IndigoMovieManager
                     requestTraceId,
                     flushReason
                 );
-                QueueExternalSkinHostRefresh(flushReason, requestTraceId);
+                _ = QueueExternalSkinHostRefresh(flushReason, requestTraceId);
                 return;
             }
 

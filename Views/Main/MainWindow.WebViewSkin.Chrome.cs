@@ -223,7 +223,7 @@ namespace IndigoMovieManager
         {
             // blank 遷移完了を待ってから積み直し、clear と再 navigate の競合を避ける。
             await ClearExternalSkinHostBeforeRefreshAsync("minimal-chrome-reload");
-            QueueExternalSkinHostRefresh("minimal-chrome-reload");
+            _ = QueueExternalSkinHostRefresh("minimal-chrome-reload");
         }
 
         private async void ExternalSkinFallbackRetryButton_Click(object sender, RoutedEventArgs e)
@@ -234,7 +234,7 @@ namespace IndigoMovieManager
             }
 
             await ClearExternalSkinHostBeforeRefreshAsync("fallback-notice-retry");
-            QueueExternalSkinHostRefresh("fallback-notice-retry");
+            _ = QueueExternalSkinHostRefresh("fallback-notice-retry");
         }
 
         private async Task ClearExternalSkinHostBeforeRefreshAsync(string reason)

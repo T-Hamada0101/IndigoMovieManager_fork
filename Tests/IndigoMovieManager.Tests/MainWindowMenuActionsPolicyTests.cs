@@ -147,7 +147,8 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(reloadMethod, Does.Contain("elapsed_ms={reloadStopwatch.ElapsedMilliseconds}"));
         Assert.That(reloadMethod, Does.Contain("type={ex.GetType().Name}"));
         Assert.That(reloadMethod, Does.Contain("ScheduleDeferredManualReloadScan(trigger, reloadId);"));
-        Assert.That(reloadMethod, Does.Contain("externalSkinRefreshQueued = true;"));
+        Assert.That(reloadMethod, Does.Contain("externalSkinRefreshQueued = QueueExternalSkinHostRefresh(\"header-reload\");"));
+        Assert.That(reloadMethod, Does.Not.Contain("externalSkinRefreshQueued = true;"));
         Assert.That(reloadMethod, Does.Contain("deferredScanScheduled = true;"));
         Assert.That(reloadMethod, Does.Contain("throw;"));
         Assert.That(reloadMethod, Does.Contain("finally"));

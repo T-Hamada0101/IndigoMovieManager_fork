@@ -79,6 +79,29 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_host_refresh_queueは受理できた時だけtrueを返す()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string method = GetMethodBlock(
+            source,
+            "private bool QueueExternalSkinHostRefresh("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(method, Does.Contain("if (IsExternalSkinHostTeardownStarted())"));
+            Assert.That(method, Does.Contain("return false;"));
+            Assert.That(method, Does.Contain("bool hasScheduler = _externalSkinHostRefreshScheduler != null;"));
+            Assert.That(method, Does.Contain("if (!hasScheduler)"));
+            Assert.That(method, Does.Contain("if (!_externalSkinHostRefreshScheduler.CanAcceptQueueRequests)"));
+            Assert.That(method, Does.Contain("bool accepted = _externalSkinHostRefreshScheduler.Queue("));
+            Assert.That(method, Does.Contain("refresh queue rejected:"));
+            Assert.That(method, Does.Contain("return accepted;"));
+            Assert.That(method, Does.Contain("return true;"));
+        });
+    }
+
+    [Test]
     public void 外部skin_refresh_reasonごとにcatalog再確認モードを分ける()
     {
         Assert.Multiple(() =>
@@ -167,7 +190,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
 
         Assert.That(method, Does.Contain("NotifyTagEditorTagIndexChanged(movie);"));
         Assert.That(method, Does.Contain("RefreshViewsAfterTagEditorRecordChange(movie);"));
-        Assert.That(method, Does.Contain("QueueExternalSkinHostRefresh(\"skin-tag-mutation\");"));
+        Assert.That(method, Does.Contain("_ = QueueExternalSkinHostRefresh(\"skin-tag-mutation\");"));
         Assert.That(method, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
     }
 

@@ -7,6 +7,8 @@
 - `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成の遅延要因を次の実機ログで分類できるようにした。
 - user-priority 解除ログに `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加した。timeout は runtime release log へ接続済みで、既定 30 秒超過時だけ `release_reason=timeout` を出し、強制解除はしない。
 - manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残すようにした。
+- Header Reload は `header reload begin/end/failed` と後続 `manual reload deferred scan scheduled/skipped/failed` に同じ `reload_id` を出し、短時間に複数回押された時も再読込本体と遅延 scan の因果を追えるようにした。
+- Header Reload の `external_skin_refresh_queued` は、外部 skin refresh 要求が実際に受理された時だけ true になる。`QueueExternalSkinHostRefresh(...)` と `ExternalSkinHostRefreshScheduler.Queue(...)` は bool 契約を持ち、teardown / scheduler 未初期化 / dispatcher shutdown / `BeginInvoke` 受理失敗は false、受理後の WebView runtime / navigate 失敗は refresh 側の失敗ログで扱う。
 - watch full fallback の schedule / apply / final 系ログに `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログで選別できるようにした。
 - user-priority timeout を runtime release log へ接続した。既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として出し、強制解除や新 Scheduler は入れない。
 - active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。PMレビューで skip 前に `onSkinLeave` を送る危険経路を検出し、skip 時は leave callback を送らない順序へ修正した。

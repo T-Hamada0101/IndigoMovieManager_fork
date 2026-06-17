@@ -34,14 +34,16 @@ namespace IndigoMovieManager
         }
 
         internal int CurrentGeneration => currentGeneration;
+        internal bool CanAcceptQueueRequests =>
+            !dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished;
 
-        internal void Queue(string reason, string requestTraceId = "")
+        internal bool Queue(string reason, string requestTraceId = "")
         {
             // 終了シーケンス中は新規 refresh を受け付けず、dispatcher shutdown 競合の例外を避ける。
-            if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+            if (!CanAcceptQueueRequests)
             {
                 ResetPendingStateForShutdown();
-                return;
+                return false;
             }
 
             string normalizedReason = reason ?? "";
@@ -65,7 +67,7 @@ namespace IndigoMovieManager
             currentGeneration++;
             if (isRefreshRunning)
             {
-                return;
+                return true;
             }
 
             isRefreshRunning = true;
@@ -75,10 +77,12 @@ namespace IndigoMovieManager
                     new Action(async () => await DrainAsync()),
                     DispatcherPriority.Background
                 );
+                return true;
             }
             catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException)
             {
                 ResetPendingStateForShutdown();
+                return false;
             }
         }
 
@@ -105,7 +109,7 @@ namespace IndigoMovieManager
                 isRefreshRunning = false;
                 if (isRefreshPending)
                 {
-                    Queue(pendingReason, pendingRequestTraceId);
+                    _ = Queue(pendingReason, pendingRequestTraceId);
                 }
             }
         }

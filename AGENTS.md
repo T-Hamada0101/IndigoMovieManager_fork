@@ -76,6 +76,8 @@
 - 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は runtime release log へ接続済みで、既定 30 秒超過時だけ `release_reason=timeout` として出し、強制解除はしない。
 - 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` に加え、`attempted` / `failed` / `first_registered_ms` をログへ出し、起動後 watcher 作成の支配要因を実機ログで切り分けられる。
 - 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残す。
+- 済: Header Reload は `reload_id` を発行し、`header reload begin/end/failed` と `manual reload deferred scan scheduled/skipped/failed` を同じIDで結ぶ。再読込本体と後続 scan の因果を実機ログだけで追える。
+- 済: Header Reload の `external_skin_refresh_queued` は外部 skin refresh 要求の実受理可否を表す。`QueueExternalSkinHostRefresh(...)` / `ExternalSkinHostRefreshScheduler.Queue(...)` は bool 契約を持ち、teardown / scheduler 未初期化 / dispatcher shutdown / `BeginInvoke` 受理失敗では false を返す。
 - 済: watch full fallback は schedule / apply / final 系ログに `recovery_reason` を併記し、`dirty-fields-unsafe:*` など次に削る条件を実機ログだけで選べる。
 - 済: 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じる。
 - 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実際に navigate する時だけ leave callback を送ること。実 navigate へ進む時は旧 reuse key を先に無効化し、same-document skip では外部サムネ許可リストを消さない。

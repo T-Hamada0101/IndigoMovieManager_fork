@@ -730,7 +730,7 @@ namespace IndigoMovieManager
 
                 NotifyTagEditorTagIndexChanged(movie);
                 RefreshViewsAfterTagEditorRecordChange(movie);
-                QueueExternalSkinHostRefresh("skin-tag-mutation");
+                _ = QueueExternalSkinHostRefresh("skin-tag-mutation");
             }
 
             bool hasTag = movie.Tag.Any(x =>

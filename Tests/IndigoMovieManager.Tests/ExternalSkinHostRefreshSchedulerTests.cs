@@ -49,11 +49,11 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
                 ex => throw new AssertionException($"refresh drain failed: {ex.Message}")
             );
 
-            scheduler.Queue("window-loaded", "rq0001");
+            Assert.That(scheduler.Queue("window-loaded", "rq0001"), Is.True);
             await WaitAsync(firstStarted.Task, TimeSpan.FromSeconds(5), "最初の refresh が始まりませんでした。");
 
-            scheduler.Queue("dbinfo-Skin", "rq0002");
-            scheduler.Queue("dbinfo-DBFullPath", "rq0003");
+            Assert.That(scheduler.Queue("dbinfo-Skin", "rq0002"), Is.True);
+            Assert.That(scheduler.Queue("dbinfo-DBFullPath", "rq0003"), Is.True);
             releaseFirst.TrySetResult(true);
 
             await WaitAsync(
@@ -119,10 +119,10 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
                 ex => throw new AssertionException($"refresh drain failed: {ex.Message}")
             );
 
-            scheduler.Queue("dbinfo-Skin", "rq0101");
+            Assert.That(scheduler.Queue("dbinfo-Skin", "rq0101"), Is.True);
             await WaitAsync(firstStarted.Task, TimeSpan.FromSeconds(5), "最初の refresh が始まりませんでした。");
 
-            scheduler.Queue("dbinfo-DBFullPath", "rq0102");
+            Assert.That(scheduler.Queue("dbinfo-DBFullPath", "rq0102"), Is.True);
             releaseFirst.TrySetResult(true);
 
             await WaitAsync(
@@ -180,11 +180,11 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
                 SelectPreferredReasonForTest
             );
 
-            scheduler.Queue("window-loaded", "rq0201");
+            Assert.That(scheduler.Queue("window-loaded", "rq0201"), Is.True);
             await WaitAsync(firstStarted.Task, TimeSpan.FromSeconds(5), "最初の refresh が始まりませんでした。");
 
-            scheduler.Queue("header-reload", "rq0202");
-            scheduler.Queue("minimal-chrome-reload", "rq0203");
+            Assert.That(scheduler.Queue("header-reload", "rq0202"), Is.True);
+            Assert.That(scheduler.Queue("minimal-chrome-reload", "rq0203"), Is.True);
             releaseFirst.TrySetResult(true);
 
             await WaitAsync(
@@ -209,6 +209,33 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
         });
     }
 
+    [Test]
+    public async Task Queue_dispatcher終了中はfalseを返しrefreshを受理しない()
+    {
+        bool accepted = await RunOnStaDispatcherAsync(() =>
+        {
+            int refreshCount = 0;
+            Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+            ExternalSkinHostRefreshScheduler scheduler = new(
+                dispatcher,
+                (_, _, _) =>
+                {
+                    refreshCount++;
+                    return Task.CompletedTask;
+                },
+                ex => throw new AssertionException($"refresh drain failed: {ex.Message}")
+            );
+
+            dispatcher.InvokeShutdown();
+
+            bool queueAccepted = scheduler.Queue("header-reload", "rq-shutdown");
+            Assert.That(refreshCount, Is.Zero);
+            return Task.FromResult(queueAccepted);
+        });
+
+        Assert.That(accepted, Is.False);
+    }
+
     private static async Task WaitAsync(Task task, TimeSpan timeout, string timeoutMessage)
     {
         Task completedTask = await Task.WhenAny(task, Task.Delay(timeout));
@@ -230,7 +257,11 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
                     new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher)
                 );
                 _ = ExecuteAsync();
-                Dispatcher.Run();
+                Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+                if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+                {
+                    Dispatcher.Run();
+                }
 
                 async Task ExecuteAsync()
                 {
@@ -245,9 +276,11 @@ public sealed class ExternalSkinHostRefreshSchedulerTests
                     }
                     finally
                     {
-                        Dispatcher.CurrentDispatcher.BeginInvokeShutdown(
-                            DispatcherPriority.Background
-                        );
+                        Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+                        if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+                        {
+                            dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+                        }
                     }
                 }
             }
