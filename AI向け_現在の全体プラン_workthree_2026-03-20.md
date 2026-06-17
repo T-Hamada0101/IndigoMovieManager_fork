@@ -1,8 +1,9 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-06-17
+最終更新日: 2026-06-18
 
 変更概要:
+- `RefreshMovieViewFromCurrentSourceAsync(...)` は背景計算だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡すようにした。古い in-memory refresh が UI 反映待ち中に残った時は `stage=apply-dispatch` でキャンセルして閉じ、後着結果だけを UI へ通す。
 - 2026-06-17 のPM判断として、実機 `debug-runtime.log` 調査から `first-page shown` / `input ready` は良好、起動後 `CreateWatcher` と active skin navigate が次の支配要因候補と判断した。
 - 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じるようにした。
 - `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、さらに登録 apply 側へ `attempted` / `failed` / `first_registered_ms` を追加して、watcher 作成約13秒の内訳を実機ログで切れるようにした。

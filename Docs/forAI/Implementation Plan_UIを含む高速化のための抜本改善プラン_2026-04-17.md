@@ -1,8 +1,9 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-06-17
+最終更新日: 2026-06-18
 
 変更概要:
+- `RefreshMovieViewFromCurrentSourceAsync(...)` は、背景 filter / sort だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡すようにした。古い in-memory refresh が UI 反映待ち中に残った場合は `stage=apply-dispatch` でキャンセルしてログへ閉じ、後着の最新要求だけを UI へ適用する。
 - 2026-06-17 の実機 `debug-runtime.log` 調査では、`first-page shown` / `input ready` は良好だった。支配要因候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference に絞った。
 - `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成の遅延要因を次の実機ログで分類できるようにした。
 - user-priority 解除ログに `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加した。timeout は runtime release log へ接続済みで、既定 30 秒超過時だけ `release_reason=timeout` を出し、強制解除はしない。

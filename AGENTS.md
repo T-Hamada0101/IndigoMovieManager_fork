@@ -68,11 +68,12 @@
 
 ## UI高速化プランの最新見直し（2026-05-26 AI必読）
 - 計画の軸は維持する。進捗は実装ベース約 80〜82%、実機確認込み 72〜74% として扱い、完了判定は実機ログで閉じる
-- 次の最優先は `RefreshMovieViewFromCurrentSourceAsync(...)` の後着キャンセル、`Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` 残りの局所反映化、大件数 sort の background + revision guard
+- 次の最優先は `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` 残りの局所反映化、大件数 sort の background + revision guard
 - 起動 / skin / visible-first は、`debug-runtime.log` で `first-page shown` / `input ready` / `refresh end` / `catalog_*` / `persist_*` を説明できるまで完了扱いにしない
 - skin は DB 分離だけで完了扱いにせず、`refresh` / stale / catalog / navigate の削減と trace 観測を優先する
 
-## UI高速化プランの最新見直し（2026-06-17 AI必読）
+## UI高速化プランの最新見直し（2026-06-18 AI必読）
+- 済: `RefreshMovieViewFromCurrentSourceAsync(...)` は背景計算だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡し、古い in-memory refresh が UI 反映待ち中に残った時は `stage=apply-dispatch` でキャンセルしてログへ閉じる。
 - 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は runtime release log へ接続済みで、既定 30 秒超過時だけ `release_reason=timeout` として出し、強制解除はしない。
 - 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` に加え、`attempted` / `failed` / `first_registered_ms` をログへ出し、起動後 watcher 作成の支配要因を実機ログで切り分けられる。
 - 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残す。

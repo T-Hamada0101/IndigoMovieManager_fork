@@ -248,6 +248,17 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(method, Does.Contain("Task.Run("));
         Assert.That(method, Does.Contain("MainVM.FilterMovies("));
         Assert.That(method, Does.Contain("refreshCancellationToken,"));
+        int dispatcherPriorityIndex = method.IndexOf(
+            "DispatcherPriority.Background",
+            StringComparison.Ordinal
+        );
+        int dispatcherCancellationTokenIndex = method.IndexOf(
+            "refreshCancellationToken",
+            dispatcherPriorityIndex,
+            StringComparison.Ordinal
+        );
+        Assert.That(dispatcherPriorityIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(dispatcherCancellationTokenIndex, Is.GreaterThan(dispatcherPriorityIndex));
         Assert.That(method, Does.Contain("resolvedTraceName"));
         Assert.That(
             method,
@@ -255,6 +266,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
                 "catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)"
             )
         );
+        Assert.That(method, Does.Contain("stage=apply-dispatch"));
         Assert.That(method, Does.Contain("refresh canceled: revision="));
         Assert.That(method, Does.Not.Contain("CancellationToken.None"));
     }

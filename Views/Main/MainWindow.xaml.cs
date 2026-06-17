@@ -2615,34 +2615,48 @@ namespace IndigoMovieManager
 
             FilteredMovieRecsUpdateResult applyResult = default;
             bool applied = false;
-            if (Dispatcher == null || Dispatcher.CheckAccess())
+            try
             {
-                // 既にUIスレッドなら再ディスパッチせず、その場で適用して待機時間を増やさない。
-                applied = TryApplyMemoryRefreshResultOnUiThread(
-                    requestRevision,
-                    sorted,
-                    searchCount,
-                    resolvedSortId,
-                    resolvedTraceName,
-                    out applyResult
-                );
+                if (Dispatcher == null || Dispatcher.CheckAccess())
+                {
+                    refreshCancellationToken.ThrowIfCancellationRequested();
+                    // 既にUIスレッドなら再ディスパッチせず、その場で適用して待機時間を増やさない。
+                    applied = TryApplyMemoryRefreshResultOnUiThread(
+                        requestRevision,
+                        sorted,
+                        searchCount,
+                        resolvedSortId,
+                        resolvedTraceName,
+                        out applyResult
+                    );
+                }
+                else
+                {
+                    await Dispatcher.InvokeAsync(
+                        () =>
+                        {
+                            refreshCancellationToken.ThrowIfCancellationRequested();
+                            applied = TryApplyMemoryRefreshResultOnUiThread(
+                                requestRevision,
+                                sorted,
+                                searchCount,
+                                resolvedSortId,
+                                resolvedTraceName,
+                                out applyResult
+                            );
+                        },
+                        DispatcherPriority.Background,
+                        refreshCancellationToken
+                    );
+                }
             }
-            else
+            catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)
             {
-                await Dispatcher.InvokeAsync(
-                    () =>
-                    {
-                        applied = TryApplyMemoryRefreshResultOnUiThread(
-                            requestRevision,
-                            sorted,
-                            searchCount,
-                            resolvedSortId,
-                            resolvedTraceName,
-                            out applyResult
-                        );
-                    },
-                    DispatcherPriority.Background
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"{resolvedTraceName} refresh canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} stage=apply-dispatch elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
                 );
+                return;
             }
 
             if (!applied)
