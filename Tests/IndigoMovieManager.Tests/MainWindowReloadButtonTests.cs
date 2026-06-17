@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using IndigoMovieManager;
+using IndigoMovieManager.ViewModels;
 
 namespace IndigoMovieManager.Tests;
 
@@ -45,6 +46,70 @@ public sealed class MainWindowReloadButtonTests
 
         Assert.That(steps, Is.EqualTo(new[] { "bookmark", "filter:1:True" }));
         Assert.That(GetPrivateField<int>(window, "_watchUiSuppressionCount"), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void TryGetDeferredManualReloadScanSkipReason_dispatcher未初期化ならscanを積まない()
+    {
+        bool skipped = MainWindow.TryGetDeferredManualReloadScanSkipReason(
+            dispatcher: null!,
+            mainVM: new MainWindowViewModel(),
+            checkFolderRequestSync: new object(),
+            out string reason
+        );
+
+        Assert.That(skipped, Is.True);
+        Assert.That(reason, Is.EqualTo("dispatcher-null"));
+    }
+
+    [Test]
+    public void TryGetDeferredManualReloadScanSkipReason_DB未選択ならscanを積まない()
+    {
+        MainWindowViewModel mainVM = new();
+
+        bool skipped = MainWindow.TryGetDeferredManualReloadScanSkipReason(
+            System.Windows.Threading.Dispatcher.CurrentDispatcher,
+            mainVM,
+            new object(),
+            out string reason
+        );
+
+        Assert.That(skipped, Is.True);
+        Assert.That(reason, Is.EqualTo("db-path-empty"));
+    }
+
+    [Test]
+    public void TryGetDeferredManualReloadScanSkipReason_queue未初期化ならscanを積まない()
+    {
+        MainWindowViewModel mainVM = new();
+        mainVM.DbInfo.DBFullPath = "test-main.wb";
+
+        bool skipped = MainWindow.TryGetDeferredManualReloadScanSkipReason(
+            System.Windows.Threading.Dispatcher.CurrentDispatcher,
+            mainVM,
+            checkFolderRequestSync: null!,
+            out string reason
+        );
+
+        Assert.That(skipped, Is.True);
+        Assert.That(reason, Is.EqualTo("queue-not-initialized"));
+    }
+
+    [Test]
+    public void TryGetDeferredManualReloadScanSkipReason_scan可能ならfalseを返す()
+    {
+        MainWindowViewModel mainVM = new();
+        mainVM.DbInfo.DBFullPath = "test-main.wb";
+
+        bool skipped = MainWindow.TryGetDeferredManualReloadScanSkipReason(
+            System.Windows.Threading.Dispatcher.CurrentDispatcher,
+            mainVM,
+            new object(),
+            out string reason
+        );
+
+        Assert.That(skipped, Is.False);
+        Assert.That(reason, Is.Empty);
     }
 
     private static MainWindow CreateWindow()

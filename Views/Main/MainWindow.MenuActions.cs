@@ -2615,21 +2615,107 @@ namespace IndigoMovieManager
         {
             try
             {
+                if (TryGetDeferredManualReloadScanSkipReason(out string skipReason))
+                {
+                    LogDeferredManualReloadScanSkipped(trigger, skipReason);
+                    return;
+                }
+
                 DebugRuntimeLog.Write(
                     "watch-check",
                     $"manual reload deferred scan scheduled: trigger={trigger}"
                 );
                 await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 await Task.Delay(250);
+
+                if (TryGetDeferredManualReloadScanSkipReason(out skipReason))
+                {
+                    LogDeferredManualReloadScanSkipped(trigger, skipReason);
+                    return;
+                }
+
                 await QueueCheckFolderAsync(CheckMode.Manual, $"{trigger}:deferred");
             }
             catch (Exception ex)
             {
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"manual reload deferred scan failed: trigger={trigger} reason='{ex.Message}'"
+                    $"manual reload deferred scan failed: trigger={trigger} type={ex.GetType().Name} origin={GetDeferredManualReloadScanFailureOrigin(ex)} reason='{ex.Message}'"
                 );
             }
+        }
+
+        private bool TryGetDeferredManualReloadScanSkipReason(out string reason)
+        {
+            return TryGetDeferredManualReloadScanSkipReason(
+                Dispatcher,
+                MainVM,
+                _checkFolderRequestSync,
+                out reason
+            );
+        }
+
+        internal static bool TryGetDeferredManualReloadScanSkipReason(
+            System.Windows.Threading.Dispatcher dispatcher,
+            MainWindowViewModel mainVM,
+            object checkFolderRequestSync,
+            out string reason
+        )
+        {
+            if (dispatcher == null)
+            {
+                reason = "dispatcher-null";
+                return true;
+            }
+
+            if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+            {
+                reason = "dispatcher-shutdown";
+                return true;
+            }
+
+            if (mainVM == null)
+            {
+                reason = "main-vm-null";
+                return true;
+            }
+
+            if (mainVM.DbInfo == null)
+            {
+                reason = "db-info-null";
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(mainVM.DbInfo.DBFullPath))
+            {
+                reason = "db-path-empty";
+                return true;
+            }
+
+            if (checkFolderRequestSync == null)
+            {
+                // Queue入口のロックが無い状態では、背後scanを積まずに原因だけ残す。
+                reason = "queue-not-initialized";
+                return true;
+            }
+
+            reason = "";
+            return false;
+        }
+
+        private static void LogDeferredManualReloadScanSkipped(string trigger, string reason)
+        {
+            DebugRuntimeLog.Write(
+                "watch-check",
+                $"manual reload deferred scan skipped: trigger={trigger} reason={reason}"
+            );
+        }
+
+        private static string GetDeferredManualReloadScanFailureOrigin(Exception ex)
+        {
+            StackFrame frame = new StackTrace(ex, fNeedFileInfo: false).GetFrame(0);
+            string methodName = frame?.GetMethod()?.Name ?? "unknown";
+            return methodName;
         }
 
         private void MenuBtnSettings_Click(object sender, RoutedEventArgs e)
