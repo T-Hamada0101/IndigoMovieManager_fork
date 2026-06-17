@@ -72,6 +72,12 @@
 - 起動 / skin / visible-first は、`debug-runtime.log` で `first-page shown` / `input ready` / `refresh end` / `catalog_*` / `persist_*` を説明できるまで完了扱いにしない
 - skin は DB 分離だけで完了扱いにせず、`refresh` / stale / catalog / navigate の削減と trace 観測を優先する
 
+## UI高速化プランの最新見直し（2026-06-17 AI必読）
+- 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は現時点では純粋判定 helper とテストまでで、runtime 強制解除は未導入。
+- 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` をログへ出し、起動後 watcher 作成の支配要因を実機ログで切り分けられる。
+- 現行実機ログでは `first-page shown` / `input ready` は良好で、次の確認軸は起動後 `CreateWatcher` 約13秒の内訳、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
+- 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply のどれかを確定してから削る。
+
 ## 2チーム体制（AI必読）
 - 本線チームは `AI向け_現在の全体プラン_workthree_2026-03-20.md` と `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として進める
 - スキンチームは `WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md` を正本として進める

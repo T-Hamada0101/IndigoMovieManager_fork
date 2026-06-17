@@ -1,8 +1,11 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-05-28
+最終更新日: 2026-06-17
 
 変更概要:
+- 2026-06-17 の実機 `debug-runtime.log` 調査では、`first-page shown` / `input ready` は良好だった。支配要因候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference に絞った。
+- `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成の遅延要因を次の実機ログで分類できるようにした。
+- user-priority 解除ログに `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加した。timeout は純粋判定 helper とテストで契約を固定し、runtime 強制解除は後続扱いにする。
 - 2026-05-28 のPM判断として、`Goal_Indigoの未来図_2026-05-28.md` をこの実装計画へ反映した。当面は WPF 一覧を維持した diff-first 化を本線とし、WebView2 一覧化と IPC / sidecar 先行導入は非目標へ固定する。
 - Lane 1 / 2 は ReadModel / Diff 契約として、stable key、source revision、view revision、operation、選択 / スクロール / focus 影響、fallback reason を持つ方向へ寄せる。
 - Lane 1 / 3 は Scheduler 契約として、bounded queue、coalesce、latest-only、user-priority release / timeout log、shutdown bounded drain を持つ方向へ寄せる。
@@ -609,7 +612,10 @@
 7. 済: visible-first は、viewport 一時未計測時に同一タブ・同一 source revision の preferred key snapshot を保持し、不要な画像再評価を抑えるようにした。
 8. 済: サブ5.5追加で、起動 fallback の `FilterAndSort(sortId, true)` は first-page 起動失敗時の DB 初期読込復旧、段階ロード中 sort 変更の `FilterAndSort(id.ToString(), true)` は新 sort の全件順序復旧として許容 fallback に分類した。Debug タブのサムネイル全削除後と Thumbnail 成功後の main tab 後段は DB 再読込をやめ、読み込み済み `MovieRecords` のサムネパス/ERROR 件数や visible refresh、preferred key revision、snapshot 予約へ寄せた。サムネERROR順だけは順序変化を拾うため、現在一覧の in-memory sort に限定する。
 9. 済: Bookmark タブの view refresh は `ObservableCollection` 通知へ任せ、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけに絞った。
-10. 次: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認し、残る UI 停滞が Player / 他の許容 fallback / 実機画像供給のどこにあるかを決める。
+10. 済: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認した。現行ログでは search / sort / Player / visible-first は主役ではなく、`first-page shown` / `input ready` は良好。次の候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
+11. 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` をログへ出し、watcher 作成の支配要因を実機ログで切り分けられるようにした。
+12. 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は純粋判定 helper とテストまでで、runtime 強制解除と timeout ログ接続は後続。
+13. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply のどれに寄っているかを確定してから削る。skin は別レーンで navigate skip 条件を検討する。
 
 ### Step 1
 
@@ -628,12 +634,12 @@
 
 ### Step 4
 
-- watcher / poll / shutdown は、`input stop -> complete -> bounded drain -> timeout log` の順序を守る。
+- watcher / poll / shutdown は、`input stop -> complete -> bounded drain -> timeout log` の順序を守る。user-priority release reason はログ実装済み、timeout は純粋判定 helper までなので runtime 接続は後続で扱う。
 - low-update 時の poll interval 延長は、初期処理が落ち着いた後だけ有効化する。
 
 ### Step 5
 
-- 起動 warm path と visible-first / Player のどちらを先に切るかを、`first-page shown`、`input ready`、`viewport request -> image ready`、Player 操作ログで決める。
+- 起動 warm path と visible-first / Player のどちらを先に切るかを、`first-page shown`、`input ready`、`viewport request -> image ready`、Player 操作ログで決める。2026-06-17 時点では visible-first / Player より、起動後 watcher 作成内訳の実機確認を先に切る。
 - `skin` は別レーンとして、runtime bridge 境界固定と `refresh / catalog / DB` 分離を混ぜずに進める。
 
 ## 8. 受け入れ基準

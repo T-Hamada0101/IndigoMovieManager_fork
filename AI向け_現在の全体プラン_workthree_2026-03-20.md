@@ -1,8 +1,11 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-05-28
+最終更新日: 2026-06-17
 
 変更概要:
+- 2026-06-17 のPM判断として、実機 `debug-runtime.log` 調査から `first-page shown` / `input ready` は良好、起動後 `CreateWatcher` と active skin navigate が次の支配要因候補と判断した。
+- `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成約13秒の内訳を実機ログで切れるようにした。
+- user-priority 解除ログへ `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加し、Scheduler 契約の release reason 観測を補強した。timeout は純粋判定 helper とテストまでで、runtime 強制解除は未導入。
 - 2026-05-28 のPM判断として、`Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` を上位判断基準へ追加した。ただし日々の着手順は、この全体プランと `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として維持する。
 - 当面の本線は WPF 一覧を維持した diff-first 化であり、本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換、検索仕様変更は非目標として固定した。
 - Application Core は巨大化した新 `MainWindow` にしない。`Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない `Command / Query / Event / Snapshot / Diff DTO` 境界へ寄せる。
@@ -90,6 +93,7 @@
 - Everything poll の watch folder snapshot / eligible snapshot は cache 参照と invalidation を同じ lock へ寄せつつ、watch table 読み取りと eligible 判定は lock 外へ逃がし、poll loop 背後化後の共有状態境界を固めた
 - `QueueCheckFolderAsync(...)` は enqueue 後の queue runner を ThreadPool 起動へ寄せ、runner task は 1 本共有にして、UI 操作から入った監視走査でも `CheckFolderAsync(...)` 前半を呼び出し元 UI スレッドへ残しにくくした
 - `CreateWatcher()` は起動後の watcher 作成計画を背景側で組み、watch table 読み込み / Everything availability 判定 / skip 判定を UI から外し、UI には DB 切替ガードと revision 確認後の `FileSystemWatcher` 登録だけを残した
+- `CreateWatcher()` の背景計画と UI apply は、`availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` で分解計測できる。次の実機確認では watcher 作成の長時間化がどの段に寄っているかを先に確定する
 - watcher 作成計画の `Everything-only` skip は登録直前に availability を再確認し、計画作成後に Everything が落ちた時は `FileSystemWatcher` 登録へ戻すようにした
 - watcher 登録フェーズでは UI 上の `Path.Exists(...)` 再実行を避け、背景計画で確認済みの対象だけを登録する形へ寄せた
 - watcher 作成 task は active count と最新 task 状態を shutdown handoff ログへ残し、終了時に未完了の背景作成があるかを追えるようにした
@@ -493,7 +497,7 @@ DB 施策で固定する設計ルールは次である。
 - delegate facade と host 別 factory の境界を壊していない
 - `skin` の profile write 経路が複数ライターへ再分岐していない
 - Core が `Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM へ依存していない
-- Scheduler が bounded queue、coalesce、latest-only、shutdown bounded drain、user-priority release / timeout log を持つ方向へ進んでいる
+- Scheduler が bounded queue、coalesce、latest-only、shutdown bounded drain、user-priority release / timeout log を持つ方向へ進んでいる。user-priority release reason はログ実装済み、timeout は純粋判定 helper までで runtime 接続が後続
 
 ## 11. 関連資料
 
