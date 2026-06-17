@@ -65,11 +65,23 @@ namespace IndigoMovieManager.Skin.Runtime
         )
         {
             ArgumentNullException.ThrowIfNull(targetCoreWebView2);
+            string normalizedThumbRootPath = NormalizePath(thumbRootPath);
 
             if (isAttached && ReferenceEquals(coreWebView2, targetCoreWebView2))
             {
-                managedThumbnailRootPath = thumbRootPath ?? "";
-                registeredExternalThumbnailPaths.Clear();
+                if (
+                    ShouldClearRegisteredExternalThumbnailPathsForAttach(
+                        isSameCoreWebViewAttach: true,
+                        managedThumbnailRootPath,
+                        normalizedThumbRootPath
+                    )
+                )
+                {
+                    // managed thumb の基準が変わる時は、旧 document の外部許可を持ち越さない。
+                    registeredExternalThumbnailPaths.Clear();
+                }
+
+                managedThumbnailRootPath = normalizedThumbRootPath;
                 UpdateVirtualHostMappings(skinRootPath, thumbRootPath);
                 return;
             }
@@ -77,7 +89,7 @@ namespace IndigoMovieManager.Skin.Runtime
             Detach();
 
             coreWebView2 = targetCoreWebView2;
-            managedThumbnailRootPath = thumbRootPath ?? "";
+            managedThumbnailRootPath = normalizedThumbRootPath;
             registeredExternalThumbnailPaths.Clear();
             ConfigureSettings(coreWebView2.Settings);
             UpdateVirtualHostMappings(skinRootPath, thumbRootPath);
@@ -131,6 +143,26 @@ namespace IndigoMovieManager.Skin.Runtime
         public void ClearRegisteredExternalThumbnailPaths()
         {
             registeredExternalThumbnailPaths.Clear();
+        }
+
+        internal static bool ShouldClearRegisteredExternalThumbnailPathsForAttach(
+            bool isSameCoreWebViewAttach,
+            string currentThumbRootPath,
+            string nextThumbRootPath
+        )
+        {
+            if (!isSameCoreWebViewAttach)
+            {
+                return true;
+            }
+
+            string currentNormalizedPath = NormalizeRootPathForComparison(currentThumbRootPath);
+            string nextNormalizedPath = NormalizeRootPathForComparison(nextThumbRootPath);
+            return !string.Equals(
+                currentNormalizedPath,
+                nextNormalizedPath,
+                StringComparison.OrdinalIgnoreCase
+            );
         }
 
         public void Dispose()
@@ -413,6 +445,14 @@ namespace IndigoMovieManager.Skin.Runtime
             {
                 return path.Trim().Trim('"').Replace('/', '\\');
             }
+        }
+
+        private static string NormalizeRootPathForComparison(string path)
+        {
+            string normalizedPath = NormalizePath(path);
+            return string.IsNullOrWhiteSpace(normalizedPath)
+                ? ""
+                : Path.TrimEndingDirectorySeparator(normalizedPath);
         }
 
         private static string ResolveContentType(string path)
