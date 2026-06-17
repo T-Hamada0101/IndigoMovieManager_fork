@@ -3,6 +3,7 @@
 最終更新日: 2026-06-18
 
 変更概要:
+- サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻す。shutdown 中は予約を積まず、入力・描画を押しのけにくい後段局所 refresh として扱う。
 - サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せた。選択中詳細のサムネ表示だけを揺すり直し、タグ編集再表示を巻き込まない。
 - `RefreshMovieViewFromCurrentSourceAsync(...)` は、背景 filter / sort だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡すようにした。古い in-memory refresh が UI 反映待ち中に残った場合は `stage=apply-dispatch` でキャンセルしてログへ閉じ、後着の最新要求だけを UI へ適用する。
 - 2026-06-17 の実機 `debug-runtime.log` 調査では、`first-page shown` / `input ready` は良好だった。支配要因候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference に絞った。

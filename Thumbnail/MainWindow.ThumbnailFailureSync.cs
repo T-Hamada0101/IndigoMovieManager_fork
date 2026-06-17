@@ -913,7 +913,15 @@ namespace IndigoMovieManager
         {
             if (!Dispatcher.CheckAccess())
             {
-                _ = Dispatcher.InvokeAsync(() => RequestMainTabLocalRefreshAfterThumbnailSuccess(reason));
+                if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+                {
+                    return;
+                }
+
+                _ = Dispatcher.InvokeAsync(
+                    () => RequestMainTabLocalRefreshAfterThumbnailSuccess(reason),
+                    DispatcherPriority.Background
+                );
                 return;
             }
 

@@ -128,6 +128,42 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
+    public void サムネ成功後段予約は非UIスレッドからBackground優先度で戻す()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
+            .Replace("\r\n", "\n");
+        string method = ExtractMethod(
+            source,
+            "private void RequestMainTabLocalRefreshAfterThumbnailSuccess("
+        );
+
+        int checkAccessIndex = method.IndexOf(
+            "if (!Dispatcher.CheckAccess())",
+            StringComparison.Ordinal
+        );
+        int shutdownGuardIndex = method.IndexOf(
+            "Dispatcher.HasShutdownStarted",
+            checkAccessIndex,
+            StringComparison.Ordinal
+        );
+        int invokeIndex = method.IndexOf(
+            "Dispatcher.InvokeAsync(",
+            checkAccessIndex,
+            StringComparison.Ordinal
+        );
+        int backgroundPriorityIndex = method.IndexOf(
+            "DispatcherPriority.Background",
+            invokeIndex,
+            StringComparison.Ordinal
+        );
+
+        Assert.That(checkAccessIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(shutdownGuardIndex, Is.GreaterThan(checkAccessIndex));
+        Assert.That(shutdownGuardIndex, Is.LessThan(invokeIndex));
+        Assert.That(backgroundPriorityIndex, Is.GreaterThan(invokeIndex));
+    }
+
+    [Test]
     public void ShouldResortAfterThumbnailSuccessLocalRefresh_サムネERROR順だけTrue()
     {
         Assert.That(MainWindow.ShouldResortAfterThumbnailSuccessLocalRefresh("28"), Is.True);

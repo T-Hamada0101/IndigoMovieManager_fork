@@ -77,6 +77,7 @@
 - `manual` slot の success 即時反映では、対象 `MovieRecords` へ直接反映できた場合は forced rebind と visible refresh で止める。
 - `Preferred` のユーザー明示作成成功でも、対象 `MovieRecords` へ直接反映できた場合は main tab 側の後段 reload を省く。
 - 対象行へ直接反映できない場合だけ、短いデバウンス付きでサムネ表示の局所 refresh を後段で1回流す。
+- 後段の局所 refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻し、shutdown 中は積まない。
 - 選択中詳細の即時再評価は `RefreshSelectedThumbnailDetail()` に限定し、タグ編集再表示を巻き込まない。
 - `インデックス再構築` だけは別扱いで、`FailureDb` に積まず `--direct-index-repair` で worker を直接起動する。
 - direct index repair は元動画を別名 repair して終了し、成功時は repaired 側の新パスを stdout と popup に返す。
