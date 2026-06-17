@@ -4,12 +4,13 @@
 
 変更概要:
 - 2026-06-17 のPM判断として、実機 `debug-runtime.log` 調査から `first-page shown` / `input ready` は良好、起動後 `CreateWatcher` と active skin navigate が次の支配要因候補と判断した。
-- `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成約13秒の内訳を実機ログで切れるようにした。
-- user-priority 解除ログへ `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加し、Scheduler 契約の release reason 観測を補強した。timeout は純粋判定 helper とテストまでで、runtime 強制解除は未導入。
+- 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じるようにした。
+- `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、さらに登録 apply 側へ `attempted` / `failed` / `first_registered_ms` を追加して、watcher 作成約13秒の内訳を実機ログで切れるようにした。
+- user-priority 解除ログへ `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加し、Scheduler 契約の release reason 観測を補強した。timeout は runtime release log へ接続済みで、強制解除は未導入。
 - manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態の guard と skip reason ログを持ち、過去1件の NullReference 再発時も type / origin 付きで次の切り分けへ進めるようにした。
 - watch full fallback の schedule / apply / final ログへ `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログだけで分類できるようにした。
 - user-priority timeout は runtime release log へ接続し、既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として観測できるようにした。強制解除や新 Scheduler は入れていない。
-- active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、明示 reload / catalog refresh / teardown / stale は従来どおり navigate 側へ戻す。
+- active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実 navigate へ進む時は旧 reuse key と旧 document 用の外部サムネ許可を明示的に切る。明示 reload / catalog refresh / teardown / stale は従来どおり navigate 側へ戻す。
 - 2026-05-28 のPM判断として、`Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` を上位判断基準へ追加した。ただし日々の着手順は、この全体プランと `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として維持する。
 - 当面の本線は WPF 一覧を維持した diff-first 化であり、本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換、検索仕様変更は非目標として固定した。
 - Application Core は巨大化した新 `MainWindow` にしない。`Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない `Command / Query / Event / Snapshot / Diff DTO` 境界へ寄せる。
@@ -97,7 +98,7 @@
 - Everything poll の watch folder snapshot / eligible snapshot は cache 参照と invalidation を同じ lock へ寄せつつ、watch table 読み取りと eligible 判定は lock 外へ逃がし、poll loop 背後化後の共有状態境界を固めた
 - `QueueCheckFolderAsync(...)` は enqueue 後の queue runner を ThreadPool 起動へ寄せ、runner task は 1 本共有にして、UI 操作から入った監視走査でも `CheckFolderAsync(...)` 前半を呼び出し元 UI スレッドへ残しにくくした
 - `CreateWatcher()` は起動後の watcher 作成計画を背景側で組み、watch table 読み込み / Everything availability 判定 / skip 判定を UI から外し、UI には DB 切替ガードと revision 確認後の `FileSystemWatcher` 登録だけを残した
-- `CreateWatcher()` の背景計画と UI apply は、`availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` で分解計測できる。次の実機確認では watcher 作成の長時間化がどの段に寄っているかを先に確定する
+- `CreateWatcher()` の背景計画と UI apply は、`availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` / `attempted` / `failed` / `first_registered_ms` で分解計測できる。次の実機確認では watcher 作成の長時間化がどの段に寄っているかを先に確定する
 - watcher 作成計画の `Everything-only` skip は登録直前に availability を再確認し、計画作成後に Everything が落ちた時は `FileSystemWatcher` 登録へ戻すようにした
 - watcher 登録フェーズでは UI 上の `Path.Exists(...)` 再実行を避け、背景計画で確認済みの対象だけを登録する形へ寄せた
 - watcher 作成 task は active count と最新 task 状態を shutdown handoff ログへ残し、終了時に未完了の背景作成があるかを追えるようにした
@@ -108,7 +109,7 @@
 - `WatcherEventQueue` の runner 起動も ThreadPool へ寄せ、FileSystemWatcher event handler から初回処理の同期前段をさらに外した
 - 外部 skin API の非 UI スレッド経由の同期 UI 状態読み取りは `DispatcherPriority.Background` へ下げ、戻り値 API の互換を維持しつつ入力・描画を押しのけにくくした
 - 外部 skin API は UI 状態を `WhiteBrowserSkinApiUiSnapshot` として 1 回だけ固定し、`update / getInfo / getInfos / getFindInfo` の DTO 生成で DB パス、thumb folder、選択状態、検索条件、基準 sort を個別再読取しない入口へ寄せた
-- active skin の同一 document 再 navigate skip は `dbinfo-*` かつ cached definition の通常同期に限定する。skip 判定は `onSkinLeave` より前に行い、skip 時に skin 側を leave 済みにしないことを安全条件とする
+- active skin の同一 document 再 navigate skip は `dbinfo-*` かつ cached definition の通常同期に限定する。skip 判定は `onSkinLeave` より前に行い、skip 時に skin 側を leave 済みにしないこと、same-document skip では外部サムネ許可リストを消さないことを安全条件とする
 - `update / getInfo / getInfos / getFindInfo` は DTO 生成前に必要値だけの `MovieRecords` クローンを作り、途中で UI 側モデルが変わっても 1 応答内の値が揺れにくい形へ進めた
 - `focusThum / selectThum / addTag / removeTag / flipTag` は対象解決では UI 実体 `MovieRecords` を維持し、操作後レスポンスだけを操作後 snapshot と値クローンへ寄せた
 - 外部 skin API の thumbnail size 解決は、WB メタが十分な managed sheet ではメタ値を優先し、不要な同期画像デコードを避ける入口へ寄せた

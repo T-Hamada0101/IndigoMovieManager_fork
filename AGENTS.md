@@ -67,20 +67,20 @@
 - `skin` 個別の高速化と保存分離の正本は `WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`
 
 ## UI高速化プランの最新見直し（2026-05-26 AI必読）
-- 計画の軸は維持する。進捗は実装ベース約 78%、実機確認込み 70〜72% として扱い、完了判定は実機ログで閉じる
+- 計画の軸は維持する。進捗は実装ベース約 80〜82%、実機確認込み 72〜74% として扱い、完了判定は実機ログで閉じる
 - 次の最優先は `RefreshMovieViewFromCurrentSourceAsync(...)` の後着キャンセル、`Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` 残りの局所反映化、大件数 sort の background + revision guard
 - 起動 / skin / visible-first は、`debug-runtime.log` で `first-page shown` / `input ready` / `refresh end` / `catalog_*` / `persist_*` を説明できるまで完了扱いにしない
 - skin は DB 分離だけで完了扱いにせず、`refresh` / stale / catalog / navigate の削減と trace 観測を優先する
 
 ## UI高速化プランの最新見直し（2026-06-17 AI必読）
-- 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は現時点では純粋判定 helper とテストまでで、runtime 強制解除は未導入。
-- 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` をログへ出し、起動後 watcher 作成の支配要因を実機ログで切り分けられる。
+- 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は runtime release log へ接続済みで、既定 30 秒超過時だけ `release_reason=timeout` として出し、強制解除はしない。
+- 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` に加え、`attempted` / `failed` / `first_registered_ms` をログへ出し、起動後 watcher 作成の支配要因を実機ログで切り分けられる。
 - 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残す。
 - 済: watch full fallback は schedule / apply / final 系ログに `recovery_reason` を併記し、`dirty-fields-unsafe:*` など次に削る条件を実機ログだけで選べる。
-- 済: user-priority timeout は runtime release log へ接続済み。既定 30 秒超過時だけ `release_reason=timeout` として出し、強制解除はしない。
-- 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実際に navigate する時だけ leave callback を送ること。
+- 済: 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じる。
+- 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実際に navigate する時だけ leave callback を送ること。実 navigate へ進む時は旧 reuse key を先に無効化し、same-document skip では外部サムネ許可リストを消さない。
 - 現行実機ログでは `first-page shown` / `input ready` は良好で、次の確認軸は起動後 `CreateWatcher` 約13秒の内訳、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
-- 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply のどれかを確定してから削る。
+- 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれかを確定してから削る。skin は `navigate_skipped` / `navigate_skip_reason` と実WebView2表示崩れの有無を確認する。
 
 ## 2チーム体制（AI必読）
 - 本線チームは `AI向け_現在の全体プラン_workthree_2026-03-20.md` と `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として進める

@@ -617,13 +617,14 @@
 8. 済: サブ5.5追加で、起動 fallback の `FilterAndSort(sortId, true)` は first-page 起動失敗時の DB 初期読込復旧、段階ロード中 sort 変更の `FilterAndSort(id.ToString(), true)` は新 sort の全件順序復旧として許容 fallback に分類した。Debug タブのサムネイル全削除後と Thumbnail 成功後の main tab 後段は DB 再読込をやめ、読み込み済み `MovieRecords` のサムネパス/ERROR 件数や visible refresh、preferred key revision、snapshot 予約へ寄せた。サムネERROR順だけは順序変化を拾うため、現在一覧の in-memory sort に限定する。
 9. 済: Bookmark タブの view refresh は `ObservableCollection` 通知へ任せ、ExtDetail / ExtensionDetail のタグ再描画は表示中の view-local 更新だけに絞った。
 10. 済: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認した。現行ログでは search / sort / Player / visible-first は主役ではなく、`first-page shown` / `input ready` は良好。次の候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
-11. 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` をログへ出し、watcher 作成の支配要因を実機ログで切り分けられるようにした。
-12. 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は純粋判定 helper とテストまでで、runtime 強制解除と timeout ログ接続は後続。
+11. 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` をログへ出し、さらに apply summary へ `attempted` / `failed` / `first_registered_ms` を追加して、watcher 作成の支配要因を実機ログで切り分けられるようにした。
+12. 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は runtime release log へ接続済みで、既定 30 秒超過時だけ `release_reason=timeout` を出し、強制解除はしない。
 13. 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残せるようにした。
 14. 済: watch full fallback は `plan_reason` に加えて `recovery_reason` を schedule / apply / final 系ログへ出し、query-only 復帰できない理由を実機ログで分類できるようにした。
-15. 済: user-priority timeout は runtime release log へ接続済み。既定 30 秒超過時だけ `release_reason=timeout` を出し、強制解除はしない。
+15. 済: 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じる。
 16. 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、明示 reload / catalog refresh / teardown / stale では skip しない。
-17. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply のどれに寄っているかを確定してから削る。skin は `navigate_skipped` / `navigate_skip_reason` と実WebView2表示崩れの有無を確認する。
+17. 済: active skin の同一 document skip は、実 navigate へ進む時点で旧 reuse key を無効化し、`NavigateToString` 成功後だけ新 key を保存する。same-document skip では外部サムネ許可リストを保持し、実 navigate / Clear / Dispose / thumb root 変更では破棄する。
+18. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれに寄っているかを確定してから削る。skin は `navigate_skipped` / `navigate_skip_reason` と実WebView2表示崩れの有無を確認する。
 
 ### Step 1
 
@@ -639,18 +640,19 @@
 
 - `FilterAndSortAsync(...)` の呼び出し元を、`full snapshot reload`、`query only recompute`、`item diff apply` の 3 群へ再分類する。
 - `changed paths + ChangeKind + DirtyFields + ObservedState` がある経路では、追加済みの full reload 戻り理由ログを使い、残った fallback 条件を実機ログから選んで縮める。
+- full reload が必要な経路でも、後着キャンセル token を DB 読込入口へ通し、db-reload 段階のキャンセルを `stage=db-reload` ログへ閉じる。SQLite 読込そのものは完走する可能性があるため、開始前 / 待機 / 読込後破棄の契約として扱う。
 - `recovery_reason=dirty-fields-unsafe:*` などの実頻度を確認するまでは、Hash / MovieName dirty を安全扱いへ広げない。
 
 ### Step 4
 
-- watcher / poll / shutdown は、`input stop -> complete -> bounded drain -> timeout log` の順序を守る。user-priority release reason はログ実装済み、timeout は純粋判定 helper までなので runtime 接続は後続で扱う。
+- watcher / poll / shutdown は、`input stop -> complete -> bounded drain -> timeout log` の順序を守る。user-priority release reason と timeout runtime log は実装済みだが、強制解除は入れない。
 - low-update 時の poll interval 延長は、初期処理が落ち着いた後だけ有効化する。
 
 ### Step 5
 
 - 起動 warm path と visible-first / Player のどちらを先に切るかを、`first-page shown`、`input ready`、`viewport request -> image ready`、Player 操作ログで決める。2026-06-17 時点では visible-first / Player より、起動後 watcher 作成内訳の実機確認を先に切る。
 - `skin` は別レーンとして、runtime bridge 境界固定と `refresh / catalog / DB` 分離を混ぜずに進める。
-- `skin` の同一 document skip は通常 `dbinfo-*` の cached snapshot 同期に限定し、skip 判定より前に `onSkinLeave` を送らない。明示 reload / catalog refresh / 外部 skin 更新検知では従来どおり navigate する。
+- `skin` の同一 document skip は通常 `dbinfo-*` の cached snapshot 同期に限定し、skip 判定より前に `onSkinLeave` を送らない。明示 reload / catalog refresh / 外部 skin 更新検知では従来どおり navigate する。skip 時は外部サムネ許可リストを保持し、実 navigate へ進む時だけ旧 document 用の許可を破棄する。
 
 ## 8. 受け入れ基準
 

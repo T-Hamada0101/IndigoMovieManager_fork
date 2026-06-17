@@ -3,6 +3,8 @@
 最終更新日: 2026-06-17
 
 変更概要:
+- 2026-06-17 のサブ5.5 Mendel + PMレビューで、同一 `CoreWebView2` / 同一 `thumbRootPath` の再Attachでは外部サムネ許可リストを保持し、same-document skip 時に既存 DOM の画像再読込が 403 へ落ちないようにした。thumb root 変更、別 WebView attach、実 navigate、Clear / Dispose では旧 document 用の許可を破棄する。
+- 2026-06-17 のサブ5.5 Dewey + PMレビューで、実 navigate へ進む時点で `lastSuccessfulNavigationKey` を先に無効化し、`NavigateToString` 成功後だけ新 key を保存するようにした。`onSkinLeave` 済みページを、後続の same-document skip で誤再利用しない。
 - 2026-06-17 のサブ5.5 Hypatia + PMレビューで、active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ `NavigateToString` を skip できるようにした。`navigate_skipped` / `navigate_skip_reason='same-document'` を `refresh end` と同じ trace で追える。
 - 同修正のPMレビューで、skip 判定前に `HandleSkinLeaveAsync()` を呼ぶと skin 側が leave 済みのまま再 navigate されない危険を検出した。skip 判定は `onSkinLeave` より前に行い、実際に `NavigateToString` へ進む時だけ leave callback を送ることを安全条件として固定した。
 - 2026-05-27 の gpt-5.5 Newton で、`WhiteBrowserSkinHostOperationResult.WithTimings(...)` の timing 契約をテスト固定した。成功 / failure / skip の factory 初期値は 0 埋め、負値 / `NaN` / `Infinity` は 0 丸め、未指定 timing は既存値保持として、`HostNavigateReturnedNull` 経路の観測値も破綻しないことを確認できるようにした。
@@ -58,7 +60,7 @@
 - 2026-05-25 に同期 `GetCurrentExternalSkinDefinition()` を cached snapshot 専用へ固定し、同期 `RefreshCurrentExternalSkinDefinition()` を削除した。外部 skin 定義の catalog 再確認は async 経路だけで行う
 - 2026-05-25 に batch 圧縮時の `CatalogRefresh` 判定を `ResolveExternalSkinDefinitionRefreshMode(...)` へ集約し、priority 側で `header-reload` / `fallback-notice-retry` を二重列挙しない形へ固定した
 - 2026-05-26 に `refresh end` の payload を zero 込みへ揃え、catalog / persist が発生しなかった軽い refresh と、navigate まで進んだ refresh を同じ列で比較できるようにした
-- 2026-06-17 に通常 `dbinfo-*` の同一 document refresh は `NavigateToString` を skip 可能にした。ただし `header-reload` / `fallback-notice-retry` / catalog refresh / teardown / stale では skip しない。skip 時は `onSkinLeave` を送らず、表示更新だけで成立するかを実機ログと実表示で確認する
+- 2026-06-17 に通常 `dbinfo-*` の同一 document refresh は `NavigateToString` を skip 可能にした。ただし `header-reload` / `fallback-notice-retry` / catalog refresh / teardown / stale では skip しない。skip 時は `onSkinLeave` を送らず、外部サムネ許可リストも保持する。実 navigate へ進む時は旧 reuse key と旧 document 用の外部サムネ許可を先に切り、表示更新だけで成立するかを実機ログと実表示で確認する
 
 ## 1. 結論
 
