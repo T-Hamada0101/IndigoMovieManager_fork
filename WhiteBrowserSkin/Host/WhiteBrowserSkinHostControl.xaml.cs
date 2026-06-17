@@ -136,6 +136,8 @@ namespace IndigoMovieManager.Skin.Host
                     );
             }
 
+            // ここから先は旧ページへ leave を送るため、失敗時に leave 済みページを再利用しない。
+            lastSuccessfulNavigationKey = null;
             // 実際に新しい document を流す時だけ、旧ページの終了 callback を先に返す。
             await runtimeBridge.HandleSkinLeaveAsync();
             Stopwatch navigateToStringStopwatch = Stopwatch.StartNew();

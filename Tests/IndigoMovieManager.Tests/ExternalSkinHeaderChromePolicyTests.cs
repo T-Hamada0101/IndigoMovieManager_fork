@@ -365,6 +365,11 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             "CreateNavigateSkipped(requestedSkinName, \"same-document\")",
             StringComparison.Ordinal
         );
+        int invalidateReuseKeyIndex = navigateMethod.IndexOf(
+            "lastSuccessfulNavigationKey = null;",
+            navigateSkipIndex,
+            StringComparison.Ordinal
+        );
         int handleSkinLeaveIndex = navigateMethod.IndexOf(
             "await runtimeBridge.HandleSkinLeaveAsync()",
             StringComparison.Ordinal
@@ -420,6 +425,8 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(navigateMethod, Does.Contain("navigateToStringElapsedMilliseconds"));
             Assert.That(documentBuildIndex, Is.GreaterThanOrEqualTo(0));
             Assert.That(navigateSkipIndex, Is.GreaterThan(documentBuildIndex));
+            Assert.That(invalidateReuseKeyIndex, Is.GreaterThan(navigateSkipIndex));
+            Assert.That(handleSkinLeaveIndex, Is.GreaterThan(invalidateReuseKeyIndex));
             Assert.That(handleSkinLeaveIndex, Is.GreaterThan(navigateSkipIndex));
             Assert.That(navigateToStringIndex, Is.GreaterThan(handleSkinLeaveIndex));
             Assert.That(refreshEndMethod, Does.Contain("navigate_skip_reason="));
