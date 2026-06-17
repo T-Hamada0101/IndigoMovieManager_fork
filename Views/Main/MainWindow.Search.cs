@@ -30,6 +30,12 @@ namespace IndigoMovieManager
             {
                 return;
             }
+            if (_suppressSearchBoxTextChangedHandling)
+            {
+                // 履歴候補の差し替え中に発生した選択変更は、ユーザー選択として扱わない。
+                _searchBoxItemSelectedByUser = false;
+                return;
+            }
 
             // ドロップダウンが開いている状態でユーザーが選択を変更した（マウス・キー操作等）場合のみ、
             // 「ユーザー起因の検索」としてフラグを立てて後続処理(DropDownClosed等)での実行を促す。

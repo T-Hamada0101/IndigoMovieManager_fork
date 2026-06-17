@@ -174,6 +174,52 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void SearchHistory_同一候補ならUIコレクションを差し替えない()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string applyMethod = GetMethodBlock(
+            mainWindowSource,
+            "private void ApplySearchHistoryRecordItems("
+        );
+        string compareMethod = GetMethodBlock(
+            mainWindowSource,
+            "private static bool AreSameSearchHistoryRecords("
+        );
+
+        Assert.That(applyMethod, Does.Contain("AreSameSearchHistoryRecords(MainVM.HistoryRecs, nextRecords)"));
+        Assert.That(applyMethod, Does.Contain("return;"));
+        Assert.That(
+            applyMethod.IndexOf("return;", StringComparison.Ordinal),
+            Is.LessThan(applyMethod.IndexOf("MainVM.HistoryRecs.Clear();", StringComparison.Ordinal))
+        );
+        Assert.That(applyMethod, Does.Contain("MainVM.HistoryRecs.Clear();"));
+        Assert.That(applyMethod, Does.Contain("MainVM.HistoryRecs.Add(item);"));
+        Assert.That(compareMethod, Does.Contain("currentRecords.Count != nextRecords.Count"));
+        Assert.That(compareMethod, Does.Contain("current.Find_Id != next.Find_Id"));
+        Assert.That(compareMethod, Does.Contain("StringComparison.Ordinal"));
+    }
+
+    [Test]
+    public void SearchHistory_履歴候補差し替え中の選択変更はユーザー選択扱いしない()
+    {
+        string searchSource = GetRepoText("Views", "Main", "MainWindow.Search.cs");
+        string selectionChanged = GetMethodBlock(
+            searchSource,
+            "private void SearchBox_SelectionChanged("
+        );
+
+        Assert.That(selectionChanged, Does.Contain("if (_suppressSearchBoxTextChangedHandling)"));
+        Assert.That(selectionChanged, Does.Contain("_searchBoxItemSelectedByUser = false;"));
+        Assert.That(
+            selectionChanged.IndexOf(
+                "if (_suppressSearchBoxTextChangedHandling)",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(selectionChanged.IndexOf("if (SearchBox.IsDropDownOpen)", StringComparison.Ordinal))
+        );
+    }
+
+    [Test]
     public void SearchBox_TextChangedの検索解除は検索正本へ合流する()
     {
         string searchSource = GetRepoText("Views", "Main", "MainWindow.Search.cs");

@@ -32,6 +32,63 @@ public sealed class SearchHistoryServiceTests
     }
 
     [Test]
+    public void LoadLatestHistory_大文字小文字違いはWhiteBrowser互換で別履歴として残す()
+    {
+        string dbPath = CreateTempMainDb();
+        try
+        {
+            InsertHistoryRow(dbPath, 1, "abc", "2026-04-07 10:00:00");
+            InsertHistoryRow(dbPath, 2, "ABC", "2026-04-07 10:05:00");
+
+            History[] actual = SearchHistoryService.LoadLatestHistory(dbPath);
+
+            Assert.That(actual.Select(x => x.Find_Text).ToArray(), Is.EqualTo(["ABC", "abc"]));
+        }
+        finally
+        {
+            TryDeleteFile(dbPath);
+        }
+    }
+
+    [Test]
+    public void LoadLatestHistory_同一日時の同一キーワードはfindIdが大きい方を最新として返す()
+    {
+        string dbPath = CreateTempMainDb();
+        try
+        {
+            InsertHistoryRow(dbPath, 1, "tokyo", "2026-04-07 10:00:00");
+            InsertHistoryRow(dbPath, 2, "tokyo", "2026-04-07 10:00:00");
+
+            History[] actual = SearchHistoryService.LoadLatestHistory(dbPath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(actual.Select(x => x.Find_Text).ToArray(), Is.EqualTo(["tokyo"]));
+                Assert.That(actual[0].Find_Id, Is.EqualTo(2));
+            });
+        }
+        finally
+        {
+            TryDeleteFile(dbPath);
+        }
+    }
+
+    [Test]
+    public void LoadLatestHistory_WhiteBrowser互換のためwindow関数を使わない()
+    {
+        string source = GetRepoText("Infrastructure", "SearchHistoryService.cs");
+        string method = GetMethodBlock(source, "public static History[] LoadLatestHistory(");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(method, Does.Contain("ORDER BY find_date DESC, find_id DESC"));
+            Assert.That(method, Does.Not.Contain("ROW_NUMBER"));
+            Assert.That(method, Does.Not.Contain("PARTITION BY"));
+            Assert.That(method, Does.Not.Contain(" OVER "));
+        });
+    }
+
+    [Test]
     public void PersistSuccessfulSearch_ヒット0件では履歴追加せず成功時だけ保存する()
     {
         string dbPath = CreateTempMainDb();
@@ -85,6 +142,53 @@ public sealed class SearchHistoryServiceTests
         }
 
         return [.. result];
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        while (current != null)
+        {
+            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
+        return "";
+    }
+
+    private static string GetMethodBlock(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終了が見つかりません。");
+        return "";
     }
 
     private static void TryDeleteFile(string path)

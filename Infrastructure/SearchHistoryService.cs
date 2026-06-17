@@ -18,15 +18,11 @@ namespace IndigoMovieManager.Infrastructure
                 return [];
             }
 
+            // 履歴候補は WhiteBrowser 互換 DB でも確実に読めるよう、window 関数を使わず C# 側で重複を間引く。
             const string sql =
                 @"SELECT find_id, find_text, find_date
-                    FROM (
-                        SELECT *,
-                               ROW_NUMBER() OVER (PARTITION BY find_text ORDER BY find_date DESC) AS rn
-                        FROM history
-                    )
-                    WHERE rn = 1
-                    ORDER BY find_date DESC";
+                    FROM history
+                    ORDER BY find_date DESC, find_id DESC";
 
             DataTable historyData = SQLite.GetData(dbFullPath, sql);
             if (historyData == null)
@@ -35,7 +31,7 @@ namespace IndigoMovieManager.Infrastructure
             }
 
             List<History> result = [];
-            HashSet<string> seenTexts = new(StringComparer.CurrentCultureIgnoreCase);
+            HashSet<string> seenTexts = new(StringComparer.Ordinal);
             foreach (DataRow row in historyData.AsEnumerable())
             {
                 string findText = row["find_text"]?.ToString() ?? "";
