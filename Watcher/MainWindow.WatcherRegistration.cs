@@ -309,13 +309,17 @@ namespace IndigoMovieManager
             IntegrationMode integrationMode
         )
         {
+            Stopwatch availabilitySw = Stopwatch.StartNew();
             AvailabilityResult availability = _indexProviderFacade.CheckAvailability(integrationMode);
+            availabilitySw.Stop();
             string availabilityCategory = FileIndexReasonTable.ToCategory(availability.Reason);
             string availabilityAxis = FileIndexReasonTable.ToLogAxis(availability.Reason);
 
+            Stopwatch watchTableLoadSw = Stopwatch.StartNew();
             string sql = $"SELECT * FROM watch where watch = 1";
             DataTable loadedWatchData = SQLite.GetData(snapshotDbFullPath, sql);
             WatchTableRowNormalizer.Normalize(loadedWatchData);
+            watchTableLoadSw.Stop();
             int skippedByEverythingOnlyCount = 0;
             List<WatcherRegistrationPlanItem> items = [];
 
@@ -325,10 +329,14 @@ namespace IndigoMovieManager
                     integrationMode,
                     availability,
                     availabilityCategory,
-                    availabilityAxis
+                    availabilityAxis,
+                    availabilitySw.ElapsedMilliseconds,
+                    watchTableLoadSw.ElapsedMilliseconds
                 );
             }
 
+            Stopwatch folderPlanSw = Stopwatch.StartNew();
+            int existingFolderCount = 0;
             foreach (DataRow row in loadedWatchData.Rows)
             {
                 string checkFolder = row["dir"]?.ToString() ?? "";
@@ -337,6 +345,7 @@ namespace IndigoMovieManager
                     continue;
                 }
 
+                existingFolderCount++;
                 bool sub = Convert.ToInt64(row["sub"]) == 1;
                 string watcherDecisionReason;
                 bool skipByEverything = ShouldSkipFileSystemWatcherByEverything(
@@ -360,6 +369,12 @@ namespace IndigoMovieManager
                     )
                 );
             }
+            folderPlanSw.Stop();
+
+            DebugRuntimeLog.Write(
+                "watch",
+                $"watcher creation plan built: rows={loadedWatchData.Rows.Count} existing_folders={existingFolderCount} planned={items.Count} skipped={skippedByEverythingOnlyCount} mode={integrationMode} availability_axis={availabilityAxis} availability_category={availabilityCategory} availability={availability.Reason} availability_ms={availabilitySw.ElapsedMilliseconds} watch_table_load_ms={watchTableLoadSw.ElapsedMilliseconds} folder_plan_ms={folderPlanSw.ElapsedMilliseconds}"
+            );
 
             return new WatcherCreationPlan(
                 loadedWatchData,
@@ -369,7 +384,12 @@ namespace IndigoMovieManager
                 availabilityAxis,
                 skippedByEverythingOnlyCount,
                 items,
-                false
+                false,
+                loadedWatchData.Rows.Count,
+                existingFolderCount,
+                availabilitySw.ElapsedMilliseconds,
+                watchTableLoadSw.ElapsedMilliseconds,
+                folderPlanSw.ElapsedMilliseconds
             );
         }
 
@@ -426,14 +446,20 @@ namespace IndigoMovieManager
             AvailabilityResult applyAvailability = plan.Availability;
             string applyAvailabilityCategory = plan.AvailabilityCategory;
             string applyAvailabilityAxis = plan.AvailabilityAxis;
+            long applyAvailabilityElapsedMs = 0;
+            Stopwatch applySw = Stopwatch.StartNew();
             if (plan.IntegrationMode == IntegrationMode.On)
             {
                 // 計画作成から登録までの間に Everything が落ちた場合は FSW 側へ戻す。
+                Stopwatch applyAvailabilitySw = Stopwatch.StartNew();
                 applyAvailability = _indexProviderFacade.CheckAvailability(plan.IntegrationMode);
+                applyAvailabilitySw.Stop();
+                applyAvailabilityElapsedMs = applyAvailabilitySw.ElapsedMilliseconds;
                 applyAvailabilityCategory = FileIndexReasonTable.ToCategory(applyAvailability.Reason);
                 applyAvailabilityAxis = FileIndexReasonTable.ToLogAxis(applyAvailability.Reason);
             }
 
+            Stopwatch registrationSw = Stopwatch.StartNew();
             foreach (WatcherRegistrationPlanItem item in plan.Items)
             {
                 bool skipByEverything = ShouldSkipFileSystemWatcherByEverything(
@@ -464,10 +490,17 @@ namespace IndigoMovieManager
                     watcherCount++;
                 }
             }
+            registrationSw.Stop();
+            applySw.Stop();
+
+            DebugRuntimeLog.Write(
+                "watch",
+                $"watcher creation apply summary: rows={plan.WatchRowCount} existing_folders={plan.ExistingFolderCount} planned={plan.Items.Count} registered={watcherCount} skipped={skippedByEverythingOnlyCount} mode={plan.IntegrationMode} availability_axis={applyAvailabilityAxis} availability_category={applyAvailabilityCategory} availability={applyAvailability.Reason} plan_availability_ms={plan.AvailabilityElapsedMs} watch_table_load_ms={plan.WatchTableLoadElapsedMs} folder_plan_ms={plan.FolderPlanElapsedMs} apply_availability_ms={applyAvailabilityElapsedMs} registration_ms={registrationSw.ElapsedMilliseconds} apply_ms={applySw.ElapsedMilliseconds}"
+            );
 
             WriteWatcherCreationTaskEnd(
                 sw,
-                $"status=applied count={watcherCount} skipped={skippedByEverythingOnlyCount} mode={plan.IntegrationMode} availability_axis={applyAvailabilityAxis} availability_category={applyAvailabilityCategory} availability={applyAvailability.Reason}"
+                $"status=applied count={watcherCount} skipped={skippedByEverythingOnlyCount} mode={plan.IntegrationMode} availability_axis={applyAvailabilityAxis} availability_category={applyAvailabilityCategory} availability={applyAvailability.Reason} plan_availability_ms={plan.AvailabilityElapsedMs} watch_table_load_ms={plan.WatchTableLoadElapsedMs} folder_plan_ms={plan.FolderPlanElapsedMs} apply_availability_ms={applyAvailabilityElapsedMs} registration_ms={registrationSw.ElapsedMilliseconds} apply_ms={applySw.ElapsedMilliseconds}"
             );
         }
 
@@ -518,14 +551,21 @@ namespace IndigoMovieManager
             string AvailabilityAxis,
             int SkippedByEverythingOnlyCount,
             List<WatcherRegistrationPlanItem> Items,
-            bool LoadFailed
+            bool LoadFailed,
+            int WatchRowCount,
+            int ExistingFolderCount,
+            long AvailabilityElapsedMs,
+            long WatchTableLoadElapsedMs,
+            long FolderPlanElapsedMs
         )
         {
             internal static WatcherCreationPlan Failed(
                 IntegrationMode integrationMode,
                 AvailabilityResult availability,
                 string availabilityCategory,
-                string availabilityAxis
+                string availabilityAxis,
+                long availabilityElapsedMs,
+                long watchTableLoadElapsedMs
             )
             {
                 return new WatcherCreationPlan(
@@ -536,7 +576,12 @@ namespace IndigoMovieManager
                     availabilityAxis,
                     0,
                     [],
-                    true
+                    true,
+                    0,
+                    0,
+                    availabilityElapsedMs,
+                    watchTableLoadElapsedMs,
+                    0
                 );
             }
         }

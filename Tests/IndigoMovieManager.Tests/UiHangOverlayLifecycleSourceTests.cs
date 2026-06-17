@@ -106,6 +106,30 @@ public sealed class UiHangOverlayLifecycleSourceTests
         );
         Assert.That(
             watcherRegistrationSource,
+            Does.Contain("watcher creation plan built")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("watch_table_load_ms")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("folder_plan_ms")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("watcher creation apply summary")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("apply_availability_ms")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("registration_ms")
+        );
+        Assert.That(
+            watcherRegistrationSource,
             Does.Contain("TrySetFileWatcherEnabled(item, enabled: true, \"register\")")
         );
         Assert.That(
