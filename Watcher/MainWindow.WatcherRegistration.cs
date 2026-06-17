@@ -460,6 +460,10 @@ namespace IndigoMovieManager
             }
 
             Stopwatch registrationSw = Stopwatch.StartNew();
+            // summary だけで、初回登録待ちか件数積み上げかを切り分けられるようにする。
+            int attemptedRegistrationCount = 0;
+            int failedRegistrationCount = 0;
+            long firstRegisteredElapsedMs = -1;
             foreach (WatcherRegistrationPlanItem item in plan.Items)
             {
                 bool skipByEverything = ShouldSkipFileSystemWatcherByEverything(
@@ -485,22 +489,31 @@ namespace IndigoMovieManager
                         $"watcher keep: category={applyAvailabilityAxis} folder='{item.WatchFolder}' reason_category={applyAvailabilityCategory} reason={watcherDecisionReason}"
                     );
                 }
+                attemptedRegistrationCount++;
                 if (RunWatcher(item.WatchFolder, item.IncludeSubdirectories))
                 {
+                    if (watcherCount == 0)
+                    {
+                        firstRegisteredElapsedMs = registrationSw.ElapsedMilliseconds;
+                    }
+
                     watcherCount++;
+                    continue;
                 }
+
+                failedRegistrationCount++;
             }
             registrationSw.Stop();
             applySw.Stop();
 
             DebugRuntimeLog.Write(
                 "watch",
-                $"watcher creation apply summary: rows={plan.WatchRowCount} existing_folders={plan.ExistingFolderCount} planned={plan.Items.Count} registered={watcherCount} skipped={skippedByEverythingOnlyCount} mode={plan.IntegrationMode} availability_axis={applyAvailabilityAxis} availability_category={applyAvailabilityCategory} availability={applyAvailability.Reason} plan_availability_ms={plan.AvailabilityElapsedMs} watch_table_load_ms={plan.WatchTableLoadElapsedMs} folder_plan_ms={plan.FolderPlanElapsedMs} apply_availability_ms={applyAvailabilityElapsedMs} registration_ms={registrationSw.ElapsedMilliseconds} apply_ms={applySw.ElapsedMilliseconds}"
+                $"watcher creation apply summary: rows={plan.WatchRowCount} existing_folders={plan.ExistingFolderCount} planned={plan.Items.Count} attempted={attemptedRegistrationCount} registered={watcherCount} skipped={skippedByEverythingOnlyCount} failed={failedRegistrationCount} first_registered_ms={firstRegisteredElapsedMs} mode={plan.IntegrationMode} availability_axis={applyAvailabilityAxis} availability_category={applyAvailabilityCategory} availability={applyAvailability.Reason} plan_availability_ms={plan.AvailabilityElapsedMs} watch_table_load_ms={plan.WatchTableLoadElapsedMs} folder_plan_ms={plan.FolderPlanElapsedMs} apply_availability_ms={applyAvailabilityElapsedMs} registration_ms={registrationSw.ElapsedMilliseconds} apply_ms={applySw.ElapsedMilliseconds}"
             );
 
             WriteWatcherCreationTaskEnd(
                 sw,
-                $"status=applied count={watcherCount} skipped={skippedByEverythingOnlyCount} mode={plan.IntegrationMode} availability_axis={applyAvailabilityAxis} availability_category={applyAvailabilityCategory} availability={applyAvailability.Reason} plan_availability_ms={plan.AvailabilityElapsedMs} watch_table_load_ms={plan.WatchTableLoadElapsedMs} folder_plan_ms={plan.FolderPlanElapsedMs} apply_availability_ms={applyAvailabilityElapsedMs} registration_ms={registrationSw.ElapsedMilliseconds} apply_ms={applySw.ElapsedMilliseconds}"
+                $"status=applied count={watcherCount} attempted={attemptedRegistrationCount} skipped={skippedByEverythingOnlyCount} failed={failedRegistrationCount} first_registered_ms={firstRegisteredElapsedMs} mode={plan.IntegrationMode} availability_axis={applyAvailabilityAxis} availability_category={applyAvailabilityCategory} availability={applyAvailability.Reason} plan_availability_ms={plan.AvailabilityElapsedMs} watch_table_load_ms={plan.WatchTableLoadElapsedMs} folder_plan_ms={plan.FolderPlanElapsedMs} apply_availability_ms={applyAvailabilityElapsedMs} registration_ms={registrationSw.ElapsedMilliseconds} apply_ms={applySw.ElapsedMilliseconds}"
             );
         }
 

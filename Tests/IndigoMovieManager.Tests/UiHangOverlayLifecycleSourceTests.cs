@@ -130,6 +130,30 @@ public sealed class UiHangOverlayLifecycleSourceTests
         );
         Assert.That(
             watcherRegistrationSource,
+            Does.Contain("attemptedRegistrationCount")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("failedRegistrationCount")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("firstRegisteredElapsedMs")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("attempted=")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("failed=")
+        );
+        Assert.That(
+            watcherRegistrationSource,
+            Does.Contain("first_registered_ms=")
+        );
+        Assert.That(
+            watcherRegistrationSource,
             Does.Contain("TrySetFileWatcherEnabled(item, enabled: true, \"register\")")
         );
         Assert.That(
