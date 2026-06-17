@@ -74,9 +74,15 @@ namespace IndigoMovieManager
 
             if (!isStillActive)
             {
+                DateTime endedUtc = DateTime.UtcNow;
                 long elapsedMilliseconds = ResolveUserPriorityElapsedMilliseconds(
                     startedUtc,
-                    DateTime.UtcNow
+                    endedUtc
+                );
+                string releaseReason = ResolveUserPriorityReleaseReason(
+                    startedUtc,
+                    endedUtc,
+                    ResolveUserPriorityTimeout()
                 );
                 DebugRuntimeLog.Write(
                     "ui-priority",
@@ -84,7 +90,7 @@ namespace IndigoMovieManager
                         beginReason ?? reason,
                         reason,
                         elapsedMilliseconds,
-                        UserPriorityReleaseReasonNormal,
+                        releaseReason,
                         hasDeferredWatchWork
                     )
                 );

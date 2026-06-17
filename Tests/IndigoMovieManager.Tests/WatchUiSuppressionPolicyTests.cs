@@ -116,12 +116,12 @@ public sealed class WatchUiSuppressionPolicyTests
     public void IsUserPriorityWorkTimedOut_timeout到達時だけTrueを返す()
     {
         DateTime startedUtc = new(2026, 6, 17, 0, 0, 0, DateTimeKind.Utc);
-        TimeSpan timeout = TimeSpan.FromSeconds(5);
+        TimeSpan timeout = MainWindow.ResolveUserPriorityTimeout();
 
         Assert.That(
             MainWindow.IsUserPriorityWorkTimedOut(
                 startedUtc,
-                startedUtc.AddSeconds(5),
+                startedUtc.Add(timeout),
                 timeout
             ),
             Is.True
@@ -129,7 +129,7 @@ public sealed class WatchUiSuppressionPolicyTests
         Assert.That(
             MainWindow.IsUserPriorityWorkTimedOut(
                 startedUtc,
-                startedUtc.AddMilliseconds(4999),
+                startedUtc.Add(timeout).AddMilliseconds(-1),
                 timeout
             ),
             Is.False
@@ -149,6 +149,40 @@ public sealed class WatchUiSuppressionPolicyTests
     }
 
     [Test]
+    public void ResolveUserPriorityTimeout_観測用既定値を固定する()
+    {
+        Assert.That(MainWindow.UserPriorityTimeoutSeconds, Is.EqualTo(30));
+        Assert.That(
+            MainWindow.ResolveUserPriorityTimeout(),
+            Is.EqualTo(TimeSpan.FromSeconds(30))
+        );
+    }
+
+    [Test]
+    public void ResolveUserPriorityReleaseReason_timeout到達時だけtimeoutを返す()
+    {
+        DateTime startedUtc = new(2026, 6, 17, 0, 0, 0, DateTimeKind.Utc);
+        TimeSpan timeout = MainWindow.ResolveUserPriorityTimeout();
+
+        Assert.That(
+            MainWindow.ResolveUserPriorityReleaseReason(
+                startedUtc,
+                startedUtc.Add(timeout).AddMilliseconds(-1),
+                timeout
+            ),
+            Is.EqualTo(MainWindow.UserPriorityReleaseReasonNormal)
+        );
+        Assert.That(
+            MainWindow.ResolveUserPriorityReleaseReason(
+                startedUtc,
+                startedUtc.Add(timeout),
+                timeout
+            ),
+            Is.EqualTo(MainWindow.UserPriorityReleaseReasonTimeout)
+        );
+    }
+
+    [Test]
     public void BuildUserPriorityReleaseLogMessage_release契約の項目を残す()
     {
         string message = MainWindow.BuildUserPriorityReleaseLogMessage(
@@ -163,6 +197,25 @@ public sealed class WatchUiSuppressionPolicyTests
             message,
             Is.EqualTo(
                 "user priority end: begin_reason=search end_reason=search-end elapsed_ms=123 release_reason=normal deferred_watch=true"
+            )
+        );
+    }
+
+    [Test]
+    public void BuildUserPriorityReleaseLogMessage_timeout時もdeferred_watchを残す()
+    {
+        string message = MainWindow.BuildUserPriorityReleaseLogMessage(
+            beginReason: "search",
+            endReason: "search-end",
+            elapsedMilliseconds: 30000,
+            releaseReason: MainWindow.UserPriorityReleaseReasonTimeout,
+            hasDeferredWatchWork: true
+        );
+
+        Assert.That(
+            message,
+            Is.EqualTo(
+                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=30000 release_reason=timeout deferred_watch=true"
             )
         );
     }

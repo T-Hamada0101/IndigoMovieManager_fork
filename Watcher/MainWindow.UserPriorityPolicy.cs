@@ -3,6 +3,8 @@ namespace IndigoMovieManager;
 public partial class MainWindow
 {
     internal const string UserPriorityReleaseReasonNormal = "normal";
+    internal const string UserPriorityReleaseReasonTimeout = "timeout";
+    internal const int UserPriorityTimeoutSeconds = 30;
 
     // 明示的なユーザー要求中は、手動要求以外の背後走査を後ろへ逃がす。
     internal static bool ShouldDeferBackgroundWorkForUserPriority(
@@ -31,6 +33,22 @@ public partial class MainWindow
         return startedUtc.HasValue
             && timeout > TimeSpan.Zero
             && nowUtc - startedUtc.Value >= timeout;
+    }
+
+    internal static TimeSpan ResolveUserPriorityTimeout()
+    {
+        return TimeSpan.FromSeconds(UserPriorityTimeoutSeconds);
+    }
+
+    internal static string ResolveUserPriorityReleaseReason(
+        DateTime? startedUtc,
+        DateTime endedUtc,
+        TimeSpan timeout
+    )
+    {
+        return IsUserPriorityWorkTimedOut(startedUtc, endedUtc, timeout)
+            ? UserPriorityReleaseReasonTimeout
+            : UserPriorityReleaseReasonNormal;
     }
 
     internal static long ResolveUserPriorityElapsedMilliseconds(
