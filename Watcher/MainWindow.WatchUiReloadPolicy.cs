@@ -176,6 +176,36 @@ namespace IndigoMovieManager
                 );
         }
 
+        // plan_reason と並べて常時出す札を固定し、full fallback の次候補を実機ログで選べるようにする。
+        internal static string ResolveWatchUiReloadRecoveryReason(
+            bool canUseQueryOnlyReload,
+            bool allowBulkExistingDirtyOnlyQueryReload,
+            IEnumerable<WatchChangedMovie> changedMovies
+        )
+        {
+            return canUseQueryOnlyReload
+                ? "already-query-only"
+                : ResolveBulkQueryReloadRecoveryReason(
+                    allowBulkExistingDirtyOnlyQueryReload,
+                    changedMovies
+                );
+        }
+
+        internal static string BuildWatchUiReloadPlanLogFields(
+            string planReason,
+            string recoveryReason
+        )
+        {
+            string resolvedPlanReason = string.IsNullOrWhiteSpace(planReason)
+                ? "unknown"
+                : planReason;
+            string resolvedRecoveryReason = string.IsNullOrWhiteSpace(recoveryReason)
+                ? "none"
+                : recoveryReason;
+
+            return $"plan_reason={resolvedPlanReason} recovery_reason={resolvedRecoveryReason}";
+        }
+
         // 安全外の change kind だけを列挙し、full fallback の次候補をログで選びやすくする。
         private static string FormatWatchChangeKindsForReason(WatchMovieChangeKind changeKinds)
         {
@@ -374,6 +404,7 @@ namespace IndigoMovieManager
             string snapshotDbFullPath,
             string reason,
             string planReason,
+            string recoveryReason,
             bool useQueryOnlyReload,
             IEnumerable<WatchChangedMovie> changedMovies
         )
@@ -416,12 +447,13 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"deferred ui reload scheduled: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovieCount} plan_reason={planReason} delay_ms={WatchDeferredUiReloadDelayMs}"
+                $"deferred ui reload scheduled: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovieCount} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} delay_ms={WatchDeferredUiReloadDelayMs}"
             );
             _ = RunDeferredWatchUiReloadAsync(
                 snapshotDbFullPath,
                 requestRevision,
                 reason,
+                recoveryReason,
                 nextCts.Token
             );
         }
@@ -525,6 +557,7 @@ namespace IndigoMovieManager
             string snapshotDbFullPath,
             int requestRevision,
             string reason,
+            string recoveryReason,
             CancellationToken cancellationToken
         )
         {
@@ -539,10 +572,11 @@ namespace IndigoMovieManager
             }
 
             await Dispatcher.InvokeAsync(
-                () => ApplyDeferredWatchUiReloadOnUiThread(
+                () => ApplyDeferredWatchUiReloadOnUiThreadCore(
                     snapshotDbFullPath,
                     requestRevision,
-                    reason
+                    reason,
+                    recoveryReason
                 ),
                 System.Windows.Threading.DispatcherPriority.Background
             );
@@ -553,6 +587,21 @@ namespace IndigoMovieManager
             string snapshotDbFullPath,
             int requestRevision,
             string reason
+        )
+        {
+            ApplyDeferredWatchUiReloadOnUiThreadCore(
+                snapshotDbFullPath,
+                requestRevision,
+                reason,
+                recoveryReason: ""
+            );
+        }
+
+        private void ApplyDeferredWatchUiReloadOnUiThreadCore(
+            string snapshotDbFullPath,
+            int requestRevision,
+            string reason,
+            string recoveryReason
         )
         {
             if (
@@ -602,7 +651,7 @@ namespace IndigoMovieManager
             string currentSort = MainVM?.DbInfo?.Sort ?? "";
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"deferred ui reload apply: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} sort={currentSort} changed_paths={changedMovies.Count} plan_reason={planReason}"
+                $"deferred ui reload apply: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} sort={currentSort} changed_paths={changedMovies.Count} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)}"
             );
             InvokeWatchUiReload(
                 currentSort,
@@ -653,12 +702,11 @@ namespace IndigoMovieManager
                 hasChanges,
                 changedMovies
             );
-            string queryOnlyRecoveryReason = !canUseQueryOnlyReload
-                ? ResolveBulkQueryReloadRecoveryReason(
-                    allowBulkExistingDirtyOnlyQueryReload,
-                    changedMovies
-                )
-                : "already-query-only";
+            string queryOnlyRecoveryReason = ResolveWatchUiReloadRecoveryReason(
+                canUseQueryOnlyReload,
+                allowBulkExistingDirtyOnlyQueryReload,
+                changedMovies
+            );
             bool recoveredQueryOnlyReload =
                 !canUseQueryOnlyReload
                 && IsBulkQueryReloadRecoveryReason(queryOnlyRecoveryReason);
@@ -688,7 +736,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"skip final watch ui reload no changes: mode={mode} db='{snapshotDbFullPath}' can_query_only={resolvedCanUseQueryOnlyReload} plan_reason={planReason}"
+                    $"skip final watch ui reload no changes: mode={mode} db='{snapshotDbFullPath}' can_query_only={resolvedCanUseQueryOnlyReload} {BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)}"
                 );
                 return;
             }
@@ -698,7 +746,7 @@ namespace IndigoMovieManager
                 MarkWatchWorkDeferredWhileSuppressed($"final-reload:{mode}");
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"skip final watch ui reload by suppression: mode={mode} db='{snapshotDbFullPath}' can_query_only={resolvedCanUseQueryOnlyReload} plan_reason={planReason}"
+                    $"skip final watch ui reload by suppression: mode={mode} db='{snapshotDbFullPath}' can_query_only={resolvedCanUseQueryOnlyReload} {BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)}"
                 );
                 return;
             }
@@ -709,6 +757,7 @@ namespace IndigoMovieManager
                     snapshotDbFullPath,
                     $"check-folder:{mode}",
                     planReason,
+                    queryOnlyRecoveryReason,
                     reloadPlan.UseQueryOnlyReload,
                     changedMovies
                 );
@@ -718,7 +767,7 @@ namespace IndigoMovieManager
             CancelDeferredWatchUiReload($"immediate-reload:{mode}");
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={resolvedCanUseQueryOnlyReload} plan_reason={planReason}"
+                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={resolvedCanUseQueryOnlyReload} {BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)}"
             );
             InvokeWatchUiReload(
                 currentSort,

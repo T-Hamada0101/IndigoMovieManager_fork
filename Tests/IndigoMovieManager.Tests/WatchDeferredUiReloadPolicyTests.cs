@@ -390,6 +390,38 @@ public sealed class WatchDeferredUiReloadPolicyTests
     }
 
     [Test]
+    public void ResolveWatchUiReloadRecoveryReason_hash_dirtyはunsafe理由を返す()
+    {
+        string result = MainWindow.ResolveWatchUiReloadRecoveryReason(
+            canUseQueryOnlyReload: false,
+            allowBulkExistingDirtyOnlyQueryReload: true,
+            [
+                new MainWindow.WatchChangedMovie(
+                    "Movies\\alpha.mp4",
+                    MainWindow.WatchMovieChangeKind.None,
+                    MainWindow.WatchMovieDirtyFields.Hash
+                ),
+            ]
+        );
+
+        Assert.That(result, Is.EqualTo("dirty-fields-unsafe:Hash"));
+    }
+
+    [Test]
+    public void BuildWatchUiReloadPlanLogFields_planとrecoveryを並べて返す()
+    {
+        string result = MainWindow.BuildWatchUiReloadPlanLogFields(
+            "watch-full-fallback",
+            "dirty-fields-unsafe:Hash"
+        );
+
+        Assert.That(
+            result,
+            Is.EqualTo("plan_reason=watch-full-fallback recovery_reason=dirty-fields-unsafe:Hash")
+        );
+    }
+
+    [Test]
     public void CanApplyDeferredWatchUiReload_同一DBかつ最新revisionなら適用する()
     {
         bool result = MainWindow.CanApplyDeferredWatchUiReload(
