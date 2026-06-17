@@ -12,6 +12,8 @@ namespace IndigoMovieManager.Skin.Runtime
             string requestedSkinName,
             string errorMessage,
             string errorType,
+            bool navigateSkipped = false,
+            string navigateSkipReason = "",
             double prepareElapsedMilliseconds = 0,
             double filePrepareElapsedMilliseconds = 0,
             double hostNavigateElapsedMilliseconds = 0,
@@ -24,6 +26,8 @@ namespace IndigoMovieManager.Skin.Runtime
             RequestedSkinName = requestedSkinName ?? "";
             ErrorMessage = errorMessage ?? "";
             ErrorType = errorType ?? "";
+            NavigateSkipped = navigateSkipped;
+            NavigateSkipReason = navigateSkipReason ?? "";
             PrepareElapsedMilliseconds = SanitizeElapsedMilliseconds(prepareElapsedMilliseconds);
             FilePrepareElapsedMilliseconds = SanitizeElapsedMilliseconds(filePrepareElapsedMilliseconds);
             HostNavigateElapsedMilliseconds = SanitizeElapsedMilliseconds(hostNavigateElapsedMilliseconds);
@@ -40,6 +44,8 @@ namespace IndigoMovieManager.Skin.Runtime
         public string RequestedSkinName { get; }
         public string ErrorMessage { get; }
         public string ErrorType { get; }
+        public bool NavigateSkipped { get; }
+        public string NavigateSkipReason { get; }
         public double PrepareElapsedMilliseconds { get; }
         public double FilePrepareElapsedMilliseconds { get; }
         public double HostNavigateElapsedMilliseconds { get; }
@@ -60,6 +66,8 @@ namespace IndigoMovieManager.Skin.Runtime
                 RequestedSkinName,
                 ErrorMessage,
                 ErrorType,
+                NavigateSkipped,
+                NavigateSkipReason,
                 prepareElapsedMilliseconds ?? PrepareElapsedMilliseconds,
                 filePrepareElapsedMilliseconds ?? FilePrepareElapsedMilliseconds,
                 hostNavigateElapsedMilliseconds ?? HostNavigateElapsedMilliseconds,
@@ -76,6 +84,22 @@ namespace IndigoMovieManager.Skin.Runtime
                 requestedSkinName: requestedSkinName,
                 errorMessage: "",
                 errorType: ""
+            );
+        }
+
+        public static WhiteBrowserSkinHostOperationResult CreateNavigateSkipped(
+            string requestedSkinName,
+            string reason
+        )
+        {
+            return new WhiteBrowserSkinHostOperationResult(
+                succeeded: true,
+                runtimeAvailable: true,
+                requestedSkinName: requestedSkinName,
+                errorMessage: "",
+                errorType: "HostNavigateSkippedSameDocument",
+                navigateSkipped: true,
+                navigateSkipReason: reason
             );
         }
 

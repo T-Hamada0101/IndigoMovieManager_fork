@@ -337,6 +337,14 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             hostSource,
             "public async Task<WhiteBrowserSkinHostOperationResult> TryNavigateAsync("
         );
+        string refreshEndMethod = GetMethodBlock(
+            refreshSource,
+            "private void WriteExternalSkinRefreshEndLog("
+        );
+        string skipPolicyMethod = GetMethodBlock(
+            refreshSource,
+            "private static bool IsExternalSkinSameDocumentNavigateSkipAllowed("
+        );
         string asyncBuildMethod = GetMethodBlock(
             renderCoordinatorSource,
             "public Task<WhiteBrowserSkinRenderDocument> BuildInitialDocumentAsync("
@@ -359,6 +367,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(prepareMethod, Does.Contain("hostNavigateElapsedMilliseconds"));
             Assert.That(prepareMethod, Does.Contain("\"HostNavigateReturnedNull\""));
             Assert.That(prepareMethod, Does.Contain("External skin host navigate returned null."));
+            Assert.That(prepareMethod, Does.Contain("IsExternalSkinSameDocumentNavigateSkipAllowed("));
+            Assert.That(prepareMethod, Does.Contain("ResolveExternalSkinDefinitionRefreshMode(reason)"));
+            Assert.That(prepareMethod, Does.Contain("navigateResult?.NavigateSkipped == true"));
+            Assert.That(prepareMethod, Does.Contain("skip_reason='{navigateResult.NavigateSkipReason}'"));
             Assert.That(prepareMethod, Does.Not.Contain("navigateResult ?? WhiteBrowserSkinHostOperationResult.CreateSuccess("));
             Assert.That(prepareMethod, Does.Not.Contain("File.Exists("));
             Assert.That(prepareMethod, Does.Not.Contain("Directory.CreateDirectory("));
@@ -383,15 +395,24 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(navigateMethod, Does.Not.Contain("renderCoordinator.BuildInitialDocument("));
             Assert.That(navigateMethod, Does.Contain("await ResumeOnHostDispatcherAsync()"));
             Assert.That(navigateMethod, Does.Contain("await NavigateToStringAsync(document.Html)"));
+            Assert.That(navigateMethod, Does.Contain("allowSameDocumentNavigateSkip"));
+            Assert.That(navigateMethod, Does.Contain("CreateNavigateSkipped(requestedSkinName, \"same-document\")"));
+            Assert.That(navigateMethod, Does.Contain("lastSuccessfulNavigationKey"));
             Assert.That(navigateMethod, Does.Contain("initialDocumentStopwatch"));
             Assert.That(navigateMethod, Does.Contain("navigateToStringStopwatch"));
             Assert.That(navigateMethod, Does.Contain("initialDocumentBuildElapsedMilliseconds"));
             Assert.That(navigateMethod, Does.Contain("navigateToStringElapsedMilliseconds"));
+            Assert.That(refreshEndMethod, Does.Contain("navigate_skip_reason="));
+            Assert.That(skipPolicyMethod, Does.Contain("ExternalSkinDefinitionRefreshMode.CachedSnapshot"));
+            Assert.That(skipPolicyMethod, Does.Contain("StartsWith(\"dbinfo-\", StringComparison.Ordinal)"));
             Assert.That(operationResultSource, Does.Contain("PrepareElapsedMilliseconds"));
             Assert.That(operationResultSource, Does.Contain("FilePrepareElapsedMilliseconds"));
             Assert.That(operationResultSource, Does.Contain("HostNavigateElapsedMilliseconds"));
             Assert.That(operationResultSource, Does.Contain("InitialDocumentBuildElapsedMilliseconds"));
             Assert.That(operationResultSource, Does.Contain("NavigateToStringElapsedMilliseconds"));
+            Assert.That(operationResultSource, Does.Contain("NavigateSkipped"));
+            Assert.That(operationResultSource, Does.Contain("NavigateSkipReason"));
+            Assert.That(operationResultSource, Does.Contain("CreateNavigateSkipped"));
             Assert.That(operationResultSource, Does.Contain("WithTimings("));
             Assert.That(asyncBuildMethod, Does.Contain("Task.Run(() => BuildInitialDocument("));
         });

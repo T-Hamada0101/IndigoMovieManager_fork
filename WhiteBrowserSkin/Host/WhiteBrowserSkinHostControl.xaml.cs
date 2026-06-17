@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows.Controls;
 using IndigoMovieManager.Skin.Runtime;
 using Microsoft.Web.WebView2.Core;
@@ -13,6 +14,7 @@ namespace IndigoMovieManager.Skin.Host
     {
         private readonly WhiteBrowserSkinRuntimeBridge runtimeBridge = new();
         private readonly WhiteBrowserSkinRenderCoordinator renderCoordinator = new();
+        private NavigationReuseKey? lastSuccessfulNavigationKey;
         private bool disposed;
 
         public WhiteBrowserSkinHostControl()
@@ -51,7 +53,9 @@ namespace IndigoMovieManager.Skin.Host
             string userDataFolder,
             string skinRootPath,
             string skinHtmlPath,
-            string thumbRootPath
+            string thumbRootPath,
+            string dbKey = "",
+            bool allowSameDocumentNavigateSkip = false
         )
         {
             Stopwatch hostNavigateStopwatch = Stopwatch.StartNew();
@@ -79,6 +83,7 @@ namespace IndigoMovieManager.Skin.Host
             );
             if (!attachResult.Succeeded)
             {
+                lastSuccessfulNavigationKey = null;
                 return attachResult.WithTimings(
                     hostNavigateElapsedMilliseconds: hostNavigateStopwatch.Elapsed.TotalMilliseconds
                 );
@@ -95,6 +100,7 @@ namespace IndigoMovieManager.Skin.Host
             await ResumeOnHostDispatcherAsync();
             if (disposed)
             {
+                lastSuccessfulNavigationKey = null;
                 return WhiteBrowserSkinHostOperationResult.CreateSkipped(
                     requestedSkinName ?? "",
                     "External skin host is already disposed."
@@ -107,9 +113,35 @@ namespace IndigoMovieManager.Skin.Host
                     );
             }
 
+            NavigationReuseKey navigationReuseKey = BuildNavigationReuseKey(
+                requestedSkinName,
+                userDataFolder,
+                skinRootPath,
+                skinHtmlPath,
+                thumbRootPath,
+                dbKey,
+                document
+            );
+            if (
+                allowSameDocumentNavigateSkip
+                && lastSuccessfulNavigationKey?.Equals(navigationReuseKey) == true
+                && SkinWebView.CoreWebView2 != null
+            )
+            {
+                return WhiteBrowserSkinHostOperationResult
+                    .CreateNavigateSkipped(requestedSkinName, "same-document")
+                    .WithTimings(
+                        hostNavigateElapsedMilliseconds: hostNavigateStopwatch
+                            .Elapsed
+                            .TotalMilliseconds,
+                        initialDocumentBuildElapsedMilliseconds: initialDocumentBuildMilliseconds
+                    );
+            }
+
             Stopwatch navigateToStringStopwatch = Stopwatch.StartNew();
             await NavigateToStringAsync(document.Html);
             navigateToStringMilliseconds = navigateToStringStopwatch.Elapsed.TotalMilliseconds;
+            lastSuccessfulNavigationKey = navigationReuseKey;
             return WhiteBrowserSkinHostOperationResult.CreateSuccess(requestedSkinName)
                 .WithTimings(
                     hostNavigateElapsedMilliseconds: hostNavigateStopwatch.Elapsed.TotalMilliseconds,
@@ -125,6 +157,7 @@ namespace IndigoMovieManager.Skin.Host
 
         public async Task ClearAsync()
         {
+            lastSuccessfulNavigationKey = null;
             if (disposed)
             {
                 return;
@@ -174,6 +207,7 @@ namespace IndigoMovieManager.Skin.Host
             }
 
             disposed = true;
+            lastSuccessfulNavigationKey = null;
             runtimeBridge.WebMessageReceived -= RuntimeBridge_WebMessageReceived;
             runtimeBridge.Dispose();
 
@@ -270,5 +304,58 @@ namespace IndigoMovieManager.Skin.Host
             // 背景で document を作った後も、WebView2 実体操作は必ず host の UI Dispatcher へ戻す。
             return Dispatcher.InvokeAsync(() => { }).Task;
         }
+
+        private static NavigationReuseKey BuildNavigationReuseKey(
+            string requestedSkinName,
+            string userDataFolder,
+            string skinRootPath,
+            string skinHtmlPath,
+            string thumbRootPath,
+            string dbKey,
+            WhiteBrowserSkinRenderDocument document
+        )
+        {
+            // 同じ HTML と host 入力の時だけ、ページ破棄を伴う再 navigate を省く。
+            return new NavigationReuseKey(
+                requestedSkinName ?? "",
+                NormalizePathForReuseKey(userDataFolder),
+                NormalizePathForReuseKey(skinRootPath),
+                NormalizePathForReuseKey(skinHtmlPath),
+                NormalizePathForReuseKey(thumbRootPath),
+                NormalizePathForReuseKey(dbKey),
+                document?.Html ?? "",
+                document?.SkinBaseUri ?? "",
+                document?.ThumbnailBaseUri ?? ""
+            );
+        }
+
+        private static string NormalizePathForReuseKey(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return "";
+            }
+
+            try
+            {
+                return Path.GetFullPath(path);
+            }
+            catch
+            {
+                return path ?? "";
+            }
+        }
+
+        private readonly record struct NavigationReuseKey(
+            string RequestedSkinName,
+            string UserDataFolder,
+            string SkinRootPath,
+            string SkinHtmlPath,
+            string ThumbRootPath,
+            string DbKey,
+            string Html,
+            string SkinBaseUri,
+            string ThumbnailBaseUri
+        );
     }
 }

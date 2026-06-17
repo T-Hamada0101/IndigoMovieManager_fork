@@ -18,6 +18,8 @@ public sealed class WhiteBrowserSkinHostOperationResultTests
             WhiteBrowserSkinHostOperationResult.CreateSkipped("SkinD", "stale");
         WhiteBrowserSkinHostOperationResult failed =
             WhiteBrowserSkinHostOperationResult.CreateFailed("SkinE", "failed", "HostFailed");
+        WhiteBrowserSkinHostOperationResult navigateSkipped =
+            WhiteBrowserSkinHostOperationResult.CreateNavigateSkipped("SkinF", "same-document");
 
         Assert.Multiple(() =>
         {
@@ -26,6 +28,11 @@ public sealed class WhiteBrowserSkinHostOperationResultTests
             AssertTimingZeros(missingHtml);
             AssertTimingZeros(skipped);
             AssertTimingZeros(failed);
+            AssertTimingZeros(navigateSkipped);
+            Assert.That(navigateSkipped.Succeeded, Is.True);
+            Assert.That(navigateSkipped.NavigateSkipped, Is.True);
+            Assert.That(navigateSkipped.NavigateSkipReason, Is.EqualTo("same-document"));
+            Assert.That(navigateSkipped.ErrorType, Is.EqualTo("HostNavigateSkippedSameDocument"));
         });
     }
 
