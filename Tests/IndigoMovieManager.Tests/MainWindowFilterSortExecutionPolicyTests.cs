@@ -268,6 +268,15 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id)",
             StringComparison.Ordinal
         );
+        int computeStageIndex = method.IndexOf(
+            "stage=filter-sort-compute",
+            StringComparison.Ordinal
+        );
+        int dbReloadCancelCatchIndex = method.IndexOf(
+            "catch (OperationCanceledException) when (",
+            loadIndex,
+            StringComparison.Ordinal
+        );
 
         Assert.That(loadIndex, Is.GreaterThanOrEqualTo(0));
         Assert.That(
@@ -288,6 +297,25 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
                 StringComparison.Ordinal
             ),
             Is.GreaterThan(loadIndex)
+        );
+        Assert.That(computeStageIndex, Is.GreaterThan(loadIndex));
+        Assert.That(dbReloadCancelCatchIndex, Is.GreaterThan(loadIndex));
+        Assert.That(dbReloadCancelCatchIndex, Is.LessThan(computeStageIndex));
+        Assert.That(
+            method.IndexOf(
+                "filterAndSortCancellationToken.IsCancellationRequested",
+                dbReloadCancelCatchIndex,
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(computeStageIndex)
+        );
+        Assert.That(
+            method.IndexOf(
+                "filter canceled: revision={requestRevision} stage=db-reload",
+                loadIndex,
+                StringComparison.Ordinal
+            ),
+            Is.InRange(dbReloadCancelCatchIndex, computeStageIndex)
         );
     }
 
