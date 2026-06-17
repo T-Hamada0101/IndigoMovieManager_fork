@@ -2566,19 +2566,32 @@ namespace IndigoMovieManager
         // 再読込は full filter と manual scan を直列化し、その間の watch 差し込みを抑えて過積載を避ける。
         internal async Task ExecuteHeaderReloadAsync(string sortId, string trigger)
         {
-            Action reloadBookmarkHook = ReloadBookmarkTabDataForTesting;
-            if (reloadBookmarkHook != null)
-            {
-                reloadBookmarkHook();
-            }
-            else
-            {
-                ReloadBookmarkTabData();
-            }
+            Stopwatch reloadStopwatch = Stopwatch.StartNew();
+            const string fullReloadReason = "header-explicit";
+            bool externalSkinRefreshQueued = false;
+            bool deferredScanScheduled = false;
+            bool watchUiSuppressionStarted = false;
 
-            BeginWatchUiSuppression("manual-reload");
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"header reload begin: trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason}"
+            );
+
             try
             {
+                Action reloadBookmarkHook = ReloadBookmarkTabDataForTesting;
+                if (reloadBookmarkHook != null)
+                {
+                    reloadBookmarkHook();
+                }
+                else
+                {
+                    ReloadBookmarkTabData();
+                }
+
+                BeginWatchUiSuppression("manual-reload");
+                watchUiSuppressionStarted = true;
+
                 Func<string, bool, Task> filterHook = FilterAndSortAsyncForTesting;
                 if (filterHook != null)
                 {
@@ -2594,15 +2607,38 @@ namespace IndigoMovieManager
                     // 共通ヘッダーの再読込でも外部 skin host を明示的に積み直し、旧専用ヘッダー依存を残さない。
                     await ClearExternalSkinHostBeforeRefreshAsync("header-reload");
                     QueueExternalSkinHostRefresh("header-reload");
+                    externalSkinRefreshQueued = true;
                 }
 
                 // 再読込完了を先に返し、重い全域scanはUIが一息ついてから背後へ回す。
                 ScheduleDeferredManualReloadScan(trigger);
+                deferredScanScheduled = true;
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"header reload failed: trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason} external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)} deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)} elapsed_ms={reloadStopwatch.ElapsedMilliseconds} type={ex.GetType().Name} reason='{ex.Message}'"
+                );
+                throw;
             }
             finally
             {
-                EndWatchUiSuppression("manual-reload");
+                if (watchUiSuppressionStarted)
+                {
+                    EndWatchUiSuppression("manual-reload");
+                }
             }
+
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"header reload end: trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason} external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)} deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)} elapsed_ms={reloadStopwatch.ElapsedMilliseconds}"
+            );
+        }
+
+        private static string FormatRuntimeLogBool(bool value)
+        {
+            return value ? "true" : "false";
         }
 
         // Header再読込の直後だけは一覧更新の体感を優先し、全域scanは1拍後ろへ逃がす。

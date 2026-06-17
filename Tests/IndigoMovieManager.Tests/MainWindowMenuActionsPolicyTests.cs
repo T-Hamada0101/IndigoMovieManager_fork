@@ -127,6 +127,35 @@ public sealed class MainWindowMenuActionsPolicyTests
     }
 
     [Test]
+    public void HeaderReload明示FullReloadはruntimeログへ判断材料を出す()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string reloadMethod = GetMethodBlock(source, "internal async Task ExecuteHeaderReloadAsync(");
+
+        Assert.That(reloadMethod, Does.Contain("Stopwatch reloadStopwatch = Stopwatch.StartNew();"));
+        Assert.That(reloadMethod, Does.Contain("const string fullReloadReason = \"header-explicit\";"));
+        Assert.That(reloadMethod, Does.Contain("bool externalSkinRefreshQueued = false;"));
+        Assert.That(reloadMethod, Does.Contain("bool deferredScanScheduled = false;"));
+        Assert.That(reloadMethod, Does.Contain("header reload begin:"));
+        Assert.That(reloadMethod, Does.Contain("header reload end:"));
+        Assert.That(reloadMethod, Does.Contain("header reload failed:"));
+        Assert.That(reloadMethod, Does.Contain("full_reload_reason={fullReloadReason}"));
+        Assert.That(reloadMethod, Does.Contain("external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)}"));
+        Assert.That(reloadMethod, Does.Contain("deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)}"));
+        Assert.That(reloadMethod, Does.Contain("elapsed_ms={reloadStopwatch.ElapsedMilliseconds}"));
+        Assert.That(reloadMethod, Does.Contain("type={ex.GetType().Name}"));
+        Assert.That(reloadMethod, Does.Contain("externalSkinRefreshQueued = true;"));
+        Assert.That(reloadMethod, Does.Contain("deferredScanScheduled = true;"));
+        Assert.That(reloadMethod, Does.Contain("throw;"));
+        Assert.That(reloadMethod, Does.Contain("finally"));
+        Assert.That(reloadMethod, Does.Contain("if (watchUiSuppressionStarted)"));
+        Assert.That(
+            CountOccurrences(reloadMethod, "EndWatchUiSuppression(\"manual-reload\");"),
+            Is.EqualTo(1)
+        );
+    }
+
+    [Test]
     public void RenameFile_watcher抑止はfinallyで復旧する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");

@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -45,6 +46,24 @@ public sealed class MainWindowReloadButtonTests
         await reloadTask;
 
         Assert.That(steps, Is.EqualTo(new[] { "bookmark", "filter:1:True" }));
+        Assert.That(GetPrivateField<int>(window, "_watchUiSuppressionCount"), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ExecuteHeaderReloadAsync_filter例外でもwatch抑止を解除して再throwする()
+    {
+        MainWindow window = CreateWindow();
+        SetPrivateField(window, "_watchUiSuppressionSync", new object());
+
+        window.ReloadBookmarkTabDataForTesting = () => { };
+        window.FilterAndSortAsyncForTesting = (_, _) =>
+            throw new InvalidOperationException("filter failed");
+
+        InvalidOperationException? ex = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await window.ExecuteHeaderReloadAsync("1", "Header.ReloadButton")
+        );
+
+        Assert.That(ex?.Message, Is.EqualTo("filter failed"));
         Assert.That(GetPrivateField<int>(window, "_watchUiSuppressionCount"), Is.EqualTo(0));
     }
 
