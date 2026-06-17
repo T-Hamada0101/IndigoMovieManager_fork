@@ -2568,13 +2568,14 @@ namespace IndigoMovieManager
         {
             Stopwatch reloadStopwatch = Stopwatch.StartNew();
             const string fullReloadReason = "header-explicit";
+            string reloadId = CreateHeaderReloadLogCorrelationId();
             bool externalSkinRefreshQueued = false;
             bool deferredScanScheduled = false;
             bool watchUiSuppressionStarted = false;
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"header reload begin: trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason}"
+                $"header reload begin: reload_id={reloadId} trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason}"
             );
 
             try
@@ -2611,14 +2612,14 @@ namespace IndigoMovieManager
                 }
 
                 // 再読込完了を先に返し、重い全域scanはUIが一息ついてから背後へ回す。
-                ScheduleDeferredManualReloadScan(trigger);
+                ScheduleDeferredManualReloadScan(trigger, reloadId);
                 deferredScanScheduled = true;
             }
             catch (Exception ex)
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"header reload failed: trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason} external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)} deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)} elapsed_ms={reloadStopwatch.ElapsedMilliseconds} type={ex.GetType().Name} reason='{ex.Message}'"
+                    $"header reload failed: reload_id={reloadId} trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason} external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)} deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)} elapsed_ms={reloadStopwatch.ElapsedMilliseconds} type={ex.GetType().Name} reason='{ex.Message}'"
                 );
                 throw;
             }
@@ -2632,8 +2633,14 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"header reload end: trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason} external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)} deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)} elapsed_ms={reloadStopwatch.ElapsedMilliseconds}"
+                $"header reload end: reload_id={reloadId} trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason} external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)} deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)} elapsed_ms={reloadStopwatch.ElapsedMilliseconds}"
             );
+        }
+
+        // 1回のHeader再読込から後続scanまでを、短いIDで同じ流れとして追えるようにする。
+        internal static string CreateHeaderReloadLogCorrelationId()
+        {
+            return $"hr{System.Guid.NewGuid():N}".Substring(0, 10);
         }
 
         private static string FormatRuntimeLogBool(bool value)
@@ -2642,31 +2649,31 @@ namespace IndigoMovieManager
         }
 
         // Header再読込の直後だけは一覧更新の体感を優先し、全域scanは1拍後ろへ逃がす。
-        private void ScheduleDeferredManualReloadScan(string trigger)
+        private void ScheduleDeferredManualReloadScan(string trigger, string reloadId)
         {
-            _ = RunDeferredManualReloadScanAsync(trigger);
+            _ = RunDeferredManualReloadScanAsync(trigger, reloadId);
         }
 
-        private async Task RunDeferredManualReloadScanAsync(string trigger)
+        private async Task RunDeferredManualReloadScanAsync(string trigger, string reloadId)
         {
             try
             {
                 if (TryGetDeferredManualReloadScanSkipReason(out string skipReason))
                 {
-                    LogDeferredManualReloadScanSkipped(trigger, skipReason);
+                    LogDeferredManualReloadScanSkipped(trigger, reloadId, skipReason);
                     return;
                 }
 
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"manual reload deferred scan scheduled: trigger={trigger}"
+                    $"manual reload deferred scan scheduled: reload_id={reloadId} trigger={trigger}"
                 );
                 await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 await Task.Delay(250);
 
                 if (TryGetDeferredManualReloadScanSkipReason(out skipReason))
                 {
-                    LogDeferredManualReloadScanSkipped(trigger, skipReason);
+                    LogDeferredManualReloadScanSkipped(trigger, reloadId, skipReason);
                     return;
                 }
 
@@ -2676,7 +2683,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"manual reload deferred scan failed: trigger={trigger} type={ex.GetType().Name} origin={GetDeferredManualReloadScanFailureOrigin(ex)} reason='{ex.Message}'"
+                    $"manual reload deferred scan failed: reload_id={reloadId} trigger={trigger} type={ex.GetType().Name} origin={GetDeferredManualReloadScanFailureOrigin(ex)} reason='{ex.Message}'"
                 );
             }
         }
@@ -2739,11 +2746,15 @@ namespace IndigoMovieManager
             return false;
         }
 
-        private static void LogDeferredManualReloadScanSkipped(string trigger, string reason)
+        private static void LogDeferredManualReloadScanSkipped(
+            string trigger,
+            string reloadId,
+            string reason
+        )
         {
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"manual reload deferred scan skipped: trigger={trigger} reason={reason}"
+                $"manual reload deferred scan skipped: reload_id={reloadId} trigger={trigger} reason={reason}"
             );
         }
 

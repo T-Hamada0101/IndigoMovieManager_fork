@@ -11,6 +11,14 @@ namespace IndigoMovieManager.Tests;
 public sealed class MainWindowReloadButtonTests
 {
     [Test]
+    public void CreateHeaderReloadLogCorrelationId_短い相関IDを返す()
+    {
+        string reloadId = MainWindow.CreateHeaderReloadLogCorrelationId();
+
+        Assert.That(reloadId, Does.Match("^hr[0-9a-f]{8}$"));
+    }
+
+    [Test]
     public async Task ExecuteHeaderReloadAsync_watch抑止下でfilter完了後にmanual_scanを遅延する()
     {
         MainWindow window = CreateWindow();

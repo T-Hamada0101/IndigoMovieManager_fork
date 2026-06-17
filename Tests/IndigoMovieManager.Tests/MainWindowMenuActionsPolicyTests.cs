@@ -134,16 +134,19 @@ public sealed class MainWindowMenuActionsPolicyTests
 
         Assert.That(reloadMethod, Does.Contain("Stopwatch reloadStopwatch = Stopwatch.StartNew();"));
         Assert.That(reloadMethod, Does.Contain("const string fullReloadReason = \"header-explicit\";"));
+        Assert.That(reloadMethod, Does.Contain("string reloadId = CreateHeaderReloadLogCorrelationId();"));
         Assert.That(reloadMethod, Does.Contain("bool externalSkinRefreshQueued = false;"));
         Assert.That(reloadMethod, Does.Contain("bool deferredScanScheduled = false;"));
         Assert.That(reloadMethod, Does.Contain("header reload begin:"));
         Assert.That(reloadMethod, Does.Contain("header reload end:"));
         Assert.That(reloadMethod, Does.Contain("header reload failed:"));
+        Assert.That(CountOccurrences(reloadMethod, "reload_id={reloadId}"), Is.EqualTo(3));
         Assert.That(reloadMethod, Does.Contain("full_reload_reason={fullReloadReason}"));
         Assert.That(reloadMethod, Does.Contain("external_skin_refresh_queued={FormatRuntimeLogBool(externalSkinRefreshQueued)}"));
         Assert.That(reloadMethod, Does.Contain("deferred_scan_scheduled={FormatRuntimeLogBool(deferredScanScheduled)}"));
         Assert.That(reloadMethod, Does.Contain("elapsed_ms={reloadStopwatch.ElapsedMilliseconds}"));
         Assert.That(reloadMethod, Does.Contain("type={ex.GetType().Name}"));
+        Assert.That(reloadMethod, Does.Contain("ScheduleDeferredManualReloadScan(trigger, reloadId);"));
         Assert.That(reloadMethod, Does.Contain("externalSkinRefreshQueued = true;"));
         Assert.That(reloadMethod, Does.Contain("deferredScanScheduled = true;"));
         Assert.That(reloadMethod, Does.Contain("throw;"));
@@ -153,6 +156,36 @@ public sealed class MainWindowMenuActionsPolicyTests
             CountOccurrences(reloadMethod, "EndWatchUiSuppression(\"manual-reload\");"),
             Is.EqualTo(1)
         );
+    }
+
+    [Test]
+    public void HeaderReload遅延ManualScanログは同じ相関IDを引き継ぐ()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string scheduleMethod = GetMethodBlock(
+            source,
+            "private void ScheduleDeferredManualReloadScan("
+        );
+        string runMethod = GetMethodBlock(
+            source,
+            "private async Task RunDeferredManualReloadScanAsync("
+        );
+        string skipMethod = GetMethodBlock(
+            source,
+            "private static void LogDeferredManualReloadScanSkipped("
+        );
+
+        Assert.That(scheduleMethod, Does.Contain("string reloadId"));
+        Assert.That(scheduleMethod, Does.Contain("RunDeferredManualReloadScanAsync(trigger, reloadId);"));
+
+        Assert.That(runMethod, Does.Contain("string reloadId"));
+        Assert.That(runMethod, Does.Contain("LogDeferredManualReloadScanSkipped(trigger, reloadId, skipReason);"));
+        Assert.That(runMethod, Does.Contain("manual reload deferred scan scheduled: reload_id={reloadId} trigger={trigger}"));
+        Assert.That(runMethod, Does.Contain("manual reload deferred scan failed: reload_id={reloadId} trigger={trigger}"));
+        Assert.That(runMethod, Does.Contain("QueueCheckFolderAsync(CheckMode.Manual, $\"{trigger}:deferred\")"));
+
+        Assert.That(skipMethod, Does.Contain("string reloadId"));
+        Assert.That(skipMethod, Does.Contain("manual reload deferred scan skipped: reload_id={reloadId} trigger={trigger} reason={reason}"));
     }
 
     [Test]
