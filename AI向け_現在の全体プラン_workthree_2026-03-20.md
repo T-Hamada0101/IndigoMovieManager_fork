@@ -1,8 +1,14 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-05-05
+最終更新日: 2026-05-28
 
 変更概要:
+- 2026-05-28 のPM判断として、`Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` を上位判断基準へ追加した。ただし日々の着手順は、この全体プランと `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として維持する。
+- 当面の本線は WPF 一覧を維持した diff-first 化であり、本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換、検索仕様変更は非目標として固定した。
+- Application Core は巨大化した新 `MainWindow` にしない。`Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない `Command / Query / Event / Snapshot / Diff DTO` 境界へ寄せる。
+- ReadModel / Diff は stable key、source revision、view revision、operation、選択 / スクロール / focus 影響、fallback reason を持つ方向で進め、full fallback は DB 切替、初期完全読込、query / sort 変更、大量変更、dup / hash などに限定して説明可能にする。
+- Scheduler は priority 順だけではなく、bounded queue、coalesce、latest-only、user-priority release / timeout log、shutdown bounded drain を持つ契約へ寄せる。
+- 補助 index / cache は `.wb` の代替正本にせず、必要な場合も `%LOCALAPPDATA%` などの再生成可能領域に限定する。
 - Player 右レールの `SelectionChanged` は抑止中・非表示中に詳細/タグ更新を走らせず、選択同期中の二重 UI 更新を避けるようにした
 - `UiHang` native overlay thread の `Create -> Drain -> Run` を `try/finally` で包み、起動直後の例外や stop 競合でも native/fallback window を必ず破棄するようにした
 - `UiHang` overlay thread の終了時クリアは thread / dispatcher の一致確認つきにし、Stop timeout 後の再 Start 状態を古い thread が消さないようにした
@@ -121,6 +127,15 @@
 - 対象は一覧表示、Watcher、Queue、サムネイル生成、救済導線を含む。
 - 過去の実験的アプローチ（future 等）の成果は、本線のテンポを壊さない形に一般化されたものだけを維持する。
 
+## 2.1 2026-05-28 未来図反映の固定判断
+
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` は上位ゴールである。ただし実装順の正本はこの文書と UI 高速化 Implementation Plan のままにする。
+- 本体一覧は WPF 維持の diff-first 化を本線とする。WebView2 一覧化は未来候補に留め、現段階の主戦場にしない。
+- IPC / sidecar は境界設計の参考に留める。先に DTO、queue、revision、ログ契約を整え、別プロセス化は必要性と観測が揃ってから判断する。
+- Core は UI を知らない薄い判断層にする。`MainWindow` の責務を別クラスへ丸移しするだけの巨大 Core は作らない。
+- `.wb` は WhiteBrowser 互換の正本として変更しない。補助 index / cache を作る場合も、破棄して再生成できる副産物として扱う。
+- ReadModel / Diff と Scheduler は、以後の差分反映・後着キャンセル・入力優先の共通語彙として育てる。
+
 ## 3. 現在の大粒度優先順位
 
 | 優先 | テーマ | 目的 | 状態 |
@@ -132,6 +147,8 @@
 | P4 | visible-first / Player / 画像供給 | 可視範囲と再生 UI を優先し、off-screen decode / metadata / bind を後ろへ送る | 進行中 |
 | P5 | `skin` 表示・保存完全分離 | runtime bridge 境界固定と `refresh / catalog / DB` 分離を別レーンで進める | 進行中 |
 | P6 | rescue / repair 維持と棚卸し | 通常動画テンポを壊さず、救済系の条件と観測を維持・整理する | 維持フェーズ |
+
+2026-05-28 の未来図反映後も、優先順位は変更しない。未来図は P1 / P2 / P4 / P5 / P6 の判断基準を強化するものであり、新しい大改造レーンを追加しない。
 
 ### 3.1 2026-04-24 再構築後の実行順
 
@@ -170,6 +187,9 @@
 6. 検証用 worktree / 退避コピーは本体 repo 直下へ置かず、使用後は必ず削除する。ビルド成功より前に「本体 compile へ混ざらないこと」を優先確認する。
 7. 検索等のユーザー要求が走っている間は、watch の full / bulk reload、rescue、thumbnail、poll などの背後処理を必要に応じて遅延・抑止してよい。
 8. `UiHang` オーバーレイ残留は `無通信timer` だけで隠さない。owner / lifecycle / shutdown guarantee を先に正し、その後に shutdown 専用 safety fuse を足す。
+9. 本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` 変更、`MainWindow` 全面置換、検索仕様変更は、この本線の解ではない。
+10. Core / ReadModel / Scheduler を導入する場合も、UI thread の待ち、全面再評価、後着反映、shutdown 詰まりを減らす目的に限定する。
+11. `request_id`、source revision、view revision、reason、skip reason、elapsed_ms、fallback reason をログで追える状態を維持する。
 
 ## 5. 完了済みの土台
 
@@ -431,6 +451,11 @@ DB 施策で固定する設計ルールは次である。
 - coordinator 群の丸移植
 - 個別動画名ベースの新分岐追加
 - UI テンポ改善の名目で観測性を削る変更
+- 本体一覧 UI の即時 WebView2 化
+- `.wb` スキーマ変更
+- `MainWindow` 全面置換
+- 検索仕様変更を主目的にした再設計
+- 補助 index / cache を `.wb` の代替正本にすること
 
 ## 9. AI が変更前に必ず確認すること
 
@@ -441,6 +466,8 @@ DB 施策で固定する設計ルールは次である。
 - 難読動画対応が通常経路の既定動作を重くしていないか
 - 既に分離した `Factory + Interface + Args` の境界を壊していないか
 - `ThumbnailCreationService` を再びオーケストレータ本体へ戻していないか
+- Core / ReadModel / Scheduler の追加が、単なる責務の引っ越しではなく UI 待ち削減に効いているか
+- full fallback の理由を DB 切替、初期完全読込、query / sort 変更、大量変更、dup / hash などへ分類できているか
 
 ## 10. 受け入れ判断
 
@@ -456,6 +483,7 @@ DB 施策で固定する設計ルールは次である。
 - 変更前より体感テンポが良い、または少なくとも悪化していない
 - 一覧、ページ移動、再読込のどこに効いたか説明できる
 - `skin` 切り替えでは `refresh` / catalog / DB のどこが効いたかを分けて説明できる
+- Diff 反映では stable key、source revision、view revision、operation、fallback reason をログまたは内部状態で追える
 
 ### 10.3 アーキテクチャ
 
@@ -464,10 +492,14 @@ DB 施策で固定する設計ルールは次である。
 - validator と coordinator の責務分離を壊していない
 - delegate facade と host 別 factory の境界を壊していない
 - `skin` の profile write 経路が複数ライターへ再分岐していない
+- Core が `Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM へ依存していない
+- Scheduler が bounded queue、coalesce、latest-only、shutdown bounded drain、user-priority release / timeout log を持つ方向へ進んでいる
 
 ## 11. 関連資料
 
 - `%USERPROFILE%\source\repos\IndigoMovieManager\AI向け_ブランチ方針_ユーザー体感テンポ最優先_2026-04-07.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_Indigoの未来図_2026-05-28.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_UI分離とスムーズ表示アーキテクチャ_2026-05-27.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Thumbnail\Docs\現状把握_workthree_失敗動画検証と本線反映方針_2026-03-11.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Thumbnail\Docs\優先順位表_失敗9件の検証順_2026-04-07.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\UpperTabs\Docs\Implementation Plan_上側タブvisible-first高速化_2026-03-15.md`

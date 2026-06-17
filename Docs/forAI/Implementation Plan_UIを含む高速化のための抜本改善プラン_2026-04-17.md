@@ -1,8 +1,13 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-05-27
+最終更新日: 2026-05-28
 
 変更概要:
+- 2026-05-28 のPM判断として、`Goal_Indigoの未来図_2026-05-28.md` をこの実装計画へ反映した。当面は WPF 一覧を維持した diff-first 化を本線とし、WebView2 一覧化と IPC / sidecar 先行導入は非目標へ固定する。
+- Lane 1 / 2 は ReadModel / Diff 契約として、stable key、source revision、view revision、operation、選択 / スクロール / focus 影響、fallback reason を持つ方向へ寄せる。
+- Lane 1 / 3 は Scheduler 契約として、bounded queue、coalesce、latest-only、user-priority release / timeout log、shutdown bounded drain を持つ方向へ寄せる。
+- 補助 index / cache は `.wb` の代替正本にしない。必要な場合も `%LOCALAPPDATA%` などの再生成可能領域へ限定する。
+- Application Core は `Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない境界とし、巨大化した新 `MainWindow` を作らない。
 - 2026-05-27 の James / Worker A で、`Views/Main/MainWindow.Startup.cs` の startup fallback に残る `FilterAndSort(sortId, true)` を調査し、DB初期読込前・部分feed中は source 欠落の危険があるため full reload 復旧を残した。そのうえで startup feed が全件を `MovieRecs` へ載せ終えた後の fallback だけは `RefreshMovieViewFromCurrentSourceAsync(..., "startup-fallback", Startup)` へ逃がし、DB再読込なしの既存 in-memory refresh / visible refresh 経路へ合流させた。
 - 2026-05-27 のサブ5.5 Worker A で、Thumbnail ERROR snapshot 要求が下側 ERROR タブ未生成時に即 return していた隙間を埋めた。`Sort=28` かつ bottom tab host なしの時だけ dirty を立てて `RefreshThumbnailErrorRecords()` の sort-count-only 経路へ通し、ERROR UI が無い構成では `ReplaceThumbnailErrorRecs(...)` / progress 更新を増やさず marker 件数だけ追従させる。
 - 2026-05-27 のサブ5.5 Worker A で、Thumbnail ERROR タブの背景 refresh 完了後に後着要求が立っている場合は、古い `result.Items` を UI へ適用せず dirty のまま次の refresh へ回すようにした。`ReplaceThumbnailErrorRecs(...)` と `SortData("28")` は最新要求が残っていない時だけ走り、検索/skin操作裏の ERROR snapshot 反映ちらつきとUI差し替えコストを減らす。
@@ -225,6 +230,40 @@
 - 検索、並び替え、ページ移動、タブ切り替えなどの明示的なユーザー要求は、watch / rescue / thumbnail / poll などの背後処理より最優先で完了させる。
 - 高速化の主戦場を「重い処理を少し速くする」から、「重い処理をそもそも起こさない」へ移す。
 - 通常動画の初動を守りながら、rescue / queue / watcher / skin の既存本線と矛盾しない着手順を固定する。
+
+## 1.1 2026-05-28 未来図反映の実装判断
+
+- この計画は、`Goal_Indigoの未来図_2026-05-28.md` の実装側正本である。未来図は上位ゴール、この文書は日々の着手順として扱う。
+- 本線は WPF 一覧を維持した diff-first 化で進める。WebView2 一覧化は将来候補であり、現段階の詰まり解消策にはしない。
+- IPC / sidecar は先に入れない。先に DTO、revision、queue、fallback reason、ログ契約を固め、別プロセス化しても意味が崩れない境界を作る。
+- `.wb` は WhiteBrowser 互換の正本として変更しない。補助 index / cache は壊れても再生成できる副産物だけ許容する。
+- `MainWindow` 全面置換ではなく、既存コードを仕様の正本として扱いながら、UI thread に重い判断を戻さない境界へ段階移行する。
+
+### 1.1.1 Lane 対応
+
+| Lane | 未来図での意味 | この計画での扱い |
+|---|---|---|
+| Lane 1 | UI Shell / Core 境界 | UI thread 簡素化、入力優先、後着破棄の共通ルール |
+| Lane 2 | ReadModel / Diff | stable key と revision 付きの局所反映 |
+| Lane 3 | Scheduler | bounded queue、coalesce、latest-only、shutdown bounded drain |
+| Lane 4 | Persistence / Cache | `.wb` 非変更、背景保存、補助 cache は再生成可能 |
+| Lane 5 | Image Pipeline | visible-first、off-screen decode 抑止、Player 右レール軽量化 |
+| Lane 6 | Skin Runtime | `refresh / catalog / persist / navigate` の観測と分離 |
+| Lane 7 | Worker / Rescue | DTO 境界を先に整え、worker 分離は後段判断 |
+
+### 1.1.2 ReadModel / Diff 契約
+
+- 差分反映は stable key、source revision、view revision、operation、affected fields を持つ。
+- 選択、スクロール、focus への影響を明示し、ユーザー操作中に不要な Reset を起こさない。
+- full fallback は DB 切替、初期完全読込、query / sort 変更、大量変更、dup / hash などへ分類し、fallback reason をログへ残す。
+- source 欠落、revision 不一致、差分件数過大、検索仕様上の非局所条件では、局所反映に固執せず安全側へ戻す。
+
+### 1.1.3 Scheduler 契約
+
+- 背後処理は bounded queue に載せ、同種要求は coalesce する。
+- 検索、ページ移動、タブ切り替え、Player 操作などの user-priority は latest-only と後着破棄を基本にする。
+- user-priority 解除、timeout、skip、stale はログで追えるようにする。
+- shutdown は unbounded wait にせず、complete、bounded drain、timeout log の順で閉じる。
 
 ## 2. いまの見立て
 
@@ -607,6 +646,9 @@
 6. 後着検索・後着 reload で、古い filter / sort 計算が走り切らず、UI に反映されないことをログで説明できる。
 7. 残る `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` は、許容 fallback か局所反映化対象か分類済みである。
 8. 起動 / skin / visible-first は、実機ログで支配要因を説明できるまで完了扱いにしない。
+9. Diff 反映は request id、stable key、source revision、view revision、operation、fallback reason を説明できる。
+10. Scheduler は bounded queue、coalesce、latest-only、user-priority release / timeout log、shutdown bounded drain のどこまで満たしたか説明できる。
+11. full fallback は DB 切替、初期完全読込、query / sort 変更、大量変更、dup / hash などへ分類されている。
 
 ## 9. 今回やらないこと
 
@@ -614,10 +656,17 @@
 - IPC や別プロセス化の先行導入
 - rescue / repair 条件の拡張を主目的にした高速化
 - 仮想化パネル差し替えだけで解決したことにする議論
+- 本体一覧 UI の即時 WebView2 化
+- `MainWindow` 全面置換
+- 検索仕様変更を主目的にした再設計
+- 補助 index / cache を `.wb` の代替正本にすること
+- Application Core を巨大化した新 `MainWindow` にすること
 
 ## 10. 関連資料
 
 - `%USERPROFILE%\source\repos\IndigoMovieManager\AI向け_現在の全体プラン_workthree_2026-03-20.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_Indigoの未来図_2026-05-28.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_UI分離とスムーズ表示アーキテクチャ_2026-05-27.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\調査結果_UIボトルネック解消_2026-03-11.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\調査結果_watch_DB管理分離_UI詰まり防止_2026-03-20.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Views\Main\Docs\Implementation Plan_大DB起動段階ロード化_2026-03-17.md`
