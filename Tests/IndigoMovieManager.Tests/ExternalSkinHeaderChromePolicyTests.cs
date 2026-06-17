@@ -357,6 +357,22 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             "await PrepareExternalSkinHostFileSystemAsync(",
             StringComparison.Ordinal
         );
+        int documentBuildIndex = navigateMethod.IndexOf(
+            "await renderCoordinator.BuildInitialDocumentAsync(",
+            StringComparison.Ordinal
+        );
+        int navigateSkipIndex = navigateMethod.IndexOf(
+            "CreateNavigateSkipped(requestedSkinName, \"same-document\")",
+            StringComparison.Ordinal
+        );
+        int handleSkinLeaveIndex = navigateMethod.IndexOf(
+            "await runtimeBridge.HandleSkinLeaveAsync()",
+            StringComparison.Ordinal
+        );
+        int navigateToStringIndex = navigateMethod.IndexOf(
+            "await NavigateToStringAsync(document.Html)",
+            StringComparison.Ordinal
+        );
 
         Assert.Multiple(() =>
         {
@@ -402,6 +418,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(navigateMethod, Does.Contain("navigateToStringStopwatch"));
             Assert.That(navigateMethod, Does.Contain("initialDocumentBuildElapsedMilliseconds"));
             Assert.That(navigateMethod, Does.Contain("navigateToStringElapsedMilliseconds"));
+            Assert.That(documentBuildIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(navigateSkipIndex, Is.GreaterThan(documentBuildIndex));
+            Assert.That(handleSkinLeaveIndex, Is.GreaterThan(navigateSkipIndex));
+            Assert.That(navigateToStringIndex, Is.GreaterThan(handleSkinLeaveIndex));
             Assert.That(refreshEndMethod, Does.Contain("navigate_skip_reason="));
             Assert.That(skipPolicyMethod, Does.Contain("ExternalSkinDefinitionRefreshMode.CachedSnapshot"));
             Assert.That(skipPolicyMethod, Does.Contain("StartsWith(\"dbinfo-\", StringComparison.Ordinal)"));

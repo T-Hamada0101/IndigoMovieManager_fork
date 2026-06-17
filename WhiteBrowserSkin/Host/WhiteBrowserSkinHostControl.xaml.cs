@@ -89,8 +89,6 @@ namespace IndigoMovieManager.Skin.Host
                 );
             }
 
-            // 旧ページの終了 callback を先に返してから、新しい skin を流し込む。
-            await runtimeBridge.HandleSkinLeaveAsync();
             Stopwatch initialDocumentStopwatch = Stopwatch.StartNew();
             WhiteBrowserSkinRenderDocument document = await renderCoordinator.BuildInitialDocumentAsync(
                 skinRootPath,
@@ -138,6 +136,8 @@ namespace IndigoMovieManager.Skin.Host
                     );
             }
 
+            // 実際に新しい document を流す時だけ、旧ページの終了 callback を先に返す。
+            await runtimeBridge.HandleSkinLeaveAsync();
             Stopwatch navigateToStringStopwatch = Stopwatch.StartNew();
             await NavigateToStringAsync(document.Html);
             navigateToStringMilliseconds = navigateToStringStopwatch.Elapsed.TotalMilliseconds;
