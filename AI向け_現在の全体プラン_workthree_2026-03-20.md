@@ -6,6 +6,8 @@
 - 2026-06-17 のPM判断として、実機 `debug-runtime.log` 調査から `first-page shown` / `input ready` は良好、起動後 `CreateWatcher` と active skin navigate が次の支配要因候補と判断した。
 - `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成約13秒の内訳を実機ログで切れるようにした。
 - user-priority 解除ログへ `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加し、Scheduler 契約の release reason 観測を補強した。timeout は純粋判定 helper とテストまでで、runtime 強制解除は未導入。
+- manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態の guard と skip reason ログを持ち、過去1件の NullReference 再発時も type / origin 付きで次の切り分けへ進めるようにした。
+- watch full fallback の schedule / apply / final ログへ `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログだけで分類できるようにした。
 - 2026-05-28 のPM判断として、`Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` を上位判断基準へ追加した。ただし日々の着手順は、この全体プランと `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として維持する。
 - 当面の本線は WPF 一覧を維持した diff-first 化であり、本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換、検索仕様変更は非目標として固定した。
 - Application Core は巨大化した新 `MainWindow` にしない。`Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない `Command / Query / Event / Snapshot / Diff DTO` 境界へ寄せる。
@@ -98,6 +100,7 @@
 - watcher 登録フェーズでは UI 上の `Path.Exists(...)` 再実行を避け、背景計画で確認済みの対象だけを登録する形へ寄せた
 - watcher 作成 task は active count と最新 task 状態を shutdown handoff ログへ残し、終了時に未完了の背景作成があるかを追えるようにした
 - `CheckFolderAsync(...)` の watch table は共有 `watchData` を更新せず、走査ごとのローカル snapshot で回す形へ寄せ、背景走査と UI 表示用データの境界を分けた
+- watch full fallback のログは `plan_reason` に加えて `recovery_reason` を持つ。query-only 復帰を阻んだ条件を実機ログで集計し、安全なものだけ次に局所反映化候補へ回す
 - ファイルコピー / リネーム時の watcher 一時停止復旧は、DB切替や終了で watcher が破棄済みでも例外をログへ閉じ、UI 操作完了を壊さないようにした
 - 起動直後の EverythingLite root prewarm は非同期 watcher apply 後の共有 `watchData` に依存せず、背景側で watch table snapshot を読んで空振りを避ける形へ寄せた
 - `WatcherEventQueue` の runner 起動も ThreadPool へ寄せ、FileSystemWatcher event handler から初回処理の同期前段をさらに外した

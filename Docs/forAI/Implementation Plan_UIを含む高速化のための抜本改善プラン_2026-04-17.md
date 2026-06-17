@@ -6,6 +6,8 @@
 - 2026-06-17 の実機 `debug-runtime.log` 調査では、`first-page shown` / `input ready` は良好だった。支配要因候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference に絞った。
 - `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、watcher 作成の遅延要因を次の実機ログで分類できるようにした。
 - user-priority 解除ログに `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加した。timeout は純粋判定 helper とテストで契約を固定し、runtime 強制解除は後続扱いにする。
+- manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残すようにした。
+- watch full fallback の schedule / apply / final 系ログに `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログで選別できるようにした。
 - 2026-05-28 のPM判断として、`Goal_Indigoの未来図_2026-05-28.md` をこの実装計画へ反映した。当面は WPF 一覧を維持した diff-first 化を本線とし、WebView2 一覧化と IPC / sidecar 先行導入は非目標へ固定する。
 - Lane 1 / 2 は ReadModel / Diff 契約として、stable key、source revision、view revision、operation、選択 / スクロール / focus 影響、fallback reason を持つ方向へ寄せる。
 - Lane 1 / 3 は Scheduler 契約として、bounded queue、coalesce、latest-only、user-priority release / timeout log、shutdown bounded drain を持つ方向へ寄せる。
@@ -615,7 +617,9 @@
 10. 済: 実機 `debug-runtime.log` で検索 / sort / watch / 起動 / skin の支配要因を確認した。現行ログでは search / sort / Player / visible-first は主役ではなく、`first-page shown` / `input ready` は良好。次の候補は起動後 `CreateWatcher` 約13秒、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
 11. 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` をログへ出し、watcher 作成の支配要因を実機ログで切り分けられるようにした。
 12. 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は純粋判定 helper とテストまでで、runtime 強制解除と timeout ログ接続は後続。
-13. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply のどれに寄っているかを確定してから削る。skin は別レーンで navigate skip 条件を検討する。
+13. 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残せるようにした。
+14. 済: watch full fallback は `plan_reason` に加えて `recovery_reason` を schedule / apply / final 系ログへ出し、query-only 復帰できない理由を実機ログで分類できるようにした。
+15. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply のどれに寄っているかを確定してから削る。skin は別レーンで navigate skip 条件を検討する。
 
 ### Step 1
 
@@ -631,6 +635,7 @@
 
 - `FilterAndSortAsync(...)` の呼び出し元を、`full snapshot reload`、`query only recompute`、`item diff apply` の 3 群へ再分類する。
 - `changed paths + ChangeKind + DirtyFields + ObservedState` がある経路では、追加済みの full reload 戻り理由ログを使い、残った fallback 条件を実機ログから選んで縮める。
+- `recovery_reason=dirty-fields-unsafe:*` などの実頻度を確認するまでは、Hash / MovieName dirty を安全扱いへ広げない。
 
 ### Step 4
 
