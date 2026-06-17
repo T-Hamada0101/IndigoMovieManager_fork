@@ -12,6 +12,7 @@
 - Header Reload の遅延 manual scan は latest-only 化し、短時間に複数回押された時は古い `reload_id` を `manual reload deferred scan skipped: ... reason=superseded` で閉じ、最新の scan だけを `Header.ReloadButton:deferred` へ進める。
 - 外部 skin refresh 要求の teardown 後 false 契約は、`QueueExternalSkinHostRefresh(...)` の runtime test でも固定した。
 - Header Reload / minimal chrome reload / fallback retry の host clear に `host clear begin/end/failed` ログを追加した。`reason` / `has_host` / `elapsed_ms` / 失敗時 `type` を出し、blank 遷移時間を後段 `refresh end` の `host_navigate_ms` / `navigate_to_string_ms` と分けて読めるようにした。`ClearAsync()` await、例外をログに閉じる方針、refresh queue へ進む順序は変えていない。
+- `header-reload` / `fallback-notice-retry` は明示 `CatalogRefresh` として扱い、実機ログで `host clear` と navigate の支配度、表示互換、鮮度確認の必要性を確認するまでは same-document skip 対象へ広げない。
 - watch full fallback の schedule / apply / final 系ログに `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログで選別できるようにした。
 - user-priority timeout を runtime release log へ接続した。既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として出し、強制解除や新 Scheduler は入れない。
 - active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。PMレビューで skip 前に `onSkinLeave` を送る危険経路を検出し、skip 時は leave callback を送らない順序へ修正した。

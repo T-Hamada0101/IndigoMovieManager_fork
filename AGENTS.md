@@ -83,6 +83,7 @@
 - 済: watch full fallback は schedule / apply / final 系ログに `recovery_reason` を併記し、`dirty-fields-unsafe:*` など次に削る条件を実機ログだけで選べる。
 - 済: 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じる。
 - 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実際に navigate する時だけ leave callback を送ること。実 navigate へ進む時は旧 reuse key を先に無効化し、same-document skip では外部サムネ許可リストを消さない。
+- PM判断: `header-reload` / `fallback-notice-retry` は明示 `CatalogRefresh` なので、実機ログで支配要因と表示互換を確認するまで same-document skip 対象へ広げない。速度目的で再読込の鮮度確認意味を変えない。
 - 現行実機ログでは `first-page shown` / `input ready` は良好で、次の確認軸は起動後 `CreateWatcher` 約13秒の内訳、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
 - 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれかを確定してから削る。skin は `host clear end elapsed_ms` と `refresh end host_navigate_ms` / `navigate_to_string_ms`、`navigate_skipped` / `navigate_skip_reason`、実WebView2表示崩れの有無を確認する。
 

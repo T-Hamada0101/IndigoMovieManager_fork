@@ -16,6 +16,7 @@
 - watch full fallback の schedule / apply / final ログへ `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログだけで分類できるようにした。
 - user-priority timeout は runtime release log へ接続し、既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として観測できるようにした。強制解除や新 Scheduler は入れていない。
 - active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実 navigate へ進む時は旧 reuse key と旧 document 用の外部サムネ許可を明示的に切る。明示 reload / catalog refresh / teardown / stale は従来どおり navigate 側へ戻す。
+- PM判断として、`header-reload` / `fallback-notice-retry` は明示 `CatalogRefresh` のまま維持する。実機ログで `host clear` と navigate の支配度、表示崩れ、鮮度確認の必要性を確認するまでは same-document skip 対象へ広げない。
 - 2026-05-28 のPM判断として、`Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` を上位判断基準へ追加した。ただし日々の着手順は、この全体プランと `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として維持する。
 - 当面の本線は WPF 一覧を維持した diff-first 化であり、本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換、検索仕様変更は非目標として固定した。
 - Application Core は巨大化した新 `MainWindow` にしない。`Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない `Command / Query / Event / Snapshot / Diff DTO` 境界へ寄せる。
