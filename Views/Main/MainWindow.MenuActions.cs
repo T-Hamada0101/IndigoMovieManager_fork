@@ -100,6 +100,7 @@ namespace IndigoMovieManager
 
         private readonly IMainDbMovieMutationFacade _mainDbMovieMutationFacade =
             new MainDbMovieMutationFacade();
+        private int _deferredManualReloadScanRevision;
 
         // rescue系メニューは、救済系タブだけに絞って通常一覧での誤操作を避ける。
         internal static Visibility ResolveRescueOnlyContextMenuVisibility(
@@ -2650,13 +2651,26 @@ namespace IndigoMovieManager
         // Header再読込の直後だけは一覧更新の体感を優先し、全域scanは1拍後ろへ逃がす。
         private void ScheduleDeferredManualReloadScan(string trigger, string reloadId)
         {
-            _ = RunDeferredManualReloadScanAsync(trigger, reloadId);
+            int scanRevision = System.Threading.Interlocked.Increment(
+                ref _deferredManualReloadScanRevision
+            );
+            _ = RunDeferredManualReloadScanAsync(trigger, reloadId, scanRevision);
         }
 
-        private async Task RunDeferredManualReloadScanAsync(string trigger, string reloadId)
+        private async Task RunDeferredManualReloadScanAsync(
+            string trigger,
+            string reloadId,
+            int scanRevision
+        )
         {
             try
             {
+                if (IsDeferredManualReloadScanSuperseded(scanRevision))
+                {
+                    LogDeferredManualReloadScanSkipped(trigger, reloadId, "superseded");
+                    return;
+                }
+
                 if (TryGetDeferredManualReloadScanSkipReason(out string skipReason))
                 {
                     LogDeferredManualReloadScanSkipped(trigger, reloadId, skipReason);
@@ -2670,9 +2684,21 @@ namespace IndigoMovieManager
                 await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 await Task.Delay(250);
 
+                if (IsDeferredManualReloadScanSuperseded(scanRevision))
+                {
+                    LogDeferredManualReloadScanSkipped(trigger, reloadId, "superseded");
+                    return;
+                }
+
                 if (TryGetDeferredManualReloadScanSkipReason(out skipReason))
                 {
                     LogDeferredManualReloadScanSkipped(trigger, reloadId, skipReason);
+                    return;
+                }
+
+                if (IsDeferredManualReloadScanSuperseded(scanRevision))
+                {
+                    LogDeferredManualReloadScanSkipped(trigger, reloadId, "superseded");
                     return;
                 }
 
@@ -2685,6 +2711,22 @@ namespace IndigoMovieManager
                     $"manual reload deferred scan failed: reload_id={reloadId} trigger={trigger} type={ex.GetType().Name} origin={GetDeferredManualReloadScanFailureOrigin(ex)} reason='{ex.Message}'"
                 );
             }
+        }
+
+        private bool IsDeferredManualReloadScanSuperseded(int scanRevision)
+        {
+            return IsDeferredManualReloadScanSuperseded(
+                scanRevision,
+                System.Threading.Volatile.Read(ref _deferredManualReloadScanRevision)
+            );
+        }
+
+        internal static bool IsDeferredManualReloadScanSuperseded(
+            int scanRevision,
+            int latestScanRevision
+        )
+        {
+            return scanRevision != latestScanRevision;
         }
 
         private bool TryGetDeferredManualReloadScanSkipReason(out string reason)

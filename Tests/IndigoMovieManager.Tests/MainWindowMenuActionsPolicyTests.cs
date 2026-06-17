@@ -177,9 +177,13 @@ public sealed class MainWindowMenuActionsPolicyTests
         );
 
         Assert.That(scheduleMethod, Does.Contain("string reloadId"));
-        Assert.That(scheduleMethod, Does.Contain("RunDeferredManualReloadScanAsync(trigger, reloadId);"));
+        Assert.That(scheduleMethod, Does.Contain("_deferredManualReloadScanRevision"));
+        Assert.That(scheduleMethod, Does.Contain("RunDeferredManualReloadScanAsync(trigger, reloadId, scanRevision);"));
 
         Assert.That(runMethod, Does.Contain("string reloadId"));
+        Assert.That(runMethod, Does.Contain("int scanRevision"));
+        Assert.That(runMethod, Does.Contain("IsDeferredManualReloadScanSuperseded(scanRevision)"));
+        Assert.That(runMethod, Does.Contain("LogDeferredManualReloadScanSkipped(trigger, reloadId, \"superseded\");"));
         Assert.That(runMethod, Does.Contain("LogDeferredManualReloadScanSkipped(trigger, reloadId, skipReason);"));
         Assert.That(runMethod, Does.Contain("manual reload deferred scan scheduled: reload_id={reloadId} trigger={trigger}"));
         Assert.That(runMethod, Does.Contain("manual reload deferred scan failed: reload_id={reloadId} trigger={trigger}"));

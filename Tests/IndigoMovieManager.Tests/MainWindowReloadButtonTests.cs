@@ -139,6 +139,13 @@ public sealed class MainWindowReloadButtonTests
         Assert.That(reason, Is.Empty);
     }
 
+    [Test]
+    public void IsDeferredManualReloadScanSuperseded_最新でないscanだけtrueを返す()
+    {
+        Assert.That(MainWindow.IsDeferredManualReloadScanSuperseded(1, 2), Is.True);
+        Assert.That(MainWindow.IsDeferredManualReloadScanSuperseded(2, 2), Is.False);
+    }
+
     private static MainWindow CreateWindow()
     {
         return (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
