@@ -1,8 +1,10 @@
 # Implementation Plan: skin切り替え高速化 DB保存分離先行 2026-04-13
 
-最終更新日: 2026-05-27
+最終更新日: 2026-06-17
 
 変更概要:
+- 2026-06-17 のサブ5.5 Hypatia + PMレビューで、active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ `NavigateToString` を skip できるようにした。`navigate_skipped` / `navigate_skip_reason='same-document'` を `refresh end` と同じ trace で追える。
+- 同修正のPMレビューで、skip 判定前に `HandleSkinLeaveAsync()` を呼ぶと skin 側が leave 済みのまま再 navigate されない危険を検出した。skip 判定は `onSkinLeave` より前に行い、実際に `NavigateToString` へ進む時だけ leave callback を送ることを安全条件として固定した。
 - 2026-05-27 の gpt-5.5 Newton で、`WhiteBrowserSkinHostOperationResult.WithTimings(...)` の timing 契約をテスト固定した。成功 / failure / skip の factory 初期値は 0 埋め、負値 / `NaN` / `Infinity` は 0 丸め、未指定 timing は既存値保持として、`HostNavigateReturnedNull` 経路の観測値も破綻しないことを確認できるようにした。
 - 2026-05-27 のサブ5.5 Worker B Round 6 で、外部 skin host navigate が万一 `null` result を返した場合に success 扱いへ寄せず、`HostNavigateReturnedNull` の failure として fallback 診断へ流すようにした。Round 5 の `file_prepare_ms` / `host_navigate_ms` もこの失敗結果へ保持する。
 - 2026-05-27 のサブ5.5 Worker B Round 5 で、`skin-webview refresh end` に `prepare_ms` / `file_prepare_ms` / `host_navigate_ms` / `initial_doc_ms` / `navigate_to_string_ms` を追加した。外部 skin refresh の 500〜900ms 台が host 準備、HTML/file 準備、初期 document 生成、WebView `NavigateToString` のどこで膨らんだか実機ログ 1 行から切り分ける。
@@ -56,6 +58,7 @@
 - 2026-05-25 に同期 `GetCurrentExternalSkinDefinition()` を cached snapshot 専用へ固定し、同期 `RefreshCurrentExternalSkinDefinition()` を削除した。外部 skin 定義の catalog 再確認は async 経路だけで行う
 - 2026-05-25 に batch 圧縮時の `CatalogRefresh` 判定を `ResolveExternalSkinDefinitionRefreshMode(...)` へ集約し、priority 側で `header-reload` / `fallback-notice-retry` を二重列挙しない形へ固定した
 - 2026-05-26 に `refresh end` の payload を zero 込みへ揃え、catalog / persist が発生しなかった軽い refresh と、navigate まで進んだ refresh を同じ列で比較できるようにした
+- 2026-06-17 に通常 `dbinfo-*` の同一 document refresh は `NavigateToString` を skip 可能にした。ただし `header-reload` / `fallback-notice-retry` / catalog refresh / teardown / stale では skip しない。skip 時は `onSkinLeave` を送らず、表示更新だけで成立するかを実機ログと実表示で確認する
 
 ## 1. 結論
 

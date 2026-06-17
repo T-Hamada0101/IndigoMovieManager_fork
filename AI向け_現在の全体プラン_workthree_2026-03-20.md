@@ -8,6 +8,8 @@
 - user-priority 解除ログへ `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加し、Scheduler 契約の release reason 観測を補強した。timeout は純粋判定 helper とテストまでで、runtime 強制解除は未導入。
 - manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態の guard と skip reason ログを持ち、過去1件の NullReference 再発時も type / origin 付きで次の切り分けへ進めるようにした。
 - watch full fallback の schedule / apply / final ログへ `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログだけで分類できるようにした。
+- user-priority timeout は runtime release log へ接続し、既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として観測できるようにした。強制解除や新 Scheduler は入れていない。
+- active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、明示 reload / catalog refresh / teardown / stale は従来どおり navigate 側へ戻す。
 - 2026-05-28 のPM判断として、`Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` を上位判断基準へ追加した。ただし日々の着手順は、この全体プランと `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として維持する。
 - 当面の本線は WPF 一覧を維持した diff-first 化であり、本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換、検索仕様変更は非目標として固定した。
 - Application Core は巨大化した新 `MainWindow` にしない。`Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない `Command / Query / Event / Snapshot / Diff DTO` 境界へ寄せる。
@@ -106,6 +108,7 @@
 - `WatcherEventQueue` の runner 起動も ThreadPool へ寄せ、FileSystemWatcher event handler から初回処理の同期前段をさらに外した
 - 外部 skin API の非 UI スレッド経由の同期 UI 状態読み取りは `DispatcherPriority.Background` へ下げ、戻り値 API の互換を維持しつつ入力・描画を押しのけにくくした
 - 外部 skin API は UI 状態を `WhiteBrowserSkinApiUiSnapshot` として 1 回だけ固定し、`update / getInfo / getInfos / getFindInfo` の DTO 生成で DB パス、thumb folder、選択状態、検索条件、基準 sort を個別再読取しない入口へ寄せた
+- active skin の同一 document 再 navigate skip は `dbinfo-*` かつ cached definition の通常同期に限定する。skip 判定は `onSkinLeave` より前に行い、skip 時に skin 側を leave 済みにしないことを安全条件とする
 - `update / getInfo / getInfos / getFindInfo` は DTO 生成前に必要値だけの `MovieRecords` クローンを作り、途中で UI 側モデルが変わっても 1 応答内の値が揺れにくい形へ進めた
 - `focusThum / selectThum / addTag / removeTag / flipTag` は対象解決では UI 実体 `MovieRecords` を維持し、操作後レスポンスだけを操作後 snapshot と値クローンへ寄せた
 - 外部 skin API の thumbnail size 解決は、WB メタが十分な managed sheet ではメタ値を優先し、不要な同期画像デコードを避ける入口へ寄せた

@@ -77,6 +77,8 @@
 - 済: `CreateWatcher()` / `BuildWatcherCreationPlan(...)` は `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` をログへ出し、起動後 watcher 作成の支配要因を実機ログで切り分けられる。
 - 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残す。
 - 済: watch full fallback は schedule / apply / final 系ログに `recovery_reason` を併記し、`dirty-fields-unsafe:*` など次に削る条件を実機ログだけで選べる。
+- 済: user-priority timeout は runtime release log へ接続済み。既定 30 秒超過時だけ `release_reason=timeout` として出し、強制解除はしない。
+- 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実際に navigate する時だけ leave callback を送ること。
 - 現行実機ログでは `first-page shown` / `input ready` は良好で、次の確認軸は起動後 `CreateWatcher` 約13秒の内訳、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
 - 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply のどれかを確定してから削る。
 

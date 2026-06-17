@@ -8,6 +8,8 @@
 - user-priority 解除ログに `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加した。timeout は純粋判定 helper とテストで契約を固定し、runtime 強制解除は後続扱いにする。
 - manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残すようにした。
 - watch full fallback の schedule / apply / final 系ログに `recovery_reason` を追加し、`dirty-fields-unsafe:*` など query-only 復帰を阻む条件を実機ログで選別できるようにした。
+- user-priority timeout を runtime release log へ接続した。既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として出し、強制解除や新 Scheduler は入れない。
+- active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。PMレビューで skip 前に `onSkinLeave` を送る危険経路を検出し、skip 時は leave callback を送らない順序へ修正した。
 - 2026-05-28 のPM判断として、`Goal_Indigoの未来図_2026-05-28.md` をこの実装計画へ反映した。当面は WPF 一覧を維持した diff-first 化を本線とし、WebView2 一覧化と IPC / sidecar 先行導入は非目標へ固定する。
 - Lane 1 / 2 は ReadModel / Diff 契約として、stable key、source revision、view revision、operation、選択 / スクロール / focus 影響、fallback reason を持つ方向へ寄せる。
 - Lane 1 / 3 は Scheduler 契約として、bounded queue、coalesce、latest-only、user-priority release / timeout log、shutdown bounded drain を持つ方向へ寄せる。
@@ -619,7 +621,9 @@
 12. 済: user-priority 解除ログは `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を持つ。timeout は純粋判定 helper とテストまでで、runtime 強制解除と timeout ログ接続は後続。
 13. 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残せるようにした。
 14. 済: watch full fallback は `plan_reason` に加えて `recovery_reason` を schedule / apply / final 系ログへ出し、query-only 復帰できない理由を実機ログで分類できるようにした。
-15. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply のどれに寄っているかを確定してから削る。skin は別レーンで navigate skip 条件を検討する。
+15. 済: user-priority timeout は runtime release log へ接続済み。既定 30 秒超過時だけ `release_reason=timeout` を出し、強制解除はしない。
+16. 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、明示 reload / catalog refresh / teardown / stale では skip しない。
+17. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply のどれに寄っているかを確定してから削る。skin は `navigate_skipped` / `navigate_skip_reason` と実WebView2表示崩れの有無を確認する。
 
 ### Step 1
 
@@ -646,6 +650,7 @@
 
 - 起動 warm path と visible-first / Player のどちらを先に切るかを、`first-page shown`、`input ready`、`viewport request -> image ready`、Player 操作ログで決める。2026-06-17 時点では visible-first / Player より、起動後 watcher 作成内訳の実機確認を先に切る。
 - `skin` は別レーンとして、runtime bridge 境界固定と `refresh / catalog / DB` 分離を混ぜずに進める。
+- `skin` の同一 document skip は通常 `dbinfo-*` の cached snapshot 同期に限定し、skip 判定より前に `onSkinLeave` を送らない。明示 reload / catalog refresh / 外部 skin 更新検知では従来どおり navigate する。
 
 ## 8. 受け入れ基準
 
