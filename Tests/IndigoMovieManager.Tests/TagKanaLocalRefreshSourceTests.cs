@@ -71,6 +71,13 @@ public sealed class TagKanaLocalRefreshSourceTests
                 source,
                 Does.Contain("UiWorkRequestPolicy.CreateKanaBackfillMovieViewRefreshRequest()")
             );
+            Assert.That(source, Does.Contain("TryAdmitKanaBackfillMovieViewRefresh("));
+            Assert.That(source, Does.Contain("lock (_uiWorkSchedulerRuntimeSyncRoot)"));
+            Assert.That(source, Does.Contain("_uiWorkSchedulerRuntime.Queue(request)"));
+            Assert.That(source, Does.Contain("_uiWorkSchedulerRuntime.TryTakeNext()"));
+            Assert.That(source, Does.Contain("kana backfill scheduler rejected:"));
+            Assert.That(source, Does.Contain("kana backfill scheduler empty:"));
+            Assert.That(source, Does.Contain("UiWorkSchedulerPolicy.BuildAdmissionLogFields("));
             Assert.That(source, Does.Contain("UiWorkRequestPolicy.BuildRequestAdmissionLogFields("));
             Assert.That(source, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
             Assert.That(source, Does.Contain("kana backfill local refresh fallback:"));

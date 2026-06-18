@@ -230,12 +230,17 @@ namespace IndigoMovieManager
 
             UiWorkRequest request =
                 UiWorkRequestPolicy.CreateKanaBackfillMovieViewRefreshRequest();
+            if (!TryAdmitKanaBackfillMovieViewRefresh(request, out UiWorkRequest admittedRequest))
+            {
+                return;
+            }
+
             bool hasChangedMovies = changedMovies != null && changedMovies.Count > 0;
             if (changedMovies == null || changedMovies.Count < 1)
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"kana backfill local refresh fallback: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} reason=missing-path updated={updatedMovieCount}"
+                    $"kana backfill local refresh fallback: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(admittedRequest, UiWorkRequestPolicy.ReleaseReasonDeferred)} reason=missing-path updated={updatedMovieCount}"
                 );
             }
 
@@ -247,6 +252,47 @@ namespace IndigoMovieManager
                 UiHangActivityKind.Database,
                 hasChangedMovies ? changedMovies : null
             );
+        }
+
+        private bool TryAdmitKanaBackfillMovieViewRefresh(
+            UiWorkRequest request,
+            out UiWorkRequest admittedRequest
+        )
+        {
+            admittedRequest = default;
+            UiWorkSchedulerRuntimeQueueResult queueResult;
+            UiWorkSchedulerRuntimeTakeResult takeResult = default;
+
+            // runtimeは実行器にせず、既存のReadModel refresh入口へ渡す1件を選ぶだけに留める。
+            lock (_uiWorkSchedulerRuntimeSyncRoot)
+            {
+                queueResult = _uiWorkSchedulerRuntime.Queue(request);
+                if (queueResult.Decision.Accepted)
+                {
+                    takeResult = _uiWorkSchedulerRuntime.TryTakeNext();
+                }
+            }
+
+            if (!queueResult.Decision.Accepted)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"kana backfill scheduler rejected: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)}"
+                );
+                return false;
+            }
+
+            if (!takeResult.HasRequest)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"kana backfill scheduler empty: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonRejected)} next_reason={takeResult.Decision.Reason}"
+                );
+                return false;
+            }
+
+            admittedRequest = takeResult.PendingRequest.Request;
+            return true;
         }
 
         private static void AddKanaBackfillChangedMovie(
