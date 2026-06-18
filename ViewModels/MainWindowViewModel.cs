@@ -1,7 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows.Data;
 using IndigoMovieManager.DB;
@@ -231,16 +230,21 @@ namespace IndigoMovieManager.ViewModels
 
             if (
                 updateMode == FilteredMovieRecsUpdateMode.Move
-                && TryReorderFilteredMovieRecsWithMove(nextItems, out int movedCount)
+                && TryReorderFilteredMovieRecsWithMove(
+                    nextItems,
+                    out int movedCount,
+                    out int moveUpdatedCount
+                )
             )
             {
                 return new FilteredMovieRecsUpdateResult(
-                    HasChanges: movedCount > 0,
+                    HasChanges: movedCount > 0 || moveUpdatedCount > 0,
                     RetainedPrefixCount: retainedPrefixCount,
                     RetainedSuffixCount: retainedSuffixCount,
                     RemovedCount: 0,
                     InsertedCount: 0,
-                    MovedCount: movedCount
+                    MovedCount: movedCount,
+                    UpdatedCount: moveUpdatedCount
                 );
             }
 
@@ -364,21 +368,42 @@ namespace IndigoMovieManager.ViewModels
         // sort-only で要素集合が同じ時は、remove/insert ではなく Move だけで並び替える。
         private bool TryReorderFilteredMovieRecsWithMove(
             IReadOnlyList<MovieRecords> nextItems,
-            out int movedCount
+            out int movedCount,
+            out int updatedCount
         )
         {
             movedCount = 0;
+            updatedCount = 0;
             int count = FilteredMovieRecs.Count;
             if (count != nextItems.Count)
             {
                 return false;
             }
 
-            Dictionary<MovieRecords, int> indexByItem = new(MovieRecordReferenceComparer.Instance);
+            Dictionary<string, int> indexByStableKey = new(StringComparer.OrdinalIgnoreCase);
             for (int index = 0; index < count; index++)
             {
                 MovieRecords currentItem = FilteredMovieRecs[index];
-                if (currentItem == null || !indexByItem.TryAdd(currentItem, index))
+                if (
+                    currentItem == null
+                    || string.IsNullOrWhiteSpace(currentItem.Movie_Path)
+                    || !indexByStableKey.TryAdd(currentItem.Movie_Path, index)
+                )
+                {
+                    return false;
+                }
+            }
+
+            HashSet<string> nextStableKeys = new(StringComparer.OrdinalIgnoreCase);
+            for (int targetIndex = 0; targetIndex < count; targetIndex++)
+            {
+                MovieRecords nextItem = nextItems[targetIndex];
+                if (
+                    nextItem == null
+                    || string.IsNullOrWhiteSpace(nextItem.Movie_Path)
+                    || !nextStableKeys.Add(nextItem.Movie_Path)
+                    || !indexByStableKey.ContainsKey(nextItem.Movie_Path)
+                )
                 {
                     return false;
                 }
@@ -387,16 +412,7 @@ namespace IndigoMovieManager.ViewModels
             for (int targetIndex = 0; targetIndex < count; targetIndex++)
             {
                 MovieRecords nextItem = nextItems[targetIndex];
-                if (nextItem == null || !indexByItem.ContainsKey(nextItem))
-                {
-                    return false;
-                }
-            }
-
-            for (int targetIndex = 0; targetIndex < count; targetIndex++)
-            {
-                MovieRecords nextItem = nextItems[targetIndex];
-                int currentIndex = indexByItem[nextItem];
+                int currentIndex = indexByStableKey[nextItem.Movie_Path];
                 if (currentIndex == targetIndex)
                 {
                     continue;
@@ -409,7 +425,17 @@ namespace IndigoMovieManager.ViewModels
                 int rangeEnd = Math.Max(targetIndex, currentIndex);
                 for (int index = rangeStart; index <= rangeEnd; index++)
                 {
-                    indexByItem[FilteredMovieRecs[index]] = index;
+                    indexByStableKey[FilteredMovieRecs[index].Movie_Path] = index;
+                }
+            }
+
+            // Move 後の位置で同じ key の新インスタンスだけを置き換える。
+            for (int index = 0; index < count; index++)
+            {
+                if (!ReferenceEquals(FilteredMovieRecs[index], nextItems[index]))
+                {
+                    FilteredMovieRecs[index] = nextItems[index];
+                    updatedCount++;
                 }
             }
 
@@ -631,21 +657,6 @@ namespace IndigoMovieManager.ViewModels
                 right?.Movie_Path ?? "",
                 StringComparison.OrdinalIgnoreCase
             );
-        }
-
-        private sealed class MovieRecordReferenceComparer : IEqualityComparer<MovieRecords>
-        {
-            public static MovieRecordReferenceComparer Instance { get; } = new();
-
-            public bool Equals(MovieRecords x, MovieRecords y)
-            {
-                return ReferenceEquals(x, y);
-            }
-
-            public int GetHashCode(MovieRecords obj)
-            {
-                return RuntimeHelpers.GetHashCode(obj);
-            }
         }
 
         /// <summary>

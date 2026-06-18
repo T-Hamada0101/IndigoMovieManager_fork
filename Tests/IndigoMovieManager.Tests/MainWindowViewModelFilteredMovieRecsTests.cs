@@ -224,6 +224,80 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
     }
 
     [Test]
+    public void sort_onlyは同じMoviePath集合なら別インスタンスでもMove後にReplaceする()
+    {
+        MainWindowViewModel viewModel = new();
+        MovieRecords movieA = CreateMovie("A");
+        MovieRecords movieB = CreateMovie("B");
+        MovieRecords movieC = CreateMovie("C");
+        MovieRecords movieD = CreateMovie("D");
+        MovieRecords movieAUpdated = CreateMovie("A");
+        MovieRecords movieBUpdated = CreateMovie("B");
+        MovieRecords movieCUpdated = CreateMovie("C");
+        MovieRecords movieDUpdated = CreateMovie("D");
+
+        _ = viewModel.ReplaceFilteredMovieRecs([movieA, movieB, movieC, movieD]);
+
+        List<NotifyCollectionChangedAction> collectionActions = [];
+        viewModel.FilteredMovieRecs.CollectionChanged += (_, args) =>
+        {
+            collectionActions.Add(args.Action);
+        };
+
+        FilteredMovieRecsUpdateResult result = viewModel.ReplaceFilteredMovieRecs(
+            [movieDUpdated, movieBUpdated, movieAUpdated, movieCUpdated],
+            updateMode: FilteredMovieRecsUpdateMode.Move
+        );
+
+        Assert.That(result.HasChanges, Is.True);
+        Assert.That(result.RemovedCount, Is.EqualTo(0));
+        Assert.That(result.InsertedCount, Is.EqualTo(0));
+        Assert.That(result.MovedCount, Is.GreaterThan(0));
+        Assert.That(result.UpdatedCount, Is.EqualTo(4));
+        Assert.That(collectionActions, Does.Contain(NotifyCollectionChangedAction.Move));
+        Assert.That(collectionActions, Does.Contain(NotifyCollectionChangedAction.Replace));
+        Assert.That(collectionActions, Does.Not.Contain(NotifyCollectionChangedAction.Remove));
+        Assert.That(collectionActions, Does.Not.Contain(NotifyCollectionChangedAction.Add));
+        Assert.That(
+            viewModel.FilteredMovieRecs,
+            Is.EqualTo([movieDUpdated, movieBUpdated, movieAUpdated, movieCUpdated])
+        );
+    }
+
+    [Test]
+    public void sort_onlyは重複MoviePathならMoveへ進まず既存fallbackで差し替える()
+    {
+        MainWindowViewModel viewModel = new();
+        MovieRecords movieA = CreateMovie("A");
+        MovieRecords movieB1 = CreateMovie("B1", @"C:\movies\dup.mp4");
+        MovieRecords movieB2 = CreateMovie("B2", @"C:\movies\dup.mp4");
+        MovieRecords movieC = CreateMovie("C");
+
+        _ = viewModel.ReplaceFilteredMovieRecs([movieA, movieB1, movieB2, movieC]);
+
+        List<NotifyCollectionChangedAction> collectionActions = [];
+        viewModel.FilteredMovieRecs.CollectionChanged += (_, args) =>
+        {
+            collectionActions.Add(args.Action);
+        };
+
+        FilteredMovieRecsUpdateResult result = viewModel.ReplaceFilteredMovieRecs(
+            [movieC, movieB1, movieA, movieB2],
+            updateMode: FilteredMovieRecsUpdateMode.Move
+        );
+
+        Assert.That(result.HasChanges, Is.True);
+        Assert.That(result.MovedCount, Is.EqualTo(0));
+        Assert.That(result.UpdatedCount, Is.EqualTo(0));
+        Assert.That(result.RemovedCount, Is.GreaterThan(0));
+        Assert.That(result.InsertedCount, Is.GreaterThan(0));
+        Assert.That(collectionActions, Does.Not.Contain(NotifyCollectionChangedAction.Move));
+        Assert.That(collectionActions, Does.Contain(NotifyCollectionChangedAction.Remove));
+        Assert.That(collectionActions, Does.Contain(NotifyCollectionChangedAction.Add));
+        Assert.That(viewModel.FilteredMovieRecs, Is.EqualTo([movieC, movieB1, movieA, movieB2]));
+    }
+
+    [Test]
     public void Resetモードは全件入れ直し経路へ落ちる()
     {
         MainWindowViewModel viewModel = new();
