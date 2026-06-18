@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -109,7 +110,11 @@ public sealed class MainWindowUiIoDeferralSourceTests
     public void DbSwitch_preflightは旧DB停止前に背景で実行しsystemDataをBootへ渡す()
     {
         string dbSwitchSource = GetRepoText("Views", "Main", "MainWindow.DbSwitch.cs");
-        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string mainDbRuntimeSource = GetRepoText(
+            "Views",
+            "Main",
+            "MainWindow.MainDbRuntime.cs"
+        );
         string switchMethod = ExtractMethod(
             dbSwitchSource,
             "private async Task<bool> TrySwitchMainDb("
@@ -123,15 +128,15 @@ public sealed class MainWindowUiIoDeferralSourceTests
             "private bool TryActivateMainDbSession("
         );
         string openMethod = ExtractMethod(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private bool OpenDatafile(string dbFullPath, DataTable preflightSystemData = null)"
         );
         string bootMethod = ExtractMethod(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private void BootNewDb(string dbFullPath, DataTable preflightSystemData)"
         );
         string systemMethod = ExtractMethod(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private void GetSystemTable(string dbPath, DataTable preflightSystemData = null)"
         );
 
@@ -150,6 +155,56 @@ public sealed class MainWindowUiIoDeferralSourceTests
         Assert.That(bootMethod, Does.Contain("GetSystemTable(dbFullPath, preflightSystemData);"));
         Assert.That(systemMethod, Does.Contain("system fallback load: synchronous system read"));
         Assert.That(systemMethod, Does.Contain("systemData = preflightSystemData ?? _mainDbMovieReadFacade.LoadSystemTable(dbPath);"));
+    }
+
+    [Test]
+    public void MainDbRuntime境界はMainWindow本体へ戻さない()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string mainDbRuntimeSource = GetRepoText(
+            "Views",
+            "Main",
+            "MainWindow.MainDbRuntime.cs"
+        );
+        string dbSwitchSource = GetRepoText("Views", "Main", "MainWindow.DbSwitch.cs");
+
+        string[] runtimeSignatures =
+        [
+            "private void ResetMainHeaderCounts()",
+            "private void QueueRegisteredMovieCountRefresh(",
+            "private void TryAdjustRegisteredMovieCount(",
+            "private async Task RefreshRegisteredMovieCountAsync(",
+            "private bool OpenDatafile(string dbFullPath, DataTable preflightSystemData = null)",
+            "private void ShutdownCurrentDb()",
+            "private void BootNewDb(string dbFullPath, DataTable preflightSystemData)",
+            "private void ApplyColdStartSystemDefaults()",
+            "public string SelectSystemTable(",
+            "private void ApplyRuntimeSystemValue(",
+            "private void UpsertSystemDataRow(",
+            "private void QueueSearchHistoryReload(",
+            "private async Task ReloadSearchHistoryForDbSwitchAsync(",
+            "private void GetSystemTable(",
+            "private void GetWatchTable(",
+            "private static DataTable GetWatchTableSnapshot(",
+            "private void UpdateSort()",
+            "private void UpdateSkin()",
+            "private void SwitchTab(",
+        ];
+
+        foreach (string signature in runtimeSignatures)
+        {
+            Assert.That(mainDbRuntimeSource, Does.Contain(signature));
+            Assert.That(mainWindowSource, Does.Not.Contain(signature));
+        }
+
+        Assert.That(dbSwitchSource, Does.Contain("private async Task<bool> TrySwitchMainDb("));
+        Assert.That(dbSwitchSource, Does.Contain("private void RunMainDbPreSwitch("));
+        Assert.That(dbSwitchSource, Does.Contain("private void RunMainDbPostSwitch("));
+        Assert.That(mainDbRuntimeSource, Does.Contain("BeginExternalSkinHostRefreshBatch(\"dbinfo-DBFullPath\")"));
+        Assert.That(mainDbRuntimeSource, Does.Contain("ApplySkinByName(skin, persistToCurrentDb: false)"));
+        Assert.That(mainDbRuntimeSource, Does.Contain("WatchTableRowNormalizer.Normalize(snapshot);"));
+        Assert.That(mainDbRuntimeSource, Does.Contain("Volatile.Read(ref _registeredMovieCountRevision)"));
+        Assert.That(mainDbRuntimeSource, Does.Contain("DispatcherPriority.Background"));
     }
 
     [Test]
@@ -490,20 +545,38 @@ public sealed class MainWindowUiIoDeferralSourceTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
             {
-                return File.ReadAllText(candidate);
-            }
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
 
-            current = current.Parent;
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
     }
 
     private static string ExtractMethod(string source, string signature)

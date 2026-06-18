@@ -17,11 +17,18 @@ public sealed class LaneBFacadeGuardArchitectureTests
             "Main",
             "MainWindow.MovieViewRequests.cs"
         );
+        string mainDbRuntimePath = Path.Combine(
+            root,
+            "Views",
+            "Main",
+            "MainWindow.MainDbRuntime.cs"
+        );
         string startupPath = Path.Combine(root, "Views", "Main", "MainWindow.Startup.cs");
         string legacyStartupReaderPath = Path.Combine(root, "Startup", "StartupDbPageReader.cs");
 
         string mainWindowSource = File.ReadAllText(mainWindowPath);
         string movieViewRequestsSource = File.ReadAllText(movieViewRequestsPath);
+        string mainDbRuntimeSource = File.ReadAllText(mainDbRuntimePath);
         string startupSource = File.ReadAllText(startupPath);
 
         // MainWindow 本体は read facade を握り、対象4口をそこ経由へ閉じる。
@@ -32,7 +39,7 @@ public sealed class LaneBFacadeGuardArchitectureTests
         Assert.That(mainWindowSource, Does.Contain("new MainDbMovieReadFacade();"));
 
         string registeredMovieCountBody = ExtractMethodBody(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private async Task RefreshRegisteredMovieCountAsync("
         );
         AssertMethodUsesFacadeOnly(
@@ -42,7 +49,7 @@ public sealed class LaneBFacadeGuardArchitectureTests
         );
 
         string systemTableBody = ExtractMethodBody(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private void GetSystemTable("
         );
         AssertMethodUsesFacadeOnly(

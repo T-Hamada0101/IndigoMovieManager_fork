@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -385,6 +386,79 @@ namespace IndigoMovieManager
                     $"history apply failed: db='{dbFullPath}' keyword='{keyword}' err='{ex.Message}'"
                 );
             }
+        }
+
+        private void ApplySearchHistoryRecords(IEnumerable<History> historyRecords, string currentText)
+        {
+            bool previousSuppressState = _suppressSearchBoxTextChangedHandling;
+            _suppressSearchBoxTextChangedHandling = true;
+            try
+            {
+                historyData = null;
+                ApplySearchHistoryRecordItems(historyRecords);
+
+                // 履歴再読込で編集中テキストが消えないように戻す。
+                string normalizedCurrentText = currentText ?? "";
+                if (
+                    SearchBox != null
+                    && !string.Equals(
+                        SearchBox.Text ?? "",
+                        normalizedCurrentText,
+                        StringComparison.Ordinal
+                    )
+                )
+                {
+                    SearchBox.Text = normalizedCurrentText;
+                }
+            }
+            finally
+            {
+                _suppressSearchBoxTextChangedHandling = previousSuppressState;
+            }
+        }
+
+        private void ApplySearchHistoryRecordItems(IEnumerable<History> historyRecords)
+        {
+            History[] nextRecords = [.. (historyRecords ?? []).Where(item => item != null)];
+            if (AreSameSearchHistoryRecords(MainVM.HistoryRecs, nextRecords))
+            {
+                return;
+            }
+
+            MainVM.HistoryRecs.Clear();
+            foreach (History item in nextRecords)
+            {
+                MainVM.HistoryRecs.Add(item);
+            }
+        }
+
+        private static bool AreSameSearchHistoryRecords(
+            IReadOnlyList<History> currentRecords,
+            IReadOnlyList<History> nextRecords
+        )
+        {
+            if (currentRecords == null || nextRecords == null || currentRecords.Count != nextRecords.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < nextRecords.Count; i++)
+            {
+                History current = currentRecords[i];
+                History next = nextRecords[i];
+                if (
+                    current == null
+                    || next == null
+                    || current.Find_Id != next.Find_Id
+                    || !string.Equals(current.Find_Text, next.Find_Text, StringComparison.Ordinal)
+                    || !string.Equals(current.Find_Date, next.Find_Date, StringComparison.Ordinal)
+                )
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void QueueSearchHistoryUsageRecord(string dbFullPath, string keyword)

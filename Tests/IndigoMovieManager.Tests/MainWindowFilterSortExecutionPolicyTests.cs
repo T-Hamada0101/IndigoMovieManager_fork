@@ -138,17 +138,21 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     [Test]
     public void BootNewDb_検索履歴初期読込は背景へ逃がす()
     {
-        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string mainDbRuntimeSource = GetRepoText(
+            "Views",
+            "Main",
+            "MainWindow.MainDbRuntime.cs"
+        );
         string bootMethod = GetMethodBlock(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private void BootNewDb(string dbFullPath, DataTable preflightSystemData)"
         );
         string queueMethod = GetMethodBlock(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private void QueueSearchHistoryReload("
         );
         string asyncMethod = GetMethodBlock(
-            mainWindowSource,
+            mainDbRuntimeSource,
             "private async Task ReloadSearchHistoryForDbSwitchAsync("
         );
 
@@ -178,13 +182,13 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     [Test]
     public void SearchHistory_同一候補ならUIコレクションを差し替えない()
     {
-        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string searchSource = GetRepoText("Views", "Main", "MainWindow.Search.cs");
         string applyMethod = GetMethodBlock(
-            mainWindowSource,
+            searchSource,
             "private void ApplySearchHistoryRecordItems("
         );
         string compareMethod = GetMethodBlock(
-            mainWindowSource,
+            searchSource,
             "private static bool AreSameSearchHistoryRecords("
         );
 
@@ -199,6 +203,58 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(compareMethod, Does.Contain("currentRecords.Count != nextRecords.Count"));
         Assert.That(compareMethod, Does.Contain("current.Find_Id != next.Find_Id"));
         Assert.That(compareMethod, Does.Contain("StringComparison.Ordinal"));
+    }
+
+    [Test]
+    public void MainDbRuntime境界は専用partialへ固定する()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string mainDbRuntimeSource = GetRepoText(
+            "Views",
+            "Main",
+            "MainWindow.MainDbRuntime.cs"
+        );
+        string[] signatures =
+        [
+            "private void ResetMainHeaderCounts(",
+            "private void QueueRegisteredMovieCountRefresh(",
+            "private void TryAdjustRegisteredMovieCount(",
+            "private async Task RefreshRegisteredMovieCountAsync(",
+            "private bool OpenDatafile(",
+            "private void ShutdownCurrentDb(",
+            "private void BootNewDb(string dbFullPath)",
+            "private void BootNewDb(string dbFullPath, DataTable preflightSystemData)",
+            "private static void StopAndClearFileWatchers(",
+            "private void ApplyColdStartSystemDefaults(",
+            "public string SelectSystemTable(",
+            "private void ApplyRuntimeSystemValue(",
+            "private void UpsertSystemDataRow(",
+            "private void QueueSearchHistoryReload(",
+            "private async Task ReloadSearchHistoryForDbSwitchAsync(",
+            "private void GetSystemTable(",
+            "private static string NormalizeSkinName(",
+            "private void GetWatchTable(",
+            "private static DataTable GetWatchTableSnapshot(",
+            "private void UpdateSort(",
+            "private void UpdateSort(string dbFullPath)",
+            "private void UpdateSkin(",
+            "private void UpdateSkin(string dbFullPath)",
+            "private void SwitchTab(",
+        ];
+
+        foreach (string signature in signatures)
+        {
+            Assert.That(
+                mainDbRuntimeSource,
+                Does.Contain(signature),
+                $"{signature} は MainWindow.MainDbRuntime.cs に置く。"
+            );
+            Assert.That(
+                mainWindowSource,
+                Does.Not.Contain(signature),
+                $"{signature} を MainWindow.xaml.cs へ戻さない。"
+            );
+        }
     }
 
     [Test]
