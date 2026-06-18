@@ -62,6 +62,47 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(logTabSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
     }
 
+    [Test]
+    public void UI操作hot_pathは同期保存や直接DB更新へ戻さない()
+    {
+        string inputRoutingSource = GetRepoText("Views", "Main", "MainWindow.InputRouting.cs");
+        string playerTabSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "MainWindow.UpperTabs.PlayerTab.cs"
+        );
+        string menuSource = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string tagSource = GetRepoText("Views", "Main", "MainWindow.Tag.cs");
+        string detailThumbnailSource = GetRepoText(
+            "BottomTabs",
+            "Extension",
+            "MainWindow.BottomTab.Extension.DetailThumbnail.cs"
+        );
+
+        Assert.That(inputRoutingSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
+        Assert.That(playerTabSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
+        Assert.That(detailThumbnailSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
+
+        string scoreClickMethod = ExtractMethod(menuSource, "private void MenuScore_Click(");
+        string scorePersistMethod = ExtractMethod(menuSource, "private void QueueMovieScorePersist(");
+        string tagPasteMethod = ExtractMethod(tagSource, "private void TagPaste_Click(");
+        string tagAddMethod = ExtractMethod(tagSource, "private void ApplyTagsToRecords(");
+        string tagPersistMethod = ExtractMethod(tagSource, "internal void QueueMovieTagPersist(");
+
+        Assert.That(scoreClickMethod, Does.Contain("QueueMovieScorePersist("));
+        Assert.That(scoreClickMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateScore("));
+        Assert.That(scoreClickMethod, Does.Not.Contain("ExecuteNonQuery("));
+        Assert.That(scorePersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateScore("));
+
+        Assert.That(tagPasteMethod, Does.Contain("QueueMovieTagPersist("));
+        Assert.That(tagPasteMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+        Assert.That(tagPasteMethod, Does.Not.Contain("ExecuteNonQuery("));
+        Assert.That(tagAddMethod, Does.Contain("QueueMovieTagPersist("));
+        Assert.That(tagAddMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+        Assert.That(tagAddMethod, Does.Not.Contain("ExecuteNonQuery("));
+        Assert.That(tagPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
@@ -81,6 +122,35 @@ public sealed class MainWindowSettingsPersistencePolicyTests
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int i = bodyStart; i < source.Length; i++)
+        {
+            if (source[i] == '{')
+            {
+                depth++;
+            }
+            else if (source[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, i - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終端が見つかりません。");
+        return "";
     }
 
     private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
