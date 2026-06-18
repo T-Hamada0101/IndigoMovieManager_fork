@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using IndigoMovieManager;
 using IndigoMovieManager.Thumbnail.QueueDb;
+using IndigoMovieManager.Thumbnail.QueuePipeline;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -72,6 +73,7 @@ namespace IndigoMovieManager.Thumbnail
                 CancellationToken token
             )
             {
+                Stopwatch jobSw = Stopwatch.StartNew();
                 QueueObj queueObj = new()
                 {
                     MovieFullPath = leasedItem.MoviePath,
@@ -127,8 +129,16 @@ namespace IndigoMovieManager.Thumbnail
                         );
                         if (updated < 1)
                         {
+                            string workerResultFields =
+                                ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(
+                                    ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                                        leasedItem,
+                                        succeeded: true,
+                                        elapsedMs: jobSw.ElapsedMilliseconds
+                                    )
+                                );
                             safeLog(
-                                $"consumer done skipped: queue_id={leasedItem.QueueId} owner={ownerInstanceId}"
+                                $"consumer done skipped: queue_id={leasedItem.QueueId} owner={ownerInstanceId} {workerResultFields}"
                             );
                         }
                     }

@@ -46,17 +46,27 @@ namespace IndigoMovieManager.Thumbnail
 
             if (updated < 1)
             {
+                string workerResultFields = BuildFailedWorkerResultLogFields(
+                    leasedItem,
+                    ex,
+                    retryable
+                );
                 log?.Invoke(
-                    $"consumer status skipped: queue_id={leasedItem.QueueId} next={nextStatus} message={ex.Message}"
+                    $"consumer status skipped: queue_id={leasedItem.QueueId} next={nextStatus} message={ex.Message} {workerResultFields}"
                 );
                 return;
             }
 
             if (failedTotal <= 20 || failedTotal % 50 == 0)
             {
+                string workerResultFields = BuildFailedWorkerResultLogFields(
+                    leasedItem,
+                    ex,
+                    retryable
+                );
                 log?.Invoke(
                     $"consumer failed: queue_id={leasedItem.QueueId} next={nextStatus} "
-                        + $"retryable={retryable} failed_total={failedTotal}"
+                        + $"retryable={retryable} failed_total={failedTotal} {workerResultFields}"
                 );
             }
 
@@ -160,6 +170,28 @@ namespace IndigoMovieManager.Thumbnail
                     FailureKind = failureKind.ToString(),
                     WorkerRole = "normal",
                 }
+            );
+        }
+
+        private static string BuildFailedWorkerResultLogFields(
+            QueueDbLeaseItem leasedItem,
+            Exception ex,
+            bool retryable
+        )
+        {
+            ThumbnailFailureKind failureKind = ThumbnailRescueHandoffPolicy.ResolveFailureKind(
+                ex,
+                leasedItem?.MoviePath ?? ""
+            );
+
+            return ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(
+                ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                    leasedItem,
+                    succeeded: false,
+                    failureKind: failureKind.ToString(),
+                    failureReason: ex?.Message ?? "",
+                    retryable: retryable
+                )
             );
         }
     }

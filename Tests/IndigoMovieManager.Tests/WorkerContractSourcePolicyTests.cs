@@ -171,6 +171,46 @@ public sealed class WorkerContractSourcePolicyTests
     }
 
     [Test]
+    public void ThumbnailQueue実行結果ログはWorker契約Fieldsを併記する()
+    {
+        string repoRoot = FindRepoRoot();
+        string adapterSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/QueuePipeline/ThumbnailQueueWorkerContractAdapter.cs"
+            )
+        );
+        string batchRunnerSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueBatchRunner.cs"
+            )
+        );
+        string failureRecorderSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/ThumbnailFailureRecorder.cs"
+            )
+        );
+
+        Assert.That(adapterSource, Does.Contain("BuildWorkerJobResultLogFields("));
+        Assert.That(adapterSource, Does.Contain("job_id="));
+        Assert.That(adapterSource, Does.Contain("worker_kind="));
+        Assert.That(adapterSource, Does.Contain("artifact_kind="));
+        Assert.That(adapterSource, Does.Contain("retryability="));
+        Assert.That(adapterSource, Does.Contain("elapsed_ms="));
+        Assert.That(adapterSource, Does.Contain("failure_reason="));
+        Assert.That(
+            batchRunnerSource,
+            Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(")
+        );
+        Assert.That(
+            failureRecorderSource,
+            Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(")
+        );
+    }
+
+    [Test]
     public void ThumbnailQueue進捗はWorker契約Dtoへ写せる()
     {
         string repoRoot = FindRepoRoot();

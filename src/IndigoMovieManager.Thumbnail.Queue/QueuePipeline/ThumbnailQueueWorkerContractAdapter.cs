@@ -161,6 +161,18 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             };
         }
 
+        public static string BuildWorkerJobResultLogFields(WorkerJobResultDto result)
+        {
+            result ??= new WorkerJobResultDto();
+            WorkerJobArtifactDto artifact = result.Artifact ?? new WorkerJobArtifactDto();
+
+            // 実行結果ログへ載せる値だけをDTOから絞り、ログの語彙をWorker契約側に寄せる。
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)}"
+            );
+        }
+
         private static string BuildJobId(QueueRequest request)
         {
             string key = ResolveMoviePathKey(request.MoviePathKey, request.MoviePath);
@@ -421,6 +433,40 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
         private static string NormalizeField(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
+        }
+
+        private static string GetMetricValue(WorkerJobResultDto result, string key)
+        {
+            if (result?.Metrics == null || string.IsNullOrWhiteSpace(key))
+            {
+                return "";
+            }
+
+            return result.Metrics.TryGetValue(key, out string value) ? value : "";
+        }
+
+        private static string FormatLogValue(string value)
+        {
+            string normalized = NormalizeLogValue(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "''";
+            }
+
+            if (normalized.Any(char.IsWhiteSpace))
+            {
+                return $"'{normalized.Replace("'", "\\'", StringComparison.Ordinal)}'";
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizeLogValue(string value)
+        {
+            return NormalizeField(value)
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal)
+                .Replace("\t", " ", StringComparison.Ordinal);
         }
     }
 }

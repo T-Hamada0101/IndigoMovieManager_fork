@@ -264,6 +264,35 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
         });
     }
 
+    [Test]
+    public void WorkerJobResultDtoから実行ログ用Fieldsを作れる()
+    {
+        QueueDbLeaseItem leasedItem = CreateLeaseItem();
+        WorkerJobResultDto dto =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                leasedItem,
+                succeeded: false,
+                failureKind: "Decode",
+                failureReason: "decode failed",
+                retryable: true,
+                elapsedMs: 123
+            );
+
+        string logFields = ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(dto);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(logFields, Does.Contain("job_id=thumbnail-movie-key-001-queue-77"));
+            Assert.That(logFields, Does.Contain("worker_kind=thumbnail-create"));
+            Assert.That(logFields, Does.Contain("status=failed"));
+            Assert.That(logFields, Does.Contain("artifact_kind=''"));
+            Assert.That(logFields, Does.Contain("retryability=retryable"));
+            Assert.That(logFields, Does.Contain("elapsed_ms=123"));
+            Assert.That(logFields, Does.Contain("failure_kind=Decode"));
+            Assert.That(logFields, Does.Contain("failure_reason='decode failed'"));
+        });
+    }
+
     private static QueueDbLeaseItem CreateLeaseItem()
     {
         return new QueueDbLeaseItem
