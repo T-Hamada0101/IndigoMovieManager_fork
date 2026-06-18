@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -227,9 +228,27 @@ namespace IndigoMovieManager
             long movieId
         )
         {
-            return TryDeleteBookmarkTable(dbFullPath, movieId, out string failureReason)
-                ? BookmarkPersistResult.Success("delete-db", dbFullPath, movieId, "")
-                : BookmarkPersistResult.Failure("delete-db", dbFullPath, movieId, "", failureReason);
+            PersistenceWriteRequest writeRequest = BuildBookmarkPersistenceWriteRequest("delete-db");
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool succeeded = TryDeleteBookmarkTable(dbFullPath, movieId, out string failureReason);
+            PersistenceWriteResult writeResult = succeeded
+                ? PersistenceWriteResult.FromSuccess(writeRequest, stopwatch.Elapsed)
+                : PersistenceWriteResult.FromFailure(
+                    writeRequest,
+                    stopwatch.Elapsed,
+                    PersistenceFailureKind.Bookmark
+                );
+
+            return succeeded
+                ? BookmarkPersistResult.Success("delete-db", dbFullPath, movieId, "", writeResult)
+                : BookmarkPersistResult.Failure(
+                    "delete-db",
+                    dbFullPath,
+                    movieId,
+                    "",
+                    failureReason,
+                    writeResult
+                );
         }
 
         // 再生位置からBookmarkサムネを作り、一覧まで更新する。
@@ -376,20 +395,56 @@ namespace IndigoMovieManager
             BookmarkAddResult result
         )
         {
-            return TryInsertBookmarkTable(dbFullPath, result.MovieInfo, out string failureReason)
+            PersistenceWriteRequest writeRequest = BuildBookmarkPersistenceWriteRequest("add-db");
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool succeeded = TryInsertBookmarkTable(
+                dbFullPath,
+                result.MovieInfo,
+                out string failureReason
+            );
+            PersistenceWriteResult writeResult = succeeded
+                ? PersistenceWriteResult.FromSuccess(writeRequest, stopwatch.Elapsed)
+                : PersistenceWriteResult.FromFailure(
+                    writeRequest,
+                    stopwatch.Elapsed,
+                    PersistenceFailureKind.Bookmark
+                );
+
+            return succeeded
                 ? BookmarkPersistResult.Success(
                     "add-db",
                     dbFullPath,
                     0,
-                    result.MovieFullPath
+                    result.MovieFullPath,
+                    writeResult
                 )
                 : BookmarkPersistResult.Failure(
                     "add-db",
                     dbFullPath,
                     0,
                     result.MovieFullPath,
-                    failureReason
+                    failureReason,
+                    writeResult
                 );
+        }
+
+        internal static PersistenceWriteRequest BuildBookmarkPersistenceWriteRequest(
+            string operation
+        )
+        {
+            string reason = operation switch
+            {
+                "add-db" => "bookmark-add",
+                "delete-db" => "bookmark-delete",
+                _ => string.IsNullOrWhiteSpace(operation) ? "bookmark" : operation,
+            };
+
+            return PersistenceWriteRequest.Create(
+                PersistenceWriteKind.BackgroundDbWrite,
+                reason,
+                "bookmark-db",
+                retryable: true
+            );
         }
 
         private void ApplyBookmarkPersistResult(BookmarkPersistResult result)
@@ -397,6 +452,10 @@ namespace IndigoMovieManager
             if (result.Succeeded)
             {
                 _bookmarkPersistenceState = BookmarkPersistenceState.Clean;
+                DebugRuntimeLog.Write(
+                    "bookmark",
+                    BuildBookmarkPersistenceSuccessLog(result)
+                );
                 return;
             }
 
@@ -409,7 +468,7 @@ namespace IndigoMovieManager
             );
             DebugRuntimeLog.Write(
                 "bookmark",
-                BuildBookmarkPersistenceFailureLog(_bookmarkPersistenceState)
+                BuildBookmarkPersistenceFailureLog(_bookmarkPersistenceState, result.WriteResult)
             );
         }
 
@@ -445,21 +504,50 @@ namespace IndigoMovieManager
             BookmarkPersistenceState state
         )
         {
+            return BuildBookmarkPersistenceFailureLog(state, default);
+        }
+
+        internal static string BuildBookmarkPersistenceFailureLog(
+            BookmarkPersistenceState state,
+            PersistenceWriteResult writeResult
+        )
+        {
+            string writeLogFields = string.IsNullOrWhiteSpace(writeResult.LogFields)
+                ? ""
+                : $"{writeResult.LogFields} ";
+            string notificationLogFields = string.IsNullOrWhiteSpace(writeLogFields)
+                ? PersistenceFailureNotificationPolicy.BuildLogFields(
+                        new PersistenceFailureNotificationState(
+                            state.Dirty,
+                            state.Failed,
+                            state.Retryable,
+                            state.NotifyUi
+                        )
+                    ) + " "
+                : "";
+
             return "bookmark persist failed: "
                 + $"operation='{state.Operation}' "
-                + PersistenceFailureNotificationPolicy.BuildLogFields(
-                    new PersistenceFailureNotificationState(
-                        state.Dirty,
-                        state.Failed,
-                        state.Retryable,
-                        state.NotifyUi
-                    )
-                )
-                + " "
+                + writeLogFields
+                + notificationLogFields
                 + $"db='{state.DbFullPath}' "
                 + $"movie_id={state.MovieId} "
                 + $"path='{state.MoviePath}' "
                 + $"reason='{state.FailureReason}'";
+        }
+
+        private static string BuildBookmarkPersistenceSuccessLog(BookmarkPersistResult result)
+        {
+            string writeLogFields = string.IsNullOrWhiteSpace(result.WriteResult.LogFields)
+                ? ""
+                : $"{result.WriteResult.LogFields} ";
+
+            return "bookmark persist succeeded: "
+                + $"operation='{result.Operation}' "
+                + writeLogFields
+                + $"db='{result.DbFullPath}' "
+                + $"movie_id={result.MovieId} "
+                + $"path='{result.MoviePath}'";
         }
 
         private sealed record BookmarkAddResult(
@@ -475,14 +563,16 @@ namespace IndigoMovieManager
             string DbFullPath,
             long MovieId,
             string MoviePath,
-            string FailureReason
+            string FailureReason,
+            PersistenceWriteResult WriteResult
         )
         {
             public static BookmarkPersistResult Success(
                 string operation,
                 string dbFullPath,
                 long movieId,
-                string moviePath
+                string moviePath,
+                PersistenceWriteResult writeResult
             )
             {
                 return new BookmarkPersistResult(
@@ -491,7 +581,8 @@ namespace IndigoMovieManager
                     dbFullPath,
                     movieId,
                     moviePath,
-                    ""
+                    "",
+                    writeResult
                 );
             }
 
@@ -500,7 +591,8 @@ namespace IndigoMovieManager
                 string dbFullPath,
                 long movieId,
                 string moviePath,
-                string failureReason
+                string failureReason,
+                PersistenceWriteResult writeResult
             )
             {
                 return new BookmarkPersistResult(
@@ -509,7 +601,8 @@ namespace IndigoMovieManager
                     dbFullPath,
                     movieId,
                     moviePath,
-                    failureReason
+                    failureReason,
+                    writeResult
                 );
             }
         }

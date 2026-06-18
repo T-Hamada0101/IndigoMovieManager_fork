@@ -66,6 +66,14 @@ public sealed class BookmarkReloadPolicyTests
     [Test]
     public void Bookmark保存失敗はdirty_failed_retryableを軽量状態とログで読める()
     {
+        PersistenceWriteRequest writeRequest = MainWindow.BuildBookmarkPersistenceWriteRequest(
+            "add-db"
+        );
+        PersistenceWriteResult writeResult = PersistenceWriteResult.FromFailure(
+            writeRequest,
+            TimeSpan.FromMilliseconds(2.4d),
+            PersistenceFailureKind.Bookmark
+        );
         MainWindow.BookmarkPersistenceState state =
             MainWindow.BuildBookmarkPersistenceFailureState(
                 "add-db",
@@ -74,7 +82,7 @@ public sealed class BookmarkReloadPolicyTests
                 "sample.mp4",
                 "SQLiteException"
             );
-        string log = MainWindow.BuildBookmarkPersistenceFailureLog(state);
+        string log = MainWindow.BuildBookmarkPersistenceFailureLog(state, writeResult);
 
         Assert.Multiple(() =>
         {
@@ -86,11 +94,60 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(state.FailureReason, Is.EqualTo("SQLiteException"));
             Assert.That(log, Does.Contain("bookmark persist failed:"));
             Assert.That(log, Does.Contain("operation='add-db'"));
+            Assert.That(log, Does.Contain("write_kind=background-db-write"));
+            Assert.That(log, Does.Contain("write_reason=bookmark-add"));
+            Assert.That(log, Does.Contain("queue_key=bookmark-db"));
+            Assert.That(log, Does.Contain("write_succeeded=false"));
+            Assert.That(log, Does.Contain("failure_kind=bookmark"));
             Assert.That(log, Does.Contain("dirty=true"));
             Assert.That(log, Does.Contain("failed=true"));
             Assert.That(log, Does.Contain("retryable=true"));
             Assert.That(log, Does.Contain("notify_ui=false"));
             Assert.That(log, Does.Contain("reason='SQLiteException'"));
+        });
+    }
+
+    [Test]
+    public void Bookmark保存経路はPersistenceWriteRequestResult語彙を使う()
+    {
+        string source = GetRepoText("BottomTabs", "Bookmark", "MainWindow.BottomTab.Bookmark.cs");
+        string deleteMethod = GetMethodBlock(
+            source,
+            "private static BookmarkPersistResult DeleteBookmarkInBackground("
+        );
+        string persistMethod = GetMethodBlock(
+            source,
+            "private static BookmarkPersistResult PersistPreparedBookmarkInBackground("
+        );
+        string applyMethod = GetMethodBlock(source, "private void ApplyBookmarkPersistResult(");
+
+        PersistenceWriteRequest addRequest = MainWindow.BuildBookmarkPersistenceWriteRequest(
+            "add-db"
+        );
+        PersistenceWriteRequest deleteRequest = MainWindow.BuildBookmarkPersistenceWriteRequest(
+            "delete-db"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(addRequest.BuildLogFields(), Does.Contain("write_reason=bookmark-add"));
+            Assert.That(
+                deleteRequest.BuildLogFields(),
+                Does.Contain("write_reason=bookmark-delete")
+            );
+            Assert.That(
+                addRequest.BuildLogFields(),
+                Does.Contain("write_kind=background-db-write")
+            );
+            Assert.That(addRequest.BuildLogFields(), Does.Contain("queue_key=bookmark-db"));
+            Assert.That(deleteMethod, Does.Contain("BuildBookmarkPersistenceWriteRequest("));
+            Assert.That(persistMethod, Does.Contain("BuildBookmarkPersistenceWriteRequest("));
+            Assert.That(deleteMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+            Assert.That(deleteMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+            Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+            Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+            Assert.That(applyMethod, Does.Contain("BuildBookmarkPersistenceSuccessLog("));
+            Assert.That(applyMethod, Does.Contain("result.WriteResult"));
         });
     }
 
