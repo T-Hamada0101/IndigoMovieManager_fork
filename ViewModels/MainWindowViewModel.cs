@@ -245,12 +245,29 @@ namespace IndigoMovieManager.ViewModels
             int removeStartIndex = retainedPrefixCount;
             int removedCount = currentCount - retainedPrefixCount - retainedSuffixCount;
             int insertedCount = nextCount - retainedPrefixCount - retainedSuffixCount;
-            int updatedCount = CountStableKeyUpdates(
-                nextItems,
-                removeStartIndex,
-                removedCount,
-                insertedCount
-            );
+            int updatedCount;
+
+            if (
+                TryReplaceStableKeyUpdatesInPlace(
+                    nextItems,
+                    removeStartIndex,
+                    removedCount,
+                    insertedCount,
+                    out updatedCount
+                )
+            )
+            {
+                return new FilteredMovieRecsUpdateResult(
+                    HasChanges: updatedCount > 0,
+                    RetainedPrefixCount: retainedPrefixCount,
+                    RetainedSuffixCount: retainedSuffixCount,
+                    RemovedCount: 0,
+                    InsertedCount: 0,
+                    MovedCount: 0,
+                    UpdatedCount: updatedCount
+                );
+            }
+
             for (int index = 0; index < removedCount; index++)
             {
                 FilteredMovieRecs.RemoveAt(removeStartIndex);
@@ -375,7 +392,7 @@ namespace IndigoMovieManager.ViewModels
             return true;
         }
 
-        // 表示上は remove/insert でも、同じ stable key の置換なら ReadModel diff 上は update と読める。
+        // 差分区間の stable key を見て、ReadModel diff 上の update 件数を数える。
         private int CountStableKeyUpdates(
             IReadOnlyList<MovieRecords> nextItems,
             int startIndex,
@@ -405,6 +422,39 @@ namespace IndigoMovieManager.ViewModels
             }
 
             return updatedCount;
+        }
+
+        private bool TryReplaceStableKeyUpdatesInPlace(
+            IReadOnlyList<MovieRecords> nextItems,
+            int startIndex,
+            int removedCount,
+            int insertedCount,
+            out int updatedCount
+        )
+        {
+            updatedCount = CountStableKeyUpdates(
+                nextItems,
+                startIndex,
+                removedCount,
+                insertedCount
+            );
+            if (updatedCount != removedCount)
+            {
+                return false;
+            }
+
+            if (removedCount != insertedCount || removedCount < 1)
+            {
+                return false;
+            }
+
+            // 同一 stable key だけの更新は、要素数を揺らさず中身だけ置き換える。
+            for (int offset = 0; offset < updatedCount; offset++)
+            {
+                FilteredMovieRecs[startIndex + offset] = nextItems[startIndex + offset];
+            }
+
+            return true;
         }
 
         private static bool AreSameMovieViewStableKey(MovieRecords left, MovieRecords right)

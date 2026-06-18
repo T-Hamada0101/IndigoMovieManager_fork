@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.Threading;
 using IndigoMovieManager;
 using IndigoMovieManager.ViewModels;
@@ -58,7 +59,7 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
     }
 
     [Test]
-    public void 同じMoviePathの別インスタンス差し替えはUpdateとして数える()
+    public void 同じMoviePathの別インスタンス差し替えはInPlaceのUpdateとして扱う()
     {
         MainWindowViewModel viewModel = new();
         MovieRecords movieA = CreateMovie("A");
@@ -69,6 +70,12 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
 
         _ = viewModel.ReplaceFilteredMovieRecs([movieA, movieB, movieC]);
 
+        List<NotifyCollectionChangedAction> collectionActions = [];
+        viewModel.FilteredMovieRecs.CollectionChanged += (_, args) =>
+        {
+            collectionActions.Add(args.Action);
+        };
+
         FilteredMovieRecsUpdateResult result = viewModel.ReplaceFilteredMovieRecs(
             [movieA, movieBUpdated, movieC]
         );
@@ -76,9 +83,12 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
         Assert.That(result.HasChanges, Is.True);
         Assert.That(result.RetainedPrefixCount, Is.EqualTo(1));
         Assert.That(result.RetainedSuffixCount, Is.EqualTo(1));
-        Assert.That(result.RemovedCount, Is.EqualTo(1));
-        Assert.That(result.InsertedCount, Is.EqualTo(1));
+        Assert.That(result.RemovedCount, Is.EqualTo(0));
+        Assert.That(result.InsertedCount, Is.EqualTo(0));
         Assert.That(result.UpdatedCount, Is.EqualTo(1));
+        Assert.That(collectionActions, Is.EqualTo([NotifyCollectionChangedAction.Replace]));
+        Assert.That(collectionActions, Does.Not.Contain(NotifyCollectionChangedAction.Remove));
+        Assert.That(collectionActions, Does.Not.Contain(NotifyCollectionChangedAction.Add));
         Assert.That(viewModel.FilteredMovieRecs, Is.EqualTo([movieA, movieBUpdated, movieC]));
     }
 

@@ -741,6 +741,36 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void FilteredMovieRecsの同一stable_key更新はRemoveInsertへ戻さない()
+    {
+        string viewModelSource = GetRepoText("ViewModels", "MainWindowViewModel.cs");
+        string replaceMethod = GetMethodBlock(
+            viewModelSource,
+            "public FilteredMovieRecsUpdateResult ReplaceFilteredMovieRecs("
+        );
+        string inPlaceMethod = GetMethodBlock(
+            viewModelSource,
+            "private bool TryReplaceStableKeyUpdatesInPlace("
+        );
+
+        Assert.That(replaceMethod, Does.Contain("TryReplaceStableKeyUpdatesInPlace("));
+        Assert.That(
+            replaceMethod.IndexOf(
+                "TryReplaceStableKeyUpdatesInPlace(",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(replaceMethod.IndexOf("FilteredMovieRecs.RemoveAt(", StringComparison.Ordinal))
+        );
+        Assert.That(inPlaceMethod, Does.Contain("removedCount != insertedCount || removedCount < 1"));
+        Assert.That(
+            inPlaceMethod,
+            Does.Contain("FilteredMovieRecs[startIndex + offset] = nextItems[startIndex + offset];")
+        );
+        Assert.That(inPlaceMethod, Does.Not.Contain("FilteredMovieRecs.RemoveAt("));
+        Assert.That(inPlaceMethod, Does.Not.Contain("FilteredMovieRecs.Insert("));
+    }
+
+    [Test]
     public void Debugサムネイル全削除後はDB再読込ではなく表示モデルの局所更新へ寄せる()
     {
         string debugSource = GetRepoText(
