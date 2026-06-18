@@ -56,8 +56,15 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(moveCompletionMethod, Does.Contain("await SortDataAsync(sortId);"));
         Assert.That(moveMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
         Assert.That(persistMethod, Does.Contain("Task.Run("));
+        Assert.That(persistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+        Assert.That(persistMethod, Does.Contain("\"movie-path\""));
+        Assert.That(persistMethod, Does.Contain("\"main-db-movie-path\""));
         Assert.That(persistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+        Assert.That(persistMethod, Does.Contain("movie path persist succeeded"));
         Assert.That(persistMethod, Does.Contain("movie path persist failed"));
+        Assert.That(persistMethod, Does.Contain("{result.LogFields}"));
     }
 
     [Test]

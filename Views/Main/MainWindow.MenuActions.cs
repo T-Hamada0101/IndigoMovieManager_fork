@@ -681,9 +681,16 @@ namespace IndigoMovieManager
             }
 
             string moviePathSnapshot = moviePath ?? "";
+            PersistenceWriteRequest writeRequest = PersistenceWriteRequest.Create(
+                PersistenceWriteKind.BackgroundDbWrite,
+                "movie-path",
+                "main-db-movie-path",
+                retryable: true
+            );
             _ = Task.Run(
                 () =>
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
                         _mainDbMovieMutationFacade.UpdateMoviePath(
@@ -691,12 +698,25 @@ namespace IndigoMovieManager
                             movieId,
                             moviePathSnapshot
                         );
+                        PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
+                            writeRequest,
+                            stopwatch.Elapsed
+                        );
+                        DebugRuntimeLog.Write(
+                            "ui-tempo",
+                            $"movie path persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+                        );
                     }
                     catch (Exception ex)
                     {
+                        PersistenceWriteResult result = PersistenceWriteResult.FromFailure(
+                            writeRequest,
+                            stopwatch.Elapsed,
+                            PersistenceFailureKind.BackgroundDbWrite
+                        );
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"movie path persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
+                            $"movie path persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields} err='{ex.GetType().Name}'"
                         );
                     }
                 }

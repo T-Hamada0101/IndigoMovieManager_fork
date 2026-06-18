@@ -167,10 +167,15 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(reflectMovedMovieMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
         Assert.That(moviePathPersistMethod, Does.Contain("Task.Run("));
         Assert.That(moviePathPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+        Assert.That(moviePathPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(moviePathPersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(moviePathPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+        Assert.That(moviePathPersistMethod, Does.Contain("\"movie-path\""));
+        Assert.That(moviePathPersistMethod, Does.Contain("\"main-db-movie-path\""));
         Assert.That(
             moviePathPersistMethod,
             Does.Contain(
-                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+                "movie path persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
             )
         );
 
