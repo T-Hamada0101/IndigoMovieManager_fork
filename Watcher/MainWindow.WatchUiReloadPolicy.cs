@@ -864,7 +864,68 @@ namespace IndigoMovieManager
                 changedMovies,
                 fullFallbackReason
             );
-            ApplyWatchUiApplyRequest(request);
+            if (!TryAdmitWatchUiApplyRequest(request, out WatchUiApplyRequest admittedRequest))
+            {
+                return;
+            }
+
+            ApplyWatchUiApplyRequest(admittedRequest);
+        }
+
+        private bool TryAdmitWatchUiApplyRequest(
+            WatchUiApplyRequest request,
+            out WatchUiApplyRequest admittedRequest
+        )
+        {
+            admittedRequest = default;
+            UiWorkRequest workRequest = request.WorkRequest;
+            UiWorkSchedulerRuntime runtime = _uiWorkSchedulerRuntime;
+            object syncRoot = _uiWorkSchedulerRuntimeSyncRoot;
+            if (runtime == null || syncRoot == null)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"watch ui apply scheduler rejected: {BuildWatchUiWorkRequestLogFields(workRequest, UiWorkRequestPolicy.ReleaseReasonRejected)} skip_reason=scheduler-uninitialized"
+                );
+                return false;
+            }
+
+            UiWorkSchedulerRuntimeQueueResult queueResult;
+            UiWorkSchedulerRuntimeTakeResult takeResult = default;
+
+            // runtimeは実行器にせず、既存のwatch apply入口へ渡す1件を選ぶだけに留める。
+            lock (_uiWorkSchedulerRuntimeSyncRoot)
+            {
+                queueResult = _uiWorkSchedulerRuntime.Queue(workRequest);
+                if (queueResult.Decision.Accepted)
+                {
+                    takeResult = _uiWorkSchedulerRuntime.TryTakeNext();
+                }
+            }
+
+            if (!queueResult.Decision.Accepted)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"watch ui apply scheduler rejected: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(workRequest, queueResult.Decision)}"
+                );
+                return false;
+            }
+
+            if (!takeResult.HasRequest)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"watch ui apply scheduler empty: {BuildWatchUiWorkRequestLogFields(workRequest, UiWorkRequestPolicy.ReleaseReasonRejected)} next_reason={takeResult.Decision.Reason}"
+                );
+                return false;
+            }
+
+            admittedRequest = request with
+            {
+                WorkRequest = takeResult.PendingRequest.Request,
+            };
+            return true;
         }
 
         // request の実行先をここだけに閉じ、次段で Scheduler / ReadModel へ差し替えやすくする。

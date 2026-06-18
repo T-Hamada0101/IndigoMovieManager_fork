@@ -98,12 +98,23 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
         string invokeMethod = GetMethodBlock(source, "private void InvokeWatchUiReload(");
         string adapterMethod = GetMethodBlock(source, "private void ApplyWatchUiApplyRequest(");
+        string admissionMethod = GetMethodBlock(source, "private bool TryAdmitWatchUiApplyRequest(");
         string filterMethod = GetMethodBlock(source, "private void InvokeFilterAndSortForWatch(");
 
         Assert.That(invokeMethod, Does.Contain("WatchUiApplyRequest request = BuildWatchUiApplyRequest("));
-        Assert.That(invokeMethod, Does.Contain("ApplyWatchUiApplyRequest(request);"));
+        Assert.That(invokeMethod, Does.Contain("TryAdmitWatchUiApplyRequest(request, out WatchUiApplyRequest admittedRequest)"));
+        Assert.That(invokeMethod, Does.Contain("ApplyWatchUiApplyRequest(admittedRequest);"));
         Assert.That(invokeMethod, Does.Not.Contain("InvokeFilterAndSortForWatch("));
         Assert.That(invokeMethod, Does.Not.Contain("RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(admissionMethod, Does.Contain("UiWorkRequest workRequest = request.WorkRequest;"));
+        Assert.That(admissionMethod, Does.Contain("lock (_uiWorkSchedulerRuntimeSyncRoot)"));
+        Assert.That(admissionMethod, Does.Contain("_uiWorkSchedulerRuntime.Queue(workRequest)"));
+        Assert.That(admissionMethod, Does.Contain("_uiWorkSchedulerRuntime.TryTakeNext()"));
+        Assert.That(admissionMethod, Does.Contain("admittedRequest = request with"));
+        Assert.That(
+            admissionMethod,
+            Does.Contain("WorkRequest = takeResult.PendingRequest.Request")
+        );
         Assert.That(adapterMethod, Does.Contain("InvokeFilterAndSortForWatch(request.Sort, true);"));
         Assert.That(adapterMethod, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
         Assert.That(

@@ -2371,6 +2371,12 @@ public sealed class WatchDeferredUiReloadPolicyTests
         };
 
         SetPrivateField(window, "MainVM", mainVm);
+        SetPrivateField(window, "_uiWorkSchedulerRuntimeSyncRoot", new object());
+        SetPrivateField(
+            window,
+            "_uiWorkSchedulerRuntime",
+            new UiWorkSchedulerRuntime(UiWorkRequestPolicy.ExistingReservationQueueCapacity)
+        );
         return window;
     }
 
