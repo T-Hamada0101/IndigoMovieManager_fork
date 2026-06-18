@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#######---] 66%`
+> 進捗メータ: `[#######---] 67%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-19
 
-全体進捗目安: `[#######---] 66%`
+全体進捗目安: `[#######---] 67%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -15,12 +15,12 @@
 |---|---:|---|---|
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 47% | `UiOperationSnapshot` を追加し、Everything watch / poll の実行経路も共通 snapshot を正本にした。旧 `UiOperationPrioritySnapshot` は互換入口として残す | UI event handler を snapshot 生成へさらに寄せる |
-| Phase 2. ReadModel Store と Diff-first | 44% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新は in-place replace に進み、同一 key 更新に続く小さな単一連続 insert / remove も局所適用へ入った | move / reorder の stable key 通常差分と、watch 1件追加 / rename が full fallback へ戻らない実機ログを確認する |
-| Phase 3. In-process Scheduler | 49% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続した | 実機ログで scheduler admission が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
+| Phase 2. ReadModel Store と Diff-first | 47% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った | watch 1件追加 / rename が full fallback へ戻らない実機ログと、大量変更時 fallback の妥当性を確認する |
+| Phase 3. In-process Scheduler | 50% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue も scheduler 語彙で読めるようにした | 実機ログで scheduler admission が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
 | Phase 4. Image Pipeline 統一 | 48% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。ERROR 一覧の集約は背景側の存在確認、placeholder、ERROR marker、missing、failed を反映する | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard と error tab image aggregate を確認する |
 | Phase 5. Persistence Pipeline | 52% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった | 実機ログで保存失敗時の dirty / failed / retryable と UI 通知候補を確認する |
 | Phase 6. Worker 契約 | 46% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み | Worker DTO を実行ログへどこまで接続するか、実機支配要因を見て必要最小限で決める |
-| Phase 7. Skin / Player / Watcher の Core 接続 | 24% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
+| Phase 7. Skin / Player / Watcher の Core 接続 | 25% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続した | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
 ## 1. Summary
 
@@ -42,6 +42,7 @@
 - `BuildRequestSchedulerLogFields(...)` を追加し、thumbnail / Everything poll / watch reload の既存予約ログへ `work_priority`、`coalesce_key`、`latest_only_key`、`timeout_policy`、`bounded_drain`、`release_reason` を同じ形式で出すようにした。巨大 scheduler 本体はまだ作らない。
 - `BuildRequestAdmissionLogFields(...)` を追加し、thumbnail progress / Everything poll / watch reload の既存予約ログへ `admission_action`、`admission_reason`、`queue_capacity` を同じ形式で出すようにした。bounded queue 実体はまだ作らない。
 - watch 遅延 reload の cancel ログは、pending がある時だけ `release_reason=canceled` と `bounded_drain=deferred-request-cts` を出し、latest-only で古い要求を落とした証跡を読めるようにした。
+- 2026-06-19 Worker D: external skin host refresh queue は scheduler 本体へ載せ替えず、queued / rejected / deferred ログへ `UiWorkRequest` の priority、coalesce、latest-only、release reason、admission fields を併記した。
 - `UiWorkSchedulerPolicy` を追加し、bounded capacity、latest-only 置換、coalesce 畳み込み、満杯時の priority preempt、次実行選択、timeout release 判定を pure test で固定した。まだ `MainWindow` / `Dispatcher` / DB / UI event handler へは接続しない。
 - `UiWorkSchedulerRuntime` を追加し、bounded queue / coalesce / latest-only / priority preempt / timeout release の最小状態管理を in-process で固定した。実行アクションや Dispatcher 接続はまだ作らない。
 - 2026-06-18 Worker-K: `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh の Queue / TryTakeNext 実経路へ最小接続した。Dispatcher / coalesce / latest-only の既存挙動は維持し、source policy で固定した。
@@ -51,6 +52,7 @@
 - ReadModel / watch の diff apply ログ fields は `MovieViewDiffApplyPolicy` の helper へ寄せた。ログ語彙を1箇所にし、次段の diff-first 実適用と実機ログ比較を崩れにくくする。
 - `ReplaceFilteredMovieRecs(...)` の同一 `Movie_Path` 別インスタンス更新は、remove / insert ではなく in-place replace 通知へ寄せた。単件更新のスクロール / 選択揺れを減らす diff-first の最初の実経路。
 - 2026-06-19 Worker A: 同一 stable key 更新に続く小さな単一連続 insert / remove は、重複 key と reorder を避けた上で Replace + Add / Remove の局所適用へ進めた。
+- 2026-06-19 Worker C: sort-only は一意な `Movie_Path` stable key の同一集合なら Move 中心で並び替え、Move 後に別インスタンスだけ Replace する経路へ広げた。
 - `WatchUiApplyRequest` は `ChangedMovieCount` と `MovieViewDiffApplyPlan` を持ち、query-only change set は diff apply 候補、full fallback は full fallback として読めるようになった。実 diff apply はまだ有効化しない。
 - watch UI apply request ログにも `diff_apply_kind` / `diff_apply_candidate` / `diff_full_fallback_reason` を出し、Watch query-only と ReadModel apply の差分語彙を突き合わせられるようにした。
 - 画像 hot path は、詳細サムネ、Player右レール、上側タブ viewport 更新入口で file I/O / decode へ進まないことを source policy で固定した。
@@ -103,7 +105,7 @@
 - `MovieRecords` の互換表現と UI表示用 ReadModel を段階的に分ける。
 - 小変更は追加、削除、更新、移動の diff apply を通常経路にする。
 - query変更、sort key変更、DB切替、大量変更、unsafe dirty だけ full fallback とし、`fallback_reason` をログへ残す。
-- 2026-06-19 時点では、`MovieViewDiffApplyPolicy` による判定語彙固定に加え、同一 stable key update と小さな insert / remove の実 apply を局所適用へ進めた。move / reorder はまだ保守的に扱い、実機ログを見て次段で進める。
+- 2026-06-19 時点では、`MovieViewDiffApplyPolicy` による判定語彙固定に加え、同一 stable key update、小さな insert / remove、sort-only stable key Move + Replace の実 apply を局所適用へ進めた。大量変更や unsafe dirty はまだ保守的に扱い、実機ログを見て次段で進める。
 - `MainVM.ReplaceFilteredMovieRecs(...)` は段階的に diff apply へ置き換えるが、互換 fallback と source policy を残す。
 
 ### Phase 3. In-process Scheduler
@@ -112,6 +114,7 @@
 - 優先順は、入力、選択、スクロール、Player、visible画像、最新検索 / sort、watch小差分、thumbnail / rescue、skin catalog の順にする。
 - 最初は watch / poll / thumbnail refresh 予約だけを載せ、全機能を一気に移さない。
 - 現在は実行器本体へ進む前段として、既存予約のログ語彙を `UiWorkRequestPolicy` の helper へ寄せ、さらに `UiWorkSchedulerPolicy` で入場・置換・timeout の純粋判断を固定した段階。`timeout_policy=none` は明示的な timeout drain 未導入を示し、実機ログで必要性が見えた時だけ timeout budget を持たせる。
+- external skin host refresh queue も scheduler 語彙へ接続済み。ただし interval、freshness、Header Reload / fallback retry の意味は変えていない。
 
 ### Phase 4. Image Pipeline 統一
 
