@@ -194,7 +194,7 @@ namespace IndigoMovieManager
             );
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"readmodel apply end: request_revision={requestRevision} result_count={sortedMovies.Count} changed={collectionResult.HasChanges} update_mode={updateMode} fallback_reason={resolvedFallbackReason} diff_operation={diff.OperationLogValue} diff_stable_key={diff.StableKey} diff_source_revision={diff.SourceRevision} diff_view_revision={diff.ViewRevision} diff_added={diff.AddedCount} diff_deleted={diff.DeletedCount} diff_updated={diff.UpdatedCount} diff_moved={diff.MovedCount} diff_selection={diff.SelectionImpactLogValue} diff_scroll={diff.ScrollImpactLogValue} diff_fallback_reason={diff.FallbackReason} refresh_applied={shouldRefresh} apply_ms={applyResult.ApplyElapsedMs}"
+                $"readmodel apply end: request_revision={requestRevision} result_count={sortedMovies.Count} changed={collectionResult.HasChanges} update_mode={updateMode} fallback_reason={resolvedFallbackReason} diff_operation={diff.OperationLogValue} diff_apply_kind={diff.ApplyKindLogValue} diff_apply_candidate={diff.IsDiffApplyCandidate} diff_stable_key={diff.StableKey} diff_source_revision={diff.SourceRevision} diff_view_revision={diff.ViewRevision} diff_added={diff.AddedCount} diff_deleted={diff.DeletedCount} diff_updated={diff.UpdatedCount} diff_moved={diff.MovedCount} diff_selection={diff.SelectionImpactLogValue} diff_scroll={diff.ScrollImpactLogValue} diff_fallback_reason={diff.FallbackReason} diff_full_fallback_reason={diff.FullFallbackReason} refresh_applied={shouldRefresh} apply_ms={applyResult.ApplyElapsedMs}"
             );
             return true;
         }

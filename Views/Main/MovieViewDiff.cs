@@ -26,6 +26,27 @@ internal enum MovieViewScrollImpact
     Reset = 2,
 }
 
+internal enum MovieViewDiffApplyKind
+{
+    DiffApply = 0,
+    FullFallback = 1,
+}
+
+internal readonly record struct MovieViewDiffApplyPlan(
+    MovieViewDiffApplyKind ApplyKind,
+    string FullFallbackReason
+)
+{
+    internal bool IsDiffApplyCandidate => ApplyKind == MovieViewDiffApplyKind.DiffApply;
+
+    internal string ApplyKindLogValue => ApplyKind switch
+    {
+        MovieViewDiffApplyKind.DiffApply => "diff-apply",
+        MovieViewDiffApplyKind.FullFallback => "full-fallback",
+        _ => "unknown",
+    };
+}
+
 // ReadModel の UI 反映結果を、次の Diff-first 境界へ渡せる小さな語彙へ畳む。
 internal readonly record struct MovieViewDiff(
     string StableKey,
@@ -41,6 +62,14 @@ internal readonly record struct MovieViewDiff(
     int MovedCount
 )
 {
+    internal MovieViewDiffApplyPlan ApplyPlan => MovieViewDiffApplyPolicy.Resolve(this);
+
+    internal bool IsDiffApplyCandidate => ApplyPlan.IsDiffApplyCandidate;
+
+    internal string ApplyKindLogValue => ApplyPlan.ApplyKindLogValue;
+
+    internal string FullFallbackReason => ApplyPlan.FullFallbackReason;
+
     internal string OperationLogValue => Operation switch
     {
         MovieViewDiffOperation.NoChange => "no-change",
@@ -71,12 +100,12 @@ internal readonly record struct MovieViewDiff(
 internal static class MovieViewDiffFactory
 {
     internal const string StableKeyMoviePath = "movie-path";
-    internal const string FallbackReasonNone = "none";
-    internal const string FallbackReasonQuery = "query";
-    internal const string FallbackReasonSort = "sort";
-    internal const string FallbackReasonDbSwitch = "db-switch";
-    internal const string FallbackReasonUnsafe = "unsafe";
-    internal const string FallbackReasonMassive = "massive";
+    internal const string FallbackReasonNone = MovieViewDiffApplyPolicy.FallbackReasonNone;
+    internal const string FallbackReasonQuery = MovieViewDiffApplyPolicy.FallbackReasonQuery;
+    internal const string FallbackReasonSort = MovieViewDiffApplyPolicy.FallbackReasonSort;
+    internal const string FallbackReasonDbSwitch = MovieViewDiffApplyPolicy.FallbackReasonDbSwitch;
+    internal const string FallbackReasonUnsafe = MovieViewDiffApplyPolicy.FallbackReasonUnsafe;
+    internal const string FallbackReasonMassive = MovieViewDiffApplyPolicy.FallbackReasonMassive;
 
     internal static MovieViewDiff FromCollectionUpdate(
         int sourceRevision,
@@ -160,6 +189,40 @@ internal static class MovieViewDiffFactory
 
     private static string NormalizeFallbackReason(string fallbackReason)
     {
+        return MovieViewDiffApplyPolicy.NormalizeFallbackReason(fallbackReason);
+    }
+}
+
+internal static class MovieViewDiffApplyPolicy
+{
+    internal const string FallbackReasonNone = "none";
+    internal const string FallbackReasonQuery = "query";
+    internal const string FallbackReasonSort = "sort";
+    internal const string FallbackReasonDbSwitch = "db-switch";
+    internal const string FallbackReasonUnsafe = "unsafe";
+    internal const string FallbackReasonMassive = "massive";
+
+    internal static MovieViewDiffApplyPlan Resolve(MovieViewDiff diff)
+    {
+        string fullFallbackReason = ResolveFullFallbackReason(diff.FallbackReason);
+        bool shouldUseFullFallback =
+            diff.Operation == MovieViewDiffOperation.FullFallback
+            || !string.Equals(
+                fullFallbackReason,
+                FallbackReasonNone,
+                StringComparison.Ordinal
+            );
+
+        return new MovieViewDiffApplyPlan(
+            shouldUseFullFallback
+                ? MovieViewDiffApplyKind.FullFallback
+                : MovieViewDiffApplyKind.DiffApply,
+            fullFallbackReason
+        );
+    }
+
+    internal static string NormalizeFallbackReason(string fallbackReason)
+    {
         if (string.IsNullOrWhiteSpace(fallbackReason))
         {
             return FallbackReasonNone;
@@ -171,7 +234,10 @@ internal static class MovieViewDiffFactory
             return FallbackReasonNone;
         }
 
-        if (reason.Contains("sort", StringComparison.OrdinalIgnoreCase))
+        if (
+            reason.Contains("sort", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("order", StringComparison.OrdinalIgnoreCase)
+        )
         {
             return FallbackReasonSort;
         }
@@ -181,7 +247,12 @@ internal static class MovieViewDiffFactory
             return FallbackReasonDbSwitch;
         }
 
-        if (reason.Contains("unsafe", StringComparison.OrdinalIgnoreCase))
+        if (
+            reason.Contains("unsafe", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("dup", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("hash", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("filter-unavailable", StringComparison.OrdinalIgnoreCase)
+        )
         {
             return FallbackReasonUnsafe;
         }
@@ -194,6 +265,41 @@ internal static class MovieViewDiffFactory
             return FallbackReasonMassive;
         }
 
-        return FallbackReasonQuery;
+        if (
+            reason.Contains("query", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("search", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("is-get-new", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("startup", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            return FallbackReasonQuery;
+        }
+
+        // changed-path などの小変更由来の札は full fallback 理由に昇格させない。
+        return FallbackReasonNone;
+    }
+
+    internal static bool IsFullFallbackReason(string fallbackReason)
+    {
+        string normalizedReason = NormalizeFallbackReason(fallbackReason);
+        return !string.Equals(
+            ResolveFullFallbackReason(normalizedReason),
+            FallbackReasonNone,
+            StringComparison.Ordinal
+        );
+    }
+
+    private static string ResolveFullFallbackReason(string fallbackReason)
+    {
+        string normalizedReason = NormalizeFallbackReason(fallbackReason);
+        return normalizedReason switch
+        {
+            FallbackReasonQuery => FallbackReasonQuery,
+            FallbackReasonSort => FallbackReasonSort,
+            FallbackReasonDbSwitch => FallbackReasonDbSwitch,
+            FallbackReasonUnsafe => FallbackReasonUnsafe,
+            FallbackReasonMassive => FallbackReasonMassive,
+            _ => FallbackReasonNone,
+        };
     }
 }

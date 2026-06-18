@@ -83,6 +83,7 @@
 - `MovieRecords` の互換表現と UI表示用 ReadModel を段階的に分ける。
 - 小変更は追加、削除、更新、移動の diff apply を通常経路にする。
 - query変更、sort key変更、DB切替、大量変更、unsafe dirty だけ full fallback とし、`fallback_reason` をログへ残す。
+- 2026-06-18 Worker E 時点では、`MovieViewDiffApplyPolicy` による判定語彙固定まで。`ReplaceFilteredMovieRecs(...)` の実 apply 挙動は変えず、diff apply 候補の通常経路化は実機ログを見て次段で進める。
 - `MainVM.ReplaceFilteredMovieRecs(...)` は段階的に diff apply へ置き換えるが、互換 fallback と source policy を残す。
 
 ### Phase 3. In-process Scheduler
