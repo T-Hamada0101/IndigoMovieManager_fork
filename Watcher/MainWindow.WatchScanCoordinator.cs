@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using IndigoMovieManager.Data;
 using IndigoMovieManager.Thumbnail;
+using IndigoMovieManager.Thumbnail.Ipc;
 using IndigoMovieManager.ViewModels;
 using IndigoMovieManager.Watcher;
 using static IndigoMovieManager.DB.SQLite;
@@ -481,7 +482,11 @@ namespace IndigoMovieManager
             return false;
         }
 
-        private static async Task<(WatchMovieDirtyFields DirtyFields, WatchMovieObservedState? ObservedState)> TryBuildExistingMovieObservedStateAsync(
+        private static async Task<(
+            WatchMovieDirtyFields DirtyFields,
+            WatchMovieObservedState? ObservedState,
+            string MetadataProbeWorkerLogFields
+        )> TryBuildExistingMovieObservedStateAsync(
             string movieFullPath,
             WatchMainDbMovieSnapshot snapshot,
             bool allowMovieLengthProbe,
@@ -490,7 +495,7 @@ namespace IndigoMovieManager
         {
             if (string.IsNullOrWhiteSpace(movieFullPath))
             {
-                return (WatchMovieDirtyFields.None, null);
+                return (WatchMovieDirtyFields.None, null, "");
             }
 
             try
@@ -498,7 +503,7 @@ namespace IndigoMovieManager
                 FileInfo file = new(movieFullPath);
                 if (!file.Exists)
                 {
-                    return (WatchMovieDirtyFields.None, null);
+                    return (WatchMovieDirtyFields.None, null, "");
                 }
 
                 WatchMovieObservedState currentObservedState = new(
@@ -520,8 +525,27 @@ namespace IndigoMovieManager
                             & (WatchMovieDirtyFields.FileDate | WatchMovieDirtyFields.MovieSize))
                             != WatchMovieDirtyFields.None
                     );
+                string metadataProbeWorkerLogFields = "";
                 if (shouldProbeMovieLength)
                 {
+                    WatchMetadataProbeRequest metadataProbeRequest =
+                        new()
+                        {
+                            MoviePath = movieFullPath,
+                            ExistingMovieLengthSeconds = snapshot.MovieLengthSeconds,
+                            HasFileDateDirty =
+                                (cheapDirtyFields & WatchMovieDirtyFields.FileDate)
+                                != WatchMovieDirtyFields.None,
+                            HasMovieSizeDirty =
+                                (cheapDirtyFields & WatchMovieDirtyFields.MovieSize)
+                                != WatchMovieDirtyFields.None,
+                            Source = "watch-existing-movie",
+                        };
+                    WorkerJobRequestDto metadataProbeRequestDto =
+                        WatchMetadataProbeWorkerContractAdapter.ToWorkerJobRequestDto(
+                            metadataProbeRequest
+                        );
+                    Stopwatch metadataProbeStopwatch = Stopwatch.StartNew();
                     WatchMovieObservedState? probedObservedState = null;
                     try
                     {
@@ -529,12 +553,34 @@ namespace IndigoMovieManager
                             probeExistingMovieObservedStateAsync == null
                                 ? null
                                 : await probeExistingMovieObservedStateAsync(movieFullPath);
+                        metadataProbeStopwatch.Stop();
+                        metadataProbeWorkerLogFields = BuildWatchMetadataProbeWorkerLogFields(
+                            metadataProbeRequestDto,
+                            movieFullPath,
+                            probedObservedState,
+                            failureKind: probedObservedState.HasValue ? "" : "NoObservedState",
+                            failureReason: probedObservedState.HasValue
+                                ? ""
+                                : "metadata probe returned no observed state",
+                            retryable: false,
+                            elapsedMs: metadataProbeStopwatch.ElapsedMilliseconds
+                        );
                     }
                     catch (Exception ex)
                     {
+                        metadataProbeStopwatch.Stop();
+                        metadataProbeWorkerLogFields = BuildWatchMetadataProbeWorkerLogFields(
+                            metadataProbeRequestDto,
+                            movieFullPath,
+                            null,
+                            failureKind: ex.GetType().Name,
+                            failureReason: ex.GetType().Name,
+                            retryable: false,
+                            elapsedMs: metadataProbeStopwatch.ElapsedMilliseconds
+                        );
                         DebugRuntimeLog.Write(
                             "watch-check",
-                            $"existing movie metadata probe skipped: movie='{movieFullPath}' reason={ex.GetType().Name}"
+                            $"existing movie metadata probe skipped: movie='{movieFullPath}' reason={ex.GetType().Name}{BuildOptionalLogSuffix(metadataProbeWorkerLogFields)}"
                         );
                     }
 
@@ -550,8 +596,8 @@ namespace IndigoMovieManager
                     currentObservedState
                 );
                 return detectedDirtyFields == WatchMovieDirtyFields.None
-                    ? (WatchMovieDirtyFields.None, null)
-                    : (detectedDirtyFields, currentObservedState);
+                    ? (WatchMovieDirtyFields.None, null, metadataProbeWorkerLogFields)
+                    : (detectedDirtyFields, currentObservedState, metadataProbeWorkerLogFields);
             }
             catch (Exception ex)
             {
@@ -559,8 +605,60 @@ namespace IndigoMovieManager
                     "watch-check",
                     $"existing movie dirty detect skipped: movie='{movieFullPath}' reason={ex.GetType().Name}"
                 );
-                return (WatchMovieDirtyFields.None, null);
+                return (WatchMovieDirtyFields.None, null, "");
             }
+        }
+
+        private static string BuildWatchMetadataProbeWorkerLogFields(
+            WorkerJobRequestDto requestDto,
+            string movieFullPath,
+            WatchMovieObservedState? observedState,
+            string failureKind,
+            string failureReason,
+            bool retryable,
+            long elapsedMs
+        )
+        {
+            bool succeeded = observedState.HasValue && string.IsNullOrWhiteSpace(failureKind);
+            WorkerJobProgressDto progressDto =
+                WatchMetadataProbeWorkerContractAdapter.ToWorkerJobProgressDto(
+                    new WatchMetadataProbeProgress
+                    {
+                        JobId = requestDto?.JobId ?? "",
+                        MoviePath = movieFullPath,
+                        Stage = WatchMetadataProbeWorkerContractAdapter.ProgressStageCompleted,
+                        CompletedCount = 1,
+                        TotalCount = 1,
+                        Message = succeeded
+                            ? "metadata probe completed"
+                            : "metadata probe skipped",
+                    }
+                );
+            WorkerJobResultDto resultDto =
+                WatchMetadataProbeWorkerContractAdapter.ToWorkerJobResultDto(
+                    new WatchMetadataProbeResult
+                    {
+                        JobId = requestDto?.JobId ?? "",
+                        MoviePath = movieFullPath,
+                        MovieLengthSeconds = observedState?.MovieLengthSeconds,
+                        Succeeded = succeeded,
+                        FailureKind = failureKind,
+                        FailureReason = failureReason,
+                        Retryable = retryable,
+                        ElapsedMs = elapsedMs,
+                    }
+                );
+
+            return WatchMetadataProbeWorkerContractAdapter.BuildWorkerProbeLogFields(
+                requestDto,
+                progressDto,
+                resultDto
+            );
+        }
+
+        private static string BuildOptionalLogSuffix(string logFields)
+        {
+            return string.IsNullOrWhiteSpace(logFields) ? "" : " " + logFields.Trim();
         }
 
         internal static WatchMovieObservedState? MergeWatchMovieObservedState(
@@ -1056,6 +1154,7 @@ namespace IndigoMovieManager
             bool shouldDeferCurrentMovieBySuppression = false;
             WatchMovieDirtyFields existingMovieDirtyFields = WatchMovieDirtyFields.None;
             WatchMovieObservedState? existingMovieObservedState = null;
+            string existingMetadataProbeWorkerLogFields = "";
             if (context.AllowExistingMovieDirtyTracking)
             {
                 bool shouldProbeExistingMovieObservedState = ShouldProbeExistingMovieObservedState(
@@ -1064,7 +1163,8 @@ namespace IndigoMovieManager
                 );
                 (
                     existingMovieDirtyFields,
-                    existingMovieObservedState
+                    existingMovieObservedState,
+                    existingMetadataProbeWorkerLogFields
                 ) = await TryBuildExistingMovieObservedStateAsync(
                     movieFullPath,
                     currentMovie,
@@ -1072,6 +1172,7 @@ namespace IndigoMovieManager
                     context.ProbeExistingMovieObservedStateAsync ?? ProbeExistingMovieObservedStateAsync
                 );
             }
+            result.ExistingMetadataProbeWorkerLogFields = existingMetadataProbeWorkerLogFields;
             if (existingMovieDirtyFields != WatchMovieDirtyFields.None)
             {
                 result.HasFolderUpdate = true;
@@ -1095,7 +1196,7 @@ namespace IndigoMovieManager
 
                 DebugRuntimeLog.Write(
                     "watch-check",
-                    $"refresh existing-db-metadata: tab={context.SnapshotTabIndex}, movie='{movieFullPath}', dirty={existingMovieDirtyFields}"
+                    $"refresh existing-db-metadata: tab={context.SnapshotTabIndex}, movie='{movieFullPath}', dirty={existingMovieDirtyFields}{BuildOptionalLogSuffix(existingMetadataProbeWorkerLogFields)}"
                 );
             }
 
@@ -2912,6 +3013,7 @@ namespace IndigoMovieManager
             public long UiReflectElapsedMs { get; set; }
             public long EnqueueFlushElapsedMs { get; set; }
             public bool WasDroppedByStaleScope { get; set; }
+            public string ExistingMetadataProbeWorkerLogFields { get; set; } = "";
             public List<string> DeferredMoviePathsByUiSuppression { get; } = [];
             public List<WatchChangedMovie> ChangedMovies { get; } = [];
 
@@ -3021,6 +3123,11 @@ namespace IndigoMovieManager
                 DbInsertElapsedMs += processResult.DbInsertElapsedMs;
                 UiReflectElapsedMs += processResult.UiReflectElapsedMs;
                 EnqueueFlushElapsedMs += processResult.EnqueueFlushElapsedMs;
+                ExistingMetadataProbeWorkerLogFields = string.IsNullOrWhiteSpace(
+                    processResult.ExistingMetadataProbeWorkerLogFields
+                )
+                    ? ExistingMetadataProbeWorkerLogFields
+                    : processResult.ExistingMetadataProbeWorkerLogFields;
                 WasDroppedByStaleScope |= processResult.WasDroppedByStaleScope;
                 foreach (string movieFullPath in processResult.DeferredMoviePathsByUiSuppression)
                 {

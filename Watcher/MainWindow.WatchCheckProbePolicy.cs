@@ -46,6 +46,7 @@ namespace IndigoMovieManager
                 $"tab={snapshotTabIndex} outcome={probeResult.Outcome} total_ms={probeResult.TotalElapsedMs} "
                     + $"db_lookup_ms={probeResult.DbLookupElapsedMs} thumb_exists_ms={probeResult.ThumbExistsElapsedMs} "
                     + $"movieinfo_ms={probeResult.MovieInfoElapsedMs} flush_wait_ms={probeResult.FlushWaitElapsedMs} path='{movieFullPath}'"
+                    + BuildOptionalLogSuffix(probeResult.ExistingMetadataProbeWorkerLogFields)
             );
         }
 

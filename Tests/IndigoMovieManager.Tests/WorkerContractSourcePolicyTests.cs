@@ -294,6 +294,44 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Not.Contain("MainWindow"));
     }
 
+    [Test]
+    public void MetadataProbeログはWorker契約Fieldsを併記する()
+    {
+        string repoRoot = FindRepoRoot();
+        string adapterSource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Watcher/WatchMetadataProbeWorkerContractAdapter.cs")
+        );
+        string coordinatorSource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Watcher/MainWindow.WatchScanCoordinator.cs")
+        );
+        string probePolicySource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Watcher/MainWindow.WatchCheckProbePolicy.cs")
+        );
+
+        Assert.That(adapterSource, Does.Contain("BuildWorkerJobRequestLogFields("));
+        Assert.That(adapterSource, Does.Contain("BuildWorkerJobProgressLogFields("));
+        Assert.That(adapterSource, Does.Contain("BuildWorkerJobResultLogFields("));
+        Assert.That(adapterSource, Does.Contain("BuildWorkerProbeLogFields("));
+        Assert.That(adapterSource, Does.Contain("worker_job_id="));
+        Assert.That(adapterSource, Does.Contain("worker_kind="));
+        Assert.That(adapterSource, Does.Contain("worker_status="));
+        Assert.That(adapterSource, Does.Contain("worker_stage="));
+        Assert.That(adapterSource, Does.Contain("artifact_kind="));
+        Assert.That(adapterSource, Does.Contain("retryable="));
+        Assert.That(adapterSource, Does.Contain("elapsed_ms="));
+        Assert.That(
+            coordinatorSource,
+            Does.Contain("WatchMetadataProbeWorkerContractAdapter.BuildWorkerProbeLogFields(")
+        );
+        Assert.That(coordinatorSource, Does.Contain("ExistingMetadataProbeWorkerLogFields"));
+        Assert.That(
+            coordinatorSource,
+            Does.Contain("existing movie metadata probe skipped:")
+        );
+        Assert.That(coordinatorSource, Does.Contain("refresh existing-db-metadata:"));
+        Assert.That(probePolicySource, Does.Contain("ExistingMetadataProbeWorkerLogFields"));
+    }
+
     private static IEnumerable<string> EnumerateWorkerContractSourceFiles(string repoRoot)
     {
         foreach (string sourceDirectory in WorkerContractSourceDirectories)

@@ -238,4 +238,78 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
             Assert.That(dto.Logs, Does.Contain("failure_reason=ProbeFailed"));
         });
     }
+
+    [Test]
+    public void MetadataProbeログFieldsはWorker契約Dtoから組み立てる()
+    {
+        WatchMetadataProbeRequest request =
+            new()
+            {
+                MoviePath = "%USERPROFILE%/videos/sample.mp4",
+                ExistingMovieLengthSeconds = 0,
+                HasFileDateDirty = true,
+                Source = "watch-existing-movie",
+                RequestedAtUtc = DateTime.SpecifyKind(
+                    new DateTime(2026, 6, 18, 14, 0, 0),
+                    DateTimeKind.Utc
+                ),
+            };
+        WorkerJobRequestDto requestDto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobRequestDto(request);
+        WorkerJobProgressDto progressDto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobProgressDto(
+                new WatchMetadataProbeProgress
+                {
+                    JobId = requestDto.JobId,
+                    MoviePath = request.MoviePath,
+                    Stage = WatchMetadataProbeWorkerContractAdapter.ProgressStageCompleted,
+                    CompletedCount = 1,
+                    TotalCount = 1,
+                }
+            );
+        WorkerJobResultDto resultDto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobResultDto(
+                new WatchMetadataProbeResult
+                {
+                    JobId = requestDto.JobId,
+                    MoviePath = request.MoviePath,
+                    MovieLengthSeconds = 120,
+                    Succeeded = true,
+                    ElapsedMs = 12,
+                }
+            );
+
+        string requestFields =
+            WatchMetadataProbeWorkerContractAdapter.BuildWorkerJobRequestLogFields(requestDto);
+        string progressFields =
+            WatchMetadataProbeWorkerContractAdapter.BuildWorkerJobProgressLogFields(progressDto);
+        string resultFields =
+            WatchMetadataProbeWorkerContractAdapter.BuildWorkerJobResultLogFields(resultDto);
+        string combinedFields =
+            WatchMetadataProbeWorkerContractAdapter.BuildWorkerProbeLogFields(
+                requestDto,
+                progressDto,
+                resultDto
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(requestFields, Does.Contain("worker_job_id="));
+            Assert.That(requestFields, Does.Contain("worker_kind=metadata-probe"));
+            Assert.That(progressFields, Does.Contain("worker_stage=completed"));
+            Assert.That(progressFields, Does.Contain("progress_completed=1"));
+            Assert.That(resultFields, Does.Contain("worker_status=succeeded"));
+            Assert.That(resultFields, Does.Contain("artifact_kind=metadata-probe-state"));
+            Assert.That(resultFields, Does.Contain("retryable=false"));
+            Assert.That(resultFields, Does.Contain("elapsed_ms=12"));
+            Assert.That(combinedFields, Does.Contain("worker_job_id="));
+            Assert.That(combinedFields, Does.Contain("worker_kind=metadata-probe"));
+            Assert.That(combinedFields, Does.Contain("worker_status=succeeded"));
+            Assert.That(combinedFields, Does.Contain("worker_stage=completed"));
+            Assert.That(combinedFields, Does.Contain("artifact_kind=metadata-probe-state"));
+            Assert.That(combinedFields, Does.Contain("retryable=false"));
+            Assert.That(combinedFields, Does.Contain("elapsed_ms=12"));
+            Assert.That(combinedFields, Does.Contain("progress_total=1"));
+        });
+    }
 }

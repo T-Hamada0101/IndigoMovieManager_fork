@@ -219,6 +219,55 @@ namespace IndigoMovieManager.Watcher
             };
         }
 
+        public static string BuildWorkerJobRequestLogFields(WorkerJobRequestDto request)
+        {
+            request ??= new WorkerJobRequestDto();
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"worker_job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)}"
+            );
+        }
+
+        public static string BuildWorkerJobProgressLogFields(WorkerJobProgressDto progress)
+        {
+            progress ??= new WorkerJobProgressDto();
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"worker_job_id={FormatLogValue(progress.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_stage={FormatLogValue(progress.Stage)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)}"
+            );
+        }
+
+        public static string BuildWorkerJobResultLogFields(WorkerJobResultDto result)
+        {
+            result ??= new WorkerJobResultDto();
+            WorkerJobArtifactDto artifact = result.Artifact ?? new WorkerJobArtifactDto();
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"worker_job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)}"
+            );
+        }
+
+        public static string BuildWorkerProbeLogFields(
+            WorkerJobRequestDto request,
+            WorkerJobProgressDto progress,
+            WorkerJobResultDto result
+        )
+        {
+            request ??= new WorkerJobRequestDto();
+            progress ??= new WorkerJobProgressDto();
+            result ??= new WorkerJobResultDto();
+            WorkerJobArtifactDto artifact = result.Artifact ?? new WorkerJobArtifactDto();
+
+            // 既存ログへ併記する値だけをDTOから拾い、probe本体の挙動へ影響させない。
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"worker_job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(request.Kind)} worker_status={FormatLogValue(result.Status)} worker_stage={FormatLogValue(progress.Stage)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)}"
+            );
+        }
+
         private static string BuildJobId(string moviePathKey, DateTime requestedAtUtc)
         {
             return string.Create(
@@ -447,6 +496,58 @@ namespace IndigoMovieManager.Watcher
         private static string NormalizeField(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
+        }
+
+        private static string GetMetricValue(WorkerJobResultDto result, string key)
+        {
+            if (result?.Metrics == null || string.IsNullOrWhiteSpace(key))
+            {
+                return "";
+            }
+
+            return result.Metrics.TryGetValue(key, out string value) ? value : "";
+        }
+
+        private static string FormatLogValue(string value)
+        {
+            string normalized = NormalizeLogValue(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "''";
+            }
+
+            if (ContainsWhiteSpace(normalized))
+            {
+                return $"'{normalized.Replace("'", "\\'", StringComparison.Ordinal)}'";
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizeLogValue(string value)
+        {
+            return NormalizeField(value)
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal)
+                .Replace("\t", " ", StringComparison.Ordinal);
+        }
+
+        private static bool ContainsWhiteSpace(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            foreach (char current in value)
+            {
+                if (char.IsWhiteSpace(current))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
