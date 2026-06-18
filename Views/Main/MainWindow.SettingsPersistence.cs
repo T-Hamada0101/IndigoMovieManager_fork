@@ -12,6 +12,15 @@ namespace IndigoMovieManager
         // Settings.Save はファイルI/Oなので、UIの切替・終了導線から直列の背景保存へ逃がす。
         private void QueueApplicationSettingsSave(string reason)
         {
+            if (App.IsDiagnosticNoPersistEnabled())
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"application settings save skipped: reason={reason ?? ""} diagnostic_no_persist=1"
+                );
+                return;
+            }
+
             lock (_applicationSettingsSaveSync)
             {
                 _applicationSettingsSaveTask = _applicationSettingsSaveTask.ContinueWith(
@@ -27,6 +36,15 @@ namespace IndigoMovieManager
         {
             try
             {
+                if (App.IsDiagnosticNoPersistEnabled())
+                {
+                    DebugRuntimeLog.Write(
+                        "ui-tempo",
+                        $"application settings save skipped in background: reason={reason ?? ""} diagnostic_no_persist=1"
+                    );
+                    return;
+                }
+
                 lock (_applicationSettingsSaveSync)
                 {
                     Properties.Settings.Default.Save();

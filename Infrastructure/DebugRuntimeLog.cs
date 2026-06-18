@@ -7,7 +7,7 @@ using IndigoMovieManager.Properties;
 
 namespace IndigoMovieManager
 {
-    // Debug実行時だけ、処理の開始/終了をローカルログへ残す。
+    // Release実機でも体感テンポの支配要因を追えるよう、入口は常に残して設定と絞り込みで制御する。
     internal static class DebugRuntimeLog
     {
         private static readonly object LogLock = new();
@@ -44,7 +44,6 @@ namespace IndigoMovieManager
         private static readonly AsyncLocal<DebugRuntimeLogScopeMetrics> AmbientScopeMetrics = new();
         private static long _logSequence;
 
-        [Conditional("DEBUG")]
         internal static void Write(string category, string message)
         {
             if (!ShouldWrite(category, message, DateTime.UtcNow))
@@ -622,13 +621,11 @@ namespace IndigoMovieManager
                 .Trim();
         }
 
-        [Conditional("DEBUG")]
         internal static void TaskStart(string taskName, string detail = "")
         {
             Write("task-start", $"{taskName} {detail}".Trim());
         }
 
-        [Conditional("DEBUG")]
         internal static void TaskEnd(string taskName, string detail = "")
         {
             Write("task-end", $"{taskName} {detail}".Trim());

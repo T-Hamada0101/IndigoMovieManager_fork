@@ -106,8 +106,20 @@ namespace IndigoMovieManager
                 }
             }
 
+            bool shouldPersistPlayerVolume = save && !App.IsDiagnosticNoPersistEnabled();
+            if (save && !shouldPersistPlayerVolume)
+            {
+                DebugRuntimeLog.Write(
+                    "player",
+                    "player volume settings save skipped: diagnostic_no_persist=1"
+                );
+            }
+
             // 保存が必要な入口だけここで畳み、設定ファイルへ直接触る場所を増やさない。
-            if (save && Math.Abs(Properties.Settings.Default.PlayerVolume - resolvedVolume) > 0.0001d)
+            if (
+                shouldPersistPlayerVolume
+                && Math.Abs(Properties.Settings.Default.PlayerVolume - resolvedVolume) > 0.0001d
+            )
             {
                 lock (_playerVolumeSettingsSaveSync)
                 {
@@ -212,6 +224,15 @@ namespace IndigoMovieManager
         // 設定ファイル保存はディスクI/Oなので、UI操作の余韻を邪魔しないよう直列の背景保存へ逃がす。
         private void QueuePlayerVolumeSettingSaveInBackground()
         {
+            if (App.IsDiagnosticNoPersistEnabled())
+            {
+                DebugRuntimeLog.Write(
+                    "player",
+                    "player volume settings save skipped in background: diagnostic_no_persist=1"
+                );
+                return;
+            }
+
             lock (_playerVolumeSettingsSaveSync)
             {
                 _playerVolumeSettingsSaveTask = _playerVolumeSettingsSaveTask.ContinueWith(
@@ -227,6 +248,15 @@ namespace IndigoMovieManager
         {
             try
             {
+                if (App.IsDiagnosticNoPersistEnabled())
+                {
+                    DebugRuntimeLog.Write(
+                        "player",
+                        "player volume settings save skipped in save task: diagnostic_no_persist=1"
+                    );
+                    return;
+                }
+
                 lock (_playerVolumeSettingsSaveSync)
                 {
                     Properties.Settings.Default.Save();

@@ -13,6 +13,13 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         string persistenceSource = GetRepoText("Views", "Main", "MainWindow.SettingsPersistence.cs");
         string dbSwitchSource = GetRepoText("Views", "Main", "MainWindow.DbSwitch.cs");
         string lifecycleSource = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
+        string playerSource = GetRepoText("Views", "Main", "MainWindow.Player.cs");
+        string settingsWindowSource = GetRepoText(
+            "Views",
+            "Settings",
+            "CommonSettingsWindow.xaml.cs"
+        );
+        string appSource = GetRepoText("App.xaml.cs");
         string fullscreenSource = GetRepoText(
             "UpperTabs",
             "Player",
@@ -34,6 +41,11 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(persistenceSource, Does.Contain("WaitForApplicationSettingsSaveForShutdown("));
         Assert.That(persistenceSource, Does.Contain("TaskScheduler.Default"));
         Assert.That(persistenceSource, Does.Contain("Properties.Settings.Default.Save();"));
+        Assert.That(persistenceSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(playerSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(settingsWindowSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(appSource, Does.Contain("internal const string DiagnosticNoPersistEnvironmentVariable"));
+        Assert.That(appSource, Does.Contain("internal static bool IsDiagnosticNoPersistEnabled()"));
 
         Assert.That(dbSwitchSource, Does.Contain("QueueApplicationSettingsSave(\"main-db-dialog-directory\")"));
         Assert.That(dbSwitchSource, Does.Contain("QueueApplicationSettingsSave(\"main-db-last-doc\")"));

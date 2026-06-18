@@ -39,6 +39,7 @@ namespace IndigoMovieManager
         internal const string ThemeModeSimpleLight = "SimpleLight";
         internal const string ThemeModeSimpleDark = "SimpleDark";
         internal const string ThemeModeSystemAuto = "SystemAuto";
+        internal const string DiagnosticNoPersistEnvironmentVariable = "INDIGO_DIAGNOSTIC_NO_PERSIST";
         private const string LegacyThemeModeOriginal = "Original";
         private const string LegacyThemeModeOsSync = "OsSync";
 
@@ -174,6 +175,20 @@ namespace IndigoMovieManager
             // App.xaml はテーマ辞書を起動時に動的適用するため、MainWindow はここで明示的に開く。
             // XAML 生成前に ApplyTheme を済ませることで、初期 StaticResource 解決を安定させる。
             ShowMainWindow();
+        }
+
+        internal static bool IsDiagnosticNoPersistEnabled()
+        {
+            return IsDiagnosticNoPersistEnabledForTesting(
+                Environment.GetEnvironmentVariable(DiagnosticNoPersistEnvironmentVariable)
+            );
+        }
+
+        internal static bool IsDiagnosticNoPersistEnabledForTesting(string value)
+        {
+            string normalizedValue = value?.Trim() ?? "";
+            return string.Equals(normalizedValue, "1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedValue, "true", StringComparison.OrdinalIgnoreCase);
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -455,6 +470,15 @@ namespace IndigoMovieManager
         internal static void SaveThemeModeSettingBestEffort(string normalizedThemeMode, string reason)
         {
             // テーマ移行の保存失敗で起動を止めない。画面上は新しい値を使い、永続化だけ後で復旧できるようログへ閉じる。
+            if (IsDiagnosticNoPersistEnabled())
+            {
+                DebugRuntimeLog.Write(
+                    "theme",
+                    $"settings save skipped: reason={reason} diagnostic_no_persist=1"
+                );
+                return;
+            }
+
             IndigoMovieManager.Properties.Settings.Default.ThemeMode = NormalizeThemeMode(
                 normalizedThemeMode
             );

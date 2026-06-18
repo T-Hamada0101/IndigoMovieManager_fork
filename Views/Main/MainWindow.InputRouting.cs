@@ -131,24 +131,32 @@ namespace IndigoMovieManager
                 return;
             }
 
-            bool shouldSelectFirstItem = true;
-            if (plan.ShouldUseStartupFullReload)
+            BeginUserPriorityWork("sort");
+            try
             {
-                FilterAndSort(plan.SortId, true);
-            }
-            else
-            {
-                shouldSelectFirstItem = await SortDataAsync(plan.SortId);
-            }
+                bool shouldSelectFirstItem = true;
+                if (plan.ShouldUseStartupFullReload)
+                {
+                    FilterAndSort(plan.SortId, true);
+                }
+                else
+                {
+                    shouldSelectFirstItem = await SortDataAsync(plan.SortId);
+                }
 
-            if (plan.ShouldRefreshThumbnailErrorRecords)
-            {
-                RefreshThumbnailErrorRecords(force: true);
-            }
+                if (plan.ShouldRefreshThumbnailErrorRecords)
+                {
+                    RefreshThumbnailErrorRecords(force: true);
+                }
 
-            if (shouldSelectFirstItem)
+                if (shouldSelectFirstItem)
+                {
+                    SelectFirstItem();
+                }
+            }
+            finally
             {
-                SelectFirstItem();
+                EndUserPriorityWork("sort");
             }
         }
     }

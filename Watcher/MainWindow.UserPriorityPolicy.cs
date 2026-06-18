@@ -12,7 +12,15 @@ public partial class MainWindow
         bool isManualMode
     )
     {
-        return isUserPriorityActive && !isManualMode;
+        return UiOperationPriorityPolicy.ShouldDeferBackgroundWork(
+            new UiOperationPrioritySnapshot(
+                isUserPriorityActive,
+                isManualMode,
+                IsWatchUiSuppressed: false,
+                IsRecentViewportInteractionActive: false,
+                IsPlayerPlaybackActive: false
+            )
+        );
     }
 
     // ユーザー要求が終わったら、保留していた背後走査を1回だけ catch-up させる。
@@ -21,7 +29,10 @@ public partial class MainWindow
         bool hasDeferredWatchWork
     )
     {
-        return !isStillActive && hasDeferredWatchWork;
+        return UiOperationPriorityPolicy.ShouldQueueBackgroundCatchUp(
+            isStillActive,
+            hasDeferredWatchWork
+        );
     }
 
     internal static bool IsUserPriorityWorkTimedOut(

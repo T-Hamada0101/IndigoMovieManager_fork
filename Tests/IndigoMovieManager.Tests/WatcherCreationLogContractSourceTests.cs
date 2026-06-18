@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -43,22 +44,39 @@ public sealed class WatcherCreationLogContractSourceTests
 
     private static string GetRepoFilePath(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
         {
-            string candidate = Path.Combine(
-                new[] { current.FullName }.Concat(relativePathParts).ToArray()
-            );
-            if (File.Exists(candidate))
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
             {
-                return candidate;
-            }
+                string candidate = Path.Combine(
+                    new[] { current.FullName }.Concat(relativePathParts).ToArray()
+                );
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
 
-            current = current.Parent;
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(Environment.CurrentDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
     }
 
     private static string ExtractMethod(string source, string signature)

@@ -123,6 +123,34 @@ public sealed class DebugRuntimeLogTests
     }
 
     [Test]
+    public void RuntimeLog入口はReleaseビルドでも呼び出しを消さない()
+    {
+        foreach (string methodName in new[] { "Write", "TaskStart", "TaskEnd" })
+        {
+            System.Reflection.MethodInfo? method = typeof(DebugRuntimeLog).GetMethod(
+                methodName,
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic
+            );
+
+            Assert.That(method, Is.Not.Null, $"{methodName} が見つかりません。");
+            System.Diagnostics.ConditionalAttribute[] attributes = method!
+                .GetCustomAttributes(
+                    typeof(System.Diagnostics.ConditionalAttribute),
+                    inherit: false
+                )
+                .Cast<System.Diagnostics.ConditionalAttribute>()
+                .ToArray();
+
+            // Release実機の支配要因ログを残すため、呼び出し除去は設定と絞り込みではなく属性で行わない。
+            Assert.That(
+                attributes.Select(attribute => attribute.ConditionString),
+                Does.Not.Contain("DEBUG"),
+                $"{methodName} に Conditional(DEBUG) を戻すと Release の debug-runtime.log が更新されません。"
+            );
+        }
+    }
+
+    [Test]
     public void BuildLineForTesting_改行とタブを潰して1行形式を維持する()
     {
         DateTime localNow = new(2026, 4, 16, 12, 34, 56, 789, DateTimeKind.Local);

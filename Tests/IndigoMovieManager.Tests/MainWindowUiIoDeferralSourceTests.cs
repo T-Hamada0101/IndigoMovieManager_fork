@@ -97,9 +97,15 @@ public sealed class MainWindowUiIoDeferralSourceTests
 
         Assert.That(queueMethod, Does.Contain("bool autoOpenSnapshot"));
         Assert.That(queueMethod, Does.Contain("string lastDocSnapshot"));
+        Assert.That(queueMethod, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(queueMethod, Does.Contain("DiagnosticStartupDbEnvironmentVariable"));
+        Assert.That(queueMethod, Does.Contain("ResolveDiagnosticStartupDbOverride("));
+        Assert.That(queueMethod, Does.Contain("diagnosticStartupDbActive"));
         Assert.That(queueMethod, Does.Contain("RunStartupAutoOpenLastDocSwitchAsync("));
         Assert.That(runMethod, Does.Contain("Task.Run(() => Path.Exists(lastDocSnapshot))"));
         Assert.That(runMethod, Does.Contain("Dispatcher.InvokeAsync"));
+        Assert.That(runMethod, Does.Contain("diagnosticStartupDbActive"));
+        Assert.That(runMethod, Does.Contain("IsStartupAutoOpenLastDocSnapshotCurrent("));
         Assert.That(
             runMethod,
             Does.Contain("return TrySwitchMainDb(")

@@ -536,6 +536,7 @@ Indigoを触るAIは、作業前に次を自問する。
 
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_UI分離とスムーズ表示アーキテクチャ_2026-05-27.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Implementation Plan_長期ロードマップ_体感高速化UI分離_Worker契約_2026-06-18.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\AI向け_現在の全体プラン_workthree_2026-03-20.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\AI向け_ブランチ方針_workthreeユーザー体感テンポ最優先_2026-03-11.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\WhiteBrowserSkin\Docs\Implementation Plan_skin切り替え高速化_DB保存分離先行_2026-04-13.md`

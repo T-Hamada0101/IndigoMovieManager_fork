@@ -380,15 +380,38 @@ namespace IndigoMovieManager
                 {
                     bool isDeferredByUiSuppression = false;
                     bool isDeferredByUserPriority = false;
+                    bool isDeferredByRecentViewport = false;
+                    bool isRecentViewportInteractionActive = IsRecentViewportInteractionActive();
                     if (IsWatchSuppressedByUi())
                     {
                         MarkWatchWorkDeferredWhileSuppressed("everything-poll");
                         isDeferredByUiSuppression = true;
+                        DebugRuntimeLog.Write(
+                            "watch-check",
+                            BuildEverythingWatchPollDeferredLogMessage(
+                                UiOperationPriorityPolicy.DeferReasonUiSuppression,
+                                UiOperationPriorityPolicy.DeferReasonUiSuppression,
+                                isRecentViewportInteractionActive,
+                                shouldQueueCatchUp: true
+                            )
+                        );
                     }
-                    else if (TryDeferEverythingWatchPollForUserPriority())
+                    else if (
+                        TryDeferEverythingWatchPollForUserPriorityCore(
+                            isRecentViewportInteractionActive
+                        )
+                    )
                     {
                         // 明示操作が終わった後の catch-up へ任せ、この周回では入口判定まで進めない。
                         isDeferredByUserPriority = true;
+                    }
+                    else if (
+                        TryDeferEverythingWatchPollForRecentViewport(
+                            isRecentViewportInteractionActive
+                        )
+                    )
+                    {
+                        isDeferredByRecentViewport = true;
                     }
                     else if (await ShouldRunEverythingWatchPollPolicyAsync(cts).ConfigureAwait(false))
                     {
@@ -396,14 +419,16 @@ namespace IndigoMovieManager
                             .ConfigureAwait(false);
                     }
 
-                    int delayMs = ResolveEverythingWatchPollDelayMs(
+                    int delayMs = ResolveEverythingWatchPollDelayMsCore(
                         shouldProbeQueueLoad: ShouldProbeEverythingWatchPollQueueLoad(
                             isDeferredByUiSuppression,
-                            isDeferredByUserPriority
+                            isDeferredByUserPriority,
+                            isDeferredByRecentViewport
                         ),
                         isDeferredByUiSuppression: isDeferredByUiSuppression,
                         isDeferredByUserPriority: isDeferredByUserPriority,
-                        isPlayerPlaybackActive: IsPlayerPlaybackActive()
+                        isPlayerPlaybackActive: IsPlayerPlaybackActive(),
+                        isRecentViewportInteractionActive: isRecentViewportInteractionActive
                     );
                     await Task.Delay(delayMs, cts).ConfigureAwait(false);
                 }
@@ -440,6 +465,23 @@ namespace IndigoMovieManager
             bool isPlayerPlaybackActive = false
         )
         {
+            return ResolveEverythingWatchPollDelayMsCore(
+                shouldProbeQueueLoad,
+                isDeferredByUiSuppression,
+                isDeferredByUserPriority,
+                isPlayerPlaybackActive,
+                isRecentViewportInteractionActive: false
+            );
+        }
+
+        private int ResolveEverythingWatchPollDelayMsCore(
+            bool shouldProbeQueueLoad,
+            bool isDeferredByUiSuppression,
+            bool isDeferredByUserPriority,
+            bool isPlayerPlaybackActive,
+            bool isRecentViewportInteractionActive
+        )
+        {
             int delayMs = EverythingWatchPollIntervalMs;
             try
             {
@@ -468,7 +510,8 @@ namespace IndigoMovieManager
                     delayMs,
                     isDeferredByUiSuppression,
                     isDeferredByUserPriority,
-                    isPlayerPlaybackActive
+                    isPlayerPlaybackActive,
+                    isRecentViewportInteractionActive
                 );
                 delayMs = ApplyEverythingWatchPollEligibilityDelayPolicy(
                     delayMs,
@@ -486,11 +529,27 @@ namespace IndigoMovieManager
 
             if (delayMs != _lastEverythingPollDelayMs)
             {
+                string deferReason = ResolveEverythingWatchPollDeferReason(
+                    isDeferredByUiSuppression,
+                    isDeferredByUserPriority,
+                    isRecentViewportInteractionActive
+                );
+                string operationReason = ResolveEverythingWatchPollOperationReason(
+                    isDeferredByUiSuppression,
+                    isDeferredByUserPriority,
+                    isRecentViewportInteractionActive,
+                    isPlayerPlaybackActive
+                );
                 DebugRuntimeLog.Write(
                     "watch-check",
                     $"everything poll interval changed: {_lastEverythingPollDelayMs} -> {delayMs} "
                         + $"last_updates={Volatile.Read(ref _lastEverythingPollUpdateCount)} "
-                        + $"calm_cycles={Volatile.Read(ref _consecutiveCalmEverythingPollCount)}"
+                        + $"calm_cycles={Volatile.Read(ref _consecutiveCalmEverythingPollCount)} "
+                        + $"operation_reason={operationReason} "
+                        + $"defer_reason={deferReason} "
+                        + $"recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} "
+                        + $"catch_up={FormatLogBool(ShouldQueueEverythingWatchPollCatchUp(deferReason))} "
+                        + $"poll_delay_ms={delayMs}"
                 );
                 _lastEverythingPollDelayMs = delayMs;
             }

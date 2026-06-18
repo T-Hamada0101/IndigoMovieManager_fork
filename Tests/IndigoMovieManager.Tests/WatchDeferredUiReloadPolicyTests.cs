@@ -2359,22 +2359,41 @@ public sealed class WatchDeferredUiReloadPolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory != null)
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
         {
-            string candidate = Path.Combine(
-                [directory.FullName, .. relativePathParts]
-            );
-            if (File.Exists(candidate))
+            DirectoryInfo? directory = searchRoot;
+            while (directory != null)
             {
-                return File.ReadAllText(candidate);
-            }
+                string candidate = Path.Combine(
+                    [directory.FullName, .. relativePathParts]
+                );
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
 
-            directory = directory.Parent;
+                directory = directory.Parent;
+            }
         }
 
         Assert.Fail("リポジトリ内の対象ファイルが見つかりません。");
         return "";
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(AppContext.BaseDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
     }
 
     private static object CreatePrivateEnumValue(string nestedTypeName, string value)

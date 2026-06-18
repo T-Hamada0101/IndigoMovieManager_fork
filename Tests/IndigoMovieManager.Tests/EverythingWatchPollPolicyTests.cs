@@ -251,6 +251,23 @@ public sealed class EverythingWatchPollPolicyTests
     }
 
     [Test]
+    public void ShouldDeferEverythingWatchPollForRecentViewport_スクロール直後だけTrueを返す()
+    {
+        Assert.That(
+            MainWindow.ShouldDeferEverythingWatchPollForRecentViewport(
+                isRecentViewportInteractionActive: true
+            ),
+            Is.True
+        );
+        Assert.That(
+            MainWindow.ShouldDeferEverythingWatchPollForRecentViewport(
+                isRecentViewportInteractionActive: false
+            ),
+            Is.False
+        );
+    }
+
+    [Test]
     public void ShouldProbeEverythingWatchPollQueueLoad_poll延期中はFalseを返す()
     {
         Assert.That(
@@ -264,6 +281,14 @@ public sealed class EverythingWatchPollPolicyTests
             MainWindow.ShouldProbeEverythingWatchPollQueueLoad(
                 isDeferredByUiSuppression: false,
                 isDeferredByUserPriority: true
+            ),
+            Is.False
+        );
+        Assert.That(
+            MainWindow.ShouldProbeEverythingWatchPollQueueLoad(
+                isDeferredByUiSuppression: false,
+                isDeferredByUserPriority: false,
+                isRecentViewportInteractionActive: true
             ),
             Is.False
         );
@@ -345,6 +370,20 @@ public sealed class EverythingWatchPollPolicyTests
             isDeferredByUiSuppression: true,
             isDeferredByUserPriority: false,
             isPlayerPlaybackActive: false
+        );
+
+        Assert.That(delayMs, Is.EqualTo(9000));
+    }
+
+    [Test]
+    public void ApplyEverythingWatchPollInteractionDelayPolicy_recent_viewport中はcalm間隔まで延長する()
+    {
+        int delayMs = MainWindow.ApplyEverythingWatchPollInteractionDelayPolicy(
+            delayMs: 3000,
+            isDeferredByUiSuppression: false,
+            isDeferredByUserPriority: false,
+            isPlayerPlaybackActive: false,
+            isRecentViewportInteractionActive: true
         );
 
         Assert.That(delayMs, Is.EqualTo(9000));

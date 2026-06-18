@@ -102,7 +102,17 @@ namespace IndigoMovieManager
                 ClampUpperTabImageCacheMaxEntries(
                     (int)System.Math.Round(sliderUpperTabImageCacheMaxEntries.Value)
                 );
-            Properties.Settings.Default.Save();
+            if (App.IsDiagnosticNoPersistEnabled())
+            {
+                DebugRuntimeLog.Write(
+                    "settings",
+                    "common settings save skipped: diagnostic_no_persist=1"
+                );
+            }
+            else
+            {
+                Properties.Settings.Default.Save();
+            }
             ThumbnailEnvConfig.ApplyFfmpegOnePassExecutionHintsForCurrentSettings();
         }
 

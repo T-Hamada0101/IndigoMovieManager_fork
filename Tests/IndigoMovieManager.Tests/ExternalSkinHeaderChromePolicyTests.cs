@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -98,6 +99,40 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(method, Does.Contain("refresh queue rejected:"));
             Assert.That(method, Does.Contain("return accepted;"));
             Assert.That(method, Does.Contain("return true;"));
+        });
+    }
+
+    [Test]
+    public void 診断用same_document確認refreshは明示フラグとno_persist時だけ動く()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string refreshMethod = GetMethodBlock(
+            source,
+            "private async Task RefreshExternalSkinHostPresentationAsync("
+        );
+        string diagnosticMethod = GetMethodBlock(
+            source,
+            "private void QueueDiagnosticRepeatExternalSkinRefreshIfNeeded("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(MainWindow.IsDiagnosticRepeatSkinRefreshEnabledForTesting("1"), Is.True);
+            Assert.That(MainWindow.IsDiagnosticRepeatSkinRefreshEnabledForTesting(" true "), Is.True);
+            Assert.That(MainWindow.IsDiagnosticRepeatSkinRefreshEnabledForTesting("0"), Is.False);
+            Assert.That(MainWindow.IsDiagnosticRepeatSkinRefreshEnabledForTesting(""), Is.False);
+            Assert.That(MainWindow.IsDiagnosticRepeatSkinRefreshEnabledForTesting(null), Is.False);
+            Assert.That(
+                source,
+                Does.Contain("INDIGO_DIAGNOSTIC_REPEAT_SKIN_REFRESH")
+            );
+            Assert.That(refreshMethod, Does.Contain("QueueDiagnosticRepeatExternalSkinRefreshIfNeeded("));
+            Assert.That(diagnosticMethod, Does.Contain("!App.IsDiagnosticNoPersistEnabled()"));
+            Assert.That(diagnosticMethod, Does.Contain("!IsDiagnosticRepeatSkinRefreshEnabled()"));
+            Assert.That(diagnosticMethod, Does.Contain("operationResult?.NavigateSkipped == true"));
+            Assert.That(diagnosticMethod, Does.Contain("Interlocked.Exchange(ref _diagnosticRepeatedExternalSkinRefreshRequested, 1)"));
+            Assert.That(diagnosticMethod, Does.Contain("QueueExternalSkinHostRefresh(\"dbinfo-Skin\")"));
+            Assert.That(diagnosticMethod, Does.Contain("diagnostic repeat skin refresh queued:"));
         });
     }
 
@@ -522,8 +557,8 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(handleSkinLeaveIndex, Is.GreaterThan(invalidateReuseKeyIndex));
             Assert.That(handleSkinLeaveIndex, Is.GreaterThan(navigateSkipIndex));
             Assert.That(navigateToStringIndex, Is.GreaterThan(handleSkinLeaveIndex));
-            Assert.That(refreshEndMethod, Does.Contain("navigate_skipped_current="));
-            Assert.That(refreshEndMethod, Does.Contain("navigate_skip_reason="));
+            Assert.That(refreshEndMethod, Does.Contain("navigate_skipped_current={(operationResult?.NavigateSkipped == true)}"));
+            Assert.That(refreshEndMethod, Does.Contain("navigate_skip_reason='{operationResult?.NavigateSkipReason ?? \"\"}'"));
             Assert.That(skipPolicyMethod, Does.Contain("ExternalSkinDefinitionRefreshMode.CachedSnapshot"));
             Assert.That(skipPolicyMethod, Does.Contain("StartsWith(\"dbinfo-\", StringComparison.Ordinal)"));
             Assert.That(operationResultSource, Does.Contain("PrepareElapsedMilliseconds"));
@@ -534,6 +569,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(operationResultSource, Does.Contain("NavigateSkipped"));
             Assert.That(operationResultSource, Does.Contain("NavigateSkipReason"));
             Assert.That(operationResultSource, Does.Contain("CreateNavigateSkipped"));
+            Assert.That(operationResultSource, Does.Contain("succeeded: true"));
+            Assert.That(operationResultSource, Does.Contain("errorType: \"HostNavigateSkippedSameDocument\""));
+            Assert.That(operationResultSource, Does.Contain("navigateSkipped: true"));
+            Assert.That(operationResultSource, Does.Contain("navigateSkipReason: reason"));
             Assert.That(operationResultSource, Does.Contain("WithTimings("));
             Assert.That(asyncBuildMethod, Does.Contain("Task.Run(() => BuildInitialDocument("));
         });
@@ -541,14 +580,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        string[] startDirectories =
-        [
-            Environment.GetEnvironmentVariable("IMM_REPO_ROOT") ?? "",
-            TestContext.CurrentContext.TestDirectory,
-            TestContext.CurrentContext.WorkDirectory,
-            Directory.GetCurrentDirectory(),
-        ];
-        foreach (string startDirectory in startDirectories)
+        foreach (string startDirectory in EnumerateRepoSearchDirectories())
         {
             if (string.IsNullOrWhiteSpace(startDirectory))
             {
@@ -570,6 +602,17 @@ public sealed class ExternalSkinHeaderChromePolicyTests
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static IEnumerable<string> EnumerateRepoSearchDirectories(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        yield return Path.GetDirectoryName(callerFilePath) ?? "";
+        yield return Environment.GetEnvironmentVariable("IMM_REPO_ROOT") ?? "";
+        yield return TestContext.CurrentContext.TestDirectory;
+        yield return TestContext.CurrentContext.WorkDirectory;
+        yield return Directory.GetCurrentDirectory();
     }
 
     private static string GetMethodBlock(string source, string signature)

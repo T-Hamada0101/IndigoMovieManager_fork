@@ -134,6 +134,35 @@ namespace IndigoMovieManager.Tests
         }
 
         [Test]
+        public void 診断用DB上書きはNoPersist時だけ有効にする()
+        {
+            Assert.That(
+                MainWindow.ResolveDiagnosticStartupDbOverrideForTesting(
+                    diagnosticNoPersist: false,
+                    rawStartupDbPath: @"C:\tmp\active-skin.wb"
+                ),
+                Is.Empty
+            );
+            Assert.That(
+                MainWindow.ResolveDiagnosticStartupDbOverrideForTesting(
+                    diagnosticNoPersist: true,
+                    rawStartupDbPath: @" C:\tmp\active-skin.wb "
+                ),
+                Is.EqualTo(@"C:\tmp\active-skin.wb")
+            );
+        }
+
+        [Test]
+        public void 診断用NoPersistは明示値だけ有効にする()
+        {
+            Assert.That(App.IsDiagnosticNoPersistEnabledForTesting("1"), Is.True);
+            Assert.That(App.IsDiagnosticNoPersistEnabledForTesting(" true "), Is.True);
+            Assert.That(App.IsDiagnosticNoPersistEnabledForTesting("0"), Is.False);
+            Assert.That(App.IsDiagnosticNoPersistEnabledForTesting(""), Is.False);
+            Assert.That(App.IsDiagnosticNoPersistEnabledForTesting(null), Is.False);
+        }
+
+        [Test]
         public void UI起点ではメニューを閉じる()
         {
             Assert.That(

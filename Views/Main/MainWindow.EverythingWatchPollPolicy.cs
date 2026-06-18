@@ -87,14 +87,102 @@ namespace IndigoMovieManager
             bool isUserPriorityActive
         )
         {
-            return ShouldDeferBackgroundWorkForUserPriority(
-                isUserPriorityActive,
-                isManualMode: false
+            return UiOperationPriorityPolicy.ShouldDeferBackgroundWork(
+                new UiOperationPrioritySnapshot(
+                    isUserPriorityActive,
+                    IsManualMode: false,
+                    IsWatchUiSuppressed: false,
+                    IsRecentViewportInteractionActive: false,
+                    IsPlayerPlaybackActive: false
+                )
             );
+        }
+
+        internal static bool ShouldDeferEverythingWatchPollForRecentViewport(
+            bool isRecentViewportInteractionActive
+        )
+        {
+            string deferReason = ResolveEverythingWatchPollDeferReason(
+                isDeferredByUiSuppression: false,
+                isDeferredByUserPriority: false,
+                isRecentViewportInteractionActive
+            );
+            return string.Equals(
+                deferReason,
+                UiOperationPriorityPolicy.DeferReasonRecentViewport,
+                StringComparison.Ordinal
+            );
+        }
+
+        internal static string ResolveEverythingWatchPollDeferReason(
+            bool isDeferredByUiSuppression,
+            bool isDeferredByUserPriority,
+            bool isRecentViewportInteractionActive
+        )
+        {
+            return UiOperationPriorityPolicy.ResolveEverythingPollDeferReason(
+                new UiOperationPrioritySnapshot(
+                    IsUserPriorityActive: isDeferredByUserPriority,
+                    IsManualMode: false,
+                    IsWatchUiSuppressed: isDeferredByUiSuppression,
+                    IsRecentViewportInteractionActive: isRecentViewportInteractionActive,
+                    IsPlayerPlaybackActive: false
+                )
+            );
+        }
+
+        internal static bool ShouldQueueEverythingWatchPollCatchUp(string deferReason)
+        {
+            return UiOperationPriorityPolicy.ShouldQueueCatchUpForEverythingPollDefer(
+                deferReason
+            );
+        }
+
+        internal static string ResolveEverythingWatchPollOperationReason(
+            bool isDeferredByUiSuppression,
+            bool isDeferredByUserPriority,
+            bool isRecentViewportInteractionActive,
+            bool isPlayerPlaybackActive
+        )
+        {
+            UiOperationPrioritySnapshot snapshot = new(
+                IsUserPriorityActive: isDeferredByUserPriority,
+                IsManualMode: false,
+                IsWatchUiSuppressed: isDeferredByUiSuppression,
+                IsRecentViewportInteractionActive: isRecentViewportInteractionActive,
+                IsPlayerPlaybackActive: isPlayerPlaybackActive
+            );
+            string deferReason = UiOperationPriorityPolicy.ResolveEverythingPollDeferReason(
+                snapshot
+            );
+            return UiOperationPriorityPolicy.ResolveEverythingPollOperationReason(
+                snapshot,
+                deferReason
+            );
+        }
+
+        internal static string BuildEverythingWatchPollDeferredLogMessage(
+            string operationReason,
+            string deferReason,
+            bool isRecentViewportInteractionActive,
+            bool shouldQueueCatchUp
+        )
+        {
+            return
+                $"everything poll deferred: operation_reason={operationReason} defer_reason={deferReason} recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} catch_up={FormatLogBool(shouldQueueCatchUp)}";
         }
 
         // poll 自体は定期処理なので、検索などの明示操作中は1周見送り、解除後のwatchで追いつく。
         private bool TryDeferEverythingWatchPollForUserPriority()
+        {
+            return TryDeferEverythingWatchPollForUserPriorityCore(
+                isRecentViewportInteractionActive: false
+            );
+        }
+
+        private bool TryDeferEverythingWatchPollForUserPriorityCore(
+            bool isRecentViewportInteractionActive
+        )
         {
             if (!ShouldDeferEverythingWatchPollForUserPriority(IsUserPriorityWorkActive()))
             {
@@ -108,7 +196,38 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "watch-check",
-                "everything poll deferred by user priority"
+                BuildEverythingWatchPollDeferredLogMessage(
+                    UiOperationPriorityPolicy.DeferReasonUserPriority,
+                    UiOperationPriorityPolicy.DeferReasonUserPriority,
+                    isRecentViewportInteractionActive,
+                    shouldQueueCatchUp: true
+                )
+            );
+            return true;
+        }
+
+        // スクロール直後は一周だけ poll を見送り、catch-up は積まず操作感だけ守る。
+        private bool TryDeferEverythingWatchPollForRecentViewport(
+            bool isRecentViewportInteractionActive
+        )
+        {
+            if (
+                !ShouldDeferEverythingWatchPollForRecentViewport(
+                    isRecentViewportInteractionActive
+                )
+            )
+            {
+                return false;
+            }
+
+            DebugRuntimeLog.Write(
+                "watch-check",
+                BuildEverythingWatchPollDeferredLogMessage(
+                    UiOperationPriorityPolicy.DeferReasonRecentViewport,
+                    UiOperationPriorityPolicy.DeferReasonRecentViewport,
+                    isRecentViewportInteractionActive,
+                    shouldQueueCatchUp: false
+                )
             );
             return true;
         }
@@ -116,10 +235,16 @@ namespace IndigoMovieManager
         // UI抑止や明示操作でpoll本体を逃がした周回では、待機間隔のためだけにDBへ寄らない。
         internal static bool ShouldProbeEverythingWatchPollQueueLoad(
             bool isDeferredByUiSuppression,
-            bool isDeferredByUserPriority
+            bool isDeferredByUserPriority,
+            bool isRecentViewportInteractionActive = false
         )
         {
-            return !isDeferredByUiSuppression && !isDeferredByUserPriority;
+            string deferReason = ResolveEverythingWatchPollDeferReason(
+                isDeferredByUiSuppression,
+                isDeferredByUserPriority,
+                isRecentViewportInteractionActive
+            );
+            return UiOperationPriorityPolicy.ShouldProbeEverythingPollQueueLoad(deferReason);
         }
 
         // 明示操作中や再生中は、poll を細かく刻まず calm 間隔へ寄せて背後 wake-up を減らす。
@@ -127,7 +252,8 @@ namespace IndigoMovieManager
             int delayMs,
             bool isDeferredByUiSuppression,
             bool isDeferredByUserPriority,
-            bool isPlayerPlaybackActive
+            bool isPlayerPlaybackActive,
+            bool isRecentViewportInteractionActive = false
         )
         {
             if (delayMs <= 0)
@@ -135,11 +261,17 @@ namespace IndigoMovieManager
                 delayMs = EverythingWatchPollIntervalMs;
             }
 
-            if (
-                !isDeferredByUiSuppression
-                && !isDeferredByUserPriority
-                && !isPlayerPlaybackActive
-            )
+            UiOperationPrioritySnapshot snapshot = new(
+                IsUserPriorityActive: isDeferredByUserPriority,
+                IsManualMode: false,
+                IsWatchUiSuppressed: isDeferredByUiSuppression,
+                IsRecentViewportInteractionActive: isRecentViewportInteractionActive,
+                IsPlayerPlaybackActive: isPlayerPlaybackActive
+            );
+            string deferReason = UiOperationPriorityPolicy.ResolveEverythingPollDeferReason(
+                snapshot
+            );
+            if (!UiOperationPriorityPolicy.ShouldExtendEverythingPollDelay(snapshot, deferReason))
             {
                 return delayMs;
             }

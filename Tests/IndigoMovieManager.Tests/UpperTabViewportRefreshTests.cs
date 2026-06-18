@@ -33,6 +33,39 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(actual, Is.False);
     }
 
+    [TestCase("scroll", true)]
+    [TestCase("page-up", true)]
+    [TestCase("page-down", true)]
+    [TestCase("loaded", false)]
+    [TestCase("tab-changed", false)]
+    public void recent_viewportはスクロール系操作だけで立てる(string reason, bool expected)
+    {
+        bool actual = IndigoMovieManager.MainWindow.ShouldMarkRecentViewportInteraction(reason);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void recent_viewportの有効期限内だけactiveになる()
+    {
+        long nowUtcTicks = DateTime.UtcNow.Ticks;
+
+        Assert.That(
+            IndigoMovieManager.MainWindow.IsRecentViewportInteractionActive(
+                nowUtcTicks,
+                nowUtcTicks + TimeSpan.FromMilliseconds(50).Ticks
+            ),
+            Is.True
+        );
+        Assert.That(
+            IndigoMovieManager.MainWindow.IsRecentViewportInteractionActive(
+                nowUtcTicks,
+                nowUtcTicks - 1
+            ),
+            Is.False
+        );
+    }
+
     [Test]
     public void Empty範囲はpreferredキーsnapshotを公開しない()
     {
@@ -130,6 +163,38 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(clearMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
         Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision = unchecked("));
         Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision + 1"));
+    }
+
+    [Test]
+    public void スクロールはuser_priorityではなくrecent_viewportだけを使う()
+    {
+        string viewportSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.Viewport.cs"
+        );
+        string pageScrollSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.PageScroll.cs"
+        );
+        string requestMethod = GetMethodBlock(
+            viewportSource,
+            "private void RequestUpperTabVisibleRangeRefresh("
+        );
+        string scrollChangedMethod = GetMethodBlock(
+            viewportSource,
+            "private void UpperTabScrollViewer_ScrollChanged("
+        );
+        string pageScrollMethod = GetMethodBlock(
+            pageScrollSource,
+            "private bool TryHandleUpperTabPageScroll("
+        );
+
+        Assert.That(requestMethod, Does.Contain("MarkRecentViewportInteraction(reason);"));
+        Assert.That(scrollChangedMethod, Does.Not.Contain("BeginUserPriorityWork("));
+        Assert.That(pageScrollMethod, Does.Not.Contain("BeginUserPriorityWork("));
+        Assert.That(viewportSource, Does.Contain("UiOperationRecentViewportInteractionWindowMs = 250"));
     }
 
     [Test]

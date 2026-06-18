@@ -507,7 +507,22 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
         Assert.That(sortAsync, Does.Contain("sort end: revision="));
         Assert.That(comboChanged, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
+        Assert.That(comboChanged, Does.Contain("BeginUserPriorityWork(\"sort\");"));
         Assert.That(comboChanged, Does.Contain("await SortDataAsync(plan.SortId);"));
+        Assert.That(comboChanged, Does.Contain("finally"));
+        Assert.That(comboChanged, Does.Contain("EndUserPriorityWork(\"sort\");"));
+        Assert.That(
+            comboChanged.IndexOf("BeginUserPriorityWork(\"sort\");", StringComparison.Ordinal),
+            Is.LessThan(
+                comboChanged.IndexOf("await SortDataAsync(plan.SortId);", StringComparison.Ordinal)
+            )
+        );
+        Assert.That(
+            comboChanged.IndexOf("EndUserPriorityWork(\"sort\");", StringComparison.Ordinal),
+            Is.GreaterThan(
+                comboChanged.IndexOf("await SortDataAsync(plan.SortId);", StringComparison.Ordinal)
+            )
+        );
         Assert.That(comboChanged, Does.Contain("if (shouldSelectFirstItem)"));
         Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
     }
@@ -658,6 +673,8 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(inputRoutingSource, Does.Contain("TryHandleUpperTabPageScroll(e)"));
         Assert.That(inputRoutingSource, Does.Contain("TryHandleDeleteShortcut(e)"));
         Assert.That(inputRoutingSource, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
+        Assert.That(inputRoutingSource, Does.Contain("BeginUserPriorityWork(\"sort\");"));
+        Assert.That(inputRoutingSource, Does.Contain("EndUserPriorityWork(\"sort\");"));
         Assert.That(inputRoutingSource, Does.Contain("FilterAndSort(plan.SortId, true);"));
         Assert.That(inputRoutingSource, Does.Contain("await SortDataAsync(plan.SortId);"));
         Assert.That(inputRoutingSource, Does.Contain("RefreshThumbnailErrorRecords(force: true)"));

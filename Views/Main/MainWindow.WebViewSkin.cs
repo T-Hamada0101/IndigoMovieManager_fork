@@ -27,6 +27,10 @@ namespace IndigoMovieManager
         private string _externalSkinHostRefreshBatchTraceId = "";
         private string _externalSkinHostRefreshDeferredRequestTraceId = "";
         private int _externalSkinHostTeardownStarted;
+        private int _diagnosticRepeatedExternalSkinRefreshRequested;
+
+        private const string DiagnosticRepeatSkinRefreshEnvironmentVariable =
+            "INDIGO_DIAGNOSTIC_REPEAT_SKIN_REFRESH";
 
         private enum ExternalSkinDefinitionRefreshMode
         {
@@ -479,6 +483,12 @@ namespace IndigoMovieManager
                     reason,
                     skipStage
                 );
+                QueueDiagnosticRepeatExternalSkinRefreshIfNeeded(
+                    externalSkinActive,
+                    hostReady,
+                    operationResult,
+                    reason
+                );
                 refreshEndLogged = true;
             }
             finally
@@ -500,6 +510,50 @@ namespace IndigoMovieManager
                     );
                 }
             }
+        }
+
+        private void QueueDiagnosticRepeatExternalSkinRefreshIfNeeded(
+            bool externalSkinActive,
+            bool hostReady,
+            WhiteBrowserSkinHostOperationResult operationResult,
+            string reason
+        )
+        {
+            if (
+                !externalSkinActive
+                || !hostReady
+                || operationResult?.NavigateSkipped == true
+                || !App.IsDiagnosticNoPersistEnabled()
+                || !IsDiagnosticRepeatSkinRefreshEnabled()
+            )
+            {
+                return;
+            }
+
+            if (Interlocked.Exchange(ref _diagnosticRepeatedExternalSkinRefreshRequested, 1) != 0)
+            {
+                return;
+            }
+
+            bool accepted = QueueExternalSkinHostRefresh("dbinfo-Skin");
+            DebugRuntimeLog.Write(
+                "skin-webview",
+                $"diagnostic repeat skin refresh queued: accepted={accepted} source_reason={reason} target_reason=dbinfo-Skin"
+            );
+        }
+
+        private static bool IsDiagnosticRepeatSkinRefreshEnabled()
+        {
+            return IsDiagnosticRepeatSkinRefreshEnabledForTesting(
+                Environment.GetEnvironmentVariable(DiagnosticRepeatSkinRefreshEnvironmentVariable)
+            );
+        }
+
+        internal static bool IsDiagnosticRepeatSkinRefreshEnabledForTesting(string value)
+        {
+            string normalizedValue = value?.Trim() ?? "";
+            return string.Equals(normalizedValue, "1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedValue, "true", StringComparison.OrdinalIgnoreCase);
         }
 
         // 1 行要約を読む時に、表示結果を短く判断できるようにする。

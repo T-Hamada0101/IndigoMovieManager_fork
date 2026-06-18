@@ -23,6 +23,7 @@ namespace IndigoMovieManager
         private const int UpperTabViewportThrottleMs = 33;
         private const int UpperTabFollowupScrollRefreshSuppressMs = 120;
         private const int UpperTabStartupAppendSuppressAfterPageScrollMs = 200;
+        private const int UiOperationRecentViewportInteractionWindowMs = 250;
 
         private readonly HashSet<ScrollViewer> _upperTabViewportAttachedScrollViewers = [];
         private readonly Dictionary<ItemsControl, Panel> _upperTabViewportItemsHostPanels = [];
@@ -37,6 +38,7 @@ namespace IndigoMovieManager
         private int _preferredVisibleMoviePathKeysSourceRevision;
         private long _upperTabFollowupScrollRefreshSuppressUntilUtcTicks;
         private long _upperTabStartupAppendSuppressUntilUtcTicks;
+        private long _recentViewportInteractionUntilUtcTicks;
 
         public static readonly DependencyProperty UpperTabPreferredMoviePathKeysRevisionProperty =
             DependencyProperty.Register(
@@ -85,6 +87,7 @@ namespace IndigoMovieManager
             }
 
             EnsureUpperTabViewportHandlersAttached();
+            MarkRecentViewportInteraction(reason);
             if (immediate)
             {
                 StopDispatcherTimerSafely(
@@ -117,6 +120,42 @@ namespace IndigoMovieManager
         {
             _upperTabStartupAppendSuppressUntilUtcTicks =
                 DateTime.UtcNow.AddMilliseconds(UpperTabStartupAppendSuppressAfterPageScrollMs).Ticks;
+        }
+
+        private void MarkRecentViewportInteraction(string reason)
+        {
+            if (!ShouldMarkRecentViewportInteraction(reason))
+            {
+                return;
+            }
+
+            Volatile.Write(
+                ref _recentViewportInteractionUntilUtcTicks,
+                DateTime.UtcNow.AddMilliseconds(UiOperationRecentViewportInteractionWindowMs).Ticks
+            );
+        }
+
+        private bool IsRecentViewportInteractionActive()
+        {
+            return IsRecentViewportInteractionActive(
+                DateTime.UtcNow.Ticks,
+                Volatile.Read(ref _recentViewportInteractionUntilUtcTicks)
+            );
+        }
+
+        internal static bool ShouldMarkRecentViewportInteraction(string reason)
+        {
+            return string.Equals(reason, "scroll", StringComparison.Ordinal)
+                || string.Equals(reason, "page-up", StringComparison.Ordinal)
+                || string.Equals(reason, "page-down", StringComparison.Ordinal);
+        }
+
+        internal static bool IsRecentViewportInteractionActive(
+            long nowUtcTicks,
+            long activeUntilUtcTicks
+        )
+        {
+            return activeUntilUtcTicks > 0 && nowUtcTicks <= activeUntilUtcTicks;
         }
 
         internal static bool ShouldSuppressUpperTabFollowupScrollRefresh(
