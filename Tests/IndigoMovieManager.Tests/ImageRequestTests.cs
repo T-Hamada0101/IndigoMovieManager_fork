@@ -273,4 +273,56 @@ public sealed class ImageRequestTests
             Assert.That(request.ShouldDecode, Is.True);
         });
     }
+
+    [Test]
+    public void ImageLoadResultはready_missing_canceled_failedをログ語彙へ畳める()
+    {
+        ImageRequest request = ImageRequest.ForExtensionDetail(
+            Path.Combine("thumb", "detail.jpg"),
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 51
+        );
+
+        ImageLoadResult ready = ImageLoadResult.Ready(
+            request,
+            usesPlaceholder: false,
+            resultRevision: 51
+        );
+        ImageLoadResult missing = ImageLoadResult.Missing(request, resultRevision: 51);
+        ImageLoadResult canceled = ImageLoadResult.Canceled(
+            request,
+            resultRevision: 51,
+            failureReason: "stale-apply",
+            isStale: true
+        );
+        ImageLoadResult failed = ImageLoadResult.Failed(
+            request,
+            resultRevision: 51,
+            failureReason: "error-marker",
+            usesPlaceholder: true
+        );
+
+        string readyLog = ImageLoadLogFields.Build(ready);
+        string missingLog = ImageLoadLogFields.Build(missing);
+        string canceledLog = ImageLoadLogFields.Build(canceled);
+        string failedLog = ImageLoadLogFields.Build(failed);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ready.OutcomeLogValue, Is.EqualTo("ready"));
+            Assert.That(missing.OutcomeLogValue, Is.EqualTo("missing"));
+            Assert.That(canceled.OutcomeLogValue, Is.EqualTo("canceled"));
+            Assert.That(failed.OutcomeLogValue, Is.EqualTo("failed"));
+            Assert.That(readyLog, Does.Contain("image_role=ExtensionDetail"));
+            Assert.That(readyLog, Does.Contain("image_outcome=ready"));
+            Assert.That(readyLog, Does.Contain("resolved=true"));
+            Assert.That(missingLog, Does.Contain("image_outcome=missing"));
+            Assert.That(missingLog, Does.Contain("resolved=false"));
+            Assert.That(canceledLog, Does.Contain("stale=true"));
+            Assert.That(canceledLog, Does.Contain("failure_reason=stale-apply"));
+            Assert.That(failedLog, Does.Contain("placeholder=true"));
+            Assert.That(failedLog, Does.Contain("failure_reason=error-marker"));
+        });
+    }
 }

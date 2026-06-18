@@ -151,6 +151,8 @@ public sealed class ImagePipelineSourcePolicyTests
 
         Assert.That(loadMethod, Does.Contain("BuildExtensionDetailImageProbeResult("));
         Assert.That(loadMethod, Does.Contain("ImageProbeLogFields.Build("));
+        Assert.That(loadMethod, Does.Contain("BuildExtensionDetailImageLoadResult("));
+        Assert.That(loadMethod, Does.Contain("ImageLoadLogFields.Build("));
         Assert.That(probeMethod, Does.Contain("ImageProbeOutcome.Found"));
         Assert.That(probeMethod, Does.Contain("ImageProbeOutcome.ErrorMarker"));
         Assert.That(probeMethod, Does.Contain("ImageProbeOutcome.Missing"));
@@ -158,6 +160,30 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(stampMethod, Does.Contain("FileInfo fileInfo = new(imagePath);"));
         AssertMethodDoesNotContainImageIo(applyMethod, nameof(applyMethod));
         Assert.That(applyMethod, Does.Not.Contain("ImageProbeLogFields.Build("));
+    }
+
+    [Test]
+    public void 詳細サムネstale_skipはImageLoadResultのcanceled語彙でログへ閉じる()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "Extension",
+            "MainWindow.BottomTab.Extension.DetailThumbnail.cs"
+        );
+        string loadMethod = ExtractMethod(
+            source,
+            "private ExtensionDetailThumbnailSnapshotResult LoadExtensionDetailThumbnailSnapshotCore("
+        );
+        string applyMethod = ExtractMethod(
+            source,
+            "private void ApplyExtensionDetailThumbnailSnapshotResult("
+        );
+
+        Assert.That(loadMethod, Does.Contain("ImageLoadResult.Canceled("));
+        Assert.That(loadMethod, Does.Contain("\"stale-background\""));
+        Assert.That(applyMethod, Does.Contain("ImageLoadResult.Canceled("));
+        Assert.That(applyMethod, Does.Contain("\"stale-apply\""));
+        Assert.That(applyMethod, Does.Contain("ImageLoadLogFields.Build("));
     }
 
     [Test]

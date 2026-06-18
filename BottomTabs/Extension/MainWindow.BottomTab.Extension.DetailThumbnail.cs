@@ -41,7 +41,8 @@ namespace IndigoMovieManager
             bool HasOpenRescueRequest,
             bool QueuedMissingCreate,
             bool QueuedAutoRescue,
-            ImageProbeResult ImageProbeResult
+            ImageProbeResult ImageProbeResult,
+            ImageLoadResult ImageLoadResult
         );
 
         private static readonly string[] DetailLayoutFolderNames = [
@@ -268,9 +269,15 @@ namespace IndigoMovieManager
             }
             catch (Exception ex)
             {
+                ImageLoadResult imageLoadResult = ImageLoadResult.Failed(
+                    request.ImageRequest,
+                    request.RequestVersion,
+                    "background-check-exception",
+                    usesPlaceholder: false
+                );
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"detail thumbnail background check failed: path='{request.MoviePath}' err='{ex.Message}'"
+                    $"detail thumbnail background check failed: path='{request.MoviePath}' {ImageLoadLogFields.Build(imageLoadResult)} err_type='{ex.GetType().Name}' err='{ex.Message}'"
                 );
             }
         }
@@ -281,6 +288,16 @@ namespace IndigoMovieManager
         {
             if (!IsExtensionDetailThumbnailRequestCurrentForBackground(request))
             {
+                ImageLoadResult canceledResult = ImageLoadResult.Canceled(
+                    request.ImageRequest,
+                    request.RequestVersion,
+                    "stale-background",
+                    isStale: true
+                );
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"detail thumbnail image probe skipped: path='{request.MoviePath}' {ImageLoadLogFields.Build(canceledResult)}"
+                );
                 return default;
             }
 
@@ -297,9 +314,17 @@ namespace IndigoMovieManager
                 hasOpenRescueRequest,
                 expectedExists
             );
+            ImageLoadResult imageLoadResult = BuildExtensionDetailImageLoadResult(
+                request,
+                existingThumbnailPath,
+                expectedExists,
+                hasErrorMarker,
+                hasOpenRescueRequest,
+                imageProbeResult
+            );
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"detail thumbnail image probe: path='{request.MoviePath}' {ImageProbeLogFields.Build(request.ImageProbeRequest, imageProbeResult)} expected_exists={FormatLogBool(expectedExists)} rescue_open={FormatLogBool(hasOpenRescueRequest)}"
+                $"detail thumbnail image probe: path='{request.MoviePath}' {ImageProbeLogFields.Build(request.ImageProbeRequest, imageProbeResult)} {ImageLoadLogFields.Build(imageLoadResult)} expected_exists={FormatLogBool(expectedExists)} rescue_open={FormatLogBool(hasOpenRescueRequest)}"
             );
 
             bool queuedMissingCreate = false;
@@ -338,7 +363,8 @@ namespace IndigoMovieManager
                 hasOpenRescueRequest,
                 queuedMissingCreate,
                 queuedAutoRescue,
-                imageProbeResult
+                imageProbeResult,
+                imageLoadResult
             );
         }
 
@@ -376,6 +402,53 @@ namespace IndigoMovieManager
             );
         }
 
+        private ImageLoadResult BuildExtensionDetailImageLoadResult(
+            ExtensionDetailThumbnailSnapshotRequest request,
+            string existingThumbnailPath,
+            bool expectedExists,
+            bool hasErrorMarker,
+            bool hasOpenRescueRequest,
+            ImageProbeResult imageProbeResult
+        )
+        {
+            if (!string.IsNullOrWhiteSpace(existingThumbnailPath) || expectedExists)
+            {
+                return ImageLoadResult.Ready(
+                    request.ImageRequest,
+                    usesPlaceholder: false,
+                    resultRevision: request.RequestVersion
+                );
+            }
+
+            if (hasErrorMarker || hasOpenRescueRequest)
+            {
+                return ImageLoadResult.Failed(
+                    request.ImageRequest with
+                    {
+                        ThumbnailPath = GetExtensionDetailPlaceholderPath(),
+                    },
+                    request.RequestVersion,
+                    hasErrorMarker ? "error-marker" : "rescue-open",
+                    usesPlaceholder: true
+                );
+            }
+
+            if (imageProbeResult.IsMissing)
+            {
+                return ImageLoadResult.Missing(request.ImageRequest, request.RequestVersion);
+            }
+
+            return new ImageLoadResult(
+                request.ImageRequest,
+                ImageLoadOutcome.Unknown,
+                HasResolvedImage: false,
+                UsesPlaceholder: false,
+                IsStale: false,
+                FailureReason: "",
+                ResultRevision: request.RequestVersion
+            );
+        }
+
         private void ApplyExtensionDetailThumbnailSnapshotResult(
             ExtensionDetailThumbnailSnapshotRequest request,
             ExtensionDetailThumbnailSnapshotResult result
@@ -383,6 +456,16 @@ namespace IndigoMovieManager
         {
             if (!IsExtensionDetailThumbnailSnapshotRequestCurrent(request))
             {
+                ImageLoadResult canceledResult = ImageLoadResult.Canceled(
+                    request.ImageRequest,
+                    request.RequestVersion,
+                    "stale-apply",
+                    isStale: true
+                );
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"detail thumbnail image apply skipped: path='{request.MoviePath}' {ImageLoadLogFields.Build(canceledResult)}"
+                );
                 return;
             }
 

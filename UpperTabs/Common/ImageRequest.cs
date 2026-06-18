@@ -33,6 +33,15 @@ namespace IndigoMovieManager.UpperTabs.Common
         ErrorMarker = 3,
     }
 
+    internal enum ImageLoadOutcome
+    {
+        Unknown = 0,
+        Ready = 1,
+        Missing = 2,
+        Canceled = 3,
+        Failed = 4,
+    }
+
     internal readonly record struct ImageRequest(
         string ThumbnailPath,
         string MoviePathKey,
@@ -170,6 +179,106 @@ namespace IndigoMovieManager.UpperTabs.Common
         {
             return
                 $"image_log_reason={request.LogReason ?? ""} image_role={request.ImageRequest.ThumbnailRole} probe_flags={request.ProbeFlags} probe_outcome={result.OutcomeLogValue} missing={FormatLogBool(result.IsMissing)} error_marker={FormatLogBool(result.HasErrorMarker)} stamp_utc_ticks={result.StampUtcTicks}";
+        }
+
+        private static string FormatLogBool(bool value)
+        {
+            return value ? "true" : "false";
+        }
+    }
+
+    internal readonly record struct ImageLoadResult(
+        ImageRequest ImageRequest,
+        ImageLoadOutcome Outcome,
+        bool HasResolvedImage,
+        bool UsesPlaceholder,
+        bool IsStale,
+        string FailureReason,
+        int ResultRevision
+    )
+    {
+        internal string OutcomeLogValue => Outcome switch
+        {
+            ImageLoadOutcome.Ready => "ready",
+            ImageLoadOutcome.Missing => "missing",
+            ImageLoadOutcome.Canceled => "canceled",
+            ImageLoadOutcome.Failed => "failed",
+            _ => "unknown",
+        };
+
+        internal static ImageLoadResult Ready(
+            ImageRequest request,
+            bool usesPlaceholder,
+            int resultRevision
+        )
+        {
+            return new ImageLoadResult(
+                request,
+                ImageLoadOutcome.Ready,
+                HasResolvedImage: true,
+                UsesPlaceholder: usesPlaceholder,
+                IsStale: false,
+                FailureReason: "",
+                ResultRevision: resultRevision
+            );
+        }
+
+        internal static ImageLoadResult Missing(ImageRequest request, int resultRevision)
+        {
+            return new ImageLoadResult(
+                request,
+                ImageLoadOutcome.Missing,
+                HasResolvedImage: false,
+                UsesPlaceholder: false,
+                IsStale: false,
+                FailureReason: "",
+                ResultRevision: resultRevision
+            );
+        }
+
+        internal static ImageLoadResult Canceled(
+            ImageRequest request,
+            int resultRevision,
+            string failureReason,
+            bool isStale
+        )
+        {
+            return new ImageLoadResult(
+                request,
+                ImageLoadOutcome.Canceled,
+                HasResolvedImage: false,
+                UsesPlaceholder: false,
+                IsStale: isStale,
+                FailureReason: failureReason ?? "",
+                ResultRevision: resultRevision
+            );
+        }
+
+        internal static ImageLoadResult Failed(
+            ImageRequest request,
+            int resultRevision,
+            string failureReason,
+            bool usesPlaceholder
+        )
+        {
+            return new ImageLoadResult(
+                request,
+                ImageLoadOutcome.Failed,
+                HasResolvedImage: usesPlaceholder,
+                UsesPlaceholder: usesPlaceholder,
+                IsStale: false,
+                FailureReason: failureReason ?? "",
+                ResultRevision: resultRevision
+            );
+        }
+    }
+
+    internal static class ImageLoadLogFields
+    {
+        internal static string Build(ImageLoadResult result)
+        {
+            return
+                $"image_role={result.ImageRequest.ThumbnailRole} image_request_revision={result.ImageRequest.RequestRevision} image_result_revision={result.ResultRevision} image_outcome={result.OutcomeLogValue} resolved={FormatLogBool(result.HasResolvedImage)} placeholder={FormatLogBool(result.UsesPlaceholder)} stale={FormatLogBool(result.IsStale)} failure_reason={result.FailureReason ?? ""}";
         }
 
         private static string FormatLogBool(bool value)
