@@ -128,10 +128,15 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(scoreClickMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateScore("));
         Assert.That(scoreClickMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(scorePersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateScore("));
+        Assert.That(scorePersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(scorePersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(scorePersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+        Assert.That(scorePersistMethod, Does.Contain("\"movie-score\""));
+        Assert.That(scorePersistMethod, Does.Contain("\"main-db-score\""));
         Assert.That(
             scorePersistMethod,
             Does.Contain(
-                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+                "score persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
             )
         );
 
@@ -142,10 +147,15 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(tagAddMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateTag("));
         Assert.That(tagAddMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(tagPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+        Assert.That(tagPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(tagPersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(tagPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+        Assert.That(tagPersistMethod, Does.Contain("\"movie-tag\""));
+        Assert.That(tagPersistMethod, Does.Contain("\"main-db-tag\""));
         Assert.That(
             tagPersistMethod,
             Does.Contain(
-                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+                "tag persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
             )
         );
 

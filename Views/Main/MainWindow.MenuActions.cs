@@ -634,18 +634,38 @@ namespace IndigoMovieManager
                 return;
             }
 
+            PersistenceWriteRequest writeRequest = PersistenceWriteRequest.Create(
+                PersistenceWriteKind.BackgroundDbWrite,
+                "movie-score",
+                "main-db-score",
+                retryable: true
+            );
             _ = Task.Run(
                 () =>
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
                         _mainDbMovieMutationFacade.UpdateScore(dbFullPath, movieId, score);
+                        PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
+                            writeRequest,
+                            stopwatch.Elapsed
+                        );
+                        DebugRuntimeLog.Write(
+                            "ui-tempo",
+                            $"score persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+                        );
                     }
                     catch (Exception ex)
                     {
+                        PersistenceWriteResult result = PersistenceWriteResult.FromFailure(
+                            writeRequest,
+                            stopwatch.Elapsed,
+                            PersistenceFailureKind.BackgroundDbWrite
+                        );
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"score persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
+                            $"score persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields} err='{ex.GetType().Name}'"
                         );
                     }
                 }

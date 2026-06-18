@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using IndigoMovieManager.Infrastructure;
 using IndigoMovieManager.Thumbnail;
@@ -402,18 +403,38 @@ namespace IndigoMovieManager
             }
 
             string tagSnapshot = tags ?? "";
+            PersistenceWriteRequest writeRequest = PersistenceWriteRequest.Create(
+                PersistenceWriteKind.BackgroundDbWrite,
+                "movie-tag",
+                "main-db-tag",
+                retryable: true
+            );
             _ = Task.Run(
                 () =>
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
                         _mainDbMovieMutationFacade.UpdateTag(dbFullPath, movieId, tagSnapshot);
+                        PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
+                            writeRequest,
+                            stopwatch.Elapsed
+                        );
+                        DebugRuntimeLog.Write(
+                            "ui-tempo",
+                            $"tag persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+                        );
                     }
                     catch (Exception ex)
                     {
+                        PersistenceWriteResult result = PersistenceWriteResult.FromFailure(
+                            writeRequest,
+                            stopwatch.Elapsed,
+                            PersistenceFailureKind.BackgroundDbWrite
+                        );
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"tag persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
+                            $"tag persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields} err='{ex.GetType().Name}'"
                         );
                     }
                 }
