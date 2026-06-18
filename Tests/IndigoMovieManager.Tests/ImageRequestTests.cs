@@ -116,7 +116,7 @@ public sealed class ImageRequestTests
     }
 
     [Test]
-    public void 詳細サムネ要求は非表示または古いrevisionなら捨てる()
+    public void 詳細サムネ要求は非表示でも状態を保持し古いrevisionだけ捨てる()
     {
         ImageRequest hiddenRequest = MainWindow.CreateExtensionDetailImageRequest(
             @"C:\thumb\hidden-detail.jpg",
@@ -134,7 +134,7 @@ public sealed class ImageRequestTests
         Assert.Multiple(() =>
         {
             Assert.That(hiddenRequest.IsVisiblePriority, Is.False);
-            Assert.That(MainWindow.ShouldApplyExtensionDetailImageRequest(hiddenRequest, 12), Is.False);
+            Assert.That(MainWindow.ShouldApplyExtensionDetailImageRequest(hiddenRequest, 12), Is.True);
             Assert.That(staleRequest.IsVisiblePriority, Is.True);
             Assert.That(MainWindow.ShouldApplyExtensionDetailImageRequest(staleRequest, 13), Is.False);
         });

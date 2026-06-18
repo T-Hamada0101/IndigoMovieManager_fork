@@ -427,7 +427,6 @@ namespace IndigoMovieManager
         )
         {
             return request.ThumbnailRole == ImageRequestThumbnailRole.ExtensionDetail
-                && request.ShouldDecode
                 && request.RequestRevision == currentRevision;
         }
 
