@@ -107,40 +107,48 @@ namespace IndigoMovieManager
         /// </summary>
         private async void ComboSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (sender is not ComboBox senderObj)
             {
                 return;
             }
-            if (_suppressSortComboSelectionChangedHandling)
+
+            string dbFullPath = MainVM.DbInfo.DBFullPath;
+            bool isSelectionChangeSuppressed = _suppressSortComboSelectionChangedHandling;
+            int movieCount =
+                string.IsNullOrEmpty(dbFullPath) || isSelectionChangeSuppressed
+                    ? 0
+                    : MainVM.MovieRecs.Count;
+            string selectedSortId = movieCount > 0 ? senderObj.SelectedValue?.ToString() : null;
+            SortComboSelectionPlan plan = SortComboSelectionPolicy.BuildPlan(
+                dbFullPath,
+                isSelectionChangeSuppressed,
+                movieCount,
+                selectedSortId,
+                IsStartupFeedPartialActive
+            );
+            if (!plan.ShouldHandle)
             {
                 return;
             }
-            if (sender is ComboBox senderObj)
+
+            bool shouldSelectFirstItem = true;
+            if (plan.ShouldUseStartupFullReload)
             {
-                if (MainVM.MovieRecs.Count > 0)
-                {
-                    if (senderObj.SelectedValue != null)
-                    {
-                        var id = senderObj.SelectedValue;
-                        bool shouldSelectFirstItem = true;
-                        if (IsStartupFeedPartialActive)
-                        {
-                            FilterAndSort(id.ToString(), true);
-                        }
-                        else
-                        {
-                            shouldSelectFirstItem = await SortDataAsync(id.ToString());
-                        }
-                        if (id.ToString() == "28")
-                        {
-                            RefreshThumbnailErrorRecords(force: true);
-                        }
-                        if (shouldSelectFirstItem)
-                        {
-                            SelectFirstItem();
-                        }
-                    }
-                }
+                FilterAndSort(plan.SortId, true);
+            }
+            else
+            {
+                shouldSelectFirstItem = await SortDataAsync(plan.SortId);
+            }
+
+            if (plan.ShouldRefreshThumbnailErrorRecords)
+            {
+                RefreshThumbnailErrorRecords(force: true);
+            }
+
+            if (shouldSelectFirstItem)
+            {
+                SelectFirstItem();
             }
         }
     }

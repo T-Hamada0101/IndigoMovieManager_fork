@@ -506,7 +506,8 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortAsync, Does.Contain("MovieViewReadModelResult.FromSorted("));
         Assert.That(sortAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
         Assert.That(sortAsync, Does.Contain("sort end: revision="));
-        Assert.That(comboChanged, Does.Contain("await SortDataAsync(id.ToString());"));
+        Assert.That(comboChanged, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
+        Assert.That(comboChanged, Does.Contain("await SortDataAsync(plan.SortId);"));
         Assert.That(comboChanged, Does.Contain("if (shouldSelectFirstItem)"));
         Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
     }
@@ -622,10 +623,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "private async void ComboSort_SelectionChanged("
         );
 
-        Assert.That(comboChanged, Does.Contain("if (IsStartupFeedPartialActive)"));
-        Assert.That(comboChanged, Does.Contain("FilterAndSort(id.ToString(), true);"));
+        Assert.That(comboChanged, Does.Contain("if (plan.ShouldUseStartupFullReload)"));
+        Assert.That(comboChanged, Does.Contain("FilterAndSort(plan.SortId, true);"));
         Assert.That(comboChanged, Does.Contain("else"));
-        Assert.That(comboChanged, Does.Contain("await SortDataAsync(id.ToString());"));
+        Assert.That(comboChanged, Does.Contain("await SortDataAsync(plan.SortId);"));
         Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
     }
 
@@ -635,6 +636,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
         string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         string inputRoutingSource = GetRepoText("Views", "Main", "MainWindow.InputRouting.cs");
+        string sortComboPolicySource = GetRepoText("Views", "Main", "SortComboSelectionPolicy.cs");
 
         string[] inputRoutingSignatures =
         [
@@ -655,10 +657,15 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         Assert.That(inputRoutingSource, Does.Contain("TryHandleUpperTabPageScroll(e)"));
         Assert.That(inputRoutingSource, Does.Contain("TryHandleDeleteShortcut(e)"));
-        Assert.That(inputRoutingSource, Does.Contain("FilterAndSort(id.ToString(), true);"));
-        Assert.That(inputRoutingSource, Does.Contain("await SortDataAsync(id.ToString());"));
+        Assert.That(inputRoutingSource, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
+        Assert.That(inputRoutingSource, Does.Contain("FilterAndSort(plan.SortId, true);"));
+        Assert.That(inputRoutingSource, Does.Contain("await SortDataAsync(plan.SortId);"));
         Assert.That(inputRoutingSource, Does.Contain("RefreshThumbnailErrorRecords(force: true)"));
         Assert.That(inputRoutingSource, Does.Contain("SelectFirstItem();"));
+        Assert.That(sortComboPolicySource, Does.Contain("internal static class SortComboSelectionPolicy"));
+        Assert.That(sortComboPolicySource, Does.Not.Contain("System.Windows"));
+        Assert.That(sortComboPolicySource, Does.Not.Contain("Dispatcher"));
+        Assert.That(sortComboPolicySource, Does.Not.Contain("ComboBox"));
         Assert.That(inputRoutingSource, Does.Not.Contain("File."));
         Assert.That(inputRoutingSource, Does.Not.Contain("Directory."));
         Assert.That(inputRoutingSource, Does.Not.Contain("Path.Exists("));
@@ -685,7 +692,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string[] expected =
         [
             "Views/Main/MainWindow.Startup.cs|startup-fallback-full-reload|FilterAndSort(sortId, true);",
-            "Views/Main/MainWindow.InputRouting.cs|startup-partial-sort-full-order|FilterAndSort(id.ToString(), true);",
+            "Views/Main/MainWindow.InputRouting.cs|startup-partial-sort-full-order|FilterAndSort(plan.SortId, true);",
         ];
 
         Assert.That(actual, Is.EquivalentTo(expected));
@@ -956,7 +963,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         if (
             relativePath == "Views/Main/MainWindow.InputRouting.cs"
-            && trimmedLine == "FilterAndSort(id.ToString(), true);"
+            && trimmedLine == "FilterAndSort(plan.SortId, true);"
         )
         {
             return "startup-partial-sort-full-order";
