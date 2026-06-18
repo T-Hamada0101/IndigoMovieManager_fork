@@ -4,8 +4,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:te="clr-namespace:IndigoMovieManager.BottomTabs.ThumbnailError"
     Style="{StaticResource BottomTabRootUserControlStyle}"
     mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <te:ThumbnailErrorImageSourceConverter x:Key="thumbnailErrorImageSourceConverter" />
+    </UserControl.Resources>
 
     <Grid Margin="6">
         <Grid.RowDefinitions>
@@ -198,6 +203,33 @@
             SelectionChanged="ErrorListDataGrid_SelectionChanged"
             SelectionMode="Extended">
             <DataGrid.Columns>
+                <DataGridTemplateColumn
+                    Width="42"
+                    MinWidth="38"
+                    Header="画像"
+                    IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border
+                                Width="32"
+                                Height="18"
+                                Background="{DynamicResource MaterialDesignDivider}"
+                                ClipToBounds="True">
+                                <Image Stretch="UniformToFill">
+                                    <Image.Source>
+                                        <MultiBinding
+                                            Converter="{StaticResource thumbnailErrorImageSourceConverter}"
+                                            ConverterParameter="18">
+                                            <Binding Path="ThumbnailImagePath" />
+                                            <Binding Path="MoviePath" />
+                                            <Binding Path="ThumbnailImageRequestRevision" />
+                                        </MultiBinding>
+                                    </Image.Source>
+                                </Image>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn
                     Width="220"
                     MinWidth="160"

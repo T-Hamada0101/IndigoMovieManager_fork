@@ -191,6 +191,105 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("ThumbnailPreviewCache.Shared.TryGet("));
     }
 
+    [Test]
+    public void ThumbnailError一覧converterはImageRequestを作ってからdecodeへ進む()
+    {
+        string converterSource = GetRepoText(
+            "BottomTabs",
+            "ThumbnailError",
+            "ThumbnailErrorImageSourceConverter.cs"
+        );
+        string convertMethod = ExtractMethod(converterSource, "public object Convert(");
+
+        Assert.That(convertMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
+        Assert.That(convertMethod, Does.Contain("ShouldApplyThumbnailErrorListImageRequest(request)"));
+        Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
+        Assert.That(converterSource, Does.Contain("ImageRequestThumbnailRole.ThumbnailErrorList"));
+    }
+
+    [Test]
+    public void ThumbnailError一覧XAMLは専用converterへ画像要求を渡す()
+    {
+        string xamlSource = GetRepoText(
+            "BottomTabs",
+            "ThumbnailError",
+            "ThumbnailErrorTabView.xaml"
+        );
+
+        Assert.That(xamlSource, Does.Contain("thumbnailErrorImageSourceConverter"));
+        Assert.That(xamlSource, Does.Contain("ThumbnailImagePath"));
+        Assert.That(xamlSource, Does.Contain("ThumbnailImageRequestRevision"));
+        Assert.That(xamlSource, Does.Contain("Width=\"32\""));
+        Assert.That(xamlSource, Does.Contain("Height=\"18\""));
+        Assert.That(xamlSource, Does.Contain("ConverterParameter=\"18\""));
+        Assert.That(xamlSource, Does.Not.Contain("noLockImageConverter"));
+    }
+
+    [Test]
+    public void ThumbnailError一覧画像列は高密度行高を広げない固定サイズにする()
+    {
+        string xamlSource = GetRepoText(
+            "BottomTabs",
+            "ThumbnailError",
+            "ThumbnailErrorTabView.xaml"
+        );
+        string styleSource = GetRepoText("Themes", "Controls", "Lightweight.xaml");
+
+        Assert.That(styleSource, Does.Contain("HighDensityBottomTabDataGridRowStyle"));
+        Assert.That(styleSource, Does.Contain("<Setter Property=\"Height\" Value=\"22\" />"));
+        Assert.That(xamlSource, Does.Contain("Width=\"32\""));
+        Assert.That(xamlSource, Does.Contain("Height=\"18\""));
+        Assert.That(xamlSource, Does.Contain("ConverterParameter=\"18\""));
+        Assert.That(xamlSource, Does.Not.Contain("ConverterParameter=\"36\""));
+    }
+
+    [Test]
+    public void ThumbnailError一覧画像pathは背景集計で確定する()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string buildMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorRecordViewModel BuildThumbnailErrorRecord("
+        );
+        string scanMethod = ExtractMethod(
+            source,
+            "public static ThumbnailErrorTabScanSnapshot Scan("
+        );
+
+        Assert.That(buildMethod, Does.Contain("ResolveThumbnailErrorListImagePath("));
+        Assert.That(buildMethod, Does.Contain("ThumbnailImagePath = thumbnailImagePath"));
+        Assert.That(buildMethod, Does.Contain("ThumbnailImageRequestRevision = BuildThumbnailErrorListImageRequestRevision("));
+        Assert.That(scanMethod, Does.Contain("ThumbnailPathResolver.IsErrorMarker(thumbnailPath)"));
+        Assert.That(scanMethod, Does.Contain("MarkerPath = thumbnailPath"));
+    }
+
+    [Test]
+    public void ThumbnailError一覧UIイベントへ画像I_Oやdecodeを戻さない()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string reloadMethod = ExtractMethod(
+            source,
+            "private void ReloadThumbnailErrorListButton_Click("
+        );
+        string clearMethod = ExtractMethod(
+            source,
+            "private async void ClearThumbnailErrorListButton_Click("
+        );
+        string selectedMethod = ExtractMethod(
+            source,
+            "private async void RescueSelectedThumbnailErrorsButton_Click("
+        );
+        string allMethod = ExtractMethod(
+            source,
+            "private async void RescueAllThumbnailErrorsButton_Click("
+        );
+
+        AssertMethodDoesNotContainImageIo(reloadMethod, nameof(reloadMethod));
+        AssertMethodDoesNotContainImageIo(clearMethod, nameof(clearMethod));
+        AssertMethodDoesNotContainImageIo(selectedMethod, nameof(selectedMethod));
+        AssertMethodDoesNotContainImageIo(allMethod, nameof(allMethod));
+    }
+
     private static void AssertMethodDoesNotContainImageIo(string methodSource, string methodName)
     {
         foreach (string fragment in ImageIoFragments)

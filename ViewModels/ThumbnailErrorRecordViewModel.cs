@@ -15,6 +15,10 @@ namespace IndigoMovieManager.ViewModels
 
         public string MoviePath { get; init; } = "";
 
+        public string ThumbnailImagePath { get; init; } = "";
+
+        public int ThumbnailImageRequestRevision { get; init; }
+
         public string FailedTabsText { get; init; } = "";
 
         public int MarkerCount { get; init; }

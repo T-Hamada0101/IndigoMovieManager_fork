@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#####-----] 48%`
+> 進捗メータ: `[#####-----] 49%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-18
 
-全体進捗目安: `[#####-----] 48%`
+全体進捗目安: `[#####-----] 49%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -17,7 +17,7 @@
 | Phase 1. UI Shell 入力契約 | 45% | `UiOperationSnapshot` を追加し、旧 `UiOperationPrioritySnapshot` から段階移行できる入口を固定済み | UI event handler を snapshot 生成へさらに寄せる |
 | Phase 2. ReadModel Store と Diff-first | 28% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiff` は add / delete / update / move / full fallback / no-change と、query / sort / db-switch / unsafe / massive / none の fallback 語彙で apply log を読める入口になった | 小変更の diff apply 本体を通常経路へ入れる |
 | Phase 3. In-process Scheduler | 31% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。runtime 接続はまだ行わない | 実行器本体を作る前に、実機ログで watch cancel / poll defer / thumbnail refresh の発生頻度と支配時間を揃える |
-| Phase 4. Image Pipeline 統一 | 34% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback が `ImageRequest` を作り、詳細サムネ背景確認は `ImageProbeRequest` / `ImageProbeResult` で missing / ERROR marker / stamp を説明できる | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard を確認する |
+| Phase 4. Image Pipeline 統一 | 36% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作り、詳細サムネ背景確認は `ImageProbeRequest` / `ImageProbeResult` で missing / ERROR marker / stamp を説明できる | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard を確認する |
 | Phase 5. Persistence Pipeline | 33% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み。skin profile と bookmark は失敗時に cache / log / 軽量状態で dirty / failed / retryable を読める入口を追加済み | skin profile / bookmark の最小 UI 通知条件を揃え、実機ログで失敗時だけ表現されることを確認する |
 | Phase 6. Worker 契約 | 43% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果、watch metadata probe 入出力から Worker DTO へ写す adapter と focused test を追加済み | metadata probe の実行ログ / progress 語彙を、実機支配要因を見て必要最小限で接続する |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 22% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
@@ -48,6 +48,7 @@
 - 詳細サムネ背景確認は `ImageProbeRequest` / `ImageProbeResult` を持ち、missing / ERROR marker / stamp 判定を UI apply ではなく背景 probe の結果としてログで読める入口へ寄せた。
 - Player右レール画像 converter は `ImageRequest` の `PlayerRightRail` role を作り、非表示だけでは捨てず request revision 不一致だけを stale discard する入口へ寄せた。
 - サムネ進捗 preview の file fallback は `ImageRequest` の `ThumbnailProgressPreview` role を作ってから decode へ進み、メモリ優先のまま下側進捗UIも画像契約語彙で読める入口へ寄せた。
+- 下側 ThumbnailError / ERROR 一覧は、背景集計で preview パスと revision を表示モデルへ持たせ、`ThumbnailErrorList` role の `ImageRequest` を作ってから converter decode へ進む入口に寄せた。UI event handler へ画像存在確認、ERROR marker 判定、decode を戻さない source policy も追加済み。
 - 保存 hot path は、UI操作中に同期 `Save()` や score / tag の直接DB更新へ戻らないことを source policy で固定した。
 - view_count と movie_path は UI 表示値を先に反映し、DB 保存を背景へ送ることを source policy で固定した。
 - skin profile write は UI hot path を enqueue のみに保ったまま、queue / persister / fallback 失敗時だけ cache と `skin-db` ログへ `dirty=true failed=true retryable=true` を出す入口を追加した。
@@ -95,6 +96,7 @@
 - 上側タブ、下側 ERROR / 進捗、詳細、Player右レールの画像要求を visible-first に寄せる。
 - 画像存在確認、stamp取得、decode、ERROR marker判定は UI スレッドから外す。
 - cache miss は placeholder で先に返し、成功 / missing / canceled / failed を revision 付きで戻す。
+- 現在は下側 ThumbnailError 一覧の preview fallback まで `ImageRequest` 語彙へ寄せた段階。次は request から ready / missing / canceled / failed までの実機ログ語彙を必要最小限で揃える。
 
 ### Phase 5. Persistence Pipeline
 
@@ -138,6 +140,7 @@
 - Source policy
   - `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` の許容線を固定する。
   - UI event handler に DB read / file I/O / image decode を戻さない。
+  - ThumbnailError / ERROR 一覧の画像存在確認、ERROR marker 判定、decode は UI event handler へ戻さない。
   - Worker contract が WPF / Dispatcher / ViewModel を参照しない。
   - `UiWorkRequest` を使う既存予約ログは、release reason、bounded drain、coalesce、latest-only、timeout policy を共通 helper 経由で出す。
 - Unit tests

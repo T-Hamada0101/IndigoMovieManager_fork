@@ -251,4 +251,26 @@ public sealed class ImageRequestTests
             Assert.That(request.ShouldDecode, Is.True);
         });
     }
+
+    [Test]
+    public void ThumbnailError一覧要求はrole_cache_revisionを保持する()
+    {
+        string moviePath = Path.Combine("movies", "error-list.mp4");
+        ImageRequest request = ImageRequest.ForThumbnailErrorList(
+            @"C:\thumb\error-list.#ERROR.jpg",
+            QueueDbPathResolver.CreateMoviePathKey(moviePath),
+            requestRevision: 44
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.ThumbnailRole, Is.EqualTo(ImageRequestThumbnailRole.ThumbnailErrorList));
+            Assert.That(request.CachePolicy, Is.EqualTo(ImageRequestCachePolicy.UseConverterCache));
+            Assert.That(request.RequestRevision, Is.EqualTo(44));
+            Assert.That(request.ThumbnailPath, Is.EqualTo(@"C:\thumb\error-list.#ERROR.jpg"));
+            Assert.That(request.MoviePathKey, Is.EqualTo(QueueDbPathResolver.CreateMoviePathKey(moviePath)));
+            Assert.That(request.IsVisiblePriority, Is.True);
+            Assert.That(request.ShouldDecode, Is.True);
+        });
+    }
 }

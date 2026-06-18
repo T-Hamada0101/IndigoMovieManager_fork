@@ -508,6 +508,7 @@ namespace IndigoMovieManager
             List<int> failedTabs = [];
             List<int> markerTabs = [];
             DateTime? lastWriteTime = null;
+            string thumbnailImagePath = "";
             List<ThumbnailFailureRecord> visibleFailureRecords = [];
             string moviePathBody = NormalizeThumbnailLookupBody(movie.Movie_Path);
             string fallbackBody = NormalizeThumbnailLookupBody(movie.Movie_Name ?? movie.Movie_Body ?? "");
@@ -544,6 +545,7 @@ namespace IndigoMovieManager
                     if (!lastWriteTime.HasValue || markerWriteTime > lastWriteTime.Value)
                     {
                         lastWriteTime = markerWriteTime;
+                        thumbnailImagePath = markerSnapshot.MarkerPath ?? "";
                     }
                 }
 
@@ -582,6 +584,7 @@ namespace IndigoMovieManager
                 primaryFailureRecord,
                 lastWriteTime
             );
+            thumbnailImagePath = ResolveThumbnailErrorListImagePath(thumbnailImagePath, movie);
             bool hasMixedStatuses =
                 visibleFailureRecords
                     .Select(x => x.Status ?? "")
@@ -602,6 +605,12 @@ namespace IndigoMovieManager
                 MovieId = movie.Movie_Id,
                 MovieName = movie.Movie_Name ?? "",
                 MoviePath = movie.Movie_Path ?? "",
+                ThumbnailImagePath = thumbnailImagePath,
+                ThumbnailImageRequestRevision = BuildThumbnailErrorListImageRequestRevision(
+                    thumbnailImagePath,
+                    lastWriteTime,
+                    progressUpdatedAt
+                ),
                 FailedTabsText = string.Join(
                     ", ",
                     failedTabs.Select(GetThumbnailTabDisplayName)
@@ -663,6 +672,35 @@ namespace IndigoMovieManager
             return tabScanSnapshot.TryGetMarker(fallbackBody, out markerSnapshot);
         }
 
+        private static string ResolveThumbnailErrorListImagePath(
+            string markerPath,
+            MovieRecords movie
+        )
+        {
+            if (!string.IsNullOrWhiteSpace(markerPath))
+            {
+                return markerPath;
+            }
+
+            // 既に MovieRecords が組み込み ERROR 画像を持っていれば、その表示互換を優先する。
+            if (IsThumbnailErrorPlaceholderPath(movie?.ThumbPathGrid))
+            {
+                return movie.ThumbPathGrid ?? "";
+            }
+
+            return Path.Combine(AppContext.BaseDirectory, "Images", "errorGrid.jpg");
+        }
+
+        private static int BuildThumbnailErrorListImageRequestRevision(
+            string thumbnailImagePath,
+            DateTime? markerWriteTime,
+            DateTime? progressUpdatedAt
+        )
+        {
+            DateTime revisionTime = markerWriteTime ?? progressUpdatedAt ?? DateTime.MinValue;
+            return HashCode.Combine(thumbnailImagePath ?? "", revisionTime.ToUniversalTime().Ticks);
+        }
+
         private static string NormalizeThumbnailLookupBody(string movieNameOrPath)
         {
             if (string.IsNullOrWhiteSpace(movieNameOrPath))
@@ -688,6 +726,8 @@ namespace IndigoMovieManager
 
         private sealed class ThumbnailErrorMarkerSnapshot
         {
+            public string MarkerPath { get; init; } = "";
+
             public DateTime LastWriteTime { get; init; }
         }
 
@@ -749,6 +789,7 @@ namespace IndigoMovieManager
                             {
                                 snapshot.markersByBody[body] = new ThumbnailErrorMarkerSnapshot
                                 {
+                                    MarkerPath = thumbnailPath,
                                     LastWriteTime = lastWriteTime,
                                 };
                             }
