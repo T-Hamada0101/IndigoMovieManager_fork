@@ -1,0 +1,174 @@
+using System.IO;
+using System.Runtime.CompilerServices;
+
+namespace IndigoMovieManager.Tests;
+
+[TestFixture]
+public sealed class WorkerContractSourcePolicyTests
+{
+    private static readonly string[] WorkerContractSourceDirectories =
+    [
+        "src/IndigoMovieManager.Thumbnail.Queue",
+    ];
+
+    private static readonly string[] WorkerContractSourceFiles =
+    [
+        "Thumbnail/ThumbnailRescueWorkerJobJsonClient.cs",
+    ];
+
+    private static readonly string[] ForbiddenUiFragments =
+    [
+        "using System.Windows",
+        "System.Windows.",
+        "Windows.Threading",
+        "Dispatcher",
+        "DispatcherTimer",
+        "ViewModel",
+        "ViewModels",
+        "ObservableCollection",
+        "PresentationCore",
+        "PresentationFramework",
+        "WindowsBase",
+        "System.Xaml",
+        "Microsoft.Xaml",
+        "Microsoft.Web.WebView2",
+        "WebView2",
+        "MainWindow",
+    ];
+
+    [Test]
+    public void Worker契約SourceはWpfDispatcherViewModelを参照しない()
+    {
+        string repoRoot = FindRepoRoot();
+        string[] relativePaths = EnumerateWorkerContractSourceFiles(repoRoot).ToArray();
+
+        Assert.That(
+            relativePaths,
+            Does.Contain("src/IndigoMovieManager.Thumbnail.Queue/Ipc/ThumbnailIpcDtos.cs")
+        );
+        Assert.That(
+            relativePaths,
+            Does.Contain("src/IndigoMovieManager.Thumbnail.Queue/ThumbnailProgressRuntime.cs")
+        );
+        Assert.That(
+            relativePaths,
+            Does.Contain("src/IndigoMovieManager.Thumbnail.Queue/ThumbnailQueueProcessor.cs")
+        );
+        Assert.That(
+            relativePaths,
+            Does.Contain("Thumbnail/ThumbnailRescueWorkerJobJsonClient.cs")
+        );
+
+        foreach (string relativePath in relativePaths)
+        {
+            string source = File.ReadAllText(ToAbsolutePath(repoRoot, relativePath));
+
+            // Worker契約はUIを知らないことが肝なので、WPF/ViewModel語が混ざった瞬間に止める。
+            foreach (string forbidden in ForbiddenUiFragments)
+            {
+                Assert.That(
+                    source,
+                    Does.Not.Contain(forbidden),
+                    $"{relativePath} に UI 層参照 '{forbidden}' を入れないでください。"
+                );
+            }
+        }
+    }
+
+    [Test]
+    public void ThumbnailQueueProjectはWpfDesktop参照を有効化しない()
+    {
+        string repoRoot = FindRepoRoot();
+        string projectSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/IndigoMovieManager.Thumbnail.Queue.csproj"
+            )
+        );
+
+        Assert.That(projectSource, Does.Not.Contain("<UseWPF>true</UseWPF>"));
+        Assert.That(projectSource, Does.Not.Contain("Microsoft.WindowsDesktop.App.WPF"));
+        Assert.That(projectSource, Does.Not.Contain("PresentationCore"));
+        Assert.That(projectSource, Does.Not.Contain("PresentationFramework"));
+        Assert.That(projectSource, Does.Not.Contain("WindowsBase"));
+        Assert.That(projectSource, Does.Not.Contain("Microsoft.Xaml"));
+    }
+
+    private static IEnumerable<string> EnumerateWorkerContractSourceFiles(string repoRoot)
+    {
+        foreach (string sourceDirectory in WorkerContractSourceDirectories)
+        {
+            string absoluteDirectory = ToAbsolutePath(repoRoot, sourceDirectory);
+            Assert.That(
+                Directory.Exists(absoluteDirectory),
+                Is.True,
+                $"{sourceDirectory} が見つかりません。"
+            );
+
+            foreach (
+                string fullPath in Directory.EnumerateFiles(
+                    absoluteDirectory,
+                    "*.cs",
+                    SearchOption.AllDirectories
+                )
+            )
+            {
+                if (IsBuildOutputPath(fullPath))
+                {
+                    continue;
+                }
+
+                yield return ToRelativeRepositoryPath(repoRoot, fullPath);
+            }
+        }
+
+        foreach (string sourceFile in WorkerContractSourceFiles)
+        {
+            string absolutePath = ToAbsolutePath(repoRoot, sourceFile);
+            Assert.That(File.Exists(absolutePath), Is.True, $"{sourceFile} が見つかりません。");
+            yield return sourceFile;
+        }
+    }
+
+    private static string FindRepoRoot([CallerFilePath] string callerFilePath = "")
+    {
+        string startDirectory =
+            Path.GetDirectoryName(callerFilePath) ?? Directory.GetCurrentDirectory();
+        DirectoryInfo? current = new(startDirectory);
+        while (current != null)
+        {
+            if (
+                File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj"))
+                && Directory.Exists(Path.Combine(current.FullName, "src"))
+            )
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail("repo root を解決できませんでした。");
+        return "";
+    }
+
+    private static bool IsBuildOutputPath(string fullPath)
+    {
+        string normalized = fullPath.Replace('\\', '/');
+        return normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("/bin/", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("/artifacts/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ToAbsolutePath(string repoRoot, string relativePath)
+    {
+        return Path.Combine(
+            [repoRoot, .. relativePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)]
+        );
+    }
+
+    private static string ToRelativeRepositoryPath(string repoRoot, string fullPath)
+    {
+        return Path.GetRelativePath(repoRoot, fullPath).Replace('\\', '/');
+    }
+}
