@@ -468,12 +468,14 @@ namespace IndigoMovieManager
             CancellationTokenSource previousCts;
             int requestRevision;
             bool hadPendingRequest;
+            bool canceledUseQueryOnlyReload;
             lock (GetWatchDeferredUiReloadSyncRoot())
             {
                 previousCts = _watchDeferredUiReloadCts ?? new CancellationTokenSource();
                 _watchDeferredUiReloadCts = nextCts;
                 requestRevision = Interlocked.Increment(ref _watchDeferredUiReloadRevision);
                 hadPendingRequest = _watchDeferredUiReloadPending;
+                canceledUseQueryOnlyReload = _watchDeferredUiReloadQueryOnly;
                 _watchDeferredUiReloadPending = false;
                 _watchDeferredUiReloadQueryOnly = false;
                 _watchDeferredUiReloadPlanReason = "";
@@ -493,9 +495,23 @@ namespace IndigoMovieManager
                 previousCts.Dispose();
             }
 
+            string workRequestLogFields = "";
+            if (hadPendingRequest)
+            {
+                UiWorkRequest workRequest = UiWorkRequestPolicy.CreateWatchUiReloadRequest(
+                    canceledUseQueryOnlyReload
+                );
+                workRequestLogFields =
+                    " "
+                    + BuildWatchUiWorkRequestLogFields(
+                        workRequest,
+                        UiWorkRequestPolicy.ReleaseReasonCanceled
+                    );
+            }
+
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"deferred ui reload canceled: revision={requestRevision} reason={reason}"
+                $"deferred ui reload canceled: revision={requestRevision} reason={reason} had_pending={FormatLogBool(hadPendingRequest)}{workRequestLogFields}"
             );
             return hadPendingRequest;
         }
@@ -811,7 +827,7 @@ namespace IndigoMovieManager
             string releaseReason
         )
         {
-            return $"{UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, releaseReason)} operation_reason={request.LogReason} work_priority={request.Priority} coalesce_key='{request.CoalesceKey}' latest_only_key='{request.LatestOnlyKey}'";
+            return $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, releaseReason)} operation_reason={request.LogReason}";
         }
 
         // watch の query-only は、DB再読込へ戻さず in-memory 一覧から再計算する。

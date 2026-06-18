@@ -281,6 +281,10 @@ public sealed class EverythingWatchPollPolicyTests
         Assert.That(message, Does.Contain("log_reason=watch.everything-poll"));
         Assert.That(message, Does.Contain("release_reason=deferred"));
         Assert.That(message, Does.Contain("bounded_drain=cancellation-token"));
+        Assert.That(message, Does.Contain("work_priority=WatchSmallDiff"));
+        Assert.That(message, Does.Contain("coalesce_key='watch:everything-poll:coalesce'"));
+        Assert.That(message, Does.Contain("latest_only_key='watch:everything-poll:latest-only'"));
+        Assert.That(message, Does.Contain("timeout_policy=none"));
         Assert.That(message, Does.Contain("operation_reason=user-priority"));
         Assert.That(message, Does.Contain("catch_up=true"));
     }

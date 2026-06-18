@@ -29,6 +29,7 @@ public sealed class UiWorkRequestPolicyTests
                 request.BoundedDrain,
                 Is.EqualTo(UiWorkRequestPolicy.BoundedDrainDispatcherShutdownGuard)
             );
+            Assert.That(request.TimeoutPolicy, Is.EqualTo(UiWorkRequestPolicy.TimeoutPolicyNone));
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
         });
@@ -55,6 +56,7 @@ public sealed class UiWorkRequestPolicyTests
                 request.BoundedDrain,
                 Is.EqualTo(UiWorkRequestPolicy.BoundedDrainCancellationToken)
             );
+            Assert.That(request.TimeoutPolicy, Is.EqualTo(UiWorkRequestPolicy.TimeoutPolicyNone));
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
         });
@@ -86,6 +88,7 @@ public sealed class UiWorkRequestPolicyTests
                 request.BoundedDrain,
                 Is.EqualTo(UiWorkRequestPolicy.BoundedDrainDeferredRequestCts)
             );
+            Assert.That(request.TimeoutPolicy, Is.EqualTo(UiWorkRequestPolicy.TimeoutPolicyNone));
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
         });
@@ -117,6 +120,7 @@ public sealed class UiWorkRequestPolicyTests
                 request.BoundedDrain,
                 Is.EqualTo(UiWorkRequestPolicy.BoundedDrainDeferredRequestCts)
             );
+            Assert.That(request.TimeoutPolicy, Is.EqualTo(UiWorkRequestPolicy.TimeoutPolicyNone));
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
         });
@@ -149,6 +153,7 @@ public sealed class UiWorkRequestPolicyTests
             Assert.That(acceptance.SkipReason, Is.EqualTo(expectedReason));
             Assert.That(acceptance.LogReason, Is.EqualTo(request.LogReason));
             Assert.That(acceptance.BoundedDrain, Is.EqualTo(request.BoundedDrain));
+            Assert.That(acceptance.TimeoutPolicy, Is.EqualTo(request.TimeoutPolicy));
             Assert.That(
                 acceptance.ReleaseReason,
                 Is.EqualTo(
@@ -173,5 +178,24 @@ public sealed class UiWorkRequestPolicyTests
         Assert.That(logFields, Does.Contain("log_reason=watch.everything-poll"));
         Assert.That(logFields, Does.Contain("release_reason=deferred"));
         Assert.That(logFields, Does.Contain("bounded_drain=cancellation-token"));
+    }
+
+    [Test]
+    public void BuildRequestSchedulerLogFields_予約制御語彙を共通形式で出す()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
+
+        string logFields = UiWorkRequestPolicy.BuildRequestSchedulerLogFields(
+            request,
+            UiWorkRequestPolicy.ReleaseReasonDeferred
+        );
+
+        Assert.That(logFields, Does.Contain("log_reason=watch.everything-poll"));
+        Assert.That(logFields, Does.Contain("release_reason=deferred"));
+        Assert.That(logFields, Does.Contain("bounded_drain=cancellation-token"));
+        Assert.That(logFields, Does.Contain("work_priority=WatchSmallDiff"));
+        Assert.That(logFields, Does.Contain("coalesce_key='watch:everything-poll:coalesce'"));
+        Assert.That(logFields, Does.Contain("latest_only_key='watch:everything-poll:latest-only'"));
+        Assert.That(logFields, Does.Contain("timeout_policy=none"));
     }
 }

@@ -8,7 +8,8 @@ internal readonly record struct UiWorkRequest(
     string CoalesceKey,
     string LatestOnlyKey,
     string LogReason,
-    string BoundedDrain
+    string BoundedDrain,
+    string TimeoutPolicy
 )
 {
     internal bool HasCoalesceKey => !string.IsNullOrWhiteSpace(CoalesceKey);
@@ -20,7 +21,8 @@ internal readonly record struct UiWorkRequestAcceptance(
     string SkipReason,
     string LogReason,
     string ReleaseReason,
-    string BoundedDrain
+    string BoundedDrain,
+    string TimeoutPolicy
 );
 
 // 数値が小さいほど、ユーザー操作に近い作業として扱う。
@@ -51,9 +53,12 @@ internal static class UiWorkRequestPolicy
     internal const string ReleaseReasonReleased = "released";
     internal const string ReleaseReasonCompleted = "completed";
     internal const string ReleaseReasonFailed = "failed";
+    internal const string ReleaseReasonCanceled = "canceled";
+    internal const string ReleaseReasonTimeout = "timeout";
     internal const string BoundedDrainDispatcherShutdownGuard = "dispatcher-shutdown-guard";
     internal const string BoundedDrainCancellationToken = "cancellation-token";
     internal const string BoundedDrainDeferredRequestCts = "deferred-request-cts";
+    internal const string TimeoutPolicyNone = "none";
 
     internal const string ThumbnailProgressSnapshotRefreshCoalesceKey =
         "thumbnail-progress:snapshot-refresh:coalesce";
@@ -79,7 +84,8 @@ internal static class UiWorkRequestPolicy
             ThumbnailProgressSnapshotRefreshCoalesceKey,
             ThumbnailProgressSnapshotRefreshLatestOnlyKey,
             ThumbnailProgressSnapshotRefreshLogReason,
-            BoundedDrainDispatcherShutdownGuard
+            BoundedDrainDispatcherShutdownGuard,
+            TimeoutPolicyNone
         );
     }
 
@@ -90,7 +96,8 @@ internal static class UiWorkRequestPolicy
             EverythingWatchPollCoalesceKey,
             EverythingWatchPollLatestOnlyKey,
             EverythingWatchPollLogReason,
-            BoundedDrainCancellationToken
+            BoundedDrainCancellationToken,
+            TimeoutPolicyNone
         );
     }
 
@@ -101,7 +108,8 @@ internal static class UiWorkRequestPolicy
             WatchUiReloadCoalesceKey,
             WatchUiReloadLatestOnlyKey,
             useQueryOnlyReload ? WatchUiReloadQueryOnlyLogReason : WatchUiReloadFullFallbackLogReason,
-            BoundedDrainDeferredRequestCts
+            BoundedDrainDeferredRequestCts,
+            TimeoutPolicyNone
         );
     }
 
@@ -132,7 +140,8 @@ internal static class UiWorkRequestPolicy
             SkipReason: AcceptReasonNone,
             LogReason: request.LogReason ?? "",
             ReleaseReason: ReleaseReasonAccepted,
-            BoundedDrain: request.BoundedDrain ?? ""
+            BoundedDrain: request.BoundedDrain ?? "",
+            TimeoutPolicy: NormalizeTimeoutPolicy(request.TimeoutPolicy)
         );
     }
 
@@ -144,6 +153,15 @@ internal static class UiWorkRequestPolicy
         return $"log_reason={request.LogReason ?? ""} release_reason={NormalizeReleaseReason(releaseReason)} bounded_drain={request.BoundedDrain ?? ""}";
     }
 
+    // scheduler本体を作る前に、各予約ログの作業語彙だけを同じ形で揃える。
+    internal static string BuildRequestSchedulerLogFields(
+        UiWorkRequest request,
+        string releaseReason
+    )
+    {
+        return $"{BuildRequestLifecycleLogFields(request, releaseReason)} work_priority={request.Priority} coalesce_key='{request.CoalesceKey ?? ""}' latest_only_key='{request.LatestOnlyKey ?? ""}' timeout_policy={NormalizeTimeoutPolicy(request.TimeoutPolicy)}";
+    }
+
     private static UiWorkRequestAcceptance Reject(UiWorkRequest request, string skipReason)
     {
         return new UiWorkRequestAcceptance(
@@ -151,12 +169,18 @@ internal static class UiWorkRequestPolicy
             SkipReason: skipReason ?? "",
             LogReason: request.LogReason ?? "",
             ReleaseReason: ReleaseReasonRejected,
-            BoundedDrain: request.BoundedDrain ?? ""
+            BoundedDrain: request.BoundedDrain ?? "",
+            TimeoutPolicy: NormalizeTimeoutPolicy(request.TimeoutPolicy)
         );
     }
 
     private static string NormalizeReleaseReason(string releaseReason)
     {
         return string.IsNullOrWhiteSpace(releaseReason) ? ReleaseReasonCompleted : releaseReason;
+    }
+
+    private static string NormalizeTimeoutPolicy(string timeoutPolicy)
+    {
+        return string.IsNullOrWhiteSpace(timeoutPolicy) ? TimeoutPolicyNone : timeoutPolicy;
     }
 }

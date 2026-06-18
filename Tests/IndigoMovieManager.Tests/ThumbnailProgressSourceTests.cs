@@ -273,7 +273,7 @@ public sealed class ThumbnailProgressSourceTests
         Assert.That(delayedRunMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
         Assert.That(
             delayedRunMethod,
-            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(")
+            Does.Contain("UiWorkRequestPolicy.BuildRequestSchedulerLogFields(")
         );
         Assert.That(delayedRunMethod, Does.Contain("UiWorkRequestPolicy.ReleaseReasonFailed"));
 
@@ -290,7 +290,7 @@ public sealed class ThumbnailProgressSourceTests
         Assert.That(processMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
         Assert.That(
             processMethod,
-            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(")
+            Does.Contain("UiWorkRequestPolicy.BuildRequestSchedulerLogFields(")
         );
         Assert.That(processMethod, Does.Contain("UiWorkRequestPolicy.ReleaseReasonCompleted"));
         Assert.That(processMethod, Does.Contain("UiWorkRequestPolicy.ReleaseReasonFailed"));
@@ -319,7 +319,7 @@ public sealed class ThumbnailProgressSourceTests
         Assert.That(acceptMethod, Does.Contain("Dispatcher?.HasShutdownFinished == true"));
         Assert.That(
             acceptMethod,
-            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(")
+            Does.Contain("UiWorkRequestPolicy.BuildRequestSchedulerLogFields(")
         );
         Assert.That(acceptMethod, Does.Contain("acceptance.ReleaseReason"));
         Assert.That(acceptMethod, Does.Contain("skip_reason={acceptance.SkipReason}"));

@@ -156,12 +156,11 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         );
         Assert.That(
             logMethod,
-            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, releaseReason)")
+            Does.Contain("UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, releaseReason)")
         );
         Assert.That(logMethod, Does.Contain("operation_reason={request.LogReason}"));
-        Assert.That(logMethod, Does.Contain("work_priority={request.Priority}"));
-        Assert.That(logMethod, Does.Contain("coalesce_key='{request.CoalesceKey}'"));
-        Assert.That(logMethod, Does.Contain("latest_only_key='{request.LatestOnlyKey}'"));
+        Assert.That(source, Does.Contain("UiWorkRequestPolicy.ReleaseReasonCanceled"));
+        Assert.That(source, Does.Contain("had_pending={FormatLogBool(hadPendingRequest)}"));
     }
 
     private static IEnumerable<string> EnumerateWatcherBoundaryCallLines(string needle)
