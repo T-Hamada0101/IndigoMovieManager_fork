@@ -1,4 +1,5 @@
 using IndigoMovieManager;
+using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -84,6 +85,19 @@ public sealed class WatchUiSuppressionPolicyTests
             ),
             Is.False
         );
+    }
+
+    [Test]
+    public void ShouldDeferBackgroundWorkForUserPriority_共通UiOperationSnapshotを使う()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.UserPriorityPolicy.cs");
+
+        Assert.That(
+            source,
+            Does.Contain("private static UiOperationSnapshot CreateUserPriorityOperationSnapshot(")
+        );
+        Assert.That(source, Does.Contain("return new UiOperationSnapshot("));
+        Assert.That(source, Does.Not.Contain("UiOperationPrioritySnapshot"));
     }
 
     [Test]
@@ -668,5 +682,41 @@ public sealed class WatchUiSuppressionPolicyTests
         )!;
         Assert.That(field, Is.Not.Null, fieldName);
         return field.GetValue(window)!;
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
+        {
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
+        }
+
+        Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
+        return "";
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
     }
 }

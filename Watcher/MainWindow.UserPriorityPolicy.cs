@@ -13,12 +13,12 @@ public partial class MainWindow
     )
     {
         return UiOperationPriorityPolicy.ShouldDeferBackgroundWork(
-            new UiOperationPrioritySnapshot(
+            CreateUserPriorityOperationSnapshot(
                 isUserPriorityActive,
                 isManualMode,
-                IsWatchUiSuppressed: false,
-                IsRecentViewportInteractionActive: false,
-                IsPlayerPlaybackActive: false
+                isWatchUiSuppressed: false,
+                isRecentViewportInteractionActive: false,
+                isPlayerPlaybackActive: false
             )
         );
     }
@@ -60,6 +60,24 @@ public partial class MainWindow
         return IsUserPriorityWorkTimedOut(startedUtc, endedUtc, timeout)
             ? UserPriorityReleaseReasonTimeout
             : UserPriorityReleaseReasonNormal;
+    }
+
+    // user-priority 入口も UI Shell 共通 snapshot を正本にして、旧名 DTO へ戻さない。
+    private static UiOperationSnapshot CreateUserPriorityOperationSnapshot(
+        bool isUserPriorityActive,
+        bool isManualMode,
+        bool isWatchUiSuppressed,
+        bool isRecentViewportInteractionActive,
+        bool isPlayerPlaybackActive
+    )
+    {
+        return new UiOperationSnapshot(
+            isUserPriorityActive,
+            isManualMode,
+            isWatchUiSuppressed,
+            isRecentViewportInteractionActive,
+            isPlayerPlaybackActive
+        );
     }
 
     internal static long ResolveUserPriorityElapsedMilliseconds(
