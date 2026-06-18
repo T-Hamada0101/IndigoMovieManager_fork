@@ -214,6 +214,17 @@ namespace IndigoMovieManager
                 && !Dispatcher.HasShutdownFinished;
         }
 
+        private bool CanAcceptThumbnailProgressSnapshotRefresh(UiWorkRequest request)
+        {
+            UiWorkRequestAcceptance acceptance = UiWorkRequestPolicy.CanAcceptForDispatcher(
+                request,
+                Dispatcher != null,
+                Dispatcher?.HasShutdownStarted == true,
+                Dispatcher?.HasShutdownFinished == true
+            );
+            return acceptance.Accepted;
+        }
+
         private void TryFlushThumbnailProgressUiIfVisible()
         {
             _thumbnailProgressTabPresenter?.TryFlushIfVisible();
@@ -2015,7 +2026,8 @@ namespace IndigoMovieManager
         // 他スレッドからの進捗反映要求を1本に束ね、UIスレッドの連打を避ける。
         private void RequestThumbnailProgressSnapshotRefresh()
         {
-            if (!IsThumbnailProgressUiEnabled())
+            UiWorkRequest request = UiWorkRequestPolicy.CreateThumbnailProgressSnapshotRefreshRequest();
+            if (!CanAcceptThumbnailProgressSnapshotRefresh(request))
             {
                 return;
             }
@@ -2042,7 +2054,7 @@ namespace IndigoMovieManager
             );
             if (decision.ShouldQueueDelayed)
             {
-                QueueDelayedThumbnailProgressSnapshotRefresh(decision.Delay);
+                QueueDelayedThumbnailProgressSnapshotRefresh(decision.Delay, request);
                 return;
             }
 
@@ -2057,21 +2069,21 @@ namespace IndigoMovieManager
             );
             _ = Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
-                new Action(ProcessThumbnailProgressSnapshotRefreshQueue)
+                new Action(() => ProcessThumbnailProgressSnapshotRefreshQueue(request))
             );
         }
 
-        private void QueueDelayedThumbnailProgressSnapshotRefresh(TimeSpan delay)
+        private void QueueDelayedThumbnailProgressSnapshotRefresh(TimeSpan delay, UiWorkRequest request)
         {
             if (Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshDelayQueued, 1) == 1)
             {
                 return;
             }
 
-            _ = RunDelayedThumbnailProgressSnapshotRefreshAsync(delay);
+            _ = RunDelayedThumbnailProgressSnapshotRefreshAsync(delay, request);
         }
 
-        private async Task RunDelayedThumbnailProgressSnapshotRefreshAsync(TimeSpan delay)
+        private async Task RunDelayedThumbnailProgressSnapshotRefreshAsync(TimeSpan delay, UiWorkRequest request)
         {
             try
             {
@@ -2084,7 +2096,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"delayed snapshot refresh failed: {ex.Message}"
+                    $"delayed snapshot refresh failed: log_reason={request.LogReason} {ex.Message}"
                 );
             }
             finally
@@ -2098,7 +2110,7 @@ namespace IndigoMovieManager
             }
         }
 
-        private void ProcessThumbnailProgressSnapshotRefreshQueue()
+        private void ProcessThumbnailProgressSnapshotRefreshQueue(UiWorkRequest request)
         {
             try
             {
@@ -2111,7 +2123,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"snapshot refresh failed: {ex.Message}"
+                    $"snapshot refresh failed: log_reason={request.LogReason} {ex.Message}"
                 );
             }
             finally
