@@ -418,8 +418,11 @@ namespace IndigoMovieManager
                     }
                     else if (await ShouldRunEverythingWatchPollPolicyAsync(cts).ConfigureAwait(false))
                     {
-                        await QueueCheckFolderAsync(CheckMode.Watch, "EverythingPoll")
-                            .ConfigureAwait(false);
+                        if (TryAdmitEverythingWatchPollWork(everythingPollRequest, out _))
+                        {
+                            await QueueCheckFolderAsync(CheckMode.Watch, "EverythingPoll")
+                                .ConfigureAwait(false);
+                        }
                     }
 
                     int delayMs = ResolveEverythingWatchPollDelayMsCore(
@@ -455,6 +458,47 @@ namespace IndigoMovieManager
                     }
                 }
             }
+        }
+
+        private bool TryAdmitEverythingWatchPollWork(
+            UiWorkRequest request,
+            out UiWorkRequest queuedRequest
+        )
+        {
+            queuedRequest = default;
+            UiWorkSchedulerRuntimeQueueResult queueResult;
+            UiWorkSchedulerRuntimeTakeResult takeResult = default;
+
+            // runtimeは実行器にせず、既存のwatch scan入口へ渡す1件を選ぶだけに留める。
+            lock (_uiWorkSchedulerRuntimeSyncRoot)
+            {
+                queueResult = _uiWorkSchedulerRuntime.Queue(request);
+                if (queueResult.Decision.Accepted)
+                {
+                    takeResult = _uiWorkSchedulerRuntime.TryTakeNext();
+                }
+            }
+
+            if (!queueResult.Decision.Accepted)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"everything poll scheduler rejected: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)}"
+                );
+                return false;
+            }
+
+            if (!takeResult.HasRequest)
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"everything poll scheduler empty: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonRejected)} next_reason={takeResult.Decision.Reason}"
+                );
+                return false;
+            }
+
+            queuedRequest = takeResult.PendingRequest.Request;
+            return true;
         }
 
         /// <summary>

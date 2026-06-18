@@ -128,6 +128,43 @@ public sealed class UiWorkSchedulerRuntimeTests
     }
 
     [Test]
+    public void Queue_EverythingWatchPollは容量1で入場後すぐ実行候補へ取り出せる()
+    {
+        UiWorkSchedulerRuntime runtime = new(boundedCapacity: 1);
+        UiWorkRequest request = UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
+
+        UiWorkSchedulerRuntimeQueueResult queued = runtime.Queue(request);
+        UiWorkSchedulerRuntimeTakeResult next = runtime.TryTakeNext();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                queued.Decision.Action,
+                Is.EqualTo(UiWorkSchedulerAdmissionAction.Enqueue)
+            );
+            Assert.That(
+                queued.Decision.AdmissionReason,
+                Is.EqualTo(UiWorkSchedulerPolicy.AdmissionReasonQueued)
+            );
+            Assert.That(queued.PendingCount, Is.EqualTo(1));
+            Assert.That(next.HasRequest, Is.True);
+            Assert.That(
+                next.PendingRequest.Request.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.EverythingWatchPollLogReason)
+            );
+            Assert.That(
+                next.PendingRequest.Request.Priority,
+                Is.EqualTo(UiWorkPriority.WatchSmallDiff)
+            );
+            Assert.That(
+                next.PendingRequest.Request.BoundedDrain,
+                Is.EqualTo(UiWorkRequestPolicy.BoundedDrainCancellationToken)
+            );
+            Assert.That(next.PendingCount, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
     public void ReleaseTimedOut_timeout有効要求だけを解放してログ語彙へ落とす()
     {
         UiWorkSchedulerRuntime runtime = new(boundedCapacity: 3);

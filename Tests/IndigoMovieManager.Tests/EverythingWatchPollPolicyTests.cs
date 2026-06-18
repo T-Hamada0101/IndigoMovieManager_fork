@@ -611,6 +611,36 @@ public sealed class EverythingWatchPollPolicyTests
         Assert.That(source, Does.Not.Contain("UiOperationPrioritySnapshot"));
     }
 
+    [Test]
+    public void EverythingWatchPoll実行直前はUiWorkSchedulerRuntimeAdmissionを経由する()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+
+        int admitIndex = source.IndexOf(
+            "TryAdmitEverythingWatchPollWork(everythingPollRequest, out _)",
+            StringComparison.Ordinal
+        );
+        int queueIndex = source.IndexOf(
+            "QueueCheckFolderAsync(CheckMode.Watch, \"EverythingPoll\")",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(admitIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(queueIndex, Is.GreaterThan(admitIndex));
+        Assert.That(source, Does.Contain("private bool TryAdmitEverythingWatchPollWork("));
+        Assert.That(source, Does.Contain("lock (_uiWorkSchedulerRuntimeSyncRoot)"));
+        Assert.That(source, Does.Contain("_uiWorkSchedulerRuntime.Queue(request)"));
+        Assert.That(source, Does.Contain("_uiWorkSchedulerRuntime.TryTakeNext()"));
+        Assert.That(
+            source,
+            Does.Contain("queuedRequest = takeResult.PendingRequest.Request;")
+        );
+        Assert.That(
+            source,
+            Does.Contain("UiWorkSchedulerPolicy.BuildAdmissionLogFields(")
+        );
+    }
+
     private static MainWindow CreateWindow()
     {
         return (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
