@@ -33,6 +33,8 @@ namespace IndigoMovieManager.ViewModels
     /// </summary>
     public class MainWindowViewModel
     {
+        private const int MaxStableKeyAnchoredSpliceCount = 16;
+
         // アプリ全体の設定情報（DBパスやスキンなど）を持つプロパティ
         public DBInfo DbInfo { get; set; }
 
@@ -268,6 +270,28 @@ namespace IndigoMovieManager.ViewModels
                 );
             }
 
+            if (
+                updateMode == FilteredMovieRecsUpdateMode.Diff
+                && TryApplyStableKeyAnchoredSmallInsertOrRemove(
+                    nextItems,
+                    removeStartIndex,
+                    removedCount,
+                    insertedCount,
+                    out updatedCount
+                )
+            )
+            {
+                return new FilteredMovieRecsUpdateResult(
+                    HasChanges: true,
+                    RetainedPrefixCount: retainedPrefixCount,
+                    RetainedSuffixCount: retainedSuffixCount,
+                    RemovedCount: Math.Max(removedCount - insertedCount, 0),
+                    InsertedCount: Math.Max(insertedCount - removedCount, 0),
+                    MovedCount: 0,
+                    UpdatedCount: updatedCount
+                );
+            }
+
             for (int index = 0; index < removedCount; index++)
             {
                 FilteredMovieRecs.RemoveAt(removeStartIndex);
@@ -432,6 +456,12 @@ namespace IndigoMovieManager.ViewModels
             out int updatedCount
         )
         {
+            if (removedCount != insertedCount || removedCount < 1)
+            {
+                updatedCount = 0;
+                return false;
+            }
+
             updatedCount = CountStableKeyUpdates(
                 nextItems,
                 startIndex,
@@ -443,8 +473,12 @@ namespace IndigoMovieManager.ViewModels
                 return false;
             }
 
-            if (removedCount != insertedCount || removedCount < 1)
+            if (
+                !HasUniqueMovieViewStableKeys(FilteredMovieRecs)
+                || !HasUniqueMovieViewStableKeys(nextItems)
+            )
             {
+                updatedCount = 0;
                 return false;
             }
 
@@ -452,6 +486,139 @@ namespace IndigoMovieManager.ViewModels
             for (int offset = 0; offset < updatedCount; offset++)
             {
                 FilteredMovieRecs[startIndex + offset] = nextItems[startIndex + offset];
+            }
+
+            return true;
+        }
+
+        private bool TryApplyStableKeyAnchoredSmallInsertOrRemove(
+            IReadOnlyList<MovieRecords> nextItems,
+            int startIndex,
+            int removedCount,
+            int insertedCount,
+            out int updatedCount
+        )
+        {
+            updatedCount = 0;
+
+            int spliceCount = Math.Abs(insertedCount - removedCount);
+            if (
+                removedCount < 1
+                || insertedCount < 1
+                || spliceCount < 1
+                || spliceCount > MaxStableKeyAnchoredSpliceCount
+            )
+            {
+                return false;
+            }
+
+            int matchedPrefixCount = 0;
+            int comparableCount = Math.Min(removedCount, insertedCount);
+            while (
+                matchedPrefixCount < comparableCount
+                && AreSameMovieViewStableKey(
+                    FilteredMovieRecs[startIndex + matchedPrefixCount],
+                    nextItems[startIndex + matchedPrefixCount]
+                )
+            )
+            {
+                matchedPrefixCount++;
+            }
+
+            int matchedSuffixCount = 0;
+            while (
+                matchedSuffixCount < removedCount - matchedPrefixCount
+                && matchedSuffixCount < insertedCount - matchedPrefixCount
+                && AreSameMovieViewStableKey(
+                    FilteredMovieRecs[startIndex + removedCount - 1 - matchedSuffixCount],
+                    nextItems[startIndex + insertedCount - 1 - matchedSuffixCount]
+                )
+            )
+            {
+                matchedSuffixCount++;
+            }
+
+            int matchedCount = matchedPrefixCount + matchedSuffixCount;
+            if (insertedCount > removedCount)
+            {
+                if (matchedCount != removedCount)
+                {
+                    return false;
+                }
+            }
+            else if (matchedCount != insertedCount)
+            {
+                return false;
+            }
+
+            if (
+                !HasUniqueMovieViewStableKeys(FilteredMovieRecs)
+                || !HasUniqueMovieViewStableKeys(nextItems)
+            )
+            {
+                return false;
+            }
+
+            // 同一キー更新を先に置換してから、余った行だけを単一範囲で足し引きする。
+            for (int offset = 0; offset < matchedPrefixCount; offset++)
+            {
+                if (
+                    !ReferenceEquals(
+                        FilteredMovieRecs[startIndex + offset],
+                        nextItems[startIndex + offset]
+                    )
+                )
+                {
+                    FilteredMovieRecs[startIndex + offset] = nextItems[startIndex + offset];
+                    updatedCount++;
+                }
+            }
+
+            for (int offset = matchedSuffixCount - 1; offset >= 0; offset--)
+            {
+                int currentIndex = startIndex + removedCount - 1 - offset;
+                int nextIndex = startIndex + insertedCount - 1 - offset;
+                if (!ReferenceEquals(FilteredMovieRecs[currentIndex], nextItems[nextIndex]))
+                {
+                    FilteredMovieRecs[currentIndex] = nextItems[nextIndex];
+                    updatedCount++;
+                }
+            }
+
+            if (insertedCount > removedCount)
+            {
+                int insertStartIndex = startIndex + matchedPrefixCount;
+                int nextInsertStartIndex = startIndex + matchedPrefixCount;
+                for (int offset = 0; offset < spliceCount; offset++)
+                {
+                    FilteredMovieRecs.Insert(
+                        insertStartIndex + offset,
+                        nextItems[nextInsertStartIndex + offset]
+                    );
+                }
+            }
+            else
+            {
+                int removeStartIndex = startIndex + matchedPrefixCount;
+                for (int offset = 0; offset < spliceCount; offset++)
+                {
+                    FilteredMovieRecs.RemoveAt(removeStartIndex);
+                }
+            }
+
+            return true;
+        }
+
+        private static bool HasUniqueMovieViewStableKeys(IReadOnlyList<MovieRecords> items)
+        {
+            HashSet<string> stableKeys = new(StringComparer.OrdinalIgnoreCase);
+            for (int index = 0; index < items.Count; index++)
+            {
+                string stableKey = items[index]?.Movie_Path ?? "";
+                if (string.IsNullOrWhiteSpace(stableKey) || !stableKeys.Add(stableKey))
+                {
+                    return false;
+                }
             }
 
             return true;
