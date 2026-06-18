@@ -73,6 +73,9 @@
 - skin は DB 分離だけで完了扱いにせず、`refresh` / stale / catalog / navigate の削減と trace 観測を優先する
 
 ## UI高速化プランの最新見直し（2026-06-18 AI必読）
+- 済: watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定し、`plan_reason` と並べて実機ログで読める契約を source policy で守る。
+- 済: `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。現 `debug-runtime.log` は旧形式で内訳未出力のため、削減実装は新ログ入り実機ログ再採取後に支配要因を見て決める。
+- 済: `FilterAndSort(..., true)` の直書き許容は起動 fallback full reload と段階ロード中 sort の2箇所に固定した。直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけ、`Items.Refresh()` は本体コードへ戻さない source policy で守る。
 - 済: `RefreshMovieViewFromCurrentSourceAsync(...)` は背景計算だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡し、古い in-memory refresh が UI 反映待ち中に残った時は `stage=apply-dispatch` でキャンセルしてログへ閉じる。
 - 済: サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せ、タグ編集再表示を巻き込まずに選択中詳細のサムネ表示だけを揺すり直す。
 - 済: サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻し、shutdown 中は予約を積まない。

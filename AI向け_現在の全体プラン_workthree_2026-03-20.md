@@ -3,6 +3,10 @@
 最終更新日: 2026-06-18
 
 変更概要:
+- watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定した。`plan_reason` と並べて実機ログで読める契約を source policy で守り、`dirty-fields-unsafe:*` の実頻度を見るまで Hash / MovieName などを安全扱いへ広げない。
+- `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。現 `debug-runtime.log` は旧形式で `availability_ms` / `registration_ms` / `apply_ms` などの内訳がないため、削減実装は新ログ入り実機ログ再採取後に最大支配要因を見て決める。
+- `FilterAndSort(..., true)` の直書き許容は起動 fallback full reload と段階ロード中 sort の2箇所に固定した。直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけ、`Items.Refresh()` は本体コードへ戻さない source policy で守る。
+- active skin の same-document skip は通常 `dbinfo-*` 同期だけに限定する契約を runtime test で固定した。`header-reload` / `fallback-notice-retry` / `minimal-chrome-reload` / `skin-tag-mutation` は不許可のまま維持し、`refresh end` には `navigate_skipped_current` / `navigate_skip_reason` を明示して今回の navigate が skip か実 navigate かを同じ行で読めるようにした。
 - Filter / in-memory refresh / sort / 動画削除後の `ReplaceFilteredMovieRecs(...)` 後処理は、Reset 互換が必要なタブでも選択レコードが前後で同一なら `Refresh()` を呼ばず、詳細＋タグ編集の再表示を省くようにした。Grid 系の安全 fallback と List / Player の Diff/Move 省略線は維持する。
 - サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻す。shutdown 中は予約を積まず、入力・描画の前に局所 refresh 予約が割り込みにくい形へ寄せた。
 - サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せた。対象は選択中詳細のサムネ表示だけに絞り、タグ編集再表示を巻き込まない。

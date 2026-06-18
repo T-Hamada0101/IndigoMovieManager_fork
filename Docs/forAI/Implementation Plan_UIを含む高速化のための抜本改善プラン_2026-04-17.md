@@ -3,6 +3,10 @@
 最終更新日: 2026-06-18
 
 変更概要:
+- watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定した。`plan_reason` と並べて実機ログで読める契約を source policy で守り、`dirty-fields-unsafe:*` の実頻度を見るまで Hash / MovieName などを安全扱いへ広げない。
+- `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。現 `debug-runtime.log` は旧形式で `availability_ms` / `registration_ms` / `apply_ms` などの内訳がないため、削減実装は新ログ入り実機ログ再採取後に最大支配要因を見て決める。
+- `FilterAndSort(..., true)` の直書き許容は起動 fallback full reload と段階ロード中 sort の2箇所に固定した。直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけ、`Items.Refresh()` は本体コードへ戻さない source policy で守る。
+- active skin の same-document skip 契約を runtime test でも固定した。通常 `dbinfo-*` 同期だけ許可し、`header-reload` / `fallback-notice-retry` / `minimal-chrome-reload` / `skin-tag-mutation` は不許可とする。`refresh end` には operation result 由来の `navigate_skipped_current` と `navigate_skip_reason` を並べ、同一行で今回の navigate の成否と skip 理由を読めるようにした。
 - Filter / in-memory refresh / sort / 動画削除後の `ReplaceFilteredMovieRecs(...)` 後処理は、Reset 互換が必要なタブでも選択レコードが前後で同一なら `Refresh()` を呼ばず、詳細＋タグ編集の再表示を省くようにした。Grid 系の安全 fallback と List / Player の Diff/Move 省略線は維持する。
 - サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻す。shutdown 中は予約を積まず、入力・描画を押しのけにくい後段局所 refresh として扱う。
 - サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せた。選択中詳細のサムネ表示だけを揺すり直し、タグ編集再表示を巻き込まない。
@@ -632,9 +636,9 @@
 13. 済: manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態を入口と遅延後に guard し、skip reason と例外 type / origin をログへ残せるようにした。
 14. 済: watch full fallback は `plan_reason` に加えて `recovery_reason` を schedule / apply / final 系ログへ出し、query-only 復帰できない理由を実機ログで分類できるようにした。
 15. 済: 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じる。
-16. 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、明示 reload / catalog refresh / teardown / stale では skip しない。
+16. 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、明示 reload / catalog refresh / teardown / stale では skip しない。2026-06-18 時点で `dbinfo-Skin` / `dbinfo-DBFullPath` / `dbinfo-ThumbFolder` は許可、`header-reload` / `fallback-notice-retry` / `minimal-chrome-reload` / `skin-tag-mutation` / 空 reason は不許可として runtime test 固定済み。
 17. 済: active skin の同一 document skip は、実 navigate へ進む時点で旧 reuse key を無効化し、`NavigateToString` 成功後だけ新 key を保存する。same-document skip では外部サムネ許可リストを保持し、実 navigate / Clear / Dispose / thumb root 変更では破棄する。
-18. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれに寄っているかを確定してから削る。skin は `navigate_skipped` / `navigate_skip_reason` と実WebView2表示崩れの有無を確認する。
+18. 次: 新ログ入りの実機 `debug-runtime.log` で watcher 作成の内訳を確認し、遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれに寄っているかを確定してから削る。skin は `navigate_skipped_current` / `navigate_skip_reason` と実WebView2表示崩れの有無を確認する。
 
 ### Step 1
 

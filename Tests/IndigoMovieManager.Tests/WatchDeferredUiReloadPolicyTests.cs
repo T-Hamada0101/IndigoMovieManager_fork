@@ -1,6 +1,7 @@
 using IndigoMovieManager;
 using IndigoMovieManager.DB;
 using IndigoMovieManager.ViewModels;
+using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -418,6 +419,38 @@ public sealed class WatchDeferredUiReloadPolicyTests
         Assert.That(
             result,
             Is.EqualTo("plan_reason=watch-full-fallback recovery_reason=dirty-fields-unsafe:Hash")
+        );
+    }
+
+    [Test]
+    public void WatchUiReloadLogs_schedule_apply_finalでrecovery_reasonを落とさない()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
+
+        AssertLogLineUsesPlanLogFields(
+            source,
+            "deferred ui reload scheduled:",
+            "BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)"
+        );
+        AssertLogLineUsesPlanLogFields(
+            source,
+            "deferred ui reload apply:",
+            "BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)"
+        );
+        AssertLogLineUsesPlanLogFields(
+            source,
+            "skip final watch ui reload no changes:",
+            "BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)"
+        );
+        AssertLogLineUsesPlanLogFields(
+            source,
+            "skip final watch ui reload by suppression:",
+            "BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)"
+        );
+        AssertLogLineUsesPlanLogFields(
+            source,
+            "final folder check ui reload apply:",
+            "BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)"
         );
     }
 
@@ -2307,6 +2340,41 @@ public sealed class WatchDeferredUiReloadPolicyTests
         )!;
         Assert.That(field, Is.Not.Null, fieldName);
         return field.GetValue(window)!;
+    }
+
+    private static void AssertLogLineUsesPlanLogFields(
+        string source,
+        string logPrefix,
+        string expectedHelperCall
+    )
+    {
+        int start = source.IndexOf(logPrefix, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), logPrefix);
+
+        int end = source.IndexOf('\n', start);
+        string logLine = end >= 0 ? source.Substring(start, end - start).TrimEnd('\r') : source[start..];
+
+        Assert.That(logLine, Does.Contain(expectedHelperCall), logPrefix);
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string candidate = Path.Combine(
+                [directory.FullName, .. relativePathParts]
+            );
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            directory = directory.Parent;
+        }
+
+        Assert.Fail("リポジトリ内の対象ファイルが見つかりません。");
+        return "";
     }
 
     private static object CreatePrivateEnumValue(string nestedTypeName, string value)

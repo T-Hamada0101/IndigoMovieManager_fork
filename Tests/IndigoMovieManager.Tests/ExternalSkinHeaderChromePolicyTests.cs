@@ -160,6 +160,46 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_same_document_skipは通常dbinfo同期だけ許可する()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting("dbinfo-Skin"),
+                Is.True
+            );
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting("dbinfo-DBFullPath"),
+                Is.True
+            );
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting("dbinfo-ThumbFolder"),
+                Is.True
+            );
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting("header-reload"),
+                Is.False
+            );
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting("fallback-notice-retry"),
+                Is.False
+            );
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting("minimal-chrome-reload"),
+                Is.False
+            );
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting("skin-tag-mutation"),
+                Is.False
+            );
+            Assert.That(
+                MainWindow.IsExternalSkinSameDocumentNavigateSkipAllowedForTesting(""),
+                Is.False
+            );
+        });
+    }
+
+    [Test]
     public void 外部skin_refresh_batchではCatalogRefresh系reasonをdbinfoより優先する()
     {
         Assert.Multiple(() =>
@@ -482,6 +522,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(handleSkinLeaveIndex, Is.GreaterThan(invalidateReuseKeyIndex));
             Assert.That(handleSkinLeaveIndex, Is.GreaterThan(navigateSkipIndex));
             Assert.That(navigateToStringIndex, Is.GreaterThan(handleSkinLeaveIndex));
+            Assert.That(refreshEndMethod, Does.Contain("navigate_skipped_current="));
             Assert.That(refreshEndMethod, Does.Contain("navigate_skip_reason="));
             Assert.That(skipPolicyMethod, Does.Contain("ExternalSkinDefinitionRefreshMode.CachedSnapshot"));
             Assert.That(skipPolicyMethod, Does.Contain("StartsWith(\"dbinfo-\", StringComparison.Ordinal)"));

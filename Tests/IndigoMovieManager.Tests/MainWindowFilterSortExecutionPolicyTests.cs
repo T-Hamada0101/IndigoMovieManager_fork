@@ -451,6 +451,40 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void FilterAndSortTrueの許容fallbackは起動fallbackと段階ロード中sortだけに固定する()
+    {
+        string[] actual = EnumerateFilterAndSortTrueCallSites().ToArray();
+        string[] expected =
+        [
+            "Views/Main/MainWindow.Startup.cs|startup-fallback-full-reload|FilterAndSort(sortId, true);",
+            "Views/Main/MainWindow.xaml.cs|startup-partial-sort-full-order|FilterAndSort(id.ToString(), true);",
+        ];
+
+        Assert.That(actual, Is.EquivalentTo(expected));
+    }
+
+    [Test]
+    public void 直書きRefreshの許容入口は起動初回表示と選択変化互換だけに固定する()
+    {
+        string[] actual = EnumerateDirectRefreshCallSites().ToArray();
+        string[] expected =
+        [
+            "Views/Main/MainWindow.Startup.cs|startup-first-page-detail-sync|Refresh();",
+            "Views/Main/MainWindow.xaml.cs|collection-apply-selection-changed-compat|Refresh();",
+        ];
+
+        Assert.That(actual, Is.EquivalentTo(expected));
+    }
+
+    [Test]
+    public void ItemsRefreshは本体コードへ戻さない()
+    {
+        string[] actual = EnumerateProductionCallLines("Items.Refresh()").ToArray();
+
+        Assert.That(actual, Is.Empty);
+    }
+
+    [Test]
     public void Debugサムネイル全削除後はDB再読込ではなく表示モデルの局所更新へ寄せる()
     {
         string debugSource = GetRepoText(
@@ -659,6 +693,154 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
         return "";
+    }
+
+    private static IEnumerable<string> EnumerateFilterAndSortTrueCallSites()
+    {
+        foreach ((string relativePath, string trimmedLine) in EnumerateProductionSourceLines())
+        {
+            if (
+                !trimmedLine.Contains("FilterAndSort(", StringComparison.Ordinal)
+                || !trimmedLine.Contains(", true", StringComparison.Ordinal)
+            )
+            {
+                continue;
+            }
+
+            // 許容 fallback は分類名込みで固定し、通常検索やサムネ後段への逆流を検出する。
+            string classification = ClassifyFilterAndSortTrueFallback(relativePath, trimmedLine);
+            yield return $"{relativePath}|{classification}|{trimmedLine}";
+        }
+    }
+
+    private static string ClassifyFilterAndSortTrueFallback(string relativePath, string trimmedLine)
+    {
+        if (
+            relativePath == "Views/Main/MainWindow.Startup.cs"
+            && trimmedLine == "FilterAndSort(sortId, true);"
+        )
+        {
+            return "startup-fallback-full-reload";
+        }
+
+        if (
+            relativePath == "Views/Main/MainWindow.xaml.cs"
+            && trimmedLine == "FilterAndSort(id.ToString(), true);"
+        )
+        {
+            return "startup-partial-sort-full-order";
+        }
+
+        return "unexpected-filter-and-sort-true";
+    }
+
+    private static IEnumerable<string> EnumerateDirectRefreshCallSites()
+    {
+        foreach ((string relativePath, string trimmedLine) in EnumerateProductionSourceLines())
+        {
+            if (trimmedLine != "Refresh();")
+            {
+                continue;
+            }
+
+            string classification = ClassifyDirectRefreshCall(relativePath, trimmedLine);
+            yield return $"{relativePath}|{classification}|{trimmedLine}";
+        }
+    }
+
+    private static string ClassifyDirectRefreshCall(string relativePath, string trimmedLine)
+    {
+        if (
+            relativePath == "Views/Main/MainWindow.Startup.cs"
+            && trimmedLine == "Refresh();"
+        )
+        {
+            return "startup-first-page-detail-sync";
+        }
+
+        if (
+            relativePath == "Views/Main/MainWindow.xaml.cs"
+            && trimmedLine == "Refresh();"
+        )
+        {
+            return "collection-apply-selection-changed-compat";
+        }
+
+        return "unexpected-direct-refresh";
+    }
+
+    private static IEnumerable<string> EnumerateProductionCallLines(string needle)
+    {
+        foreach ((string relativePath, string trimmedLine) in EnumerateProductionSourceLines())
+        {
+            if (trimmedLine.Contains(needle, StringComparison.Ordinal))
+            {
+                yield return $"{relativePath}|{trimmedLine}";
+            }
+        }
+    }
+
+    private static IEnumerable<(string RelativePath, string TrimmedLine)> EnumerateProductionSourceLines()
+    {
+        DirectoryInfo repoRoot = GetRepoRoot();
+        foreach (
+            string sourceRootName in new[]
+            {
+                "BottomTabs",
+                "Thumbnail",
+                "UpperTabs",
+                "UserControls",
+                "Views",
+                "Watcher",
+            }
+        )
+        {
+            string sourceRoot = Path.Combine(repoRoot.FullName, sourceRootName);
+            if (!Directory.Exists(sourceRoot))
+            {
+                continue;
+            }
+
+            foreach (
+                string filePath in Directory.EnumerateFiles(
+                    sourceRoot,
+                    "*.cs",
+                    SearchOption.AllDirectories
+                )
+            )
+            {
+                string relativePath = NormalizeRepoRelativePath(repoRoot, filePath);
+                foreach (string line in File.ReadLines(filePath))
+                {
+                    yield return (relativePath, line.Trim());
+                }
+            }
+        }
+    }
+
+    private static DirectoryInfo GetRepoRoot()
+    {
+        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        while (current != null)
+        {
+            string candidate = Path.Combine(current.FullName, "Views", "Main", "MainWindow.xaml.cs");
+            if (File.Exists(candidate))
+            {
+                return current;
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail("Repository root not found.");
+        return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+    }
+
+    private static string NormalizeRepoRelativePath(DirectoryInfo repoRoot, string filePath)
+    {
+        return Path.GetRelativePath(repoRoot.FullName, filePath)
+            .Replace(Path.DirectorySeparatorChar, '/')
+            .Replace(Path.AltDirectorySeparatorChar, '/');
     }
 
     private static string GetMethodBlock(string source, string signature)
