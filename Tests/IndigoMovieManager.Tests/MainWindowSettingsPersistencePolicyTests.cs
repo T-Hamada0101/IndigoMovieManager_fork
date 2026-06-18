@@ -42,17 +42,22 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(persistenceSource, Does.Contain("TaskScheduler.Default"));
         Assert.That(persistenceSource, Does.Contain("Properties.Settings.Default.Save();"));
         Assert.That(persistenceSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(persistenceSource, Does.Contain("BuildApplicationSettingsWriteRequest(reason)"));
+        Assert.That(persistenceSource, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(
             persistenceSource,
             Does.Contain(
-                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)"
+                "application settings save failed: {result.LogFields}"
             )
         );
         Assert.That(playerSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(playerSource, Does.Contain("BuildPlayerVolumeSettingsWriteRequest()"));
+        Assert.That(playerSource, Does.Contain("PersistenceWriteKind.BackgroundDbWrite"));
+        Assert.That(playerSource, Does.Contain("main-db-playback-stats"));
         Assert.That(
             playerSource,
             Does.Contain(
-                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)"
+                "player volume settings save failed: {result.LogFields}"
             )
         );
         Assert.That(settingsWindowSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
@@ -175,6 +180,8 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(playMovieMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateLastDate("));
         Assert.That(playMovieMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("Task.Run("));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(
             playbackStatsPersistMethod,
             Does.Contain("_mainDbMovieMutationFacade.UpdateViewCount(")
@@ -186,9 +193,52 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(
             playbackStatsPersistMethod,
             Does.Contain(
-                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+                "playback stats persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
             )
         );
+    }
+
+    [Test]
+    public void PersistenceWriteRequestResult_保存ログの共通語彙を作る()
+    {
+        PersistenceWriteRequest request = PersistenceWriteRequest.Create(
+            PersistenceWriteKind.ApplicationSettings,
+            "main-window-closing",
+            "application-settings",
+            retryable: true
+        );
+        PersistenceWriteResult failure = PersistenceWriteResult.FromFailure(
+            request,
+            TimeSpan.FromMilliseconds(12.34d),
+            PersistenceFailureKind.ApplicationSettings
+        );
+        PersistenceWriteResult success = PersistenceWriteResult.FromSuccess(
+            request,
+            TimeSpan.FromMilliseconds(1.2d)
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                request.BuildLogFields(),
+                Is.EqualTo(
+                    "write_kind=application-settings write_reason=main-window-closing queue_key=application-settings retryable_policy=true"
+                )
+            );
+            Assert.That(failure.Succeeded, Is.False);
+            Assert.That(failure.FailureKind, Is.EqualTo(PersistenceFailureKind.ApplicationSettings));
+            Assert.That(
+                failure.LogFields,
+                Does.Contain("write_succeeded=false elapsed_ms=12.3 failure_kind=application-settings")
+            );
+            Assert.That(failure.LogFields, Does.Contain("dirty=true failed=true retryable=true notify_ui=false"));
+            Assert.That(success.Succeeded, Is.True);
+            Assert.That(success.FailureKind, Is.Null);
+            Assert.That(
+                success.LogFields,
+                Does.Contain("write_succeeded=true elapsed_ms=1.2 failure_kind=none")
+            );
+        });
     }
 
     [Test]

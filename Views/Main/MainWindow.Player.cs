@@ -224,11 +224,12 @@ namespace IndigoMovieManager
         // 設定ファイル保存はディスクI/Oなので、UI操作の余韻を邪魔しないよう直列の背景保存へ逃がす。
         private void QueuePlayerVolumeSettingSaveInBackground()
         {
+            PersistenceWriteRequest writeRequest = BuildPlayerVolumeSettingsWriteRequest();
             if (App.IsDiagnosticNoPersistEnabled())
             {
                 DebugRuntimeLog.Write(
                     "player",
-                    "player volume settings save skipped in background: diagnostic_no_persist=1"
+                    $"player volume settings save skipped in background: {writeRequest.BuildLogFields()} diagnostic_no_persist=1"
                 );
                 return;
             }
@@ -236,7 +237,7 @@ namespace IndigoMovieManager
             lock (_playerVolumeSettingsSaveSync)
             {
                 _playerVolumeSettingsSaveTask = _playerVolumeSettingsSaveTask.ContinueWith(
-                    _ => SavePlayerVolumeSettingInBackground(),
+                    _ => SavePlayerVolumeSettingInBackground(writeRequest),
                     CancellationToken.None,
                     TaskContinuationOptions.None,
                     TaskScheduler.Default
@@ -244,15 +245,26 @@ namespace IndigoMovieManager
             }
         }
 
-        private void SavePlayerVolumeSettingInBackground()
+        private static PersistenceWriteRequest BuildPlayerVolumeSettingsWriteRequest()
         {
+            return PersistenceWriteRequest.Create(
+                PersistenceWriteKind.ApplicationSettings,
+                "player-volume",
+                "player-volume-settings",
+                retryable: true
+            );
+        }
+
+        private void SavePlayerVolumeSettingInBackground(PersistenceWriteRequest writeRequest)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             try
             {
                 if (App.IsDiagnosticNoPersistEnabled())
                 {
                     DebugRuntimeLog.Write(
                         "player",
-                        "player volume settings save skipped in save task: diagnostic_no_persist=1"
+                        $"player volume settings save skipped in save task: {writeRequest.BuildLogFields()} diagnostic_no_persist=1"
                     );
                     return;
                 }
@@ -264,9 +276,14 @@ namespace IndigoMovieManager
             }
             catch (Exception ex)
             {
+                PersistenceWriteResult result = PersistenceWriteResult.FromFailure(
+                    writeRequest,
+                    stopwatch.Elapsed,
+                    PersistenceFailureKind.ApplicationSettings
+                );
                 DebugRuntimeLog.Write(
                     "player",
-                    $"player volume settings save failed: {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)} err='{ex.GetType().Name}: {ex.Message}'"
+                    $"player volume settings save failed: {result.LogFields} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }
@@ -539,9 +556,16 @@ namespace IndigoMovieManager
                 return;
             }
 
+            PersistenceWriteRequest writeRequest = PersistenceWriteRequest.Create(
+                PersistenceWriteKind.BackgroundDbWrite,
+                "player-playback-stats",
+                "main-db-playback-stats",
+                retryable: true
+            );
             _ = Task.Run(
                 () =>
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
                         _mainDbMovieMutationFacade.UpdateScore(dbFullPath, movieId, score);
@@ -550,9 +574,14 @@ namespace IndigoMovieManager
                     }
                     catch (Exception ex)
                     {
+                        PersistenceWriteResult result = PersistenceWriteResult.FromFailure(
+                            writeRequest,
+                            stopwatch.Elapsed,
+                            PersistenceFailureKind.BackgroundDbWrite
+                        );
                         DebugRuntimeLog.Write(
                             "player",
-                            $"playback stats persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
+                            $"playback stats persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields} err='{ex.GetType().Name}'"
                         );
                     }
                 }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,11 +13,12 @@ namespace IndigoMovieManager
         // Settings.Save はファイルI/Oなので、UIの切替・終了導線から直列の背景保存へ逃がす。
         private void QueueApplicationSettingsSave(string reason)
         {
+            PersistenceWriteRequest writeRequest = BuildApplicationSettingsWriteRequest(reason);
             if (App.IsDiagnosticNoPersistEnabled())
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"application settings save skipped: reason={reason ?? ""} diagnostic_no_persist=1"
+                    $"application settings save skipped: {writeRequest.BuildLogFields()} diagnostic_no_persist=1"
                 );
                 return;
             }
@@ -24,7 +26,7 @@ namespace IndigoMovieManager
             lock (_applicationSettingsSaveSync)
             {
                 _applicationSettingsSaveTask = _applicationSettingsSaveTask.ContinueWith(
-                    _ => SaveApplicationSettingsInBackground(reason),
+                    _ => SaveApplicationSettingsInBackground(writeRequest),
                     CancellationToken.None,
                     TaskContinuationOptions.None,
                     TaskScheduler.Default
@@ -32,15 +34,26 @@ namespace IndigoMovieManager
             }
         }
 
-        private void SaveApplicationSettingsInBackground(string reason)
+        private static PersistenceWriteRequest BuildApplicationSettingsWriteRequest(string reason)
         {
+            return PersistenceWriteRequest.Create(
+                PersistenceWriteKind.ApplicationSettings,
+                reason,
+                "application-settings",
+                retryable: true
+            );
+        }
+
+        private void SaveApplicationSettingsInBackground(PersistenceWriteRequest writeRequest)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             try
             {
                 if (App.IsDiagnosticNoPersistEnabled())
                 {
                     DebugRuntimeLog.Write(
                         "ui-tempo",
-                        $"application settings save skipped in background: reason={reason ?? ""} diagnostic_no_persist=1"
+                        $"application settings save skipped in background: {writeRequest.BuildLogFields()} diagnostic_no_persist=1"
                     );
                     return;
                 }
@@ -52,9 +65,14 @@ namespace IndigoMovieManager
             }
             catch (Exception ex)
             {
+                PersistenceWriteResult result = PersistenceWriteResult.FromFailure(
+                    writeRequest,
+                    stopwatch.Elapsed,
+                    PersistenceFailureKind.ApplicationSettings
+                );
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"application settings save failed: reason={reason ?? ""} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)} err='{ex.GetType().Name}: {ex.Message}'"
+                    $"application settings save failed: {result.LogFields} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }
