@@ -1,10 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
+> 進捗メータ: `[####------] 40%`
+> 実機ログで閉じていないものは完了扱いにしない。
+
 ## 0. 進捗メータ
 
 更新日: 2026-06-18
 
-全体進捗目安: `[####------] 36%`
+全体進捗目安: `[####------] 40%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -13,11 +16,11 @@
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 45% | `UiOperationSnapshot` を追加し、旧 `UiOperationPrioritySnapshot` から段階移行できる入口を固定済み | UI event handler を snapshot 生成へさらに寄せる |
 | Phase 2. ReadModel Store と Diff-first | 25% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiff` で apply log の operation / selection / scroll / fallback 語彙を追加済み | 小変更の diff apply と fallback reason を通常経路へ入れる |
-| Phase 3. In-process Scheduler | 18% | `UiWorkRequest` / `UiWorkRequestPolicy` を追加し、thumbnail 進捗 refresh 予約へ priority / coalesce / latest-only / log reason / shutdown受理可否の語彙を接続済み | watch / poll 予約も同じ小さな scheduler 語彙へ揃える |
+| Phase 3. In-process Scheduler | 22% | `UiWorkRequest` / `UiWorkRequestPolicy` を追加し、thumbnail 進捗 refresh 予約と Everything poll へ priority / coalesce / latest-only / log reason / shutdown受理可否の語彙を接続済み | watch reload 予約も同じ小さな scheduler 語彙へ揃える |
 | Phase 4. Image Pipeline 統一 | 28% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter が `ImageRequest` を作り、visible-first / stale discard / role / cache / revision の語彙で decode 入口を説明できる | stamp取得、decode、ERROR marker 判定を UI 外へ揃える |
-| Phase 5. Persistence Pipeline | 24% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み | bookmark / skin profile の失敗時 dirty / failed / retryable 表現を揃える |
-| Phase 6. Worker 契約 | 28% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、JSON roundtrip とUI非依存 source policy を固定済み | 既存 rescue / thumbnail 実処理を in-process adapter でこの契約へ寄せる |
-| Phase 7. Skin / Player / Watcher の Core 接続 | 16% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set の UI 直接 apply 禁止線を source policy で固定済み | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
+| Phase 5. Persistence Pipeline | 30% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み。skin profile は失敗時に cache / log で dirty / failed / retryable を読める入口を追加済み | bookmark の失敗時 dirty / failed / retryable 表現と、skin profile の最小 UI 通知条件を揃える |
+| Phase 6. Worker 契約 | 34% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON から Worker DTO へ写す adapter と focused test を追加済み | thumbnail 実処理と metadata probe を in-process adapter でこの契約へ寄せる |
+| Phase 7. Skin / Player / Watcher の Core 接続 | 22% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
 ## 1. Summary
 
@@ -33,12 +36,15 @@
 - Worker契約候補は `WorkerContractSourcePolicyTests` で WPF / Dispatcher / ViewModel / WebView2 / MainWindow を参照しない source policy を追加した。
 - thumbnail 進捗 refresh 予約は、coalesce / latest-only / shutdown guard を source policy で固定し、Scheduler 化の最初の足場にした。
 - `UiWorkRequest` を thumbnail 進捗 refresh 予約へ接続し、priority / coalesce / latest-only / log reason / shutdown受理可否を既存経路のまま説明できるようにした。
+- Everything poll は `UiWorkRequest` の `log_reason=watch.everything-poll` を作り、poll / watch defer 系ログを Scheduler 語彙へ寄せ始めた。
 - 画像 hot path は、詳細サムネ、Player右レール、上側タブ viewport 更新入口で file I/O / decode へ進まないことを source policy で固定した。
 - 上側タブ画像 converter は `ImageRequest` を作ってから decode へ進む形へ寄せ、visible-first と stale discard を test で説明できるようにした。
 - 保存 hot path は、UI操作中に同期 `Save()` や score / tag の直接DB更新へ戻らないことを source policy で固定した。
 - view_count と movie_path は UI 表示値を先に反映し、DB 保存を背景へ送ることを source policy で固定した。
+- skin profile write は UI hot path を enqueue のみに保ったまま、queue / persister / fallback 失敗時だけ cache と `skin-db` ログへ `dirty=true failed=true retryable=true` を出す入口を追加した。
 - Worker DTO は request / result / progress / artifact の語彙を `ThumbnailIpcDtos` に追加し、JSON roundtrip と null なし既定値を focused test で固定した。
-- Watcher change set は `WatchUiReloadPolicy` / ReadModel 再計算入口へ寄せ、Watcher 側が表示 collection を直接 apply しない禁止線を source policy で固定した。
+- rescue worker job JSON は `WorkerJobRequestDto` / `WorkerJobResultDto` へ写す adapter を持ち、既存 worker 実行を壊さず契約語彙へ寄せる入口ができた。
+- Watcher change set は `WatchUiApplyRequest` へ畳んでから full fallback / in-memory ReadModel 再計算へ流し、Watcher 側が表示 collection を直接 apply しない禁止線を source policy で固定した。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
 - 次の段階は、新しい巨大 core を作ることではなく、既存境界の上に小さな契約を積み、実機ログで支配要因を確認しながら差し替えること。
