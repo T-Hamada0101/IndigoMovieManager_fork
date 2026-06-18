@@ -320,4 +320,31 @@ public sealed class MovieViewDiffTests
             );
         });
     }
+
+    [Test]
+    public void DiffログfieldsはReadModelとwatchで共有できる語彙を出す()
+    {
+        MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
+            sourceRevision: 7,
+            viewRevision: 8,
+            FilteredMovieRecsUpdateMode.Diff,
+            new FilteredMovieRecsUpdateResult(true, 1, 1, 0, 1, 0, UpdatedCount: 1),
+            selectionRefreshApplied: true,
+            fallbackReason: "changed-path"
+        );
+
+        string fullLog = MovieViewDiffApplyPolicy.BuildDiffLogFields(diff);
+        string planLog = MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(diff.ApplyPlan);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fullLog, Does.Contain("diff_operation=update"));
+            Assert.That(fullLog, Does.Contain("diff_apply_kind=diff-apply"));
+            Assert.That(fullLog, Does.Contain("diff_apply_candidate=True"));
+            Assert.That(fullLog, Does.Contain("diff_full_fallback_reason=none"));
+            Assert.That(fullLog, Does.Contain("diff_stable_key=movie-path"));
+            Assert.That(fullLog, Does.Contain("diff_selection=refresh"));
+            Assert.That(planLog, Is.EqualTo("diff_apply_kind=diff-apply diff_apply_candidate=True diff_full_fallback_reason=none"));
+        });
+    }
 }

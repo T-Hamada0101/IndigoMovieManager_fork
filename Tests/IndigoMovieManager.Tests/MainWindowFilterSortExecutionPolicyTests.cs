@@ -559,13 +559,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(applyReadModel, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
         Assert.That(applyReadModel, Does.Contain("!isSortOnly && string.Equals(resolvedSortId, \"28\", StringComparison.Ordinal)"));
         Assert.That(applyReadModel, Does.Contain("readmodel apply end: request_revision="));
-        Assert.That(applyReadModel, Does.Contain("diff_added={diff.AddedCount}"));
-        Assert.That(applyReadModel, Does.Contain("diff_deleted={diff.DeletedCount}"));
-        Assert.That(applyReadModel, Does.Contain("diff_updated={diff.UpdatedCount}"));
-        Assert.That(applyReadModel, Does.Contain("diff_moved={diff.MovedCount}"));
-        Assert.That(applyReadModel, Does.Contain("diff_apply_kind={diff.ApplyKindLogValue}"));
-        Assert.That(applyReadModel, Does.Contain("diff_apply_candidate={diff.IsDiffApplyCandidate}"));
-        Assert.That(applyReadModel, Does.Contain("diff_full_fallback_reason={diff.FullFallbackReason}"));
+        Assert.That(
+            applyReadModel,
+            Does.Contain("MovieViewDiffApplyPolicy.BuildDiffLogFields(diff)")
+        );
         Assert.That(applyReadModel, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
 
         Assert.That(sortAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));

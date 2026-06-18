@@ -310,6 +310,17 @@ internal static class MovieViewDiffApplyPolicy
         );
     }
 
+    internal static string BuildDiffApplyPlanLogFields(MovieViewDiffApplyPlan plan)
+    {
+        return $"diff_apply_kind={plan.ApplyKindLogValue} diff_apply_candidate={plan.IsDiffApplyCandidate} diff_full_fallback_reason={plan.FullFallbackReason}";
+    }
+
+    internal static string BuildDiffLogFields(MovieViewDiff diff)
+    {
+        // ReadModel と watch のログ語彙を揃え、次段の diff-first 実装で比較しやすくする。
+        return $"diff_operation={diff.OperationLogValue} {BuildDiffApplyPlanLogFields(diff.ApplyPlan)} diff_stable_key={diff.StableKey} diff_source_revision={diff.SourceRevision} diff_view_revision={diff.ViewRevision} diff_added={diff.AddedCount} diff_deleted={diff.DeletedCount} diff_updated={diff.UpdatedCount} diff_moved={diff.MovedCount} diff_selection={diff.SelectionImpactLogValue} diff_scroll={diff.ScrollImpactLogValue} diff_fallback_reason={diff.FallbackReason}";
+    }
+
     private static string ResolveFullFallbackReason(string fallbackReason)
     {
         string normalizedReason = NormalizeFallbackReason(fallbackReason);

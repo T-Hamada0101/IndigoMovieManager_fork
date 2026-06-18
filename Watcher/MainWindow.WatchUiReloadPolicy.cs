@@ -872,7 +872,7 @@ namespace IndigoMovieManager
         {
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"watch ui apply request: kind={request.Kind} sort={request.Sort} reason={request.Reason} changed_paths={request.ChangedMovies?.Count ?? 0} source_changed_paths={request.ChangedMovieCount} diff_apply_kind={request.DiffApplyPlan.ApplyKindLogValue} diff_apply_candidate={request.DiffApplyPlan.IsDiffApplyCandidate} diff_full_fallback_reason={request.DiffApplyPlan.FullFallbackReason}"
+                $"watch ui apply request: kind={request.Kind} sort={request.Sort} reason={request.Reason} changed_paths={request.ChangedMovies?.Count ?? 0} source_changed_paths={request.ChangedMovieCount} {MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(request.DiffApplyPlan)}"
             );
 
             if (request.Kind == WatchUiApplyRequestKind.FullFallbackReload)
