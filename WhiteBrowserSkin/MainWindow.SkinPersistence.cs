@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -48,7 +49,7 @@ namespace IndigoMovieManager
                 {
                     DebugRuntimeLog.Write(
                         "skin-db",
-                        $"profile persist queue closed: db='{request.DbFullPath}' profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()}"
+                        $"profile persist queue closed: db='{request.DbFullPath}' profile='{request.ProfileName}' key='{request.Key}' {request.BuildWriteFailureResultLogFields("queue-closed", TimeSpan.Zero)}"
                     );
                 }
 
@@ -61,7 +62,7 @@ namespace IndigoMovieManager
                 RecordProfilePersistFaultForCache(request);
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"persist queue rejected: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()}"
+                    $"persist queue rejected: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildWriteFailureResultLogFields("queue-rejected", TimeSpan.Zero)}"
                 );
             }
             else if (request.TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile)
@@ -133,17 +134,15 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            WhiteBrowserSkinStatePersistRequest request = WhiteBrowserSkinStatePersistRequest.CreateSystem(
+                dbFullPath,
+                key,
+                value ?? "",
+                DebugRuntimeLog.GetCurrentScopeText()
+            );
+
             // まずは単一ライターへ流し、通常時の runtime 状態だけ先に揃える。
-            if (
-                TryEnqueueWhiteBrowserSkinStatePersistRequest(
-                    WhiteBrowserSkinStatePersistRequest.CreateSystem(
-                        dbFullPath,
-                        key,
-                        value ?? "",
-                        DebugRuntimeLog.GetCurrentScopeText()
-                    )
-                )
-            )
+            if (TryEnqueueWhiteBrowserSkinStatePersistRequest(request))
             {
                 ApplyRuntimeSystemValue(dbFullPath, key, value ?? "");
                 return true;
@@ -153,28 +152,31 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"system persist dropped after shutdown start: db='{dbFullPath}' key='{key}'"
+                    $"system persist dropped after shutdown start: db='{dbFullPath}' key='{key}' {request.BuildWriteFailureResultLogFields("queue-closed", TimeSpan.Zero)}"
                 );
                 return false;
             }
 
+            Stopwatch stopwatch = Stopwatch.StartNew();
             try
             {
                 // 予期しない queue 拒否時だけ direct write へ戻し、通常時の保存を落とさない。
                 SQLite.UpsertSystemTable(dbFullPath, key, value ?? "");
+                stopwatch.Stop();
                 ApplyRuntimeSystemValue(dbFullPath, key, value ?? "");
                 DebugRuntimeLog.RecordSkinDbPersistFallbackApplied();
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"system persist fallback applied: db='{dbFullPath}' key='{key}' value='{value ?? ""}'"
+                    $"system persist fallback applied: db='{dbFullPath}' key='{key}' value='{value ?? ""}' {request.BuildWriteSuccessResultLogFields("fallback-write", stopwatch.Elapsed)}"
                 );
                 return true;
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"system persist fallback failed: db='{dbFullPath}' key='{key}' err='{ex.GetType().Name}: {ex.Message}'"
+                    $"system persist fallback failed: db='{dbFullPath}' key='{key}' {request.BuildWriteFailureResultLogFields("fallback-write", stopwatch.Elapsed)} err='{ex.GetType().Name}: {ex.Message}'"
                 );
                 return false;
             }
@@ -193,6 +195,7 @@ namespace IndigoMovieManager
                 return;
             }
 
+            Stopwatch stopwatch = Stopwatch.StartNew();
             try
             {
                 switch (request.TargetKind)
@@ -221,14 +224,16 @@ namespace IndigoMovieManager
                         break;
                 }
 
+                stopwatch.Stop();
                 DebugRuntimeLog.RecordSkinDbPersistFallbackApplied();
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"persist fallback applied: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' value='{request.Value ?? ""}'"
+                    $"persist fallback applied: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' value='{request.Value ?? ""}' {request.BuildWriteSuccessResultLogFields("fallback-write", stopwatch.Elapsed)}"
                 );
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
                 if (request.TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile)
                 {
                     WhiteBrowserSkinProfileValueCache.RecordFault(
@@ -241,7 +246,7 @@ namespace IndigoMovieManager
 
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"persist fallback failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
+                    $"persist fallback failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildWriteFailureResultLogFields("fallback-write", stopwatch.Elapsed)} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }

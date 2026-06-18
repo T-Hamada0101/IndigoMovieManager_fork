@@ -1,6 +1,7 @@
 using IndigoMovieManager.Skin.Runtime;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -104,6 +105,7 @@ namespace IndigoMovieManager.Skin
                     )
                 )
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
                         switch (request.TargetKind)
@@ -111,16 +113,18 @@ namespace IndigoMovieManager.Skin
                             case WhiteBrowserSkinStatePersistTargetKind.System:
                                 if (!TryUpsertSystemTable(request.DbFullPath, request.Key, request.Value))
                                 {
+                                    stopwatch.Stop();
                                     failureCount++;
                                     log(
                                         BuildScopedLogMessage(
                                             request.TraceText,
-                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='write returned false'"
+                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildWriteFailureResultLogFields("persister-write", stopwatch.Elapsed)} err='write returned false'"
                                         )
                                     );
                                     break;
                                 }
 
+                                stopwatch.Stop();
                                 systemCount++;
                                 break;
 
@@ -134,6 +138,7 @@ namespace IndigoMovieManager.Skin
                                     )
                                 )
                                 {
+                                    stopwatch.Stop();
                                     failureCount++;
                                     WhiteBrowserSkinProfileValueCache.RecordFault(
                                         request.DbFullPath,
@@ -144,12 +149,13 @@ namespace IndigoMovieManager.Skin
                                     log(
                                         BuildScopedLogMessage(
                                             request.TraceText,
-                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='write returned false'"
+                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildWriteFailureResultLogFields("persister-write", stopwatch.Elapsed)} err='write returned false'"
                                         )
                                     );
                                     break;
                                 }
 
+                                stopwatch.Stop();
                                 WhiteBrowserSkinProfileValueCache.RecordPersisted(
                                     request.DbFullPath,
                                     request.ProfileName,
@@ -162,6 +168,7 @@ namespace IndigoMovieManager.Skin
                     }
                     catch (Exception ex)
                     {
+                        stopwatch.Stop();
                         failureCount++;
                         if (request.TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile)
                         {
@@ -176,7 +183,7 @@ namespace IndigoMovieManager.Skin
                         log(
                             BuildScopedLogMessage(
                                 request.TraceText,
-                                $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
+                                $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildWriteFailureResultLogFields("persister-write", stopwatch.Elapsed)} err='{ex.GetType().Name}: {ex.Message}'"
                             )
                         );
                     }

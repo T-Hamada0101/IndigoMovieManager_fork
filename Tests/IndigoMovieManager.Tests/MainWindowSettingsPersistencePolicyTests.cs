@@ -321,7 +321,46 @@ public sealed class MainWindowSettingsPersistencePolicyTests
 
             Assert.That(queueMethod, Does.Contain("WhiteBrowserSkinProfileValueCache.RecordPending("));
             Assert.That(queueMethod, Does.Contain("RecordProfilePersistFaultForCache(request);"));
-            Assert.That(queueMethod, Does.Contain("BuildFailureStateLogFields()"));
+            Assert.That(queueMethod, Does.Contain("BuildWriteFailureResultLogFields(\"queue-closed\""));
+            Assert.That(queueMethod, Does.Contain("BuildWriteFailureResultLogFields(\"queue-rejected\""));
+        });
+    }
+
+    [Test]
+    public void SkinProfileWriteはPersistenceWriteRequestResult共通語彙を使う()
+    {
+        string requestSource = GetRepoText(
+            "WhiteBrowserSkin",
+            "Runtime",
+            "WhiteBrowserSkinStatePersistRequest.cs"
+        );
+        string persistenceSource = GetRepoText("WhiteBrowserSkin", "MainWindow.SkinPersistence.cs");
+        string persisterSource = GetRepoText(
+            "WhiteBrowserSkin",
+            "Runtime",
+            "WhiteBrowserSkinStatePersister.cs"
+        );
+        string queueMethod = ExtractMethod(
+            persistenceSource,
+            "private bool TryEnqueueWhiteBrowserSkinStatePersistRequest("
+        );
+        string fallbackMethod = ExtractMethod(
+            persistenceSource,
+            "private void PersistWhiteBrowserSkinStateRequestFallback("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(requestSource, Does.Contain("PersistenceWriteRequest.Create("));
+            Assert.That(requestSource, Does.Contain("PersistenceWriteKind.BackgroundDbWrite"));
+            Assert.That(requestSource, Does.Contain("PersistenceWriteResult"));
+            Assert.That(requestSource, Does.Contain("skin-profile:{ProfileName}:{Key}"));
+
+            Assert.That(queueMethod, Does.Contain("BuildWriteFailureResultLogFields(\"queue-closed\""));
+            Assert.That(queueMethod, Does.Contain("BuildWriteFailureResultLogFields(\"queue-rejected\""));
+            Assert.That(fallbackMethod, Does.Contain("BuildWriteSuccessResultLogFields(\"fallback-write\""));
+            Assert.That(fallbackMethod, Does.Contain("BuildWriteFailureResultLogFields(\"fallback-write\""));
+            Assert.That(persisterSource, Does.Contain("BuildWriteFailureResultLogFields(\"persister-write\""));
         });
     }
 

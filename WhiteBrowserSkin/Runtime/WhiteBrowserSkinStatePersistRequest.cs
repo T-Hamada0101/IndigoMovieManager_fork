@@ -86,11 +86,48 @@ namespace IndigoMovieManager.Skin
         internal string BuildFailureStateLogFields()
         {
             // profile は session cache で未保存状態を追えるため、失敗時だけ retryable としてログへ出す。
-            PersistenceFailureKind failureKind =
-                TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile
-                    ? PersistenceFailureKind.SkinProfile
-                    : PersistenceFailureKind.SkinSystem;
-            return PersistenceFailureNotificationPolicy.BuildLogFields(failureKind);
+            return PersistenceFailureNotificationPolicy.BuildLogFields(ResolveFailureKind());
+        }
+
+        internal PersistenceWriteRequest BuildWriteRequest(string reason)
+        {
+            return PersistenceWriteRequest.Create(
+                PersistenceWriteKind.BackgroundDbWrite,
+                reason,
+                BuildWriteQueueKey(),
+                retryable: TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile
+            );
+        }
+
+        internal string BuildWriteFailureResultLogFields(string reason, TimeSpan elapsed)
+        {
+            return PersistenceWriteResult
+                .FromFailure(BuildWriteRequest(reason), elapsed, ResolveFailureKind())
+                .LogFields;
+        }
+
+        internal string BuildWriteSuccessResultLogFields(string reason, TimeSpan elapsed)
+        {
+            return PersistenceWriteResult
+                .FromSuccess(BuildWriteRequest(reason), elapsed)
+                .LogFields;
+        }
+
+        private PersistenceFailureKind ResolveFailureKind()
+        {
+            return TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile
+                ? PersistenceFailureKind.SkinProfile
+                : PersistenceFailureKind.SkinSystem;
+        }
+
+        private string BuildWriteQueueKey()
+        {
+            return TargetKind switch
+            {
+                WhiteBrowserSkinStatePersistTargetKind.System => $"skin-system:{Key}",
+                WhiteBrowserSkinStatePersistTargetKind.Profile => $"skin-profile:{ProfileName}:{Key}",
+                _ => $"skin:{(int)TargetKind}:{ProfileName}:{Key}",
+            };
         }
     }
 }

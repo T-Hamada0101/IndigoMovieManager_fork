@@ -247,6 +247,14 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                 logs.Any(
                     static x =>
                         x.Contains("skin state persist failed:", StringComparison.Ordinal)
+                        && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
+                        && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
+                        && x.Contains(
+                            "queue_key=skin-profile:SampleExternalSkin:LastUpperTab",
+                            StringComparison.Ordinal
+                        )
+                        && x.Contains("write_succeeded=false", StringComparison.Ordinal)
+                        && x.Contains("failure_kind=skin-profile", StringComparison.Ordinal)
                         && x.Contains("dirty=true", StringComparison.Ordinal)
                         && x.Contains("failed=true", StringComparison.Ordinal)
                         && x.Contains("retryable=true", StringComparison.Ordinal)
@@ -275,6 +283,45 @@ public sealed class WhiteBrowserSkinStatePersisterTests
     }
 
     [Test]
+    public void PersistRequest_Profile共通write語彙を作る()
+    {
+        WhiteBrowserSkinStatePersistRequest request =
+            WhiteBrowserSkinStatePersistRequest.CreateProfile(
+                "missing.wb",
+                "SampleSkin",
+                "LastUpperTab",
+                "DefaultGrid"
+            );
+
+        PersistenceWriteRequest writeRequest = request.BuildWriteRequest("queue-rejected");
+        string failureLog = request.BuildWriteFailureResultLogFields(
+            "persister-write",
+            TimeSpan.FromMilliseconds(12.34d)
+        );
+        string successLog = request.BuildWriteSuccessResultLogFields(
+            "fallback-write",
+            TimeSpan.FromMilliseconds(1.2d)
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                writeRequest.BuildLogFields(),
+                Is.EqualTo(
+                    "write_kind=background-db-write write_reason=queue-rejected queue_key=skin-profile:SampleSkin:LastUpperTab retryable_policy=true"
+                )
+            );
+            Assert.That(failureLog, Does.Contain("write_kind=background-db-write"));
+            Assert.That(failureLog, Does.Contain("write_reason=persister-write"));
+            Assert.That(failureLog, Does.Contain("write_succeeded=false"));
+            Assert.That(failureLog, Does.Contain("failure_kind=skin-profile"));
+            Assert.That(failureLog, Does.Contain("dirty=true failed=true retryable=true notify_ui=false"));
+            Assert.That(successLog, Does.Contain("write_succeeded=true"));
+            Assert.That(successLog, Does.Contain("failure_kind=none"));
+        });
+    }
+
+    [Test]
     public void PersistRequest_System失敗ログは非dirty_nonretryable通知条件を持つ()
     {
         WhiteBrowserSkinStatePersistRequest request =
@@ -288,6 +335,32 @@ public sealed class WhiteBrowserSkinStatePersisterTests
             request.BuildFailureStateLogFields(),
             Is.EqualTo("dirty=false failed=true retryable=false notify_ui=true")
         );
+    }
+
+    [Test]
+    public void PersistRequest_System共通write語彙は通知候補として読める()
+    {
+        WhiteBrowserSkinStatePersistRequest request =
+            WhiteBrowserSkinStatePersistRequest.CreateSystem(
+                "missing.wb",
+                "skin",
+                "DefaultGrid"
+            );
+
+        string failureLog = request.BuildWriteFailureResultLogFields(
+            "queue-closed",
+            TimeSpan.Zero
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(failureLog, Does.Contain("write_kind=background-db-write"));
+            Assert.That(failureLog, Does.Contain("write_reason=queue-closed"));
+            Assert.That(failureLog, Does.Contain("queue_key=skin-system:skin"));
+            Assert.That(failureLog, Does.Contain("write_succeeded=false"));
+            Assert.That(failureLog, Does.Contain("failure_kind=skin-system"));
+            Assert.That(failureLog, Does.Contain("dirty=false failed=true retryable=false notify_ui=true"));
+        });
     }
 
     [Test]
