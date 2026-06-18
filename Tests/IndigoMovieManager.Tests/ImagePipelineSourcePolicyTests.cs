@@ -176,6 +176,21 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
     }
 
+    [Test]
+    public void サムネ進捗preview_converterはImageRequestを作ってからfallback_decodeへ進む()
+    {
+        string converterSource = GetRepoText(
+            "Infrastructure",
+            "Converter",
+            "ThumbnailProgressPreviewConverter.cs"
+        );
+        string convertMethod = ExtractMethod(converterSource, "public object Convert(");
+
+        Assert.That(convertMethod, Does.Contain("ImageRequest.ForThumbnailProgressPreview("));
+        Assert.That(convertMethod, Does.Contain("fallbackRequest.ThumbnailPath"));
+        Assert.That(convertMethod, Does.Contain("ThumbnailPreviewCache.Shared.TryGet("));
+    }
+
     private static void AssertMethodDoesNotContainImageIo(string methodSource, string methodName)
     {
         foreach (string fragment in ImageIoFragments)

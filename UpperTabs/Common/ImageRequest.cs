@@ -7,6 +7,7 @@ namespace IndigoMovieManager.UpperTabs.Common
         UpperTab,
         ExtensionDetail,
         PlayerRightRail,
+        ThumbnailProgressPreview,
     }
 
     internal enum ImageRequestCachePolicy
@@ -88,6 +89,22 @@ namespace IndigoMovieManager.UpperTabs.Common
                 moviePathKey ?? "",
                 ImageRequestThumbnailRole.PlayerRightRail,
                 isVisiblePriority,
+                ImageRequestCachePolicy.UseConverterCache,
+                requestRevision
+            );
+        }
+
+        internal static ImageRequest ForThumbnailProgressPreview(
+            string thumbnailPath,
+            string previewCacheKey,
+            int requestRevision
+        )
+        {
+            return new ImageRequest(
+                thumbnailPath ?? "",
+                previewCacheKey ?? "",
+                ImageRequestThumbnailRole.ThumbnailProgressPreview,
+                true,
                 ImageRequestCachePolicy.UseConverterCache,
                 requestRevision
             );

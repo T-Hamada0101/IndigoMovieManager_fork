@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
 using IndigoMovieManager.Thumbnail;
+using IndigoMovieManager.UpperTabs.Common;
 
 namespace IndigoMovieManager.Converter
 {
@@ -30,7 +31,17 @@ namespace IndigoMovieManager.Converter
             }
 
             object fallbackValue = values != null && values.Length > 2 ? values[2] : null;
-            object fallback = FallbackConverter.Convert(fallbackValue, targetType, parameter, culture);
+            ImageRequest fallbackRequest = ImageRequest.ForThumbnailProgressPreview(
+                fallbackValue as string,
+                previewCacheKey,
+                ResolveImageRequestRevision(previewRevision)
+            );
+            object fallback = FallbackConverter.Convert(
+                fallbackRequest.ThumbnailPath,
+                targetType,
+                parameter,
+                culture
+            );
             if (!ReferenceEquals(fallback, Binding.DoNothing))
             {
                 ThumbnailPreviewLatencyTracker.RecordDisplayed(
@@ -82,6 +93,16 @@ namespace IndigoMovieManager.Converter
             }
 
             return 0;
+        }
+
+        private static int ResolveImageRequestRevision(long previewRevision)
+        {
+            if (previewRevision < int.MinValue || previewRevision > int.MaxValue)
+            {
+                return 0;
+            }
+
+            return (int)previewRevision;
         }
     }
 }

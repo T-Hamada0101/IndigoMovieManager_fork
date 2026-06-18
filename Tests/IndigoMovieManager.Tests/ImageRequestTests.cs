@@ -230,4 +230,25 @@ public sealed class ImageRequestTests
             );
         });
     }
+
+    [Test]
+    public void サムネ進捗preview要求はrole_cache_revisionを保持する()
+    {
+        ImageRequest request = ImageRequest.ForThumbnailProgressPreview(
+            @"C:\thumb\progress-preview.jpg",
+            "worker-preview-key",
+            requestRevision: 33
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.ThumbnailRole, Is.EqualTo(ImageRequestThumbnailRole.ThumbnailProgressPreview));
+            Assert.That(request.CachePolicy, Is.EqualTo(ImageRequestCachePolicy.UseConverterCache));
+            Assert.That(request.RequestRevision, Is.EqualTo(33));
+            Assert.That(request.ThumbnailPath, Is.EqualTo(@"C:\thumb\progress-preview.jpg"));
+            Assert.That(request.MoviePathKey, Is.EqualTo("worker-preview-key"));
+            Assert.That(request.IsVisiblePriority, Is.True);
+            Assert.That(request.ShouldDecode, Is.True);
+        });
+    }
 }
