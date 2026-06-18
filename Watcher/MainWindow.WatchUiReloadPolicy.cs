@@ -679,7 +679,8 @@ namespace IndigoMovieManager
                 currentSort,
                 useQueryOnlyReload,
                 $"deferred:{reason}",
-                changedMovies
+                changedMovies,
+                recoveryReason
             );
         }
 
@@ -798,7 +799,8 @@ namespace IndigoMovieManager
                 currentSort,
                 reloadPlan.UseQueryOnlyReload,
                 $"final:{mode}",
-                changedMovies
+                changedMovies,
+                queryOnlyRecoveryReason
             );
         }
 
@@ -807,9 +809,19 @@ namespace IndigoMovieManager
             string sort,
             bool useQueryOnlyReload,
             string reason,
-            IReadOnlyList<WatchChangedMovie> changedMovies
+            IReadOnlyList<WatchChangedMovie> changedMovies,
+            string fullFallbackReason = ""
         )
         {
+            int changedMovieCount = changedMovies?.Count ?? 0;
+            string resolvedFullFallbackReason = useQueryOnlyReload
+                ? MovieViewDiffFactory.FallbackReasonNone
+                : (
+                    string.IsNullOrWhiteSpace(fullFallbackReason)
+                        ? "watch-full-fallback"
+                        : fullFallbackReason
+                );
+
             return new WatchUiApplyRequest(
                 string.IsNullOrWhiteSpace(sort) ? "" : sort,
                 string.IsNullOrWhiteSpace(reason) ? "watch" : reason,
@@ -817,7 +829,13 @@ namespace IndigoMovieManager
                     ? WatchUiApplyRequestKind.InMemoryReadModelRefresh
                     : WatchUiApplyRequestKind.FullFallbackReload,
                 UiWorkRequestPolicy.CreateWatchUiReloadRequest(useQueryOnlyReload),
-                useQueryOnlyReload ? (changedMovies ?? []) : []
+                useQueryOnlyReload ? (changedMovies ?? []) : [],
+                changedMovieCount,
+                MovieViewDiffApplyPolicy.ResolveWatchUiApplyCandidate(
+                    useQueryOnlyReload,
+                    changedMovieCount,
+                    resolvedFullFallbackReason
+                )
             );
         }
 
@@ -835,14 +853,16 @@ namespace IndigoMovieManager
             string sort,
             bool useQueryOnlyReload,
             string reason,
-            IReadOnlyList<WatchChangedMovie> changedMovies
+            IReadOnlyList<WatchChangedMovie> changedMovies,
+            string fullFallbackReason = ""
         )
         {
             WatchUiApplyRequest request = BuildWatchUiApplyRequest(
                 sort,
                 useQueryOnlyReload,
                 reason,
-                changedMovies
+                changedMovies,
+                fullFallbackReason
             );
             ApplyWatchUiApplyRequest(request);
         }
@@ -909,7 +929,9 @@ namespace IndigoMovieManager
             string Reason,
             WatchUiApplyRequestKind Kind,
             UiWorkRequest WorkRequest,
-            IReadOnlyList<WatchChangedMovie> ChangedMovies
+            IReadOnlyList<WatchChangedMovie> ChangedMovies,
+            int ChangedMovieCount,
+            MovieViewDiffApplyPlan DiffApplyPlan
         );
     }
 }

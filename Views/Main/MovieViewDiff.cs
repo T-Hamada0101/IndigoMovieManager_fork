@@ -221,6 +221,27 @@ internal static class MovieViewDiffApplyPolicy
         );
     }
 
+    internal static MovieViewDiffApplyPlan ResolveWatchUiApplyCandidate(
+        bool useQueryOnlyReload,
+        int changedMovieCount,
+        string fullFallbackReason
+    )
+    {
+        // watch 由来の query-only change set は、次段の差分反映候補としてだけ札を付ける。
+        if (useQueryOnlyReload && changedMovieCount > 0)
+        {
+            return new MovieViewDiffApplyPlan(
+                MovieViewDiffApplyKind.DiffApply,
+                FallbackReasonNone
+            );
+        }
+
+        return new MovieViewDiffApplyPlan(
+            MovieViewDiffApplyKind.FullFallback,
+            ResolveFullFallbackReason(fullFallbackReason)
+        );
+    }
+
     internal static string NormalizeFallbackReason(string fallbackReason)
     {
         if (string.IsNullOrWhiteSpace(fallbackReason))

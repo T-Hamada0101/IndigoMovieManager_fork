@@ -123,11 +123,18 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         Assert.That(source, Does.Contain("internal readonly record struct WatchUiApplyRequest("));
         Assert.That(source, Does.Contain("internal enum WatchUiApplyRequestKind"));
         Assert.That(source, Does.Contain("UiWorkRequest WorkRequest"));
+        Assert.That(source, Does.Contain("MovieViewDiffApplyPlan DiffApplyPlan"));
+        Assert.That(source, Does.Contain("int ChangedMovieCount"));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.InMemoryReadModelRefresh"));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.FullFallbackReload"));
         Assert.That(
             buildMethod,
             Does.Contain("UiWorkRequestPolicy.CreateWatchUiReloadRequest(useQueryOnlyReload)")
+        );
+        Assert.That(buildMethod, Does.Contain("int changedMovieCount = changedMovies?.Count ?? 0;"));
+        Assert.That(
+            buildMethod,
+            Does.Contain("MovieViewDiffApplyPolicy.ResolveWatchUiApplyCandidate(")
         );
         Assert.That(buildMethod, Does.Contain("useQueryOnlyReload ? (changedMovies ?? []) : []"));
     }

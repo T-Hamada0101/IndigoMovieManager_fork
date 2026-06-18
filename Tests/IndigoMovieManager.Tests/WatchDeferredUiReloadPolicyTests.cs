@@ -652,6 +652,13 @@ public sealed class WatchDeferredUiReloadPolicyTests
                 Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadQueryOnlyLogReason)
             );
             Assert.That(result.ChangedMovies, Is.SameAs(changedMovies));
+            Assert.That(result.ChangedMovieCount, Is.EqualTo(1));
+            Assert.That(result.DiffApplyPlan.IsDiffApplyCandidate, Is.True);
+            Assert.That(result.DiffApplyPlan.ApplyKindLogValue, Is.EqualTo("diff-apply"));
+            Assert.That(
+                result.DiffApplyPlan.FullFallbackReason,
+                Is.EqualTo(MovieViewDiffFactory.FallbackReasonNone)
+            );
         });
     }
 
@@ -668,7 +675,8 @@ public sealed class WatchDeferredUiReloadPolicyTests
                     MainWindow.WatchMovieChangeKind.SourceInserted,
                     MainWindow.WatchMovieDirtyFields.MovieName
                 ),
-            ]
+            ],
+            "dirty-fields-unsafe:MovieName"
         );
 
         Assert.Multiple(() =>
@@ -685,6 +693,13 @@ public sealed class WatchDeferredUiReloadPolicyTests
                 Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadFullFallbackLogReason)
             );
             Assert.That(result.ChangedMovies, Is.Empty);
+            Assert.That(result.ChangedMovieCount, Is.EqualTo(1));
+            Assert.That(result.DiffApplyPlan.IsDiffApplyCandidate, Is.False);
+            Assert.That(result.DiffApplyPlan.ApplyKindLogValue, Is.EqualTo("full-fallback"));
+            Assert.That(
+                result.DiffApplyPlan.FullFallbackReason,
+                Is.EqualTo(MovieViewDiffFactory.FallbackReasonUnsafe)
+            );
         });
     }
 
