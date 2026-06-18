@@ -50,6 +50,9 @@ namespace IndigoMovieManager
             {
                 return false;
             }
+            MainDbSwitchSideEffectPlan sideEffectPlan = BuildMainDbSwitchSideEffectPlan(
+                context
+            );
 
             bool switchSucceeded = false;
             bool transitionStarted = false;
@@ -85,7 +88,7 @@ namespace IndigoMovieManager
                 }
 
                 ShowUiHangDbSwitchStatus("DB切替: 切替準備中");
-                RunMainDbPreSwitch(context);
+                RunMainDbPreSwitch(context, sideEffectPlan);
                 transitionStarted = true;
 
                 ShowUiHangDbSwitchStatus("DB切替: DBを開いています");
@@ -97,7 +100,7 @@ namespace IndigoMovieManager
                 // 切替成功時だけセッション印を進め、旧DB向けQueueRequestをstale化する。
                 _ = AdvanceCurrentMainDbQueueRequestSessionStamp();
                 ShowUiHangDbSwitchStatus("DB切替: 切替後処理を反映中");
-                RunMainDbPostSwitch(context);
+                RunMainDbPostSwitch(context, sideEffectPlan);
                 switchSucceeded = true;
                 return true;
             }
@@ -178,16 +181,19 @@ namespace IndigoMovieManager
         }
 
         // 切り替え前の見た目保存とメニュー状態調整をまとめて扱う。
-        private void RunMainDbPreSwitch(MainDbSwitchContext context)
+        private void RunMainDbPreSwitch(
+            MainDbSwitchContext context,
+            MainDbSwitchSideEffectPlan sideEffectPlan
+        )
         {
-            if (ShouldCloseMainMenuBeforeDbSwitch(context.Source))
+            if (sideEffectPlan.ShouldCloseMainMenu)
             {
                 MenuToggleButton.IsChecked = false;
             }
 
             // 切替中は旧DB由来の投入を止め、成功後にだけ新セッションを再開する。
             SetThumbnailQueueInputEnabled(false);
-            TryPersistCurrentDbViewStateBeforeSwitch(context);
+            TryPersistCurrentDbViewStateBeforeSwitch(context, sideEffectPlan);
         }
 
         // DB本体の切り替えはここでだけ行い、失敗時は後段へ進ませない。
@@ -258,16 +264,19 @@ namespace IndigoMovieManager
         }
 
         // open成功後のRecent/LastDoc更新をここへ集約する。
-        private void RunMainDbPostSwitch(MainDbSwitchContext context)
+        private void RunMainDbPostSwitch(
+            MainDbSwitchContext context,
+            MainDbSwitchSideEffectPlan sideEffectPlan
+        )
         {
-            TryDiscardPreviousDbPendingThumbnailQueueItems(context);
+            TryDiscardPreviousDbPendingThumbnailQueueItems(context, sideEffectPlan);
 
-            if (ShouldUpdateRecentFilesOnSuccessfulDbSwitch(context.Source))
+            if (sideEffectPlan.ShouldUpdateRecentFiles)
             {
                 ReStackRecentTree(context.TargetDbFullPath);
             }
 
-            if (ShouldRememberLastDocOnSuccessfulDbSwitch(context.Source))
+            if (sideEffectPlan.ShouldRememberLastDoc)
             {
                 Properties.Settings.Default.LastDoc = context.TargetDbFullPath;
                 QueueApplicationSettingsSave("main-db-last-doc");
@@ -281,14 +290,12 @@ namespace IndigoMovieManager
         }
 
         // 別DBへ切り替えた後は、旧QueueDBに積みっぱなしだった未着手pendingを掃除する。
-        private void TryDiscardPreviousDbPendingThumbnailQueueItems(MainDbSwitchContext context)
+        private void TryDiscardPreviousDbPendingThumbnailQueueItems(
+            MainDbSwitchContext context,
+            MainDbSwitchSideEffectPlan sideEffectPlan
+        )
         {
-            if (
-                !ShouldDiscardPreviousDbPendingThumbnailQueueItemsOnSuccessfulSwitch(
-                    context.CurrentDbFullPath,
-                    context.TargetDbFullPath
-                )
-            )
+            if (!sideEffectPlan.ShouldDiscardPreviousDbPendingThumbnailQueueItems)
             {
                 return;
             }
@@ -352,15 +359,12 @@ namespace IndigoMovieManager
         }
 
         // UI起点の切り替えだけ、旧DBの見た目状態を切り替え前に保存する。
-        private void TryPersistCurrentDbViewStateBeforeSwitch(MainDbSwitchContext context)
+        private void TryPersistCurrentDbViewStateBeforeSwitch(
+            MainDbSwitchContext context,
+            MainDbSwitchSideEffectPlan sideEffectPlan
+        )
         {
-            if (
-                !ShouldPersistCurrentDbViewStateBeforeSwitch(
-                    context.CurrentDbFullPath,
-                    context.TargetDbFullPath,
-                    context.Source
-                )
-            )
+            if (!sideEffectPlan.ShouldPersistCurrentDbViewState)
             {
                 return;
             }
@@ -395,48 +399,67 @@ namespace IndigoMovieManager
             );
         }
 
+        private static MainDbSwitchSideEffectPlan BuildMainDbSwitchSideEffectPlan(
+            MainDbSwitchContext context
+        )
+        {
+            return BuildMainDbSwitchSideEffectPlan(
+                context.CurrentDbFullPath,
+                context.TargetDbFullPath,
+                context.Source
+            );
+        }
+
+        private static MainDbSwitchSideEffectPlan BuildMainDbSwitchSideEffectPlan(
+            string currentDbFullPath,
+            string targetDbFullPath,
+            MainDbSwitchSource source
+        )
+        {
+            bool hasCurrentDb = !string.IsNullOrWhiteSpace(currentDbFullPath);
+            bool hasTargetDb = !string.IsNullOrWhiteSpace(targetDbFullPath);
+            bool isDifferentDb =
+                hasCurrentDb
+                && hasTargetDb
+                && !AreSameMainDbPath(currentDbFullPath, targetDbFullPath);
+
+            return MainDbSwitchPlanPolicy.BuildSideEffectPlan(
+                source,
+                hasCurrentDb,
+                hasTargetDb,
+                isDifferentDb
+            );
+        }
+
         internal static bool ShouldPersistCurrentDbViewStateBeforeSwitch(
             string currentDbFullPath,
             string targetDbFullPath,
             MainDbSwitchSource source
         )
         {
-            if (
-                source != MainDbSwitchSource.New
-                && source != MainDbSwitchSource.OpenDialog
-                && source != MainDbSwitchSource.DragDrop
-                && source != MainDbSwitchSource.RecentMenu
-            )
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(currentDbFullPath))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(targetDbFullPath))
-            {
-                return false;
-            }
-
-            return !AreSameMainDbPath(currentDbFullPath, targetDbFullPath);
+            return BuildMainDbSwitchSideEffectPlan(currentDbFullPath, targetDbFullPath, source)
+                .ShouldPersistCurrentDbViewState;
         }
 
         internal static bool ShouldUpdateRecentFilesOnSuccessfulDbSwitch(MainDbSwitchSource source)
         {
-            return source != MainDbSwitchSource.StartupAutoOpen;
+            return MainDbSwitchPlanPolicy
+                .BuildSideEffectPlan(source, hasCurrentDb: true, hasTargetDb: true, isDifferentDb: true)
+                .ShouldUpdateRecentFiles;
         }
 
         internal static bool ShouldRememberLastDocOnSuccessfulDbSwitch(MainDbSwitchSource source)
         {
-            return source != MainDbSwitchSource.StartupAutoOpen;
+            return MainDbSwitchPlanPolicy
+                .BuildSideEffectPlan(source, hasCurrentDb: true, hasTargetDb: true, isDifferentDb: true)
+                .ShouldRememberLastDoc;
         }
 
         internal static bool ShouldCloseMainMenuBeforeDbSwitch(MainDbSwitchSource source)
         {
-            return source != MainDbSwitchSource.StartupAutoOpen;
+            return MainDbSwitchPlanPolicy
+                .BuildSideEffectPlan(source, hasCurrentDb: true, hasTargetDb: true, isDifferentDb: true)
+                .ShouldCloseMainMenu;
         }
 
         internal static bool ShouldDiscardPreviousDbPendingThumbnailQueueItemsOnSuccessfulSwitch(
@@ -444,17 +467,12 @@ namespace IndigoMovieManager
             string targetDbFullPath
         )
         {
-            if (string.IsNullOrWhiteSpace(currentDbFullPath))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(targetDbFullPath))
-            {
-                return false;
-            }
-
-            return !AreSameMainDbPath(currentDbFullPath, targetDbFullPath);
+            return BuildMainDbSwitchSideEffectPlan(
+                    currentDbFullPath,
+                    targetDbFullPath,
+                    MainDbSwitchSource.OpenDialog
+                )
+                .ShouldDiscardPreviousDbPendingThumbnailQueueItems;
         }
 
         internal static string ResolveMainDbDialogInitialDirectory(
