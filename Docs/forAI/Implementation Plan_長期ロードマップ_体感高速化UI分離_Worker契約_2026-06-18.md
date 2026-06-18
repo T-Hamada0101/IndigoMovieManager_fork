@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#######---] 72%`
+> 進捗メータ: `[#######---] 73%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-19
 
-全体進捗目安: `[#######---] 72%`
+全体進捗目安: `[#######---] 73%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -15,12 +15,12 @@
 |---|---:|---|---|
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 49% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない | UI event handler を snapshot 生成へさらに寄せる |
-| Phase 2. ReadModel Store と Diff-first | 47% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った | watch 1件追加 / rename が full fallback へ戻らない実機ログと、大量変更時 fallback の妥当性を確認する |
+| Phase 2. ReadModel Store と Diff-first | 49% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める | watch 1件追加 / rename が full fallback へ戻らない実機ログと、大量変更時 fallback の妥当性を確認する |
 | Phase 3. In-process Scheduler | 51% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした | 実機ログで scheduler admission が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
 | Phase 4. Image Pipeline 統一 | 51% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。Player右レール converter と ThumbnailError 一覧 converter は decode result を保持する | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard と error tab image aggregate を確認する |
 | Phase 5. Persistence Pipeline | 58% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume / playback stats / skin state の成功ログも共通語彙へ寄せた | 実機ログで保存成功 / 失敗時の dirty / failed / retryable と UI 通知候補を確認する |
 | Phase 6. Worker 契約 | 52% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた | 実機ログで Worker DTO fields が UI 詰まりの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
-| Phase 7. Skin / Player / Watcher の Core 接続 | 25% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続した | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
+| Phase 7. Skin / Player / Watcher の Core 接続 | 27% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続し、Player 再生状態変更は `operation_reason=player-playback` と reason を状態変化時だけログへ出す | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
 ## 1. Summary
 
@@ -55,6 +55,7 @@
 - `ReplaceFilteredMovieRecs(...)` の同一 `Movie_Path` 別インスタンス更新は、remove / insert ではなく in-place replace 通知へ寄せた。単件更新のスクロール / 選択揺れを減らす diff-first の最初の実経路。
 - 2026-06-19 Worker A: 同一 stable key 更新に続く小さな単一連続 insert / remove は、重複 key と reorder を避けた上で Replace + Add / Remove の局所適用へ進めた。
 - 2026-06-19 Worker C: sort-only は一意な `Movie_Path` stable key の同一集合なら Move 中心で並び替え、Move 後に別インスタンスだけ Replace する経路へ広げた。
+- 2026-06-19 Worker O: 一覧 diff の stable key は DB 登録済み行で `Movie_Id` を優先し、path rename / movie_path 更新でも同一動画なら remove / insert ではなく Replace update へ進める。`Movie_Id` / `Movie_Path` の重複は従来どおり fallback に戻す。
 - `WatchUiApplyRequest` は `ChangedMovieCount` と `MovieViewDiffApplyPlan` を持ち、query-only change set は diff apply 候補、full fallback は full fallback として読めるようになった。実 diff apply はまだ有効化しない。
 - watch UI apply request ログにも `diff_apply_kind` / `diff_apply_candidate` / `diff_full_fallback_reason` を出し、Watch query-only と ReadModel apply の差分語彙を突き合わせられるようにした。
 - 画像 hot path は、詳細サムネ、Player右レール、上側タブ viewport 更新入口で file I/O / decode へ進まないことを source policy で固定した。
@@ -92,6 +93,7 @@
 - 2026-06-19 Worker J: watch metadata probe の既存 slow / skip / refresh ログへ `worker_job_id`、`worker_kind`、`worker_status`、`worker_stage`、`artifact_kind`、`retryable`、`elapsed_ms` を併記し、probe 実行順や DB 更新は変えていない。
 - Watcher change set は `WatchUiApplyRequest` へ畳んでから full fallback / in-memory ReadModel 再計算へ流し、Watcher 側が表示 collection を直接 apply しない禁止線を source policy で固定した。
 - Player surface 操作は、`Properties.Settings.Default.Save()`、DB write、設定保存 queue を直接呼ばない禁止線を source policy で固定した。surface と保存の分離を壊さず、既存の user-priority と保存方針を維持する。
+- 2026-06-19 Worker P: Player 再生状態は `SetPlayerPlaybackActive(...)` に集約し、実際に active が変わった時だけ `operation_reason=player-playback` と reason をログへ出す。Everything poll の遅延理由と Player 操作ログを同じ語彙で突き合わせられる。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
 - 次の段階は、新しい巨大 core を作ることではなく、既存境界の上に小さな契約を積み、実機ログで支配要因を確認しながら差し替えること。
