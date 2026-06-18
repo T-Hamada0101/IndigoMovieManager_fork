@@ -130,6 +130,7 @@ public sealed class WhiteBrowserSkinStatePersisterTests
         string root = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
         string dbPath = Path.Combine(root, "main.wb");
         Directory.CreateDirectory(root);
+        List<string> logs = [];
 
         try
         {
@@ -137,7 +138,11 @@ public sealed class WhiteBrowserSkinStatePersisterTests
 
             Channel<WhiteBrowserSkinStatePersistRequest> channel =
                 Channel.CreateUnbounded<WhiteBrowserSkinStatePersistRequest>();
-            WhiteBrowserSkinStatePersister persister = new(channel.Reader, batchWindowMs: 10);
+            WhiteBrowserSkinStatePersister persister = new(
+                channel.Reader,
+                batchWindowMs: 10,
+                log: message => logs.Add(message ?? "")
+            );
 
             channel.Writer.TryWrite(
                 WhiteBrowserSkinStatePersistRequest.CreateSystem(dbPath, "skin", "SampleExternalSkin")
@@ -160,6 +165,35 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                 Assert.That(
                     ReadProfileValue(dbPath, "SampleExternalSkin", "LastUpperTab"),
                     Is.EqualTo("DefaultGrid")
+                );
+                Assert.That(
+                    logs.Any(
+                        static x =>
+                            x.Contains("skin state persist succeeded:", StringComparison.Ordinal)
+                            && x.Contains("target=System", StringComparison.Ordinal)
+                            && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
+                            && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
+                            && x.Contains("queue_key=skin-system:skin", StringComparison.Ordinal)
+                            && x.Contains("write_succeeded=true", StringComparison.Ordinal)
+                            && x.Contains("failure_kind=none", StringComparison.Ordinal)
+                    ),
+                    Is.True
+                );
+                Assert.That(
+                    logs.Any(
+                        static x =>
+                            x.Contains("skin state persist succeeded:", StringComparison.Ordinal)
+                            && x.Contains("target=Profile", StringComparison.Ordinal)
+                            && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
+                            && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
+                            && x.Contains(
+                                "queue_key=skin-profile:SampleExternalSkin:LastUpperTab",
+                                StringComparison.Ordinal
+                            )
+                            && x.Contains("write_succeeded=true", StringComparison.Ordinal)
+                            && x.Contains("failure_kind=none", StringComparison.Ordinal)
+                    ),
+                    Is.True
                 );
             });
         }

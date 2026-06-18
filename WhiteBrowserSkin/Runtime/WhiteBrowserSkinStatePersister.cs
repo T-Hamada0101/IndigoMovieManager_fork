@@ -126,6 +126,7 @@ namespace IndigoMovieManager.Skin
 
                                 stopwatch.Stop();
                                 systemCount++;
+                                LogSuccessfulPersist(request, stopwatch.Elapsed);
                                 break;
 
                             case WhiteBrowserSkinStatePersistTargetKind.Profile:
@@ -163,6 +164,7 @@ namespace IndigoMovieManager.Skin
                                     request.Value
                                 );
                                 profileCount++;
+                                LogSuccessfulPersist(request, stopwatch.Elapsed);
                                 break;
                         }
                     }
@@ -242,6 +244,20 @@ namespace IndigoMovieManager.Skin
             }
 
             return resolvedTraceText ?? "";
+        }
+
+        private void LogSuccessfulPersist(
+            WhiteBrowserSkinStatePersistRequest request,
+            TimeSpan elapsed
+        )
+        {
+            // DB 反映後にだけ成功を出し、失敗ログと同じ write fields で実機ログから追えるようにする。
+            log(
+                BuildScopedLogMessage(
+                    request.TraceText,
+                    $"skin state persist succeeded: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildWriteSuccessResultLogFields("persister-write", elapsed)}"
+                )
+            );
         }
     }
 }
