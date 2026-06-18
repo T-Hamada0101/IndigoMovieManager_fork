@@ -99,6 +99,31 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
     }
 
+    [Test]
+    public void 詳細サムネsnapshotはImageRequestを持ちapply直前でstaleを捨てる()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "Extension",
+            "MainWindow.BottomTab.Extension.DetailThumbnail.cs"
+        );
+        string captureMethod = ExtractMethod(
+            source,
+            "private ExtensionDetailThumbnailSnapshotRequest CaptureExtensionDetailThumbnailSnapshotRequest("
+        );
+        string applyMethod = ExtractMethod(
+            source,
+            "private void ApplyExtensionDetailThumbnailSnapshotResult("
+        );
+
+        AssertMethodDoesNotContainImageIo(captureMethod, nameof(captureMethod));
+        AssertMethodDoesNotContainImageIo(applyMethod, nameof(applyMethod));
+        Assert.That(source, Does.Contain("ImageRequest ImageRequest"));
+        Assert.That(captureMethod, Does.Contain("CreateExtensionDetailImageRequest("));
+        Assert.That(applyMethod, Does.Contain("ShouldApplyExtensionDetailImageRequest("));
+        Assert.That(applyMethod, Does.Contain("Volatile.Read(ref _extensionDetailThumbnailRequestVersion)"));
+    }
+
     private static void AssertMethodDoesNotContainImageIo(string methodSource, string methodName)
     {
         foreach (string fragment in ImageIoFragments)

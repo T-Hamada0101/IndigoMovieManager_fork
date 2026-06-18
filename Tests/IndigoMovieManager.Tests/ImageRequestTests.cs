@@ -91,4 +91,52 @@ public sealed class ImageRequestTests
         Assert.That(request.IsVisiblePriority, Is.True);
         Assert.That(UpperTabActivationGate.ShouldApplyImageRequest(request), Is.True);
     }
+
+    [Test]
+    public void 詳細サムネ要求はrole_cache_revisionを保持する()
+    {
+        string moviePath = Path.Combine("movies", "detail.mp4");
+        ImageRequest request = MainWindow.CreateExtensionDetailImageRequest(
+            @"C:\thumb\detail.jpg",
+            moviePath,
+            isVisiblePriority: true,
+            requestRevision: 11
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.ThumbnailRole, Is.EqualTo(ImageRequestThumbnailRole.ExtensionDetail));
+            Assert.That(request.CachePolicy, Is.EqualTo(ImageRequestCachePolicy.UseConverterCache));
+            Assert.That(request.RequestRevision, Is.EqualTo(11));
+            Assert.That(request.ThumbnailPath, Is.EqualTo(@"C:\thumb\detail.jpg"));
+            Assert.That(request.MoviePathKey, Is.EqualTo(QueueDbPathResolver.CreateMoviePathKey(moviePath)));
+            Assert.That(request.IsVisiblePriority, Is.True);
+            Assert.That(MainWindow.ShouldApplyExtensionDetailImageRequest(request, 11), Is.True);
+        });
+    }
+
+    [Test]
+    public void 詳細サムネ要求は非表示または古いrevisionなら捨てる()
+    {
+        ImageRequest hiddenRequest = MainWindow.CreateExtensionDetailImageRequest(
+            @"C:\thumb\hidden-detail.jpg",
+            Path.Combine("movies", "hidden-detail.mp4"),
+            isVisiblePriority: false,
+            requestRevision: 12
+        );
+        ImageRequest staleRequest = MainWindow.CreateExtensionDetailImageRequest(
+            @"C:\thumb\stale-detail.jpg",
+            Path.Combine("movies", "stale-detail.mp4"),
+            isVisiblePriority: true,
+            requestRevision: 12
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(hiddenRequest.IsVisiblePriority, Is.False);
+            Assert.That(MainWindow.ShouldApplyExtensionDetailImageRequest(hiddenRequest, 12), Is.False);
+            Assert.That(staleRequest.IsVisiblePriority, Is.True);
+            Assert.That(MainWindow.ShouldApplyExtensionDetailImageRequest(staleRequest, 13), Is.False);
+        });
+    }
 }

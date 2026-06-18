@@ -7,6 +7,8 @@ using System.Windows.Threading;
 using IndigoMovieManager.Converter;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.FailureDb;
+using IndigoMovieManager.Thumbnail.QueueDb;
+using IndigoMovieManager.UpperTabs.Common;
 
 namespace IndigoMovieManager
 {
@@ -27,7 +29,8 @@ namespace IndigoMovieManager
             string ThumbFolder,
             int RequestVersion,
             bool EnqueueIfMissing,
-            bool AllowAutoRescue
+            bool AllowAutoRescue,
+            ImageRequest ImageRequest
         );
 
         private readonly record struct ExtensionDetailThumbnailSnapshotResult(
@@ -214,10 +217,11 @@ namespace IndigoMovieManager
             int requestVersion = Interlocked.Increment(
                 ref _extensionDetailThumbnailRequestVersion
             );
+            string moviePath = record.Movie_Path ?? "";
             return new ExtensionDetailThumbnailSnapshotRequest(
                 record,
                 record.Movie_Id,
-                record.Movie_Path ?? "",
+                moviePath,
                 record.Movie_Body ?? "",
                 record.Hash ?? "",
                 record.IsExists,
@@ -226,7 +230,13 @@ namespace IndigoMovieManager
                 MainVM?.DbInfo?.ThumbFolder ?? "",
                 requestVersion,
                 enqueueIfMissing,
-                allowAutoRescue
+                allowAutoRescue,
+                CreateExtensionDetailImageRequest(
+                    record.ThumbDetail ?? "",
+                    moviePath,
+                    IsExtensionTabVisibleOrSelected(),
+                    requestVersion
+                )
             );
         }
 
@@ -343,6 +353,20 @@ namespace IndigoMovieManager
                 )
             )
             {
+                ImageRequest imageRequest = request.ImageRequest with
+                {
+                    ThumbnailPath = nextThumbDetail,
+                };
+                if (
+                    !ShouldApplyExtensionDetailImageRequest(
+                        imageRequest,
+                        Volatile.Read(ref _extensionDetailThumbnailRequestVersion)
+                    )
+                )
+                {
+                    return;
+                }
+
                 // 背景確認の採用は最後にUIへ戻し、表示モデルだけを短く更新する。
                 request.Record.ThumbDetail = nextThumbDetail;
             }
@@ -380,6 +404,31 @@ namespace IndigoMovieManager
                     ref _extensionDetailThumbnailRequestVersion
                 )
                 && AreSameMainDbPath(request.DbFullPath, MainVM?.DbInfo?.DBFullPath ?? "");
+        }
+
+        internal static ImageRequest CreateExtensionDetailImageRequest(
+            string thumbnailPath,
+            string moviePath,
+            bool isVisiblePriority,
+            int requestRevision
+        )
+        {
+            return ImageRequest.ForExtensionDetail(
+                thumbnailPath,
+                QueueDbPathResolver.CreateMoviePathKey(moviePath) ?? "",
+                isVisiblePriority,
+                requestRevision
+            );
+        }
+
+        internal static bool ShouldApplyExtensionDetailImageRequest(
+            ImageRequest request,
+            int currentRevision
+        )
+        {
+            return request.ThumbnailRole == ImageRequestThumbnailRole.ExtensionDetail
+                && request.ShouldDecode
+                && request.RequestRevision == currentRevision;
         }
 
         private bool IsExtensionDetailThumbnailShutdownStarted()
