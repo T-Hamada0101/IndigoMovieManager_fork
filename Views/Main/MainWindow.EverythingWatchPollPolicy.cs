@@ -165,11 +165,12 @@ namespace IndigoMovieManager
             string operationReason,
             string deferReason,
             bool isRecentViewportInteractionActive,
-            bool shouldQueueCatchUp
+            bool shouldQueueCatchUp,
+            string logReason
         )
         {
             return
-                $"everything poll deferred: operation_reason={operationReason} defer_reason={deferReason} recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} catch_up={FormatLogBool(shouldQueueCatchUp)}";
+                $"everything poll deferred: log_reason={logReason ?? ""} operation_reason={operationReason} defer_reason={deferReason} recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} catch_up={FormatLogBool(shouldQueueCatchUp)}";
         }
 
         // poll 自体は定期処理なので、検索などの明示操作中は1周見送り、解除後のwatchで追いつく。
@@ -194,13 +195,15 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            UiWorkRequest request = UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
             DebugRuntimeLog.Write(
                 "watch-check",
                 BuildEverythingWatchPollDeferredLogMessage(
                     UiOperationPriorityPolicy.DeferReasonUserPriority,
                     UiOperationPriorityPolicy.DeferReasonUserPriority,
                     isRecentViewportInteractionActive,
-                    shouldQueueCatchUp: true
+                    shouldQueueCatchUp: true,
+                    request.LogReason
                 )
             );
             return true;
@@ -220,13 +223,15 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            UiWorkRequest request = UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
             DebugRuntimeLog.Write(
                 "watch-check",
                 BuildEverythingWatchPollDeferredLogMessage(
                     UiOperationPriorityPolicy.DeferReasonRecentViewport,
                     UiOperationPriorityPolicy.DeferReasonRecentViewport,
                     isRecentViewportInteractionActive,
-                    shouldQueueCatchUp: false
+                    shouldQueueCatchUp: false,
+                    request.LogReason
                 )
             );
             return true;

@@ -268,6 +268,22 @@ public sealed class EverythingWatchPollPolicyTests
     }
 
     [Test]
+    public void BuildEverythingWatchPollDeferredLogMessage_作業要求のlog_reasonを出す()
+    {
+        string message = MainWindow.BuildEverythingWatchPollDeferredLogMessage(
+            operationReason: UiOperationPriorityPolicy.DeferReasonUserPriority,
+            deferReason: UiOperationPriorityPolicy.DeferReasonUserPriority,
+            isRecentViewportInteractionActive: false,
+            shouldQueueCatchUp: true,
+            logReason: UiWorkRequestPolicy.CreateEverythingWatchPollRequest().LogReason
+        );
+
+        Assert.That(message, Does.Contain("log_reason=watch.everything-poll"));
+        Assert.That(message, Does.Contain("operation_reason=user-priority"));
+        Assert.That(message, Does.Contain("catch_up=true"));
+    }
+
+    [Test]
     public void ShouldProbeEverythingWatchPollQueueLoad_poll延期中はFalseを返す()
     {
         Assert.That(

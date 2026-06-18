@@ -30,6 +30,28 @@ public sealed class UiWorkRequestPolicyTests
         });
     }
 
+    [Test]
+    public void EverythingWatchPollRequest_契約語彙を固定する()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.Priority, Is.EqualTo(UiWorkPriority.WatchSmallDiff));
+            Assert.That(
+                request.CoalesceKey,
+                Is.EqualTo(UiWorkRequestPolicy.EverythingWatchPollCoalesceKey)
+            );
+            Assert.That(
+                request.LatestOnlyKey,
+                Is.EqualTo(UiWorkRequestPolicy.EverythingWatchPollLatestOnlyKey)
+            );
+            Assert.That(request.LogReason, Is.EqualTo(UiWorkRequestPolicy.EverythingWatchPollLogReason));
+            Assert.That(request.HasCoalesceKey, Is.True);
+            Assert.That(request.HasLatestOnlyKey, Is.True);
+        });
+    }
+
     [TestCase(false, false, false, false, UiWorkRequestPolicy.RejectReasonDispatcherMissing)]
     [TestCase(true, true, false, false, UiWorkRequestPolicy.RejectReasonShutdownStarted)]
     [TestCase(true, false, true, false, UiWorkRequestPolicy.RejectReasonShutdownFinished)]

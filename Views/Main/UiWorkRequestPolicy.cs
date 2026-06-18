@@ -48,6 +48,11 @@ internal static class UiWorkRequestPolicy
         "thumbnail-progress:snapshot-refresh:latest-only";
     internal const string ThumbnailProgressSnapshotRefreshLogReason =
         "thumbnail-progress.snapshot-refresh";
+    internal const string EverythingWatchPollCoalesceKey =
+        "watch:everything-poll:coalesce";
+    internal const string EverythingWatchPollLatestOnlyKey =
+        "watch:everything-poll:latest-only";
+    internal const string EverythingWatchPollLogReason = "watch.everything-poll";
 
     internal static UiWorkRequest CreateThumbnailProgressSnapshotRefreshRequest()
     {
@@ -56,6 +61,16 @@ internal static class UiWorkRequestPolicy
             ThumbnailProgressSnapshotRefreshCoalesceKey,
             ThumbnailProgressSnapshotRefreshLatestOnlyKey,
             ThumbnailProgressSnapshotRefreshLogReason
+        );
+    }
+
+    internal static UiWorkRequest CreateEverythingWatchPollRequest()
+    {
+        return new UiWorkRequest(
+            UiWorkPriority.WatchSmallDiff,
+            EverythingWatchPollCoalesceKey,
+            EverythingWatchPollLatestOnlyKey,
+            EverythingWatchPollLogReason
         );
     }
 

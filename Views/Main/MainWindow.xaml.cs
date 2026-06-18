@@ -381,6 +381,8 @@ namespace IndigoMovieManager
                     bool isDeferredByUiSuppression = false;
                     bool isDeferredByUserPriority = false;
                     bool isDeferredByRecentViewport = false;
+                    UiWorkRequest everythingPollRequest =
+                        UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
                     bool isRecentViewportInteractionActive = IsRecentViewportInteractionActive();
                     if (IsWatchSuppressedByUi())
                     {
@@ -392,7 +394,8 @@ namespace IndigoMovieManager
                                 UiOperationPriorityPolicy.DeferReasonUiSuppression,
                                 UiOperationPriorityPolicy.DeferReasonUiSuppression,
                                 isRecentViewportInteractionActive,
-                                shouldQueueCatchUp: true
+                                shouldQueueCatchUp: true,
+                                everythingPollRequest.LogReason
                             )
                         );
                     }
