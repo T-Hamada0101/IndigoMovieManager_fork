@@ -1,3 +1,5 @@
+using System;
+
 namespace IndigoMovieManager.UpperTabs.Common
 {
     internal enum ImageRequestThumbnailRole
@@ -10,6 +12,23 @@ namespace IndigoMovieManager.UpperTabs.Common
     internal enum ImageRequestCachePolicy
     {
         UseConverterCache,
+    }
+
+    [Flags]
+    internal enum ImageProbeFlags
+    {
+        None = 0,
+        Missing = 1,
+        ErrorMarker = 2,
+        Stamp = 4,
+    }
+
+    internal enum ImageProbeOutcome
+    {
+        Unknown = 0,
+        Found = 1,
+        Missing = 2,
+        ErrorMarker = 3,
     }
 
     internal readonly record struct ImageRequest(
@@ -72,6 +91,56 @@ namespace IndigoMovieManager.UpperTabs.Common
                 ImageRequestCachePolicy.UseConverterCache,
                 requestRevision
             );
+        }
+    }
+
+    internal readonly record struct ImageProbeRequest(
+        ImageRequest ImageRequest,
+        ImageProbeFlags ProbeFlags,
+        string LogReason
+    )
+    {
+        internal bool RequiresMissingProbe => ProbeFlags.HasFlag(ImageProbeFlags.Missing);
+        internal bool RequiresErrorMarkerProbe => ProbeFlags.HasFlag(ImageProbeFlags.ErrorMarker);
+        internal bool RequiresStampProbe => ProbeFlags.HasFlag(ImageProbeFlags.Stamp);
+
+        internal static ImageProbeRequest ForExtensionDetailStatus(ImageRequest imageRequest)
+        {
+            return new ImageProbeRequest(
+                imageRequest,
+                ImageProbeFlags.Missing | ImageProbeFlags.ErrorMarker | ImageProbeFlags.Stamp,
+                "image.extension-detail.probe"
+            );
+        }
+    }
+
+    internal readonly record struct ImageProbeResult(
+        ImageProbeOutcome Outcome,
+        bool IsMissing,
+        bool HasErrorMarker,
+        long StampUtcTicks
+    )
+    {
+        internal string OutcomeLogValue => Outcome switch
+        {
+            ImageProbeOutcome.Found => "found",
+            ImageProbeOutcome.Missing => "missing",
+            ImageProbeOutcome.ErrorMarker => "error-marker",
+            _ => "unknown",
+        };
+    }
+
+    internal static class ImageProbeLogFields
+    {
+        internal static string Build(ImageProbeRequest request, ImageProbeResult result)
+        {
+            return
+                $"image_log_reason={request.LogReason ?? ""} image_role={request.ImageRequest.ThumbnailRole} probe_flags={request.ProbeFlags} probe_outcome={result.OutcomeLogValue} missing={FormatLogBool(result.IsMissing)} error_marker={FormatLogBool(result.HasErrorMarker)} stamp_utc_ticks={result.StampUtcTicks}";
+        }
+
+        private static string FormatLogBool(bool value)
+        {
+            return value ? "true" : "false";
         }
     }
 }

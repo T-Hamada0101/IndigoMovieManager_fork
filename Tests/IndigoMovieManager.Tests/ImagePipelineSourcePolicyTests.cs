@@ -119,9 +119,45 @@ public sealed class ImagePipelineSourcePolicyTests
         AssertMethodDoesNotContainImageIo(captureMethod, nameof(captureMethod));
         AssertMethodDoesNotContainImageIo(applyMethod, nameof(applyMethod));
         Assert.That(source, Does.Contain("ImageRequest ImageRequest"));
+        Assert.That(source, Does.Contain("ImageProbeRequest ImageProbeRequest"));
+        Assert.That(source, Does.Contain("ImageProbeResult ImageProbeResult"));
         Assert.That(captureMethod, Does.Contain("CreateExtensionDetailImageRequest("));
+        Assert.That(captureMethod, Does.Contain("ImageProbeRequest.ForExtensionDetailStatus(imageRequest)"));
         Assert.That(applyMethod, Does.Contain("ShouldApplyExtensionDetailImageRequest("));
         Assert.That(applyMethod, Does.Contain("Volatile.Read(ref _extensionDetailThumbnailRequestVersion)"));
+    }
+
+    [Test]
+    public void 詳細サムネmissing_error_stamp判定は背景probeへ閉じる()
+    {
+        string source = GetRepoText(
+            "BottomTabs",
+            "Extension",
+            "MainWindow.BottomTab.Extension.DetailThumbnail.cs"
+        );
+        string loadMethod = ExtractMethod(
+            source,
+            "private ExtensionDetailThumbnailSnapshotResult LoadExtensionDetailThumbnailSnapshotCore("
+        );
+        string probeMethod = ExtractMethod(
+            source,
+            "private static ImageProbeResult BuildExtensionDetailImageProbeResult("
+        );
+        string stampMethod = ExtractMethod(source, "private static long TryGetImageStampUtcTicks(");
+        string applyMethod = ExtractMethod(
+            source,
+            "private void ApplyExtensionDetailThumbnailSnapshotResult("
+        );
+
+        Assert.That(loadMethod, Does.Contain("BuildExtensionDetailImageProbeResult("));
+        Assert.That(loadMethod, Does.Contain("ImageProbeLogFields.Build("));
+        Assert.That(probeMethod, Does.Contain("ImageProbeOutcome.Found"));
+        Assert.That(probeMethod, Does.Contain("ImageProbeOutcome.ErrorMarker"));
+        Assert.That(probeMethod, Does.Contain("ImageProbeOutcome.Missing"));
+        Assert.That(probeMethod, Does.Contain("request.ImageProbeRequest.RequiresStampProbe"));
+        Assert.That(stampMethod, Does.Contain("FileInfo fileInfo = new(imagePath);"));
+        AssertMethodDoesNotContainImageIo(applyMethod, nameof(applyMethod));
+        Assert.That(applyMethod, Does.Not.Contain("ImageProbeLogFields.Build("));
     }
 
     [Test]

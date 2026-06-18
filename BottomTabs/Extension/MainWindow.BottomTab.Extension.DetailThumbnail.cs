@@ -30,7 +30,8 @@ namespace IndigoMovieManager
             int RequestVersion,
             bool EnqueueIfMissing,
             bool AllowAutoRescue,
-            ImageRequest ImageRequest
+            ImageRequest ImageRequest,
+            ImageProbeRequest ImageProbeRequest
         );
 
         private readonly record struct ExtensionDetailThumbnailSnapshotResult(
@@ -39,7 +40,8 @@ namespace IndigoMovieManager
             bool HasErrorMarker,
             bool HasOpenRescueRequest,
             bool QueuedMissingCreate,
-            bool QueuedAutoRescue
+            bool QueuedAutoRescue,
+            ImageProbeResult ImageProbeResult
         );
 
         private static readonly string[] DetailLayoutFolderNames = [
@@ -218,6 +220,12 @@ namespace IndigoMovieManager
                 ref _extensionDetailThumbnailRequestVersion
             );
             string moviePath = record.Movie_Path ?? "";
+            ImageRequest imageRequest = CreateExtensionDetailImageRequest(
+                record.ThumbDetail ?? "",
+                moviePath,
+                IsExtensionTabVisibleOrSelected(),
+                requestVersion
+            );
             return new ExtensionDetailThumbnailSnapshotRequest(
                 record,
                 record.Movie_Id,
@@ -231,12 +239,8 @@ namespace IndigoMovieManager
                 requestVersion,
                 enqueueIfMissing,
                 allowAutoRescue,
-                CreateExtensionDetailImageRequest(
-                    record.ThumbDetail ?? "",
-                    moviePath,
-                    IsExtensionTabVisibleOrSelected(),
-                    requestVersion
-                )
+                imageRequest,
+                ImageProbeRequest.ForExtensionDetailStatus(imageRequest)
             );
         }
 
@@ -286,6 +290,17 @@ namespace IndigoMovieManager
             bool hasOpenRescueRequest = HasOpenExtensionDetailRescueRequest(request);
             bool expectedExists = !string.IsNullOrWhiteSpace(expectedThumbnailPath)
                 && Path.Exists(expectedThumbnailPath);
+            ImageProbeResult imageProbeResult = BuildExtensionDetailImageProbeResult(
+                request,
+                existingThumbnailPath,
+                hasErrorMarker,
+                hasOpenRescueRequest,
+                expectedExists
+            );
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"detail thumbnail image probe: path='{request.MoviePath}' {ImageProbeLogFields.Build(request.ImageProbeRequest, imageProbeResult)} expected_exists={FormatLogBool(expectedExists)} rescue_open={FormatLogBool(hasOpenRescueRequest)}"
+            );
 
             bool queuedMissingCreate = false;
             if (
@@ -322,7 +337,42 @@ namespace IndigoMovieManager
                 hasErrorMarker,
                 hasOpenRescueRequest,
                 queuedMissingCreate,
-                queuedAutoRescue
+                queuedAutoRescue,
+                imageProbeResult
+            );
+        }
+
+        // missing / ERROR marker / stamp の判定結果を、UI apply ではなく背景 probe の結果として畳む。
+        private static ImageProbeResult BuildExtensionDetailImageProbeResult(
+            ExtensionDetailThumbnailSnapshotRequest request,
+            string existingThumbnailPath,
+            bool hasErrorMarker,
+            bool hasOpenRescueRequest,
+            bool expectedExists
+        )
+        {
+            bool hasExistingThumbnail = !string.IsNullOrWhiteSpace(existingThumbnailPath);
+            bool isMissing =
+                !hasExistingThumbnail
+                && !expectedExists
+                && !hasErrorMarker
+                && !hasOpenRescueRequest;
+            ImageProbeOutcome outcome = hasExistingThumbnail
+                ? ImageProbeOutcome.Found
+                : hasErrorMarker
+                    ? ImageProbeOutcome.ErrorMarker
+                    : isMissing
+                        ? ImageProbeOutcome.Missing
+                        : ImageProbeOutcome.Unknown;
+            long stampUtcTicks =
+                request.ImageProbeRequest.RequiresStampProbe && hasExistingThumbnail
+                    ? TryGetImageStampUtcTicks(existingThumbnailPath)
+                    : 0;
+            return new ImageProbeResult(
+                outcome,
+                isMissing,
+                hasErrorMarker,
+                stampUtcTicks
             );
         }
 
@@ -745,6 +795,24 @@ namespace IndigoMovieManager
             catch
             {
                 return false;
+            }
+        }
+
+        private static long TryGetImageStampUtcTicks(string imagePath)
+        {
+            if (string.IsNullOrWhiteSpace(imagePath))
+            {
+                return 0;
+            }
+
+            try
+            {
+                FileInfo fileInfo = new(imagePath);
+                return fileInfo.Exists ? fileInfo.LastWriteTimeUtc.Ticks : 0;
+            }
+            catch
+            {
+                return 0;
             }
         }
 

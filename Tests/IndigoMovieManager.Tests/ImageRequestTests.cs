@@ -141,6 +141,43 @@ public sealed class ImageRequestTests
     }
 
     [Test]
+    public void 詳細サムネprobe要求はmissing_error_stampを背景確認語彙として保持する()
+    {
+        ImageRequest imageRequest = MainWindow.CreateExtensionDetailImageRequest(
+            Path.Combine("thumb", "detail.jpg"),
+            Path.Combine("movies", "detail.mp4"),
+            isVisiblePriority: false,
+            requestRevision: 31
+        );
+
+        ImageProbeRequest probeRequest = ImageProbeRequest.ForExtensionDetailStatus(imageRequest);
+        ImageProbeResult probeResult = new(
+            ImageProbeOutcome.Missing,
+            IsMissing: true,
+            HasErrorMarker: false,
+            StampUtcTicks: 0
+        );
+
+        string logFields = ImageProbeLogFields.Build(probeRequest, probeResult);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(probeRequest.ImageRequest, Is.EqualTo(imageRequest));
+            Assert.That(probeRequest.RequiresMissingProbe, Is.True);
+            Assert.That(probeRequest.RequiresErrorMarkerProbe, Is.True);
+            Assert.That(probeRequest.RequiresStampProbe, Is.True);
+            Assert.That(probeRequest.LogReason, Is.EqualTo("image.extension-detail.probe"));
+            Assert.That(probeResult.OutcomeLogValue, Is.EqualTo("missing"));
+            Assert.That(logFields, Does.Contain("image_log_reason=image.extension-detail.probe"));
+            Assert.That(logFields, Does.Contain("image_role=ExtensionDetail"));
+            Assert.That(logFields, Does.Contain("probe_outcome=missing"));
+            Assert.That(logFields, Does.Contain("missing=true"));
+            Assert.That(logFields, Does.Contain("error_marker=false"));
+            Assert.That(logFields, Does.Contain("stamp_utc_ticks=0"));
+        });
+    }
+
+    [Test]
     public void Player右レール要求はrole_visible_cache_revisionを保持する()
     {
         string moviePath = Path.Combine("movies", "player-right-rail.mp4");
