@@ -84,6 +84,21 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(requestMethod, Does.Contain("ApplyUpperTabVisibleRangeRefresh(reason);"));
     }
 
+    [Test]
+    public void 上側タブconverterはImageRequestを作ってからdecodeへ進む()
+    {
+        string converterSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "UpperTabImageSourceConverter.cs"
+        );
+        string convertMethod = ExtractMethod(converterSource, "public object Convert(");
+
+        Assert.That(convertMethod, Does.Contain("CreateUpperTabImageRequest("));
+        Assert.That(convertMethod, Does.Contain("ShouldApplyImageRequest(request)"));
+        Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
+    }
+
     private static void AssertMethodDoesNotContainImageIo(string methodSource, string methodName)
     {
         foreach (string fragment in ImageIoFragments)

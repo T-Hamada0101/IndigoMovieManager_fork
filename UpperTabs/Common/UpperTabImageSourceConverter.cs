@@ -24,7 +24,13 @@ namespace IndigoMovieManager.UpperTabs.Common
             }
 
             object moviePathValue = values.Length > 3 ? values[3] : null;
-            if (!UpperTabActivationGate.ShouldApplyImageUpdate(values[2], moviePathValue))
+            ImageRequest request = UpperTabActivationGate.CreateUpperTabImageRequest(
+                values[0],
+                values[2],
+                moviePathValue,
+                requestRevision: 0
+            );
+            if (!UpperTabActivationGate.ShouldApplyImageRequest(request))
             {
                 // Recycling されたコンテナへ前の画像が残らないよう、非対象時は明示的に空へ戻す。
                 return DependencyProperty.UnsetValue;
@@ -32,7 +38,11 @@ namespace IndigoMovieManager.UpperTabs.Common
 
             bool isExists = values[1] is not bool exists || exists;
             int decodePixelHeight = NoLockImageConverter.ResolveDecodePixelHeight(parameter);
-            return NoLockImageConverter.ConvertFilePath(values[0] as string, isExists, decodePixelHeight);
+            return NoLockImageConverter.ConvertFilePath(
+                request.ThumbnailPath,
+                isExists,
+                decodePixelHeight
+            );
         }
 
         public object[] ConvertBack(

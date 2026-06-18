@@ -20,6 +20,43 @@ namespace IndigoMovieManager.UpperTabs.Common
 
         public static bool ShouldApplyImageUpdate(object isSelectedValue, object moviePathValue)
         {
+            return ShouldApplyImageRequest(
+                CreateUpperTabImageRequest(null, isSelectedValue, moviePathValue, requestRevision: 0)
+            );
+        }
+
+        internal static ImageRequest CreateUpperTabImageRequest(
+            object thumbnailPathValue,
+            object isSelectedValue,
+            object moviePathValue,
+            int requestRevision
+        )
+        {
+            string moviePathKey = ResolveMoviePathKey(moviePathValue);
+            bool isVisiblePriority = ResolveUpperTabVisiblePriority(
+                isSelectedValue,
+                moviePathKey,
+                moviePathValue
+            );
+            return ImageRequest.ForUpperTab(
+                thumbnailPathValue as string,
+                moviePathKey,
+                isVisiblePriority,
+                requestRevision
+            );
+        }
+
+        internal static bool ShouldApplyImageRequest(ImageRequest request)
+        {
+            return request.ShouldDecode;
+        }
+
+        private static bool ResolveUpperTabVisiblePriority(
+            object isSelectedValue,
+            string moviePathKey,
+            object moviePathValue
+        )
+        {
             // TabItem の祖先解決が遅い瞬間は UnsetValue になることがある。
             // 表示不能を避けるため、明確に false の時だけ止める。
             if (isSelectedValue is bool isSelected && !isSelected)
@@ -28,13 +65,7 @@ namespace IndigoMovieManager.UpperTabs.Common
             }
 
             // 可視近傍キーが入っている時だけ、off-screen の画像再評価を止める。
-            if (moviePathValue is not string moviePath || string.IsNullOrWhiteSpace(moviePath))
-            {
-                return true;
-            }
-
-            string moviePathKey = QueueDbPathResolver.CreateMoviePathKey(moviePath);
-            if (string.IsNullOrWhiteSpace(moviePathKey))
+            if (moviePathValue is not string || string.IsNullOrWhiteSpace(moviePathKey))
             {
                 return true;
             }
@@ -45,6 +76,16 @@ namespace IndigoMovieManager.UpperTabs.Common
                 return !HasPreferredMoviePathKeysSnapshot
                     || PreferredMoviePathKeys.Contains(moviePathKey);
             }
+        }
+
+        private static string ResolveMoviePathKey(object moviePathValue)
+        {
+            if (moviePathValue is not string moviePath || string.IsNullOrWhiteSpace(moviePath))
+            {
+                return "";
+            }
+
+            return QueueDbPathResolver.CreateMoviePathKey(moviePath) ?? "";
         }
 
         public static bool UpdatePreferredMoviePathKeys(IReadOnlyList<string> moviePathKeys)

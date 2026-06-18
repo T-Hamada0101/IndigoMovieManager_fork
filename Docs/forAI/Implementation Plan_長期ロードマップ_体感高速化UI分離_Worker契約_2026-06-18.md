@@ -4,7 +4,7 @@
 
 更新日: 2026-06-18
 
-全体進捗目安: `[###-------] 28%`
+全体進捗目安: `[###-------] 30%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -14,7 +14,7 @@
 | Phase 1. UI Shell 入力契約 | 45% | `UiOperationSnapshot` を追加し、旧 `UiOperationPrioritySnapshot` から段階移行できる入口を固定済み | UI event handler を snapshot 生成へさらに寄せる |
 | Phase 2. ReadModel Store と Diff-first | 25% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiff` で apply log の operation / selection / scroll / fallback 語彙を追加済み | 小変更の diff apply と fallback reason を通常経路へ入れる |
 | Phase 3. In-process Scheduler | 12% | user-priority / latest-only / deferred log の部品に加え、thumbnail 進捗 refresh 予約の coalesce / latest-only / shutdown guard を source policy で固定済み | watch / poll / thumbnail refresh 予約を同じ小さな scheduler 語彙へ揃える |
-| Phase 4. Image Pipeline 統一 | 22% | visible range refresh と局所サムネ反映の土台に加え、詳細サムネ / Player右レール / viewport 更新入口へ画像I/Oとdecodeを戻さない source policy を追加済み | stamp取得、decode、ERROR marker 判定を UI 外へ揃える |
+| Phase 4. Image Pipeline 統一 | 28% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter が `ImageRequest` を作り、visible-first / stale discard / role / cache / revision の語彙で decode 入口を説明できる | stamp取得、decode、ERROR marker 判定を UI 外へ揃える |
 | Phase 5. Persistence Pipeline | 16% | no-persist 診断、設定保存 background queue、score / tag hot path の背景保存入口を source policy で固定済み | view_count / bookmark / skin profile / movie_path も同じ直列保存方針へ寄せる |
 | Phase 6. Worker 契約 | 20% | `ThumbnailIpcDtos`、rescue job json、thumbnail queue runtime の土台に加え、WPF / Dispatcher / ViewModel 非参照の source policy を追加済み | UI非依存 request / result / progress / artifact 契約を in-process adapter で固定する |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 10% | skin / Player / Watcher それぞれに分離済み判断とログがある | UI 直押し込みを Scheduler / ReadModel / Persistence 経由へ段階移行する |
@@ -33,6 +33,7 @@
 - Worker契約候補は `WorkerContractSourcePolicyTests` で WPF / Dispatcher / ViewModel / WebView2 / MainWindow を参照しない source policy を追加した。
 - thumbnail 進捗 refresh 予約は、coalesce / latest-only / shutdown guard を source policy で固定し、Scheduler 化の最初の足場にした。
 - 画像 hot path は、詳細サムネ、Player右レール、上側タブ viewport 更新入口で file I/O / decode へ進まないことを source policy で固定した。
+- 上側タブ画像 converter は `ImageRequest` を作ってから decode へ進む形へ寄せ、visible-first と stale discard を test で説明できるようにした。
 - 保存 hot path は、UI操作中に同期 `Save()` や score / tag の直接DB更新へ戻らないことを source policy で固定した。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
