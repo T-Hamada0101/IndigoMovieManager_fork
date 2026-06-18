@@ -87,4 +87,105 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
             Assert.That(dto.DiagnosticContext["priority"], Is.EqualTo("Normal"));
         });
     }
+
+    [Test]
+    public void Queue実行成功結果をWorkerJobResultDtoへ写せる()
+    {
+        QueueDbLeaseItem leasedItem = CreateLeaseItem();
+
+        WorkerJobResultDto dto =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                leasedItem,
+                succeeded: true,
+                artifactPath: "thumbs/movie-key-001.jpg",
+                elapsedMs: 2345,
+                metrics: new Dictionary<string, string>
+                {
+                    ["engine"] = "in-process",
+                    ["decodedFrames"] = "1",
+                }
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.JobId, Is.EqualTo("thumbnail-movie-key-001-queue-77"));
+            Assert.That(dto.Status, Is.EqualTo("succeeded"));
+            Assert.That(dto.Artifact.ArtifactKind, Is.EqualTo("thumbnail-image"));
+            Assert.That(dto.Artifact.Path, Is.EqualTo("thumbs/movie-key-001.jpg"));
+            Assert.That(dto.Artifact.ContentType, Is.EqualTo("image/jpeg"));
+            Assert.That(dto.Artifact.SizeBytes, Is.Zero);
+            Assert.That(dto.Artifact.Sha256, Is.Empty);
+            Assert.That(dto.Artifact.Metadata["queueId"], Is.EqualTo("77"));
+            Assert.That(dto.Artifact.Metadata["moviePathKey"], Is.EqualTo("movie-key-001"));
+            Assert.That(dto.Artifact.Metadata["tabIndex"], Is.EqualTo("2"));
+            Assert.That(dto.FailureReason, Is.Empty);
+            Assert.That(dto.ElapsedMs, Is.EqualTo(2345));
+            Assert.That(dto.Retryability, Is.EqualTo("not-retryable"));
+            Assert.That(dto.Metrics["queueId"], Is.EqualTo("77"));
+            Assert.That(dto.Metrics["moviePathKey"], Is.EqualTo("movie-key-001"));
+            Assert.That(dto.Metrics["attemptCount"], Is.EqualTo("3"));
+            Assert.That(dto.Metrics["status"], Is.EqualTo("succeeded"));
+            Assert.That(dto.Metrics["failureKind"], Is.Empty);
+            Assert.That(dto.Metrics["retryable"], Is.EqualTo("false"));
+            Assert.That(dto.Metrics["elapsedMs"], Is.EqualTo("2345"));
+            Assert.That(dto.Metrics["engine"], Is.EqualTo("in-process"));
+            Assert.That(dto.Metrics["decodedFrames"], Is.EqualTo("1"));
+            Assert.That(dto.Logs[0], Does.Contain("status=succeeded"));
+        });
+    }
+
+    [Test]
+    public void Queue実行失敗結果はfailureKindとretryableをWorkerJobResultDtoへ写せる()
+    {
+        QueueDbLeaseItem leasedItem = CreateLeaseItem();
+
+        WorkerJobResultDto dto =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                leasedItem,
+                succeeded: false,
+                failureKind: "TransientDecodeFailure",
+                failureReason: "decode failed",
+                retryable: true,
+                elapsedMs: -1
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.JobId, Is.EqualTo("thumbnail-movie-key-001-queue-77"));
+            Assert.That(dto.Status, Is.EqualTo("failed"));
+            Assert.That(dto.Artifact.Path, Is.Empty);
+            Assert.That(dto.Artifact.ArtifactKind, Is.Empty);
+            Assert.That(dto.FailureReason, Is.EqualTo("decode failed"));
+            Assert.That(dto.ElapsedMs, Is.Zero);
+            Assert.That(dto.Retryability, Is.EqualTo("retryable"));
+            Assert.That(dto.Metrics["failureKind"], Is.EqualTo("TransientDecodeFailure"));
+            Assert.That(dto.Metrics["retryable"], Is.EqualTo("true"));
+            Assert.That(dto.Metrics["status"], Is.EqualTo("failed"));
+            Assert.That(dto.Logs, Does.Contain("failure_kind=TransientDecodeFailure"));
+            Assert.That(dto.Logs, Does.Contain("failure_reason=decode failed"));
+        });
+    }
+
+    private static QueueDbLeaseItem CreateLeaseItem()
+    {
+        return new QueueDbLeaseItem
+        {
+            QueueId = 77,
+            MoviePath = "movies/sample.mp4",
+            MoviePathKey = "movie-key-001",
+            TabIndex = 2,
+            MovieSizeBytes = 987654,
+            ThumbPanelPos = 4,
+            ThumbTimePos = 456,
+            Priority = ThumbnailQueuePriority.Preferred,
+            AttemptCount = 3,
+            OwnerInstanceId = "worker-a",
+            LeaseUntilUtc = DateTime.SpecifyKind(
+                new DateTime(2026, 6, 18, 11, 0, 0),
+                DateTimeKind.Utc
+            ),
+            LeaseBucketRank = 1,
+            LeaseOrder = 5,
+        };
+    }
 }

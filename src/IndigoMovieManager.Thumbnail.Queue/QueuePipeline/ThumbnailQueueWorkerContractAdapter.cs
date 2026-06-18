@@ -9,6 +9,12 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
     {
         public const string WorkerKind = "thumbnail-create";
         public const string QueueCapability = "thumbnail-queue";
+        public const string ResultStatusSucceeded = "succeeded";
+        public const string ResultStatusFailed = "failed";
+        public const string ResultRetryable = "retryable";
+        public const string ResultNotRetryable = "not-retryable";
+        public const string ResultArtifactKind = "thumbnail-image";
+        private const string ResultArtifactContentType = "image/jpeg";
 
         public static WorkerJobRequestDto ToWorkerJobRequestDto(
             QueueRequest request,
@@ -35,11 +41,56 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             };
         }
 
+        public static WorkerJobResultDto ToWorkerJobResultDto(
+            QueueDbLeaseItem leasedItem,
+            bool succeeded,
+            string artifactPath = "",
+            string failureKind = "",
+            string failureReason = "",
+            bool retryable = false,
+            long elapsedMs = 0,
+            IReadOnlyDictionary<string, string> metrics = null
+        )
+        {
+            leasedItem ??= new QueueDbLeaseItem();
+            string status = succeeded ? ResultStatusSucceeded : ResultStatusFailed;
+            string normalizedFailureKind = succeeded ? "" : NormalizeField(failureKind);
+            string normalizedFailureReason = ResolveFailureReason(
+                succeeded,
+                normalizedFailureKind,
+                failureReason
+            );
+            long normalizedElapsedMs = Math.Max(0, elapsedMs);
+
+            return new WorkerJobResultDto
+            {
+                JobId = BuildJobId(leasedItem),
+                Status = status,
+                Artifact = BuildWorkerArtifact(leasedItem, artifactPath),
+                FailureReason = normalizedFailureReason,
+                ElapsedMs = normalizedElapsedMs,
+                Retryability = !succeeded && retryable ? ResultRetryable : ResultNotRetryable,
+                Logs = BuildResultLogs(
+                    leasedItem,
+                    status,
+                    normalizedFailureKind,
+                    normalizedFailureReason,
+                    retryable
+                ),
+                Metrics = BuildResultMetrics(
+                    leasedItem,
+                    status,
+                    normalizedFailureKind,
+                    retryable,
+                    normalizedElapsedMs,
+                    metrics
+                ),
+            };
+        }
+
         private static string BuildJobId(QueueRequest request)
         {
-            string key = string.IsNullOrWhiteSpace(request.MoviePathKey)
-                ? QueueDbPathResolver.CreateMoviePathKey(request.MoviePath ?? "")
-                : request.MoviePathKey;
+            string key = ResolveMoviePathKey(request.MoviePathKey, request.MoviePath);
             if (string.IsNullOrWhiteSpace(key))
             {
                 key = "empty";
@@ -48,6 +99,20 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"thumbnail-{key}-{request.RequestedAtUtc:yyyyMMddHHmmssfff}"
+            );
+        }
+
+        private static string BuildJobId(QueueDbLeaseItem leasedItem)
+        {
+            string key = ResolveMoviePathKey(leasedItem.MoviePathKey, leasedItem.MoviePath);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                key = "empty";
+            }
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"thumbnail-{key}-queue-{Math.Max(0, leasedItem.QueueId)}"
             );
         }
 
@@ -61,9 +126,7 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
                 ["mainDbFullPath"] = request.MainDbFullPath ?? "",
                 ["mainDbSessionStamp"] = Math.Max(0, request.MainDbSessionStamp)
                     .ToString(CultureInfo.InvariantCulture),
-                ["moviePathKey"] = string.IsNullOrWhiteSpace(request.MoviePathKey)
-                    ? QueueDbPathResolver.CreateMoviePathKey(request.MoviePath ?? "")
-                    : request.MoviePathKey,
+                ["moviePathKey"] = ResolveMoviePathKey(request.MoviePathKey, request.MoviePath),
                 ["tabIndex"] = request.TabIndex.ToString(CultureInfo.InvariantCulture),
                 ["movieSizeBytes"] = Math.Max(0, request.MovieSizeBytes)
                     .ToString(CultureInfo.InvariantCulture),
@@ -73,6 +136,152 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
                     ?? "",
                 ["priority"] = priority.ToString(),
             };
+        }
+
+        private static WorkerJobArtifactDto BuildWorkerArtifact(
+            QueueDbLeaseItem leasedItem,
+            string artifactPath
+        )
+        {
+            string normalizedArtifactPath = NormalizeField(artifactPath);
+            bool hasArtifact = !string.IsNullOrWhiteSpace(normalizedArtifactPath);
+
+            return new WorkerJobArtifactDto
+            {
+                ArtifactKind = hasArtifact ? ResultArtifactKind : "",
+                Path = normalizedArtifactPath,
+                ContentType = hasArtifact ? ResultArtifactContentType : "",
+                Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["queueId"] = Math.Max(0, leasedItem.QueueId)
+                        .ToString(CultureInfo.InvariantCulture),
+                    ["moviePathKey"] = ResolveMoviePathKey(
+                        leasedItem.MoviePathKey,
+                        leasedItem.MoviePath
+                    ),
+                    ["tabIndex"] = leasedItem.TabIndex.ToString(CultureInfo.InvariantCulture),
+                    ["priority"] = ThumbnailQueuePriorityHelper.Normalize(leasedItem.Priority)
+                        .ToString(),
+                },
+            };
+        }
+
+        private static Dictionary<string, string> BuildResultMetrics(
+            QueueDbLeaseItem leasedItem,
+            string status,
+            string failureKind,
+            bool retryable,
+            long elapsedMs,
+            IReadOnlyDictionary<string, string> metrics
+        )
+        {
+            Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["queueId"] = Math.Max(0, leasedItem.QueueId)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["moviePathKey"] = ResolveMoviePathKey(
+                    leasedItem.MoviePathKey,
+                    leasedItem.MoviePath
+                ),
+                ["tabIndex"] = leasedItem.TabIndex.ToString(CultureInfo.InvariantCulture),
+                ["movieSizeBytes"] = Math.Max(0, leasedItem.MovieSizeBytes)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["thumbPanelPos"] = leasedItem.ThumbPanelPos?.ToString(CultureInfo.InvariantCulture)
+                    ?? "",
+                ["thumbTimePos"] = leasedItem.ThumbTimePos?.ToString(CultureInfo.InvariantCulture)
+                    ?? "",
+                ["priority"] = ThumbnailQueuePriorityHelper.Normalize(leasedItem.Priority)
+                    .ToString(),
+                ["attemptCount"] = Math.Max(0, leasedItem.AttemptCount)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["ownerInstanceId"] = NormalizeField(leasedItem.OwnerInstanceId),
+                ["leaseBucketRank"] = leasedItem.LeaseBucketRank.ToString(
+                    CultureInfo.InvariantCulture
+                ),
+                ["leaseOrder"] = leasedItem.LeaseOrder.ToString(CultureInfo.InvariantCulture),
+                ["status"] = NormalizeField(status),
+                ["failureKind"] = NormalizeField(failureKind),
+                ["retryable"] = retryable ? "true" : "false",
+                ["elapsedMs"] = Math.Max(0, elapsedMs).ToString(CultureInfo.InvariantCulture),
+            };
+
+            if (metrics == null)
+            {
+                return result;
+            }
+
+            foreach (KeyValuePair<string, string> pair in metrics)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key))
+                {
+                    continue;
+                }
+
+                result[pair.Key.Trim()] = pair.Value ?? "";
+            }
+
+            return result;
+        }
+
+        private static List<string> BuildResultLogs(
+            QueueDbLeaseItem leasedItem,
+            string status,
+            string failureKind,
+            string failureReason,
+            bool retryable
+        )
+        {
+            List<string> logs =
+            [
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"thumbnail queue result: queue_id={Math.Max(0, leasedItem.QueueId)} status={NormalizeField(status)} retryable={(retryable ? "true" : "false")}"
+                ),
+            ];
+
+            if (!string.IsNullOrWhiteSpace(failureKind))
+            {
+                logs.Add($"failure_kind={failureKind}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(failureReason))
+            {
+                logs.Add($"failure_reason={failureReason}");
+            }
+
+            return logs;
+        }
+
+        private static string ResolveFailureReason(
+            bool succeeded,
+            string failureKind,
+            string failureReason
+        )
+        {
+            if (succeeded)
+            {
+                return "";
+            }
+
+            string normalizedFailureReason = NormalizeField(failureReason);
+            if (!string.IsNullOrWhiteSpace(normalizedFailureReason))
+            {
+                return normalizedFailureReason;
+            }
+
+            return string.IsNullOrWhiteSpace(failureKind) ? "unknown" : failureKind;
+        }
+
+        private static string ResolveMoviePathKey(string moviePathKey, string moviePath)
+        {
+            return string.IsNullOrWhiteSpace(moviePathKey)
+                ? QueueDbPathResolver.CreateMoviePathKey(moviePath ?? "")
+                : moviePathKey.Trim();
+        }
+
+        private static string NormalizeField(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
         }
     }
 }
