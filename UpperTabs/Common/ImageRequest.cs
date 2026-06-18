@@ -283,10 +283,27 @@ namespace IndigoMovieManager.UpperTabs.Common
             bool usesPlaceholder
         )
         {
+            return Failed(
+                request,
+                resultRevision,
+                failureReason,
+                usesPlaceholder,
+                hasResolvedImage: usesPlaceholder
+            );
+        }
+
+        internal static ImageLoadResult Failed(
+            ImageRequest request,
+            int resultRevision,
+            string failureReason,
+            bool usesPlaceholder,
+            bool hasResolvedImage
+        )
+        {
             return new ImageLoadResult(
                 request,
                 ImageLoadOutcome.Failed,
-                HasResolvedImage: usesPlaceholder,
+                HasResolvedImage: hasResolvedImage,
                 UsesPlaceholder: usesPlaceholder,
                 IsStale: false,
                 FailureReason: failureReason ?? "",

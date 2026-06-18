@@ -19,6 +19,10 @@ namespace IndigoMovieManager.ViewModels
 
         public int ThumbnailImageRequestRevision { get; init; }
 
+        public bool ThumbnailImageUsesPlaceholder { get; init; }
+
+        public bool ThumbnailImageHasErrorMarker { get; init; }
+
         public string FailedTabsText { get; init; } = "";
 
         public int MarkerCount { get; init; }

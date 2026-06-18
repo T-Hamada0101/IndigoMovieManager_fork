@@ -384,8 +384,11 @@ namespace IndigoMovieManager
             int readyCount = 0;
             int placeholderCount = 0;
             int missingCount = 0;
+            int failedCount = 0;
+            int canceledCount = 0;
             int markerCount = 0;
             string sampleLoadFields = "";
+            Dictionary<string, bool> imageExistsByPath = new(StringComparer.OrdinalIgnoreCase);
 
             foreach (ThumbnailErrorRecordViewModel item in items ?? [])
             {
@@ -397,27 +400,34 @@ namespace IndigoMovieManager
                 totalCount++;
                 markerCount += Math.Max(0, item.MarkerCount);
 
-                string thumbnailPath = item.ThumbnailImagePath ?? "";
-                bool usesPlaceholder = IsThumbnailErrorPlaceholderPath(thumbnailPath);
-                if (string.IsNullOrWhiteSpace(thumbnailPath))
-                {
-                    missingCount++;
-                }
-                else if (usesPlaceholder)
+                ImageLoadResult loadResult = BuildThumbnailErrorListImageLoadResult(
+                    item,
+                    imageExistsByPath
+                );
+                if (loadResult.UsesPlaceholder)
                 {
                     placeholderCount++;
                 }
-                else
+
+                switch (loadResult.Outcome)
                 {
-                    readyCount++;
+                    case ImageLoadOutcome.Ready:
+                        readyCount++;
+                        break;
+                    case ImageLoadOutcome.Missing:
+                        missingCount++;
+                        break;
+                    case ImageLoadOutcome.Canceled:
+                        canceledCount++;
+                        break;
+                    case ImageLoadOutcome.Failed:
+                        failedCount++;
+                        break;
                 }
 
                 if (string.IsNullOrWhiteSpace(sampleLoadFields))
                 {
-                    sampleLoadFields = BuildThumbnailErrorSampleImageLoadFields(
-                        item,
-                        usesPlaceholder
-                    );
+                    sampleLoadFields = ImageLoadLogFields.Build(loadResult);
                 }
             }
 
@@ -427,15 +437,17 @@ namespace IndigoMovieManager
                 ReadyCount = readyCount,
                 PlaceholderCount = placeholderCount,
                 MissingCount = missingCount,
+                FailedCount = failedCount,
+                CanceledCount = canceledCount,
                 MarkerCount = markerCount,
                 StaleSkipCount = 0,
                 SampleLoadFields = sampleLoadFields,
             };
         }
 
-        private static string BuildThumbnailErrorSampleImageLoadFields(
+        private static ImageLoadResult BuildThumbnailErrorListImageLoadResult(
             ThumbnailErrorRecordViewModel item,
-            bool usesPlaceholder
+            IDictionary<string, bool> imageExistsByPath
         )
         {
             ImageRequest request = ImageRequest.ForThumbnailErrorList(
@@ -443,14 +455,87 @@ namespace IndigoMovieManager
                 ThumbnailFailureDbPathResolver.CreateMoviePathKey(item?.MoviePath ?? ""),
                 item?.ThumbnailImageRequestRevision ?? 0
             );
-            ImageLoadResult result = string.IsNullOrWhiteSpace(request.ThumbnailPath)
-                ? ImageLoadResult.Missing(request, request.RequestRevision)
-                : ImageLoadResult.Ready(
+            if (string.IsNullOrWhiteSpace(request.ThumbnailPath))
+            {
+                return ImageLoadResult.Missing(request, request.RequestRevision);
+            }
+
+            bool usesPlaceholder =
+                item?.ThumbnailImageUsesPlaceholder == true
+                || IsThumbnailErrorPlaceholderPath(request.ThumbnailPath);
+            bool hasErrorMarker =
+                item?.ThumbnailImageHasErrorMarker == true
+                || ThumbnailPathResolver.IsErrorMarker(request.ThumbnailPath);
+            bool exists = HasThumbnailErrorListImage(
+                request.ThumbnailPath,
+                imageExistsByPath,
+                item?.ThumbnailImageHasErrorMarker == true
+            );
+            if (!exists)
+            {
+                return ImageLoadResult.Missing(request, request.RequestRevision);
+            }
+
+            if (usesPlaceholder)
+            {
+                return ImageLoadResult.Failed(
                     request,
-                    usesPlaceholder,
-                    request.RequestRevision
+                    request.RequestRevision,
+                    "placeholder",
+                    usesPlaceholder: true
                 );
-            return ImageLoadLogFields.Build(result);
+            }
+
+            if (hasErrorMarker)
+            {
+                return ImageLoadResult.Failed(
+                    request,
+                    request.RequestRevision,
+                    "error-marker",
+                    usesPlaceholder: false,
+                    hasResolvedImage: true
+                );
+            }
+
+            return ImageLoadResult.Ready(
+                request,
+                usesPlaceholder: false,
+                request.RequestRevision
+            );
+        }
+
+        private static bool HasThumbnailErrorListImage(
+            string thumbnailPath,
+            IDictionary<string, bool> imageExistsByPath,
+            bool wasFoundByBackgroundMarkerScan
+        )
+        {
+            if (string.IsNullOrWhiteSpace(thumbnailPath))
+            {
+                return false;
+            }
+
+            if (wasFoundByBackgroundMarkerScan)
+            {
+                return true;
+            }
+
+            if (imageExistsByPath.TryGetValue(thumbnailPath, out bool exists))
+            {
+                return exists;
+            }
+
+            try
+            {
+                exists = File.Exists(thumbnailPath);
+            }
+            catch
+            {
+                exists = false;
+            }
+
+            imageExistsByPath[thumbnailPath] = exists;
+            return exists;
         }
 
         private static ThumbnailFailureDbService CreateThumbnailErrorFailureDbService(
@@ -669,7 +754,12 @@ namespace IndigoMovieManager
                 primaryFailureRecord,
                 lastWriteTime
             );
+            string markerImagePath = thumbnailImagePath;
             thumbnailImagePath = ResolveThumbnailErrorListImagePath(thumbnailImagePath, movie);
+            bool thumbnailImageUsesPlaceholder = IsThumbnailErrorPlaceholderPath(thumbnailImagePath);
+            bool thumbnailImageHasErrorMarker =
+                !string.IsNullOrWhiteSpace(markerImagePath)
+                || ThumbnailPathResolver.IsErrorMarker(thumbnailImagePath);
             bool hasMixedStatuses =
                 visibleFailureRecords
                     .Select(x => x.Status ?? "")
@@ -696,6 +786,8 @@ namespace IndigoMovieManager
                     lastWriteTime,
                     progressUpdatedAt
                 ),
+                ThumbnailImageUsesPlaceholder = thumbnailImageUsesPlaceholder,
+                ThumbnailImageHasErrorMarker = thumbnailImageHasErrorMarker,
                 FailedTabsText = string.Join(
                     ", ",
                     failedTabs.Select(GetThumbnailTabDisplayName)
@@ -819,6 +911,10 @@ namespace IndigoMovieManager
 
             public int MissingCount { get; init; }
 
+            public int FailedCount { get; init; }
+
+            public int CanceledCount { get; init; }
+
             public int MarkerCount { get; init; }
 
             public int StaleSkipCount { get; init; }
@@ -828,7 +924,7 @@ namespace IndigoMovieManager
             public string ToLogFields()
             {
                 return
-                    $"total={TotalCount} ready={ReadyCount} placeholder={PlaceholderCount} missing={MissingCount} marker={MarkerCount} stale_skip={StaleSkipCount} image_log_reason=image.thumbnail-error-list.aggregate sample=\"{SampleLoadFields}\"";
+                    $"total={TotalCount} ready={ReadyCount} placeholder={PlaceholderCount} missing={MissingCount} failed={FailedCount} canceled={CanceledCount} marker={MarkerCount} stale_skip={StaleSkipCount} image_log_reason=image.thumbnail-error-list.aggregate sample=\"{SampleLoadFields}\"";
             }
         }
 

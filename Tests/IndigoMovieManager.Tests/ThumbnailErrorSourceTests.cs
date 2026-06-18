@@ -162,9 +162,13 @@ public sealed class ThumbnailErrorSourceTests
             source,
             "private static ThumbnailErrorImageLoadSummary BuildThumbnailErrorImageLoadSummary("
         );
-        string sampleMethod = ExtractMethod(
+        string resultMethod = ExtractMethod(
             source,
-            "private static string BuildThumbnailErrorSampleImageLoadFields("
+            "private static ImageLoadResult BuildThumbnailErrorListImageLoadResult("
+        );
+        string existsMethod = ExtractMethod(
+            source,
+            "private static bool HasThumbnailErrorListImage("
         );
         string logFieldsMethod = ExtractMethod(source, "public string ToLogFields()");
         string coreMethod = ExtractMethod(
@@ -178,18 +182,27 @@ public sealed class ThumbnailErrorSourceTests
 
         Assert.That(buildMethod, Does.Contain("BuildThumbnailErrorImageLoadSummary(items)"));
         Assert.That(buildMethod, Does.Contain("error tab image aggregate"));
-        Assert.That(summaryMethod, Does.Contain("BuildThumbnailErrorSampleImageLoadFields("));
+        Assert.That(summaryMethod, Does.Contain("BuildThumbnailErrorListImageLoadResult("));
+        Assert.That(summaryMethod, Does.Contain("ImageLoadLogFields.Build(loadResult)"));
         Assert.That(logFieldsMethod, Does.Contain("total="));
         Assert.That(logFieldsMethod, Does.Contain("ready="));
         Assert.That(logFieldsMethod, Does.Contain("placeholder="));
         Assert.That(logFieldsMethod, Does.Contain("missing="));
+        Assert.That(logFieldsMethod, Does.Contain("failed="));
+        Assert.That(logFieldsMethod, Does.Contain("canceled="));
         Assert.That(logFieldsMethod, Does.Contain("marker="));
         Assert.That(logFieldsMethod, Does.Contain("stale_skip="));
         Assert.That(logFieldsMethod, Does.Contain("image.thumbnail-error-list.aggregate"));
-        Assert.That(sampleMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
-        Assert.That(sampleMethod, Does.Contain("ImageLoadResult.Missing("));
-        Assert.That(sampleMethod, Does.Contain("ImageLoadResult.Ready("));
-        Assert.That(sampleMethod, Does.Contain("ImageLoadLogFields.Build(result)"));
+        Assert.That(resultMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
+        Assert.That(resultMethod, Does.Contain("HasThumbnailErrorListImage("));
+        Assert.That(resultMethod, Does.Contain("ImageLoadResult.Missing("));
+        Assert.That(resultMethod, Does.Contain("ImageLoadResult.Ready("));
+        Assert.That(resultMethod, Does.Contain("ImageLoadResult.Failed("));
+        Assert.That(resultMethod, Does.Contain("\"placeholder\""));
+        Assert.That(resultMethod, Does.Contain("\"error-marker\""));
+        Assert.That(existsMethod, Does.Contain("File.Exists(thumbnailPath)"));
+        Assert.That(recordMethod, Does.Contain("ThumbnailImageUsesPlaceholder = thumbnailImageUsesPlaceholder"));
+        Assert.That(recordMethod, Does.Contain("ThumbnailImageHasErrorMarker = thumbnailImageHasErrorMarker"));
         Assert.That(coreMethod, Does.Not.Contain("ImageLoadLogFields.Build("));
         Assert.That(coreMethod, Does.Not.Contain("ImageLoadResult."));
         Assert.That(recordMethod, Does.Not.Contain("DebugRuntimeLog.Write("));

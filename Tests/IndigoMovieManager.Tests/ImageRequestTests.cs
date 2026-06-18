@@ -302,6 +302,13 @@ public sealed class ImageRequestTests
             failureReason: "error-marker",
             usesPlaceholder: true
         );
+        ImageLoadResult markerFailed = ImageLoadResult.Failed(
+            request,
+            resultRevision: 51,
+            failureReason: "error-marker",
+            usesPlaceholder: false,
+            hasResolvedImage: true
+        );
 
         string readyLog = ImageLoadLogFields.Build(ready);
         string missingLog = ImageLoadLogFields.Build(missing);
@@ -326,6 +333,9 @@ public sealed class ImageRequestTests
             Assert.That(canceledLog, Does.Contain("failure_reason=stale-image-request"));
             Assert.That(failedLog, Does.Contain("placeholder=true"));
             Assert.That(failedLog, Does.Contain("failure_reason=error-marker"));
+            Assert.That(markerFailed.HasResolvedImage, Is.True);
+            Assert.That(markerFailed.UsesPlaceholder, Is.False);
+            Assert.That(ImageLoadLogFields.Build(markerFailed), Does.Contain("resolved=true"));
         });
     }
 
