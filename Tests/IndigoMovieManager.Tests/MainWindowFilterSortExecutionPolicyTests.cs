@@ -464,6 +464,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void SortDataAsync_大件数sortはbackgroundとrevision_guardへ寄せる()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string inputRoutingSource = GetRepoText("Views", "Main", "MainWindow.InputRouting.cs");
         string readModelUiSource = GetRepoText("Views", "Main", "MainWindow.MovieViewReadModel.cs");
         string legacyWrapper = GetMethodBlock(readModelUiSource, "private void SortData(");
         string legacyAsyncWrapper = GetMethodBlock(
@@ -472,7 +473,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         );
         string sortAsync = GetMethodBlock(readModelUiSource, "private async Task<bool> SortDataAsync(");
         string comboChanged = GetMethodBlock(
-            mainWindowSource,
+            inputRoutingSource,
             "private async void ComboSort_SelectionChanged("
         );
 
@@ -491,6 +492,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortAsync, Does.Contain("sort end: revision="));
         Assert.That(comboChanged, Does.Contain("await SortDataAsync(id.ToString());"));
         Assert.That(comboChanged, Does.Contain("if (shouldSelectFirstItem)"));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
     }
 
     [Test]
@@ -598,8 +600,9 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void ComboSort_段階ロード中のFilterAndSortTrueは全件順序復旧fallbackとして残す()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string inputRoutingSource = GetRepoText("Views", "Main", "MainWindow.InputRouting.cs");
         string comboChanged = GetMethodBlock(
-            mainWindowSource,
+            inputRoutingSource,
             "private async void ComboSort_SelectionChanged("
         );
 
@@ -607,6 +610,56 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(comboChanged, Does.Contain("FilterAndSort(id.ToString(), true);"));
         Assert.That(comboChanged, Does.Contain("else"));
         Assert.That(comboChanged, Does.Contain("await SortDataAsync(id.ToString());"));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
+    }
+
+    [Test]
+    public void InputRouting境界はMainWindow本体へ戻さない()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string inputRoutingSource = GetRepoText("Views", "Main", "MainWindow.InputRouting.cs");
+
+        string[] inputRoutingSignatures =
+        [
+            "private void MenuToggleButton_Checked(",
+            "private void MenuToggleButton_Unchecked(",
+            "private void OnPreviewTextInput(",
+            "private void OnPreviewTextInputStart(",
+            "private void OnPreviewTextInputUpdate(",
+            "private void Tab_PreviewKeyDown(",
+            "private async void ComboSort_SelectionChanged(",
+        ];
+
+        foreach (string signature in inputRoutingSignatures)
+        {
+            Assert.That(inputRoutingSource, Does.Contain(signature));
+            Assert.That(mainWindowSource, Does.Not.Contain(signature));
+        }
+
+        Assert.That(inputRoutingSource, Does.Contain("TryHandleUpperTabPageScroll(e)"));
+        Assert.That(inputRoutingSource, Does.Contain("TryHandleDeleteShortcut(e)"));
+        Assert.That(inputRoutingSource, Does.Contain("FilterAndSort(id.ToString(), true);"));
+        Assert.That(inputRoutingSource, Does.Contain("await SortDataAsync(id.ToString());"));
+        Assert.That(inputRoutingSource, Does.Contain("RefreshThumbnailErrorRecords(force: true)"));
+        Assert.That(inputRoutingSource, Does.Contain("SelectFirstItem();"));
+        Assert.That(inputRoutingSource, Does.Not.Contain("File."));
+        Assert.That(inputRoutingSource, Does.Not.Contain("Directory."));
+        Assert.That(inputRoutingSource, Does.Not.Contain("Path.Exists("));
+        Assert.That(inputRoutingSource, Does.Not.Contain("_mainDbMovieReadFacade"));
+        Assert.That(inputRoutingSource, Does.Not.Contain("LoadMovieTable"));
+        Assert.That(inputRoutingSource, Does.Not.Contain("GetSystemTable"));
+        Assert.That(inputRoutingSource, Does.Not.Contain("GetWatchTable"));
+        Assert.That(inputRoutingSource, Does.Not.Contain("OpenDatafile"));
+        Assert.That(inputRoutingSource, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
+        Assert.That(inputRoutingSource, Does.Not.Contain("Items.Refresh()"));
+        Assert.That(mainWindowSource, Does.Contain("AddPreviewTextInputHandler(SearchBox, OnPreviewTextInput)"));
+        Assert.That(mainWindowSource, Does.Contain("OnPreviewTextInputStart"));
+        Assert.That(mainWindowSource, Does.Contain("OnPreviewTextInputUpdate"));
+        Assert.That(mainWindowXaml, Does.Contain("PreviewKeyDown=\"Tab_PreviewKeyDown\""));
+        Assert.That(mainWindowXaml, Does.Contain("SelectionChanged=\"ComboSort_SelectionChanged\""));
+        Assert.That(mainWindowXaml, Does.Contain("Checked=\"MenuToggleButton_Checked\""));
+        Assert.That(mainWindowXaml, Does.Contain("Unchecked=\"MenuToggleButton_Unchecked\""));
     }
 
     [Test]
@@ -616,7 +669,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string[] expected =
         [
             "Views/Main/MainWindow.Startup.cs|startup-fallback-full-reload|FilterAndSort(sortId, true);",
-            "Views/Main/MainWindow.xaml.cs|startup-partial-sort-full-order|FilterAndSort(id.ToString(), true);",
+            "Views/Main/MainWindow.InputRouting.cs|startup-partial-sort-full-order|FilterAndSort(id.ToString(), true);",
         ];
 
         Assert.That(actual, Is.EquivalentTo(expected));
@@ -886,7 +939,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         }
 
         if (
-            relativePath == "Views/Main/MainWindow.xaml.cs"
+            relativePath == "Views/Main/MainWindow.InputRouting.cs"
             && trimmedLine == "FilterAndSort(id.ToString(), true);"
         )
         {
