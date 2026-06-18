@@ -1,4 +1,3 @@
-using System;
 using System.Windows.Controls;
 using IndigoMovieManager.BottomTabs.ThumbnailError;
 
@@ -16,14 +15,9 @@ namespace IndigoMovieManager
             bool shouldShowThumbnailErrorBottomTab
         )
         {
-            if (!shouldShowThumbnailErrorBottomTab)
-            {
-                return false;
-            }
-
-            return !layoutText.Contains(
-                $"ContentId=\"{ThumbnailErrorBottomTabContentId}\"",
-                StringComparison.OrdinalIgnoreCase
+            return DockLayoutRestorePolicy.ShouldRequireThumbnailErrorBottomTab(
+                layoutText,
+                shouldShowThumbnailErrorBottomTab
             );
         }
 

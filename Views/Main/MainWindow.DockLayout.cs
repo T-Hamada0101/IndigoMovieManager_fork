@@ -113,7 +113,7 @@ namespace IndigoMovieManager
             {
                 // ファイルI/Oと互換テキスト検証は背景側で済ませ、起動直列のUI待ちを増やさない。
                 string layoutText = File.ReadAllText(layoutFilePath);
-                string invalidReason = FindMissingRequiredDockLayoutReason(
+                string invalidReason = DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(
                     layoutText,
                     shouldShowThumbnailErrorBottomTab,
                     shouldShowDebugTab
@@ -193,7 +193,7 @@ namespace IndigoMovieManager
         /// </summary>
         private string ValidateDockLayoutText(string layoutText)
         {
-            return FindMissingRequiredDockLayoutReason(
+            return DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(
                 layoutText,
                 ShouldShowThumbnailErrorBottomTab,
                 ShouldShowDebugTab
@@ -206,63 +206,11 @@ namespace IndigoMovieManager
             bool shouldShowDebugTab
         )
         {
-            // 下部の常設タブは、誤って保存済みレイアウトから落ちても次回起動で救済する。
-            (string ContentId, string Reason)[] requiredTabs =
-            [
-                (ExtensionBottomTabContentId, "missing-extension-bottom-tab"),
-                (BookmarkBottomTabContentId, "missing-bookmark-bottom-tab"),
-                (SavedSearchBottomTabContentId, "missing-saved-search-bottom-tab"),
-                (ThumbnailProgressContentId, "missing-thumbnail-progress"),
-                (TagEditorBottomTabContentId, "missing-tag-editor-bottom-tab"),
-            ];
-
-            foreach ((string contentId, string reason) in requiredTabs)
-            {
-                if (
-                    !layoutText.Contains(
-                        $"ContentId=\"{contentId}\"",
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-                {
-                    return reason;
-                }
-            }
-
-            if (
-                ShouldRequireThumbnailErrorBottomTabInLayoutRestore(
-                    layoutText,
-                    shouldShowThumbnailErrorBottomTab
-                )
-            )
-            {
-                return "missing-thumbnail-error-bottom-tab";
-            }
-
-            // Debug 構成では開発用タブも必須扱いにして、古いレイアウトを引きずらない。
-            if (
+            return DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(
+                layoutText,
+                shouldShowThumbnailErrorBottomTab,
                 shouldShowDebugTab
-                && !layoutText.Contains(
-                    $"ContentId=\"{DebugToolContentId}\"",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                return "missing-debug-tool";
-            }
-
-            if (
-                shouldShowDebugTab
-                && !layoutText.Contains(
-                    $"ContentId=\"{LogToolContentId}\"",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                return "missing-log-tool";
-            }
-
-            return "";
+            );
         }
 
         private sealed record DockLayoutRestoreFileLoadResult(

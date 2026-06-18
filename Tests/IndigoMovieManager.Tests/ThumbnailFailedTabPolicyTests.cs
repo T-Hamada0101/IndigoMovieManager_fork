@@ -135,7 +135,7 @@ public sealed class ThumbnailFailedTabPolicyTests
     [Test]
     public void ShouldRequireThumbnailErrorBottomTabInLayoutRestore_非表示構成では欠落していても必須にしない()
     {
-        bool result = MainWindow.ShouldRequireThumbnailErrorBottomTabInLayoutRestore(
+        bool result = DockLayoutRestorePolicy.ShouldRequireThumbnailErrorBottomTab(
             "<LayoutRoot />",
             shouldShowThumbnailErrorBottomTab: false
         );
@@ -146,11 +146,11 @@ public sealed class ThumbnailFailedTabPolicyTests
     [Test]
     public void ShouldRequireThumbnailErrorBottomTabInLayoutRestore_表示構成では欠落時だけ必須にする()
     {
-        bool missingResult = MainWindow.ShouldRequireThumbnailErrorBottomTabInLayoutRestore(
+        bool missingResult = DockLayoutRestorePolicy.ShouldRequireThumbnailErrorBottomTab(
             "<LayoutRoot />",
             shouldShowThumbnailErrorBottomTab: true
         );
-        bool existingResult = MainWindow.ShouldRequireThumbnailErrorBottomTabInLayoutRestore(
+        bool existingResult = DockLayoutRestorePolicy.ShouldRequireThumbnailErrorBottomTab(
             "<LayoutRoot ContentId=\"ToolThumbnailError\" />",
             shouldShowThumbnailErrorBottomTab: true
         );

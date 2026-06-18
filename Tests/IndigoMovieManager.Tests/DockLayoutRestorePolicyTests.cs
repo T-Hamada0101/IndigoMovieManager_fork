@@ -18,7 +18,7 @@ public sealed class DockLayoutRestorePolicyTests
             </LayoutRoot>
             """;
 
-        string actual = MainWindow.FindMissingRequiredDockLayoutReason(
+        string actual = DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(
             layoutText,
             shouldShowThumbnailErrorBottomTab: false,
             shouldShowDebugTab: false
@@ -41,7 +41,7 @@ public sealed class DockLayoutRestorePolicyTests
             </LayoutRoot>
             """;
 
-        string actual = MainWindow.FindMissingRequiredDockLayoutReason(
+        string actual = DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(
             layoutText,
             shouldShowThumbnailErrorBottomTab: false,
             shouldShowDebugTab: false
@@ -65,7 +65,7 @@ public sealed class DockLayoutRestorePolicyTests
             </LayoutRoot>
             """;
 
-        string actual = MainWindow.FindMissingRequiredDockLayoutReason(
+        string actual = DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(
             layoutText,
             shouldShowThumbnailErrorBottomTab: false,
             shouldShowDebugTab: true

@@ -213,6 +213,11 @@ public sealed class MainWindowUiIoDeferralSourceTests
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
         string lifecycleSource = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
         string dockLayoutSource = GetRepoText("Views", "Main", "MainWindow.DockLayout.cs");
+        string dockLayoutPolicySource = GetRepoText(
+            "Views",
+            "Main",
+            "DockLayoutRestorePolicy.cs"
+        );
 
         string[] lifecycleSignatures =
         [
@@ -258,7 +263,24 @@ public sealed class MainWindowUiIoDeferralSourceTests
         Assert.That(lifecycleSource, Does.Contain("QueueApplicationSettingsSave(\"main-window-closing\")"));
         Assert.That(lifecycleSource, Does.Contain("DrainWatchEventPipelinesForShutdown();"));
         Assert.That(dockLayoutSource, Does.Contain("DispatcherPriority.ContextIdle"));
-        Assert.That(dockLayoutSource, Does.Contain("FindMissingRequiredDockLayoutReason("));
+        Assert.That(dockLayoutSource, Does.Contain("DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason("));
+        Assert.That(
+            dockLayoutPolicySource,
+            Does.Contain("internal static string FindMissingRequiredDockLayoutReason(")
+        );
+        Assert.That(
+            dockLayoutPolicySource,
+            Does.Contain("internal static bool ShouldRequireThumbnailErrorBottomTab(")
+        );
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("System.Windows"));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("AvalonDock"));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("Dispatcher"));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("LayoutAnchorable"));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("File."));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("Path."));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("DebugRuntimeLog"));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("MainVM"));
+        Assert.That(dockLayoutPolicySource, Does.Not.Contain("ObservableCollection"));
         Assert.That(dockLayoutSource, Does.Contain("EnsureRequiredBottomTabsPresent();"));
     }
 
@@ -544,7 +566,10 @@ public sealed class MainWindowUiIoDeferralSourceTests
 
         Assert.That(loadMethod, Does.Contain("Path.Exists(layoutFilePath)"));
         Assert.That(loadMethod, Does.Contain("File.ReadAllText(layoutFilePath)"));
-        Assert.That(loadMethod, Does.Contain("FindMissingRequiredDockLayoutReason("));
+        Assert.That(
+            loadMethod,
+            Does.Contain("DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(")
+        );
 
         Assert.That(deserializeMethod, Does.Contain("new StringReader(loadResult.LayoutText)"));
         Assert.That(deserializeMethod, Does.Not.Contain("Path.Exists("));
