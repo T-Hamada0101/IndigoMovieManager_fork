@@ -426,7 +426,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         );
         string saveVolumeMethod = GetMethodBlock(
             mainWindowPlayerSource,
-            "private void SavePlayerVolumeSettingInBackground()"
+            "private void SavePlayerVolumeSettingInBackground(PersistenceWriteRequest writeRequest)"
         );
         string playbackStatsPersistMethod = GetMethodBlock(
             mainWindowPlayerSource,
@@ -436,11 +436,15 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(applyVolumeMethod, Does.Contain("QueuePlayerVolumeSettingSave();"));
         Assert.That(queueVolumeSaveMethod, Does.Contain("DispatcherTimer"));
         Assert.That(backgroundVolumeSaveMethod, Does.Contain("TaskScheduler.Default"));
+        Assert.That(backgroundVolumeSaveMethod, Does.Contain("BuildPlayerVolumeSettingsWriteRequest()"));
         Assert.That(saveVolumeMethod, Does.Contain("Properties.Settings.Default.Save();"));
+        Assert.That(saveVolumeMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("Task.Run("));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(
             playbackStatsPersistMethod,
-            Does.Contain("PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)")
+            Does.Contain("playback stats persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields}")
         );
     }
 
