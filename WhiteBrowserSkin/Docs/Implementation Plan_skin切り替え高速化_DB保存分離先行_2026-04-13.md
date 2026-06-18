@@ -3,6 +3,7 @@
 最終更新日: 2026-06-18
 
 変更概要:
+- 2026-06-18 のサブEで、skin profile write の失敗時表現を一段進めた。`WhiteBrowserSkinProfileValueCache` は pending / persisted / faulted に加えて `dirty / failed / retryable` の状態 snapshot を返し、queue / persister / fallback 失敗時の `skin-db` ログにも `dirty=true failed=true retryable=true` を出す。UI hot path は `TryEnqueueExternalSkinProfileWrite(...)` の enqueue のみに保つ source policy で固定した。
 - 2026-06-18 のPM実機採取で、active skin 新形式ログをコピーDB + no-persist 診断で確認した。`VSTB` 初回 navigate は `active=True ready=True reason=dbinfo-DBFullPath host_navigate_ms=772.6 navigate_to_string_ms=171.6`、診断 repeat の `dbinfo-Skin` は `errorType=HostNavigateSkippedSameDocument navigate_skipped_current=True navigate_skip_reason='same-document' navigate_to_string_ms=0.0` で閉じた。採取は `INDIGO_DIAGNOSTIC_NO_PERSIST=1` / `INDIGO_DIAGNOSTIC_STARTUP_DB=<コピー.wb>` に加え、同一 document skip 自動確認時だけ `INDIGO_DIAGNOSTIC_REPEAT_SKIN_REFRESH=1` を使う。
 - 2026-06-18 のサブWorker Bで、same-document skip は通常 `dbinfo-*` 同期だけ許可し、`header-reload` / `fallback-notice-retry` / `minimal-chrome-reload` / `skin-tag-mutation` では許可しない契約を runtime test で固定した。`refresh end` には operation result 由来の `navigate_skipped_current` と `navigate_skip_reason` を並べ、counter 合計だけでなく今回の navigate が skip だったかを同じ行で読めるようにした。
 - 2026-06-17 のサブ5.5 Mendel + PMレビューで、同一 `CoreWebView2` / 同一 `thumbRootPath` の再Attachでは外部サムネ許可リストを保持し、same-document skip 時に既存 DOM の画像再読込が 403 へ落ちないようにした。thumb root 変更、別 WebView attach、実 navigate、Clear / Dispose では旧 document 用の許可を破棄する。
@@ -441,6 +442,7 @@ profile read の UI スレッド滞在を短くしつつ、初期表示整合を
 - 初期タブ復元に使う `ResolveInitialTabStateNameForSkin(...)` はまだ同期のままとし、表示整合を崩さない段階で止めている
 - `WhiteBrowserSkinProfileValueCache` を追加し、`pending / persisted / faulted` を分けるようにした
 - API の `getProfile` は `pending` も見えるが、初期タブ復元は `persisted` だけを見る形にした
+- 2026-06-18: `WhiteBrowserSkinProfileValueCache` に `dirty / failed / retryable` の状態 snapshot を追加した。profile 保存失敗時は失敗値を保持し、API 表示値や初期タブ復元には使わず、再保存可能な dirty として cache / log でだけ読めるようにした
 
 ### 7.15 完了条件
 

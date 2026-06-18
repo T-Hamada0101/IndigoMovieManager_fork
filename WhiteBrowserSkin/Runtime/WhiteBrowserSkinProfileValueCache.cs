@@ -9,6 +9,13 @@ namespace IndigoMovieManager.Skin.Runtime
         Faulted,
     }
 
+    internal readonly record struct WhiteBrowserSkinProfileValuePersistState(
+        string Value,
+        bool IsDirty,
+        bool IsFailed,
+        bool IsRetryable
+    );
+
     /// <summary>
     /// profile 値のセッション内 cache。
     /// API からは pending も見せるが、初期タブ復元は persisted だけを見る。
@@ -33,7 +40,10 @@ namespace IndigoMovieManager.Skin.Runtime
 
             Entries[identityKey] = new CacheEntry(
                 WhiteBrowserSkinProfileValueCacheState.Pending,
-                value ?? ""
+                value ?? "",
+                isDirty: true,
+                isFailed: false,
+                isRetryable: false
             );
         }
 
@@ -47,11 +57,19 @@ namespace IndigoMovieManager.Skin.Runtime
 
             Entries[identityKey] = new CacheEntry(
                 WhiteBrowserSkinProfileValueCacheState.Persisted,
-                value ?? ""
+                value ?? "",
+                isDirty: false,
+                isFailed: false,
+                isRetryable: false
             );
         }
 
-        internal static void RecordFault(string dbFullPath, string skinName, string key)
+        internal static void RecordFault(
+            string dbFullPath,
+            string skinName,
+            string key,
+            string value = null
+        )
         {
             string identityKey = BuildIdentityKey(dbFullPath, skinName, key);
             if (string.IsNullOrWhiteSpace(identityKey))
@@ -59,7 +77,25 @@ namespace IndigoMovieManager.Skin.Runtime
                 return;
             }
 
-            Entries[identityKey] = new CacheEntry(WhiteBrowserSkinProfileValueCacheState.Faulted, "");
+            Entries.AddOrUpdate(
+                identityKey,
+                _ =>
+                    new CacheEntry(
+                        WhiteBrowserSkinProfileValueCacheState.Faulted,
+                        value ?? "",
+                        isDirty: true,
+                        isFailed: true,
+                        isRetryable: true
+                    ),
+                (_, previous) =>
+                    new CacheEntry(
+                        WhiteBrowserSkinProfileValueCacheState.Faulted,
+                        value ?? previous?.Value ?? "",
+                        isDirty: true,
+                        isFailed: true,
+                        isRetryable: true
+                    )
+            );
         }
 
         internal static bool TryGetApiVisibleValue(
@@ -110,6 +146,33 @@ namespace IndigoMovieManager.Skin.Runtime
             return true;
         }
 
+        internal static bool TryGetPersistState(
+            string dbFullPath,
+            string skinName,
+            string key,
+            out WhiteBrowserSkinProfileValuePersistState state
+        )
+        {
+            state = default;
+            string identityKey = BuildIdentityKey(dbFullPath, skinName, key);
+            if (
+                string.IsNullOrWhiteSpace(identityKey)
+                || !Entries.TryGetValue(identityKey, out CacheEntry entry)
+            )
+            {
+                return false;
+            }
+
+            // UI 側へ重い問い合わせを戻さず、cache 内の保存状態だけを軽く読めるようにする。
+            state = new WhiteBrowserSkinProfileValuePersistState(
+                entry.Value ?? "",
+                entry.IsDirty,
+                entry.IsFailed,
+                entry.IsRetryable
+            );
+            return true;
+        }
+
         private static string BuildIdentityKey(string dbFullPath, string skinName, string key)
         {
             string dbIdentity = WhiteBrowserSkinDbIdentity.Build(dbFullPath);
@@ -129,14 +192,26 @@ namespace IndigoMovieManager.Skin.Runtime
 
         private sealed class CacheEntry
         {
-            internal CacheEntry(WhiteBrowserSkinProfileValueCacheState state, string value)
+            internal CacheEntry(
+                WhiteBrowserSkinProfileValueCacheState state,
+                string value,
+                bool isDirty,
+                bool isFailed,
+                bool isRetryable
+            )
             {
                 State = state;
                 Value = value ?? "";
+                IsDirty = isDirty;
+                IsFailed = isFailed;
+                IsRetryable = isRetryable;
             }
 
             internal WhiteBrowserSkinProfileValueCacheState State { get; }
             internal string Value { get; }
+            internal bool IsDirty { get; }
+            internal bool IsFailed { get; }
+            internal bool IsRetryable { get; }
         }
     }
 }

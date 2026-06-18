@@ -36,18 +36,32 @@ namespace IndigoMovieManager
                 request == null
                 || string.IsNullOrWhiteSpace(request.DbFullPath)
                 || string.IsNullOrWhiteSpace(request.Key)
-                || Volatile.Read(ref _whiteBrowserSkinStatePersistInputOpen) == 0
             )
             {
+                return false;
+            }
+
+            if (Volatile.Read(ref _whiteBrowserSkinStatePersistInputOpen) == 0)
+            {
+                RecordProfilePersistFaultForCache(request);
+                if (request.TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile)
+                {
+                    DebugRuntimeLog.Write(
+                        "skin-db",
+                        $"profile persist queue closed: db='{request.DbFullPath}' profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()}"
+                    );
+                }
+
                 return false;
             }
 
             bool queued = _whiteBrowserSkinStatePersistChannel.Writer.TryWrite(request);
             if (!queued)
             {
+                RecordProfilePersistFaultForCache(request);
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"persist queue rejected: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}'"
+                    $"persist queue rejected: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()}"
                 );
             }
             else if (request.TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile)
@@ -70,6 +84,24 @@ namespace IndigoMovieManager
             }
 
             return queued;
+        }
+
+        private static void RecordProfilePersistFaultForCache(
+            WhiteBrowserSkinStatePersistRequest request
+        )
+        {
+            if (request?.TargetKind != WhiteBrowserSkinStatePersistTargetKind.Profile)
+            {
+                return;
+            }
+
+            // enqueue できなかった profile 値だけ、次の操作で再保存できる失敗 dirty として残す。
+            WhiteBrowserSkinProfileValueCache.RecordFault(
+                request.DbFullPath,
+                request.ProfileName,
+                request.Key,
+                request.Value
+            );
         }
 
         private bool TryEnqueueExternalSkinProfileWrite(string dbFullPath, string skinName, string key, string value)
@@ -202,13 +234,14 @@ namespace IndigoMovieManager
                     WhiteBrowserSkinProfileValueCache.RecordFault(
                         request.DbFullPath,
                         request.ProfileName,
-                        request.Key
+                        request.Key,
+                        request.Value
                     );
                 }
 
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"persist fallback failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' err='{ex.GetType().Name}: {ex.Message}'"
+                    $"persist fallback failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }

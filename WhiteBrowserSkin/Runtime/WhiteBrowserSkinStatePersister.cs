@@ -115,7 +115,7 @@ namespace IndigoMovieManager.Skin
                                     log(
                                         BuildScopedLogMessage(
                                             request.TraceText,
-                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' err='write returned false'"
+                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='write returned false'"
                                         )
                                     );
                                     break;
@@ -138,12 +138,13 @@ namespace IndigoMovieManager.Skin
                                     WhiteBrowserSkinProfileValueCache.RecordFault(
                                         request.DbFullPath,
                                         request.ProfileName,
-                                        request.Key
+                                        request.Key,
+                                        request.Value
                                     );
                                     log(
                                         BuildScopedLogMessage(
                                             request.TraceText,
-                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' err='write returned false'"
+                                            $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='write returned false'"
                                         )
                                     );
                                     break;
@@ -167,14 +168,15 @@ namespace IndigoMovieManager.Skin
                             WhiteBrowserSkinProfileValueCache.RecordFault(
                                 request.DbFullPath,
                                 request.ProfileName,
-                                request.Key
+                                request.Key,
+                                request.Value
                             );
                         }
 
                         log(
                             BuildScopedLogMessage(
                                 request.TraceText,
-                                $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' err='{ex.GetType().Name}: {ex.Message}'"
+                                $"skin state persist failed: db='{request.DbFullPath}' target={request.TargetKind} profile='{request.ProfileName}' key='{request.Key}' {request.BuildFailureStateLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
                             )
                         );
                     }

@@ -184,7 +184,12 @@ public sealed class WhiteBrowserSkinStatePersisterTests
 
         Channel<WhiteBrowserSkinStatePersistRequest> channel =
             Channel.CreateUnbounded<WhiteBrowserSkinStatePersistRequest>();
-        WhiteBrowserSkinStatePersister persister = new(channel.Reader, batchWindowMs: 10);
+        List<string> logs = [];
+        WhiteBrowserSkinStatePersister persister = new(
+            channel.Reader,
+            batchWindowMs: 10,
+            log: message => logs.Add(message ?? "")
+        );
 
         WhiteBrowserSkinProfileValueCache.RecordPending(
             dbPath,
@@ -224,7 +229,47 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                 ),
                 Is.False
             );
+            Assert.That(
+                WhiteBrowserSkinProfileValueCache.TryGetPersistState(
+                    dbPath,
+                    "SampleExternalSkin",
+                    "LastUpperTab",
+                    out WhiteBrowserSkinProfileValuePersistState state
+                ),
+                Is.True
+            );
+            Assert.That(state.Value, Is.EqualTo("DefaultGrid"));
+            Assert.That(state.IsDirty, Is.True);
+            Assert.That(state.IsFailed, Is.True);
+            Assert.That(state.IsRetryable, Is.True);
+            Assert.That(
+                logs.Any(
+                    static x =>
+                        x.Contains("skin state persist failed:", StringComparison.Ordinal)
+                        && x.Contains("dirty=true", StringComparison.Ordinal)
+                        && x.Contains("failed=true", StringComparison.Ordinal)
+                        && x.Contains("retryable=true", StringComparison.Ordinal)
+                ),
+                Is.True
+            );
         });
+    }
+
+    [Test]
+    public void PersistRequest_Profile失敗ログはdirty_failed_retryableを持つ()
+    {
+        WhiteBrowserSkinStatePersistRequest request =
+            WhiteBrowserSkinStatePersistRequest.CreateProfile(
+                @"C:\temp\missing.wb",
+                "SampleSkin",
+                "LastUpperTab",
+                "DefaultGrid"
+            );
+
+        Assert.That(
+            request.BuildFailureStateLogFields(),
+            Is.EqualTo("dirty=true failed=true retryable=true")
+        );
     }
 
     [Test]

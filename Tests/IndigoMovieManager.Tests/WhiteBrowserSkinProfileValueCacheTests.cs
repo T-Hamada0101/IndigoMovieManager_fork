@@ -33,6 +33,12 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             "LastUpperTab",
             out string restoreValue
         );
+        bool stateHit = WhiteBrowserSkinProfileValueCache.TryGetPersistState(
+            @"C:\temp\sample.wb",
+            "SampleSkin",
+            "LastUpperTab",
+            out WhiteBrowserSkinProfileValuePersistState state
+        );
 
         Assert.Multiple(() =>
         {
@@ -40,6 +46,11 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             Assert.That(apiValue, Is.EqualTo("DefaultList"));
             Assert.That(restoreHit, Is.False);
             Assert.That(restoreValue, Is.Empty);
+            Assert.That(stateHit, Is.True);
+            Assert.That(state.Value, Is.EqualTo("DefaultList"));
+            Assert.That(state.IsDirty, Is.True);
+            Assert.That(state.IsFailed, Is.False);
+            Assert.That(state.IsRetryable, Is.False);
         });
     }
 
@@ -65,9 +76,23 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             "LastUpperTab",
             out string restoreValue
         );
+        bool stateHit = WhiteBrowserSkinProfileValueCache.TryGetPersistState(
+            @"C:\temp\sample.wb",
+            "SampleSkin",
+            "LastUpperTab",
+            out WhiteBrowserSkinProfileValuePersistState state
+        );
 
-        Assert.That(restoreHit, Is.True);
-        Assert.That(restoreValue, Is.EqualTo("DefaultList"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(restoreHit, Is.True);
+            Assert.That(restoreValue, Is.EqualTo("DefaultList"));
+            Assert.That(stateHit, Is.True);
+            Assert.That(state.Value, Is.EqualTo("DefaultList"));
+            Assert.That(state.IsDirty, Is.False);
+            Assert.That(state.IsFailed, Is.False);
+            Assert.That(state.IsRetryable, Is.False);
+        });
     }
 
     [Test]
@@ -82,7 +107,8 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
         WhiteBrowserSkinProfileValueCache.RecordFault(
             @"C:\temp\sample.wb",
             "SampleSkin",
-            "grid.columns"
+            "grid.columns",
+            "4"
         );
 
         bool apiHit = WhiteBrowserSkinProfileValueCache.TryGetApiVisibleValue(
@@ -97,8 +123,54 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             "grid.columns",
             out _
         );
+        bool stateHit = WhiteBrowserSkinProfileValueCache.TryGetPersistState(
+            @"C:\temp\sample.wb",
+            "SampleSkin",
+            "grid.columns",
+            out WhiteBrowserSkinProfileValuePersistState state
+        );
 
-        Assert.That(apiHit, Is.False);
-        Assert.That(restoreHit, Is.False);
+        Assert.Multiple(() =>
+        {
+            Assert.That(apiHit, Is.False);
+            Assert.That(restoreHit, Is.False);
+            Assert.That(stateHit, Is.True);
+            Assert.That(state.Value, Is.EqualTo("4"));
+            Assert.That(state.IsDirty, Is.True);
+            Assert.That(state.IsFailed, Is.True);
+            Assert.That(state.IsRetryable, Is.True);
+        });
+    }
+
+    [Test]
+    public void Fault値未指定時は直前Pending値を保持する()
+    {
+        WhiteBrowserSkinProfileValueCache.RecordPending(
+            @"C:\temp\sample.wb",
+            "SampleSkin",
+            "layout.mode",
+            "compact"
+        );
+        WhiteBrowserSkinProfileValueCache.RecordFault(
+            @"C:\temp\sample.wb",
+            "SampleSkin",
+            "layout.mode"
+        );
+
+        bool stateHit = WhiteBrowserSkinProfileValueCache.TryGetPersistState(
+            @"C:\temp\sample.wb",
+            "SampleSkin",
+            "layout.mode",
+            out WhiteBrowserSkinProfileValuePersistState state
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stateHit, Is.True);
+            Assert.That(state.Value, Is.EqualTo("compact"));
+            Assert.That(state.IsDirty, Is.True);
+            Assert.That(state.IsFailed, Is.True);
+            Assert.That(state.IsRetryable, Is.True);
+        });
     }
 }

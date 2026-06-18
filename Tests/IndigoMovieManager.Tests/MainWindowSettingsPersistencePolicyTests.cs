@@ -155,6 +155,41 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         );
     }
 
+    [Test]
+    public void 外部SkinProfileWrite_hot_pathはenqueueだけに保つ()
+    {
+        string apiSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Api.cs");
+        string persistenceSource = GetRepoText("WhiteBrowserSkin", "MainWindow.SkinPersistence.cs");
+        string writeMethod = ExtractMethod(
+            apiSource,
+            "private async Task<bool> WriteExternalSkinProfileValueAsync("
+        );
+        string enqueueMethod = ExtractMethod(
+            persistenceSource,
+            "private bool TryEnqueueExternalSkinProfileWrite("
+        );
+        string queueMethod = ExtractMethod(
+            persistenceSource,
+            "private bool TryEnqueueWhiteBrowserSkinStatePersistRequest("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(writeMethod, Does.Contain("TryEnqueueExternalSkinProfileWrite("));
+            Assert.That(writeMethod, Does.Not.Contain("UpsertProfileTable("));
+            Assert.That(writeMethod, Does.Not.Contain("TryUpsertProfileTable("));
+            Assert.That(writeMethod, Does.Not.Contain("Task.Run("));
+
+            Assert.That(enqueueMethod, Does.Contain("WhiteBrowserSkinStatePersistRequest.CreateProfile("));
+            Assert.That(enqueueMethod, Does.Not.Contain("UpsertProfileTable("));
+            Assert.That(enqueueMethod, Does.Not.Contain("TryUpsertProfileTable("));
+
+            Assert.That(queueMethod, Does.Contain("WhiteBrowserSkinProfileValueCache.RecordPending("));
+            Assert.That(queueMethod, Does.Contain("RecordProfilePersistFaultForCache(request);"));
+            Assert.That(queueMethod, Does.Contain("BuildFailureStateLogFields()"));
+        });
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
