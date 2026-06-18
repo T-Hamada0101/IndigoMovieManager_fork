@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#####-----] 47%`
+> 進捗メータ: `[#####-----] 48%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-18
 
-全体進捗目安: `[#####-----] 47%`
+全体進捗目安: `[#####-----] 48%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -16,7 +16,7 @@
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 45% | `UiOperationSnapshot` を追加し、旧 `UiOperationPrioritySnapshot` から段階移行できる入口を固定済み | UI event handler を snapshot 生成へさらに寄せる |
 | Phase 2. ReadModel Store と Diff-first | 28% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiff` は add / delete / update / move / full fallback / no-change と、query / sort / db-switch / unsafe / massive / none の fallback 語彙で apply log を読める入口になった | 小変更の diff apply 本体を通常経路へ入れる |
-| Phase 3. In-process Scheduler | 27% | `UiWorkRequest` / `UiWorkRequestPolicy` を追加し、thumbnail 進捗 refresh 予約、Everything poll、watch reload 予約へ priority / coalesce / latest-only / log reason / release reason / bounded drain / timeout policy の語彙を接続済み。shutdown受理可否は thumbnail refresh 入口で固定済み | 実行器本体を作る前に、実機ログで watch cancel / poll defer / thumbnail refresh の発生頻度と支配時間を揃える |
+| Phase 3. In-process Scheduler | 31% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。runtime 接続はまだ行わない | 実行器本体を作る前に、実機ログで watch cancel / poll defer / thumbnail refresh の発生頻度と支配時間を揃える |
 | Phase 4. Image Pipeline 統一 | 34% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback が `ImageRequest` を作り、詳細サムネ背景確認は `ImageProbeRequest` / `ImageProbeResult` で missing / ERROR marker / stamp を説明できる | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard を確認する |
 | Phase 5. Persistence Pipeline | 33% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み。skin profile と bookmark は失敗時に cache / log / 軽量状態で dirty / failed / retryable を読める入口を追加済み | skin profile / bookmark の最小 UI 通知条件を揃え、実機ログで失敗時だけ表現されることを確認する |
 | Phase 6. Worker 契約 | 43% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果、watch metadata probe 入出力から Worker DTO へ写す adapter と focused test を追加済み | metadata probe の実行ログ / progress 語彙を、実機支配要因を見て必要最小限で接続する |
@@ -40,6 +40,7 @@
 - watch reload 予約は `WatchUiApplyRequest` 内に `UiWorkRequest` を持たせ、query-only / full fallback の優先度、coalesce、latest-only、operation reason をログで読める入口へ寄せた。
 - `BuildRequestSchedulerLogFields(...)` を追加し、thumbnail / Everything poll / watch reload の既存予約ログへ `work_priority`、`coalesce_key`、`latest_only_key`、`timeout_policy`、`bounded_drain`、`release_reason` を同じ形式で出すようにした。巨大 scheduler 本体はまだ作らない。
 - watch 遅延 reload の cancel ログは、pending がある時だけ `release_reason=canceled` と `bounded_drain=deferred-request-cts` を出し、latest-only で古い要求を落とした証跡を読めるようにした。
+- `UiWorkSchedulerPolicy` を追加し、bounded capacity、latest-only 置換、coalesce 畳み込み、満杯時の priority preempt、次実行選択、timeout release 判定を pure test で固定した。まだ `MainWindow` / `Dispatcher` / DB / UI event handler へは接続しない。
 - `MovieViewDiff` は add / delete / update / move / full fallback / no-change と fallback category を分け、既存 `ReplaceFilteredMovieRecs(...)` 互換のまま diff-first の観測語彙を一段細かくした。
 - 画像 hot path は、詳細サムネ、Player右レール、上側タブ viewport 更新入口で file I/O / decode へ進まないことを source policy で固定した。
 - 上側タブ画像 converter は `ImageRequest` を作ってから decode へ進む形へ寄せ、visible-first と stale discard を test で説明できるようにした。
@@ -87,7 +88,7 @@
 - bounded queue、coalesce、latest-only、priority、release reason、timeout log、shutdown bounded drain を持つ小さな in-process scheduler を導入する。
 - 優先順は、入力、選択、スクロール、Player、visible画像、最新検索 / sort、watch小差分、thumbnail / rescue、skin catalog の順にする。
 - 最初は watch / poll / thumbnail refresh 予約だけを載せ、全機能を一気に移さない。
-- 現在は実行器本体へ進む前段として、既存予約のログ語彙を `UiWorkRequestPolicy` の helper へ寄せた段階。`timeout_policy=none` は明示的な timeout drain 未導入を示し、実機ログで必要性が見えた時だけ timeout budget を持たせる。
+- 現在は実行器本体へ進む前段として、既存予約のログ語彙を `UiWorkRequestPolicy` の helper へ寄せ、さらに `UiWorkSchedulerPolicy` で入場・置換・timeout の純粋判断を固定した段階。`timeout_policy=none` は明示的な timeout drain 未導入を示し、実機ログで必要性が見えた時だけ timeout budget を持たせる。
 
 ### Phase 4. Image Pipeline 統一
 
@@ -142,7 +143,7 @@
 - Unit tests
   - UI operation snapshot と priority 判定。
   - ReadModel diff の apply / fallback 判定。
-  - Scheduler の coalesce / latest-only / timeout / shutdown drain。
+  - Scheduler の bounded capacity / coalesce / latest-only / priority preempt / timeout / shutdown drain。
   - Image request の visible-first と stale discard。
   - Worker request / result / progress DTO の互換性。
 - Focused / integration tests
