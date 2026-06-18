@@ -212,6 +212,10 @@ public sealed class ThumbnailProgressSourceTests
             source,
             "private async Task RunDelayedThumbnailProgressSnapshotRefreshAsync("
         );
+        string schedulerMethod = ExtractMethod(
+            source,
+            "private bool TryQueueThumbnailProgressSnapshotRefreshWork("
+        );
         string processMethod = ExtractMethod(
             source,
             "private void ProcessThumbnailProgressSnapshotRefreshQueue(UiWorkRequest request)"
@@ -241,6 +245,18 @@ public sealed class ThumbnailProgressSourceTests
             requestMethod,
             Does.Contain("QueueDelayedThumbnailProgressSnapshotRefresh(decision.Delay, request);")
         );
+        Assert.That(
+            source,
+            Does.Contain(
+                "private readonly UiWorkSchedulerRuntime _uiWorkSchedulerRuntime ="
+            )
+        );
+        Assert.That(
+            requestMethod,
+            Does.Contain(
+                "TryQueueThumbnailProgressSnapshotRefreshWork(request, out UiWorkRequest queuedRequest)"
+            )
+        );
         Assert.That(requestMethod, Does.Contain("DispatcherPriority.Background"));
         Assert.That(
             requestMethod.IndexOf(
@@ -248,6 +264,17 @@ public sealed class ThumbnailProgressSourceTests
                 StringComparison.Ordinal
             ),
             Is.LessThan(requestMethod.IndexOf("Dispatcher.BeginInvoke(", StringComparison.Ordinal))
+        );
+        Assert.That(
+            requestMethod.IndexOf(
+                "TryQueueThumbnailProgressSnapshotRefreshWork(request, out UiWorkRequest queuedRequest)",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(requestMethod.IndexOf("Dispatcher.BeginInvoke(", StringComparison.Ordinal))
+        );
+        Assert.That(
+            requestMethod,
+            Does.Contain("ProcessThumbnailProgressSnapshotRefreshQueue(queuedRequest)")
         );
 
         Assert.That(
@@ -276,6 +303,13 @@ public sealed class ThumbnailProgressSourceTests
             Does.Contain("UiWorkRequestPolicy.BuildRequestAdmissionLogFields(")
         );
         Assert.That(delayedRunMethod, Does.Contain("UiWorkRequestPolicy.ReleaseReasonFailed"));
+        Assert.That(schedulerMethod, Does.Contain("lock (_uiWorkSchedulerRuntimeSyncRoot)"));
+        Assert.That(schedulerMethod, Does.Contain("_uiWorkSchedulerRuntime.Queue(request)"));
+        Assert.That(schedulerMethod, Does.Contain("_uiWorkSchedulerRuntime.TryTakeNext()"));
+        Assert.That(
+            schedulerMethod,
+            Does.Contain("UiWorkSchedulerPolicy.BuildAdmissionLogFields(")
+        );
 
         Assert.That(
             processMethod,

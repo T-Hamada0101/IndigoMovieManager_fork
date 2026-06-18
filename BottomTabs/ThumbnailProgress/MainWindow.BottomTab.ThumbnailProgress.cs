@@ -34,6 +34,9 @@ namespace IndigoMovieManager
                 ? NoOpThumbnailQueueProgressPresenter.Instance
                 : new AppThumbnailQueueProgressPresenter();
         private readonly ThumbnailProgressRuntime _thumbnailProgressRuntime = new();
+        private readonly object _uiWorkSchedulerRuntimeSyncRoot = new();
+        private readonly UiWorkSchedulerRuntime _uiWorkSchedulerRuntime =
+            new(UiWorkRequestPolicy.ExistingReservationQueueCapacity);
         private readonly DateTime _thumbnailProgressSessionStartedUtc = DateTime.UtcNow;
         private DispatcherTimer _thumbnailProgressUiTimer;
         private int _thumbnailProgressUiTickAccumulatedMs;
@@ -231,6 +234,47 @@ namespace IndigoMovieManager
             }
 
             return acceptance.Accepted;
+        }
+
+        private bool TryQueueThumbnailProgressSnapshotRefreshWork(
+            UiWorkRequest request,
+            out UiWorkRequest queuedRequest
+        )
+        {
+            queuedRequest = default;
+            UiWorkSchedulerRuntimeQueueResult queueResult;
+            UiWorkSchedulerRuntimeTakeResult takeResult = default;
+
+            // runtimeは実行器にせず、既存Dispatcher予約へ渡す1件を選ぶだけに留める。
+            lock (_uiWorkSchedulerRuntimeSyncRoot)
+            {
+                queueResult = _uiWorkSchedulerRuntime.Queue(request);
+                if (queueResult.Decision.Accepted)
+                {
+                    takeResult = _uiWorkSchedulerRuntime.TryTakeNext();
+                }
+            }
+
+            if (!queueResult.Decision.Accepted)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-progress",
+                    $"snapshot refresh scheduler rejected: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)}"
+                );
+                return false;
+            }
+
+            if (!takeResult.HasRequest)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-progress",
+                    $"snapshot refresh scheduler empty: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonRejected)} next_reason={takeResult.Decision.Reason}"
+                );
+                return false;
+            }
+
+            queuedRequest = takeResult.PendingRequest.Request;
+            return true;
         }
 
         private void TryFlushThumbnailProgressUiIfVisible()
@@ -2075,9 +2119,15 @@ namespace IndigoMovieManager
                 ref _thumbnailProgressSnapshotRefreshNextAllowedUtcTicks,
                 decision.NextAllowedUtcTicks
             );
+            if (!TryQueueThumbnailProgressSnapshotRefreshWork(request, out UiWorkRequest queuedRequest))
+            {
+                _ = Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshQueued, 0);
+                return;
+            }
+
             _ = Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
-                new Action(() => ProcessThumbnailProgressSnapshotRefreshQueue(request))
+                new Action(() => ProcessThumbnailProgressSnapshotRefreshQueue(queuedRequest))
             );
         }
 

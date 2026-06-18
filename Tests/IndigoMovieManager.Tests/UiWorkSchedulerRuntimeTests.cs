@@ -95,6 +95,39 @@ public sealed class UiWorkSchedulerRuntimeTests
     }
 
     [Test]
+    public void Queue_サムネ進捗SnapshotRefreshは容量1で最新要求だけ残す()
+    {
+        UiWorkSchedulerRuntime runtime = new(boundedCapacity: 1);
+
+        runtime.Queue(UiWorkRequestPolicy.CreateThumbnailProgressSnapshotRefreshRequest());
+        UiWorkSchedulerRuntimeQueueResult queued = runtime.Queue(
+            UiWorkRequestPolicy.CreateThumbnailProgressSnapshotRefreshRequest()
+        );
+
+        UiWorkSchedulerRuntimeTakeResult next = runtime.TryTakeNext();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                queued.Decision.Action,
+                Is.EqualTo(UiWorkSchedulerAdmissionAction.ReplaceLatestOnly)
+            );
+            Assert.That(
+                queued.Decision.AdmissionReason,
+                Is.EqualTo(UiWorkSchedulerPolicy.AdmissionReasonLatestOnlyReplaced)
+            );
+            Assert.That(queued.PendingCount, Is.EqualTo(1));
+            Assert.That(next.HasRequest, Is.True);
+            Assert.That(next.PendingRequest.Sequence, Is.EqualTo(2));
+            Assert.That(
+                next.PendingRequest.Request.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.ThumbnailProgressSnapshotRefreshLogReason)
+            );
+            Assert.That(next.PendingCount, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
     public void ReleaseTimedOut_timeout有効要求だけを解放してログ語彙へ落とす()
     {
         UiWorkSchedulerRuntime runtime = new(boundedCapacity: 3);
