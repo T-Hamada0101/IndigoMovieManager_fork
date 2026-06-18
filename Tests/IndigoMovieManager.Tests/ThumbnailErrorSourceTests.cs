@@ -151,6 +151,51 @@ public sealed class ThumbnailErrorSourceTests
     }
 
     [Test]
+    public void ThumbnailError背景集計はImageLoadResult語彙で集約ログだけ出す()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");
+        string buildMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorRefreshResult BuildThumbnailErrorRefreshResult("
+        );
+        string summaryMethod = ExtractMethod(
+            source,
+            "private static ThumbnailErrorImageLoadSummary BuildThumbnailErrorImageLoadSummary("
+        );
+        string sampleMethod = ExtractMethod(
+            source,
+            "private static string BuildThumbnailErrorSampleImageLoadFields("
+        );
+        string logFieldsMethod = ExtractMethod(source, "public string ToLogFields()");
+        string coreMethod = ExtractMethod(
+            source,
+            "private async Task RefreshThumbnailErrorRecordsCoreAsync("
+        );
+        string recordMethod = ExtractMethod(
+            source,
+            "private ThumbnailErrorRecordViewModel BuildThumbnailErrorRecord("
+        );
+
+        Assert.That(buildMethod, Does.Contain("BuildThumbnailErrorImageLoadSummary(items)"));
+        Assert.That(buildMethod, Does.Contain("error tab image aggregate"));
+        Assert.That(summaryMethod, Does.Contain("BuildThumbnailErrorSampleImageLoadFields("));
+        Assert.That(logFieldsMethod, Does.Contain("total="));
+        Assert.That(logFieldsMethod, Does.Contain("ready="));
+        Assert.That(logFieldsMethod, Does.Contain("placeholder="));
+        Assert.That(logFieldsMethod, Does.Contain("missing="));
+        Assert.That(logFieldsMethod, Does.Contain("marker="));
+        Assert.That(logFieldsMethod, Does.Contain("stale_skip="));
+        Assert.That(logFieldsMethod, Does.Contain("image.thumbnail-error-list.aggregate"));
+        Assert.That(sampleMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
+        Assert.That(sampleMethod, Does.Contain("ImageLoadResult.Missing("));
+        Assert.That(sampleMethod, Does.Contain("ImageLoadResult.Ready("));
+        Assert.That(sampleMethod, Does.Contain("ImageLoadLogFields.Build(result)"));
+        Assert.That(coreMethod, Does.Not.Contain("ImageLoadLogFields.Build("));
+        Assert.That(coreMethod, Does.Not.Contain("ImageLoadResult."));
+        Assert.That(recordMethod, Does.Not.Contain("DebugRuntimeLog.Write("));
+    }
+
+    [Test]
     public void TryPromoteVisibleThumbnailErrorRecordsはUI上で同期投入とFailureDbを触らない()
     {
         string source = GetRepoText("Watcher", "MainWindow.ThumbnailFailedTab.cs");

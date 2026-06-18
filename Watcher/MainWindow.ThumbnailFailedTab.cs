@@ -365,7 +365,92 @@ namespace IndigoMovieManager
                 .ThenBy(x => x.MovieName, StringComparer.CurrentCultureIgnoreCase)
                 .ToArray();
 
+            ThumbnailErrorImageLoadSummary imageLoadSummary =
+                BuildThumbnailErrorImageLoadSummary(items);
+            DebugRuntimeLog.Write(
+                "thumbnail-error-tab",
+                $"error tab image aggregate: {imageLoadSummary.ToLogFields()}"
+            );
+
             return new ThumbnailErrorRefreshResult { Items = items };
+        }
+
+        // 背景で確定した ERROR 一覧の画像状態を件数へ畳み、行ごとのログを増やさず観測する。
+        private static ThumbnailErrorImageLoadSummary BuildThumbnailErrorImageLoadSummary(
+            IEnumerable<ThumbnailErrorRecordViewModel> items
+        )
+        {
+            int totalCount = 0;
+            int readyCount = 0;
+            int placeholderCount = 0;
+            int missingCount = 0;
+            int markerCount = 0;
+            string sampleLoadFields = "";
+
+            foreach (ThumbnailErrorRecordViewModel item in items ?? [])
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                totalCount++;
+                markerCount += Math.Max(0, item.MarkerCount);
+
+                string thumbnailPath = item.ThumbnailImagePath ?? "";
+                bool usesPlaceholder = IsThumbnailErrorPlaceholderPath(thumbnailPath);
+                if (string.IsNullOrWhiteSpace(thumbnailPath))
+                {
+                    missingCount++;
+                }
+                else if (usesPlaceholder)
+                {
+                    placeholderCount++;
+                }
+                else
+                {
+                    readyCount++;
+                }
+
+                if (string.IsNullOrWhiteSpace(sampleLoadFields))
+                {
+                    sampleLoadFields = BuildThumbnailErrorSampleImageLoadFields(
+                        item,
+                        usesPlaceholder
+                    );
+                }
+            }
+
+            return new ThumbnailErrorImageLoadSummary
+            {
+                TotalCount = totalCount,
+                ReadyCount = readyCount,
+                PlaceholderCount = placeholderCount,
+                MissingCount = missingCount,
+                MarkerCount = markerCount,
+                StaleSkipCount = 0,
+                SampleLoadFields = sampleLoadFields,
+            };
+        }
+
+        private static string BuildThumbnailErrorSampleImageLoadFields(
+            ThumbnailErrorRecordViewModel item,
+            bool usesPlaceholder
+        )
+        {
+            ImageRequest request = ImageRequest.ForThumbnailErrorList(
+                item?.ThumbnailImagePath ?? "",
+                ThumbnailFailureDbPathResolver.CreateMoviePathKey(item?.MoviePath ?? ""),
+                item?.ThumbnailImageRequestRevision ?? 0
+            );
+            ImageLoadResult result = string.IsNullOrWhiteSpace(request.ThumbnailPath)
+                ? ImageLoadResult.Missing(request, request.RequestRevision)
+                : ImageLoadResult.Ready(
+                    request,
+                    usesPlaceholder,
+                    request.RequestRevision
+                );
+            return ImageLoadLogFields.Build(result);
         }
 
         private static ThumbnailFailureDbService CreateThumbnailErrorFailureDbService(
@@ -722,6 +807,29 @@ namespace IndigoMovieManager
         private sealed class ThumbnailErrorRefreshResult
         {
             public ThumbnailErrorRecordViewModel[] Items { get; init; } = [];
+        }
+
+        private sealed class ThumbnailErrorImageLoadSummary
+        {
+            public int TotalCount { get; init; }
+
+            public int ReadyCount { get; init; }
+
+            public int PlaceholderCount { get; init; }
+
+            public int MissingCount { get; init; }
+
+            public int MarkerCount { get; init; }
+
+            public int StaleSkipCount { get; init; }
+
+            public string SampleLoadFields { get; init; } = "";
+
+            public string ToLogFields()
+            {
+                return
+                    $"total={TotalCount} ready={ReadyCount} placeholder={PlaceholderCount} missing={MissingCount} marker={MarkerCount} stale_skip={StaleSkipCount} image_log_reason=image.thumbnail-error-list.aggregate sample=\"{SampleLoadFields}\"";
+            }
         }
 
         private sealed class ThumbnailErrorMarkerSnapshot
