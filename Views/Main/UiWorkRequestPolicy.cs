@@ -77,6 +77,11 @@ internal static class UiWorkRequestPolicy
     internal const string WatchUiReloadQueryOnlyLogReason = "watch.ui-reload.query-only";
     internal const string WatchUiReloadFullFallbackLogReason =
         "watch.ui-reload.full-fallback";
+    internal const string ExternalSkinHostRefreshCoalesceKey =
+        "skin:host-refresh:coalesce";
+    internal const string ExternalSkinHostRefreshLatestOnlyKey =
+        "skin:host-refresh:latest-only";
+    internal const string ExternalSkinHostRefreshLogReason = "skin.host-refresh";
 
     internal static UiWorkRequest CreateThumbnailProgressSnapshotRefreshRequest()
     {
@@ -110,6 +115,18 @@ internal static class UiWorkRequestPolicy
             WatchUiReloadLatestOnlyKey,
             useQueryOnlyReload ? WatchUiReloadQueryOnlyLogReason : WatchUiReloadFullFallbackLogReason,
             BoundedDrainDeferredRequestCts,
+            TimeoutPolicyNone
+        );
+    }
+
+    internal static UiWorkRequest CreateExternalSkinHostRefreshRequest()
+    {
+        return new UiWorkRequest(
+            UiWorkPriority.SkinCatalog,
+            ExternalSkinHostRefreshCoalesceKey,
+            ExternalSkinHostRefreshLatestOnlyKey,
+            ExternalSkinHostRefreshLogReason,
+            BoundedDrainDispatcherShutdownGuard,
             TimeoutPolicyNone
         );
     }

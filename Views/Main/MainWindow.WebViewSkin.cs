@@ -132,6 +132,8 @@ namespace IndigoMovieManager
                 string.IsNullOrWhiteSpace(requestTraceId)
                     ? CreateExternalSkinHostRefreshTraceId("rq")
                     : requestTraceId;
+            UiWorkRequest refreshRequest =
+                UiWorkRequestPolicy.CreateExternalSkinHostRefreshRequest();
             bool hasScheduler = _externalSkinHostRefreshScheduler != null;
             if (!hasScheduler)
             {
@@ -154,9 +156,14 @@ namespace IndigoMovieManager
                     _externalSkinHostRefreshBatchedReason,
                     normalizedReason
                 );
+                string deferredSchedulerFields =
+                    UiWorkRequestPolicy.BuildRequestAdmissionLogFields(
+                        refreshRequest,
+                        UiWorkRequestPolicy.ReleaseReasonDeferred
+                    );
                 DebugRuntimeLog.Write(
                     "skin-webview",
-                    $"refresh deferred: batch={_externalSkinHostRefreshBatchTraceId} request={normalizedRequestTraceId} depth={_externalSkinHostRefreshBatchDepth} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason}"
+                    $"refresh deferred: batch={_externalSkinHostRefreshBatchTraceId} request={normalizedRequestTraceId} depth={_externalSkinHostRefreshBatchDepth} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {deferredSchedulerFields}"
                 );
                 ExternalSkinRefreshDeferredForTesting?.Invoke(
                     _externalSkinHostRefreshBatchTraceId,
@@ -171,11 +178,17 @@ namespace IndigoMovieManager
                 normalizedReason,
                 normalizedRequestTraceId
             );
+            string queueSchedulerFields = UiWorkRequestPolicy.BuildRequestAdmissionLogFields(
+                refreshRequest,
+                accepted
+                    ? UiWorkRequestPolicy.ReleaseReasonAccepted
+                    : UiWorkRequestPolicy.ReleaseReasonRejected
+            );
             DebugRuntimeLog.Write(
                 "skin-webview",
                 accepted
-                    ? $"refresh queued: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason}"
-                    : $"refresh queue rejected: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason}"
+                    ? $"refresh queued: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {queueSchedulerFields}"
+                    : $"refresh queue rejected: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {queueSchedulerFields}"
             );
             return accepted;
         }

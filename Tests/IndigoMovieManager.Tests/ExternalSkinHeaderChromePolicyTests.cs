@@ -97,6 +97,11 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(method, Does.Contain("if (!_externalSkinHostRefreshScheduler.CanAcceptQueueRequests)"));
             Assert.That(method, Does.Contain("bool accepted = _externalSkinHostRefreshScheduler.Queue("));
             Assert.That(method, Does.Contain("refresh queue rejected:"));
+            Assert.That(method, Does.Contain("UiWorkRequestPolicy.CreateExternalSkinHostRefreshRequest()"));
+            Assert.That(method, Does.Contain("UiWorkRequestPolicy.BuildRequestAdmissionLogFields("));
+            Assert.That(method, Does.Contain("UiWorkRequestPolicy.ReleaseReasonDeferred"));
+            Assert.That(method, Does.Contain("UiWorkRequestPolicy.ReleaseReasonAccepted"));
+            Assert.That(method, Does.Contain("UiWorkRequestPolicy.ReleaseReasonRejected"));
             Assert.That(method, Does.Contain("return accepted;"));
             Assert.That(method, Does.Contain("return true;"));
         });

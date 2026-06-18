@@ -126,6 +126,36 @@ public sealed class UiWorkRequestPolicyTests
         });
     }
 
+    [Test]
+    public void ExternalSkinHostRefreshRequest_skinCatalog作業として契約語彙を固定する()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateExternalSkinHostRefreshRequest();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.Priority, Is.EqualTo(UiWorkPriority.SkinCatalog));
+            Assert.That(
+                request.CoalesceKey,
+                Is.EqualTo(UiWorkRequestPolicy.ExternalSkinHostRefreshCoalesceKey)
+            );
+            Assert.That(
+                request.LatestOnlyKey,
+                Is.EqualTo(UiWorkRequestPolicy.ExternalSkinHostRefreshLatestOnlyKey)
+            );
+            Assert.That(
+                request.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.ExternalSkinHostRefreshLogReason)
+            );
+            Assert.That(
+                request.BoundedDrain,
+                Is.EqualTo(UiWorkRequestPolicy.BoundedDrainDispatcherShutdownGuard)
+            );
+            Assert.That(request.TimeoutPolicy, Is.EqualTo(UiWorkRequestPolicy.TimeoutPolicyNone));
+            Assert.That(request.HasCoalesceKey, Is.True);
+            Assert.That(request.HasLatestOnlyKey, Is.True);
+        });
+    }
+
     [TestCase(false, false, false, false, UiWorkRequestPolicy.RejectReasonDispatcherMissing)]
     [TestCase(true, true, false, false, UiWorkRequestPolicy.RejectReasonShutdownStarted)]
     [TestCase(true, false, true, false, UiWorkRequestPolicy.RejectReasonShutdownFinished)]
