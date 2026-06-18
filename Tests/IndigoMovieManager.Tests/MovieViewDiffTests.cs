@@ -27,7 +27,7 @@ public sealed class MovieViewDiffTests
             Assert.That(diff.IsDiffApplyCandidate, Is.True);
             Assert.That(diff.ApplyKindLogValue, Is.EqualTo("diff-apply"));
             Assert.That(diff.FullFallbackReason, Is.EqualTo(MovieViewDiffFactory.FallbackReasonNone));
-            Assert.That(diff.StableKey, Is.EqualTo(MovieViewDiffFactory.StableKeyMoviePath));
+            Assert.That(diff.StableKey, Is.EqualTo(MovieViewDiffFactory.StableKeyMovieIdOrPath));
             Assert.That(diff.SourceRevision, Is.EqualTo(10));
             Assert.That(diff.ViewRevision, Is.EqualTo(10));
         });
@@ -342,7 +342,7 @@ public sealed class MovieViewDiffTests
             Assert.That(fullLog, Does.Contain("diff_apply_kind=diff-apply"));
             Assert.That(fullLog, Does.Contain("diff_apply_candidate=True"));
             Assert.That(fullLog, Does.Contain("diff_full_fallback_reason=none"));
-            Assert.That(fullLog, Does.Contain("diff_stable_key=movie-path"));
+            Assert.That(fullLog, Does.Contain("diff_stable_key=movie-id-or-path"));
             Assert.That(fullLog, Does.Contain("diff_selection=refresh"));
             Assert.That(planLog, Is.EqualTo("diff_apply_kind=diff-apply diff_apply_candidate=True diff_full_fallback_reason=none"));
         });

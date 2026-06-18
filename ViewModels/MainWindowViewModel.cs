@@ -380,30 +380,36 @@ namespace IndigoMovieManager.ViewModels
                 return false;
             }
 
+            if (
+                !HasUniqueMovieViewStableKeys(FilteredMovieRecs)
+                || !HasUniqueMovieViewStableKeys(nextItems)
+            )
+            {
+                return false;
+            }
+
             Dictionary<string, int> indexByStableKey = new(StringComparer.OrdinalIgnoreCase);
             for (int index = 0; index < count; index++)
             {
                 MovieRecords currentItem = FilteredMovieRecs[index];
-                if (
-                    currentItem == null
-                    || string.IsNullOrWhiteSpace(currentItem.Movie_Path)
-                    || !indexByStableKey.TryAdd(currentItem.Movie_Path, index)
-                )
+                if (!TryResolveMovieViewStableKey(currentItem, out string stableKey))
                 {
                     return false;
                 }
+
+                indexByStableKey[stableKey] = index;
             }
 
             HashSet<string> nextStableKeys = new(StringComparer.OrdinalIgnoreCase);
             for (int targetIndex = 0; targetIndex < count; targetIndex++)
             {
                 MovieRecords nextItem = nextItems[targetIndex];
-                if (
-                    nextItem == null
-                    || string.IsNullOrWhiteSpace(nextItem.Movie_Path)
-                    || !nextStableKeys.Add(nextItem.Movie_Path)
-                    || !indexByStableKey.ContainsKey(nextItem.Movie_Path)
-                )
+                if (!TryResolveMovieViewStableKey(nextItem, out string stableKey))
+                {
+                    return false;
+                }
+
+                if (!nextStableKeys.Add(stableKey) || !indexByStableKey.ContainsKey(stableKey))
                 {
                     return false;
                 }
@@ -412,7 +418,12 @@ namespace IndigoMovieManager.ViewModels
             for (int targetIndex = 0; targetIndex < count; targetIndex++)
             {
                 MovieRecords nextItem = nextItems[targetIndex];
-                int currentIndex = indexByStableKey[nextItem.Movie_Path];
+                if (!TryResolveMovieViewStableKey(nextItem, out string stableKey))
+                {
+                    return false;
+                }
+
+                int currentIndex = indexByStableKey[stableKey];
                 if (currentIndex == targetIndex)
                 {
                     continue;
@@ -425,7 +436,12 @@ namespace IndigoMovieManager.ViewModels
                 int rangeEnd = Math.Max(targetIndex, currentIndex);
                 for (int index = rangeStart; index <= rangeEnd; index++)
                 {
-                    indexByStableKey[FilteredMovieRecs[index].Movie_Path] = index;
+                    if (!TryResolveMovieViewStableKey(FilteredMovieRecs[index], out stableKey))
+                    {
+                        return false;
+                    }
+
+                    indexByStableKey[stableKey] = index;
                 }
             }
 
@@ -638,10 +654,23 @@ namespace IndigoMovieManager.ViewModels
         private static bool HasUniqueMovieViewStableKeys(IReadOnlyList<MovieRecords> items)
         {
             HashSet<string> stableKeys = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> moviePaths = new(StringComparer.OrdinalIgnoreCase);
             for (int index = 0; index < items.Count; index++)
             {
-                string stableKey = items[index]?.Movie_Path ?? "";
-                if (string.IsNullOrWhiteSpace(stableKey) || !stableKeys.Add(stableKey))
+                MovieRecords item = items[index];
+                if (!TryResolveMovieViewStableKey(item, out string stableKey))
+                {
+                    return false;
+                }
+
+                if (!stableKeys.Add(stableKey))
+                {
+                    return false;
+                }
+
+                // ID stable key の行でも、同じ実パスが複数ある時は従来通り安全側へ戻す。
+                string moviePath = item.Movie_Path ?? "";
+                if (!string.IsNullOrWhiteSpace(moviePath) && !moviePaths.Add(moviePath))
                 {
                     return false;
                 }
@@ -652,11 +681,38 @@ namespace IndigoMovieManager.ViewModels
 
         private static bool AreSameMovieViewStableKey(MovieRecords left, MovieRecords right)
         {
-            return string.Equals(
-                left?.Movie_Path ?? "",
-                right?.Movie_Path ?? "",
-                StringComparison.OrdinalIgnoreCase
-            );
+            return TryResolveMovieViewStableKey(left, out string leftStableKey)
+                && TryResolveMovieViewStableKey(right, out string rightStableKey)
+                && string.Equals(
+                    leftStableKey,
+                    rightStableKey,
+                    StringComparison.OrdinalIgnoreCase
+                );
+        }
+
+        private static bool TryResolveMovieViewStableKey(MovieRecords movie, out string stableKey)
+        {
+            stableKey = "";
+            if (movie == null)
+            {
+                return false;
+            }
+
+            // DB登録済み行は rename / path 更新でも同じ動画として追えるよう、Movie_Id を優先する。
+            if (movie.Movie_Id > 0)
+            {
+                stableKey = $"id:{movie.Movie_Id}";
+                return true;
+            }
+
+            string moviePath = movie.Movie_Path ?? "";
+            if (string.IsNullOrWhiteSpace(moviePath))
+            {
+                return false;
+            }
+
+            stableKey = $"path:{moviePath}";
+            return true;
         }
 
         /// <summary>

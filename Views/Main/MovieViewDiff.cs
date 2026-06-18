@@ -99,7 +99,7 @@ internal readonly record struct MovieViewDiff(
 
 internal static class MovieViewDiffFactory
 {
-    internal const string StableKeyMoviePath = "movie-path";
+    internal const string StableKeyMovieIdOrPath = "movie-id-or-path";
     internal const string FallbackReasonNone = MovieViewDiffApplyPolicy.FallbackReasonNone;
     internal const string FallbackReasonQuery = MovieViewDiffApplyPolicy.FallbackReasonQuery;
     internal const string FallbackReasonSort = MovieViewDiffApplyPolicy.FallbackReasonSort;
@@ -118,7 +118,7 @@ internal static class MovieViewDiffFactory
     {
         MovieViewDiffOperation operation = ResolveOperation(updateMode, updateResult);
         return new MovieViewDiff(
-            StableKeyMoviePath,
+            StableKeyMovieIdOrPath,
             sourceRevision,
             viewRevision,
             operation,

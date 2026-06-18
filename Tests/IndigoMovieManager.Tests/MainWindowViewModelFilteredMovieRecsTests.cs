@@ -93,6 +93,37 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
     }
 
     [Test]
+    public void 同じMovieIdのPath更新はRemoveAddではなくInPlaceのUpdateとして扱う()
+    {
+        MainWindowViewModel viewModel = new();
+        MovieRecords movieA = CreateMovie("A", movieId: 1);
+        MovieRecords movieB = CreateMovie("B", @"C:\movies\old-name.mp4", movieId: 2);
+        MovieRecords movieBRenamed = CreateMovie("B", @"C:\movies\new-name.mp4", movieId: 2);
+        MovieRecords movieC = CreateMovie("C", movieId: 3);
+
+        _ = viewModel.ReplaceFilteredMovieRecs([movieA, movieB, movieC]);
+
+        List<NotifyCollectionChangedAction> collectionActions = [];
+        viewModel.FilteredMovieRecs.CollectionChanged += (_, args) =>
+        {
+            collectionActions.Add(args.Action);
+        };
+
+        FilteredMovieRecsUpdateResult result = viewModel.ReplaceFilteredMovieRecs(
+            [movieA, movieBRenamed, movieC]
+        );
+
+        Assert.That(result.HasChanges, Is.True);
+        Assert.That(result.RemovedCount, Is.EqualTo(0));
+        Assert.That(result.InsertedCount, Is.EqualTo(0));
+        Assert.That(result.UpdatedCount, Is.EqualTo(1));
+        Assert.That(collectionActions, Is.EqualTo([NotifyCollectionChangedAction.Replace]));
+        Assert.That(collectionActions, Does.Not.Contain(NotifyCollectionChangedAction.Remove));
+        Assert.That(collectionActions, Does.Not.Contain(NotifyCollectionChangedAction.Add));
+        Assert.That(viewModel.FilteredMovieRecs, Is.EqualTo([movieA, movieBRenamed, movieC]));
+    }
+
+    [Test]
     public void 同じMoviePath更新に続く小さな追加はReplaceとAddで適用する()
     {
         MainWindowViewModel viewModel = new();
@@ -196,6 +227,42 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
         Assert.That(
             viewModel.FilteredMovieRecs,
             Is.EqualTo([movieA, movieB1Updated, movieB2, movieC])
+        );
+    }
+
+    [Test]
+    public void 重複MovieIdはStableKey更新扱いにしない()
+    {
+        MainWindowViewModel viewModel = new();
+        MovieRecords movieA = CreateMovie("A", movieId: 1);
+        MovieRecords movieB1 = CreateMovie("B1", @"C:\movies\b1.mp4", movieId: 2);
+        MovieRecords movieB1Renamed = CreateMovie("B1", @"C:\movies\b1-renamed.mp4", movieId: 2);
+        MovieRecords movieB2 = CreateMovie("B2", @"C:\movies\b2.mp4", movieId: 2);
+        MovieRecords movieC = CreateMovie("C", movieId: 3);
+
+        _ = viewModel.ReplaceFilteredMovieRecs([movieA, movieB1, movieB2, movieC]);
+
+        List<NotifyCollectionChangedAction> collectionActions = [];
+        viewModel.FilteredMovieRecs.CollectionChanged += (_, args) =>
+        {
+            collectionActions.Add(args.Action);
+        };
+
+        FilteredMovieRecsUpdateResult result = viewModel.ReplaceFilteredMovieRecs(
+            [movieA, movieB1Renamed, movieB2, movieC]
+        );
+
+        Assert.That(result.HasChanges, Is.True);
+        Assert.That(result.RemovedCount, Is.EqualTo(1));
+        Assert.That(result.InsertedCount, Is.EqualTo(1));
+        Assert.That(result.UpdatedCount, Is.EqualTo(0));
+        Assert.That(
+            collectionActions,
+            Is.EqualTo([NotifyCollectionChangedAction.Remove, NotifyCollectionChangedAction.Add])
+        );
+        Assert.That(
+            viewModel.FilteredMovieRecs,
+            Is.EqualTo([movieA, movieB1Renamed, movieB2, movieC])
         );
     }
 
@@ -319,10 +386,11 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
         Assert.That(viewModel.FilteredMovieRecs, Is.EqualTo([movieC, movieB, movieA]));
     }
 
-    private static MovieRecords CreateMovie(string name, string? moviePath = null)
+    private static MovieRecords CreateMovie(string name, string? moviePath = null, long movieId = 0)
     {
         return new MovieRecords
         {
+            Movie_Id = movieId,
             Movie_Name = name,
             Movie_Path = moviePath ?? $@"C:\movies\{name}.mp4",
         };
