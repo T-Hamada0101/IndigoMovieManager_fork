@@ -37,12 +37,15 @@ namespace IndigoMovieManager.BottomTabs.ThumbnailError
             }
 
             int decodePixelHeight = NoLockImageConverter.ResolveDecodePixelHeight(parameter);
-            return NoLockImageConverter.ConvertImageRequest(
+            ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
                 request,
-                isExists: true,
-                decodePixelHeight: decodePixelHeight,
-                logReason: "image.thumbnail-error-list.sync-decode"
+                decodePixelHeight,
+                "image.thumbnail-error-list.sync-decode"
             );
+            NoLockImageConverter.ImageDecodeExecutionResult executionResult =
+                NoLockImageConverter.ConvertDecodeRequest(decodeRequest, isExists: true);
+            ImageDecodeResult decodeResult = executionResult.DecodeResult;
+            return ResolveThumbnailErrorListDecodeImage(executionResult.Image, decodeResult);
         }
 
         public object[] ConvertBack(
@@ -70,6 +73,22 @@ namespace IndigoMovieManager.BottomTabs.ThumbnailError
                     (int)longValue,
                 _ => 0,
             };
+        }
+
+        private static object ResolveThumbnailErrorListDecodeImage(
+            object image,
+            ImageDecodeResult decodeResult
+        )
+        {
+            if (
+                decodeResult.ImageRequest.ThumbnailRole
+                != ImageRequestThumbnailRole.ThumbnailErrorList
+            )
+            {
+                return DependencyProperty.UnsetValue;
+            }
+
+            return image;
         }
 
         private static string ResolveMoviePathKey(object moviePathValue)

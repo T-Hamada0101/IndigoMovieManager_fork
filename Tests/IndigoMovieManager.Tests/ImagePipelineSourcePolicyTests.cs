@@ -252,7 +252,10 @@ public sealed class ImagePipelineSourcePolicyTests
 
         Assert.That(convertMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
         Assert.That(convertMethod, Does.Contain("ShouldApplyThumbnailErrorListImageRequest(request)"));
-        Assert.That(convertMethod, Does.Contain("ConvertImageRequest("));
+        Assert.That(convertMethod, Does.Contain("ImageDecodeRequest.ForSynchronousDecode("));
+        Assert.That(convertMethod, Does.Contain("ConvertDecodeRequest("));
+        Assert.That(convertMethod, Does.Contain("ImageDecodeResult"));
+        Assert.That(convertMethod, Does.Not.Contain("ConvertImageRequest("));
         Assert.That(convertMethod, Does.Contain("\"image.thumbnail-error-list.sync-decode\""));
         Assert.That(converterSource, Does.Contain("ImageRequestThumbnailRole.ThumbnailErrorList"));
     }
