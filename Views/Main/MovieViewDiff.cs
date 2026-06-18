@@ -6,9 +6,11 @@ namespace IndigoMovieManager;
 internal enum MovieViewDiffOperation
 {
     NoChange = 0,
-    Reset = 1,
-    Diff = 2,
-    Move = 3,
+    Add = 1,
+    Delete = 2,
+    Update = 3,
+    Move = 4,
+    FullFallback = 5,
 }
 
 internal enum MovieViewSelectionImpact
@@ -32,15 +34,21 @@ internal readonly record struct MovieViewDiff(
     MovieViewDiffOperation Operation,
     MovieViewSelectionImpact SelectionImpact,
     MovieViewScrollImpact ScrollImpact,
-    string FallbackReason
+    string FallbackReason,
+    int AddedCount,
+    int DeletedCount,
+    int UpdatedCount,
+    int MovedCount
 )
 {
     internal string OperationLogValue => Operation switch
     {
         MovieViewDiffOperation.NoChange => "no-change",
-        MovieViewDiffOperation.Reset => "reset",
-        MovieViewDiffOperation.Diff => "diff",
+        MovieViewDiffOperation.Add => "add",
+        MovieViewDiffOperation.Delete => "delete",
+        MovieViewDiffOperation.Update => "update",
         MovieViewDiffOperation.Move => "move",
+        MovieViewDiffOperation.FullFallback => "full-fallback",
         _ => "unknown",
     };
 
@@ -64,6 +72,11 @@ internal static class MovieViewDiffFactory
 {
     internal const string StableKeyMoviePath = "movie-path";
     internal const string FallbackReasonNone = "none";
+    internal const string FallbackReasonQuery = "query";
+    internal const string FallbackReasonSort = "sort";
+    internal const string FallbackReasonDbSwitch = "db-switch";
+    internal const string FallbackReasonUnsafe = "unsafe";
+    internal const string FallbackReasonMassive = "massive";
 
     internal static MovieViewDiff FromCollectionUpdate(
         int sourceRevision,
@@ -84,7 +97,11 @@ internal static class MovieViewDiffFactory
                 ? MovieViewSelectionImpact.Refresh
                 : MovieViewSelectionImpact.Preserve,
             ResolveScrollImpact(operation),
-            NormalizeFallbackReason(fallbackReason)
+            NormalizeFallbackReason(fallbackReason),
+            updateResult.InsertedCount,
+            updateResult.RemovedCount,
+            updateResult.UpdatedCount,
+            updateResult.MovedCount
         );
     }
 
@@ -100,7 +117,7 @@ internal static class MovieViewDiffFactory
 
         if (updateMode == FilteredMovieRecsUpdateMode.Reset)
         {
-            return MovieViewDiffOperation.Reset;
+            return MovieViewDiffOperation.FullFallback;
         }
 
         if (
@@ -113,7 +130,22 @@ internal static class MovieViewDiffFactory
             return MovieViewDiffOperation.Move;
         }
 
-        return MovieViewDiffOperation.Diff;
+        if (updateResult.UpdatedCount > 0)
+        {
+            return MovieViewDiffOperation.Update;
+        }
+
+        if (updateResult.InsertedCount > 0 && updateResult.RemovedCount == 0)
+        {
+            return MovieViewDiffOperation.Add;
+        }
+
+        if (updateResult.RemovedCount > 0 && updateResult.InsertedCount == 0)
+        {
+            return MovieViewDiffOperation.Delete;
+        }
+
+        return MovieViewDiffOperation.Update;
     }
 
     private static MovieViewScrollImpact ResolveScrollImpact(MovieViewDiffOperation operation)
@@ -121,15 +153,47 @@ internal static class MovieViewDiffFactory
         return operation switch
         {
             MovieViewDiffOperation.NoChange => MovieViewScrollImpact.Preserve,
-            MovieViewDiffOperation.Reset => MovieViewScrollImpact.Reset,
+            MovieViewDiffOperation.FullFallback => MovieViewScrollImpact.Reset,
             _ => MovieViewScrollImpact.Recalculate,
         };
     }
 
     private static string NormalizeFallbackReason(string fallbackReason)
     {
-        return string.IsNullOrWhiteSpace(fallbackReason)
-            ? FallbackReasonNone
-            : fallbackReason.Trim();
+        if (string.IsNullOrWhiteSpace(fallbackReason))
+        {
+            return FallbackReasonNone;
+        }
+
+        string reason = fallbackReason.Trim();
+        if (string.Equals(reason, FallbackReasonNone, StringComparison.OrdinalIgnoreCase))
+        {
+            return FallbackReasonNone;
+        }
+
+        if (reason.Contains("sort", StringComparison.OrdinalIgnoreCase))
+        {
+            return FallbackReasonSort;
+        }
+
+        if (reason.Contains("db", StringComparison.OrdinalIgnoreCase))
+        {
+            return FallbackReasonDbSwitch;
+        }
+
+        if (reason.Contains("unsafe", StringComparison.OrdinalIgnoreCase))
+        {
+            return FallbackReasonUnsafe;
+        }
+
+        if (
+            reason.Contains("massive", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("bulk", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            return FallbackReasonMassive;
+        }
+
+        return FallbackReasonQuery;
     }
 }

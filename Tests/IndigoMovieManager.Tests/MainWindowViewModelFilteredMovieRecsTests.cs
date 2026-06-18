@@ -53,7 +53,33 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
         Assert.That(result.RemovedCount, Is.EqualTo(3));
         Assert.That(result.InsertedCount, Is.EqualTo(2));
         Assert.That(result.MovedCount, Is.EqualTo(0));
+        Assert.That(result.UpdatedCount, Is.EqualTo(0));
         Assert.That(viewModel.FilteredMovieRecs, Is.EqualTo([movieA, movieX, movieY, movieE]));
+    }
+
+    [Test]
+    public void 同じMoviePathの別インスタンス差し替えはUpdateとして数える()
+    {
+        MainWindowViewModel viewModel = new();
+        MovieRecords movieA = CreateMovie("A");
+        MovieRecords movieB = CreateMovie("B");
+        MovieRecords movieBUpdated = CreateMovie("B");
+        movieBUpdated.Score = 9;
+        MovieRecords movieC = CreateMovie("C");
+
+        _ = viewModel.ReplaceFilteredMovieRecs([movieA, movieB, movieC]);
+
+        FilteredMovieRecsUpdateResult result = viewModel.ReplaceFilteredMovieRecs(
+            [movieA, movieBUpdated, movieC]
+        );
+
+        Assert.That(result.HasChanges, Is.True);
+        Assert.That(result.RetainedPrefixCount, Is.EqualTo(1));
+        Assert.That(result.RetainedSuffixCount, Is.EqualTo(1));
+        Assert.That(result.RemovedCount, Is.EqualTo(1));
+        Assert.That(result.InsertedCount, Is.EqualTo(1));
+        Assert.That(result.UpdatedCount, Is.EqualTo(1));
+        Assert.That(viewModel.FilteredMovieRecs, Is.EqualTo([movieA, movieBUpdated, movieC]));
     }
 
     [Test]
@@ -76,6 +102,7 @@ public sealed class MainWindowViewModelFilteredMovieRecsTests
         Assert.That(result.RemovedCount, Is.EqualTo(0));
         Assert.That(result.InsertedCount, Is.EqualTo(0));
         Assert.That(result.MovedCount, Is.GreaterThan(0));
+        Assert.That(result.UpdatedCount, Is.EqualTo(0));
         Assert.That(viewModel.FilteredMovieRecs, Is.EqualTo([movieD, movieB, movieA, movieC]));
     }
 

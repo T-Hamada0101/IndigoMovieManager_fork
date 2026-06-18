@@ -23,7 +23,8 @@ namespace IndigoMovieManager.ViewModels
         int RetainedSuffixCount,
         int RemovedCount,
         int InsertedCount,
-        int MovedCount
+        int MovedCount,
+        int UpdatedCount = 0
     );
 
     /// <summary>
@@ -243,12 +244,18 @@ namespace IndigoMovieManager.ViewModels
 
             int removeStartIndex = retainedPrefixCount;
             int removedCount = currentCount - retainedPrefixCount - retainedSuffixCount;
+            int insertedCount = nextCount - retainedPrefixCount - retainedSuffixCount;
+            int updatedCount = CountStableKeyUpdates(
+                nextItems,
+                removeStartIndex,
+                removedCount,
+                insertedCount
+            );
             for (int index = 0; index < removedCount; index++)
             {
                 FilteredMovieRecs.RemoveAt(removeStartIndex);
             }
 
-            int insertedCount = nextCount - retainedPrefixCount - retainedSuffixCount;
             for (int index = 0; index < insertedCount; index++)
             {
                 FilteredMovieRecs.Insert(
@@ -263,7 +270,8 @@ namespace IndigoMovieManager.ViewModels
                 RetainedSuffixCount: retainedSuffixCount,
                 RemovedCount: removedCount,
                 InsertedCount: insertedCount,
-                MovedCount: 0
+                MovedCount: 0,
+                UpdatedCount: updatedCount
             );
         }
 
@@ -365,6 +373,47 @@ namespace IndigoMovieManager.ViewModels
             }
 
             return true;
+        }
+
+        // 表示上は remove/insert でも、同じ stable key の置換なら ReadModel diff 上は update と読める。
+        private int CountStableKeyUpdates(
+            IReadOnlyList<MovieRecords> nextItems,
+            int startIndex,
+            int removedCount,
+            int insertedCount
+        )
+        {
+            if (removedCount != insertedCount || removedCount < 1)
+            {
+                return 0;
+            }
+
+            int updatedCount = 0;
+            for (int offset = 0; offset < removedCount; offset++)
+            {
+                MovieRecords currentItem = FilteredMovieRecs[startIndex + offset];
+                MovieRecords nextItem = nextItems[startIndex + offset];
+                if (
+                    currentItem != null
+                    && nextItem != null
+                    && !ReferenceEquals(currentItem, nextItem)
+                    && AreSameMovieViewStableKey(currentItem, nextItem)
+                )
+                {
+                    updatedCount++;
+                }
+            }
+
+            return updatedCount;
+        }
+
+        private static bool AreSameMovieViewStableKey(MovieRecords left, MovieRecords right)
+        {
+            return string.Equals(
+                left?.Movie_Path ?? "",
+                right?.Movie_Path ?? "",
+                StringComparison.OrdinalIgnoreCase
+            );
         }
 
         private sealed class MovieRecordReferenceComparer : IEqualityComparer<MovieRecords>

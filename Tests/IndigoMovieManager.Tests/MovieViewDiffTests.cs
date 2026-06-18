@@ -31,7 +31,7 @@ public sealed class MovieViewDiffTests
     }
 
     [Test]
-    public void Resetはscroll_resetとして扱う()
+    public void Resetはfull_fallbackとして扱う()
     {
         MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
             sourceRevision: 11,
@@ -44,32 +44,80 @@ public sealed class MovieViewDiffTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Reset));
-            Assert.That(diff.OperationLogValue, Is.EqualTo("reset"));
+            Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.FullFallback));
+            Assert.That(diff.OperationLogValue, Is.EqualTo("full-fallback"));
             Assert.That(diff.SelectionImpact, Is.EqualTo(MovieViewSelectionImpact.Refresh));
             Assert.That(diff.ScrollImpact, Is.EqualTo(MovieViewScrollImpact.Reset));
             Assert.That(diff.FallbackReason, Is.EqualTo("db-switch"));
+            Assert.That(diff.AddedCount, Is.EqualTo(3));
+            Assert.That(diff.DeletedCount, Is.EqualTo(3));
         });
     }
 
     [Test]
-    public void Diffは追加削除を伴う差分として分類する()
+    public void Addは追加差分として分類する()
     {
         MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
             sourceRevision: 13,
             viewRevision: 14,
             FilteredMovieRecsUpdateMode.Diff,
-            new FilteredMovieRecsUpdateResult(true, 1, 1, 2, 1, 0),
+            new FilteredMovieRecsUpdateResult(true, 1, 1, 0, 2, 0),
             selectionRefreshApplied: false,
             fallbackReason: "changed-path"
         );
 
         Assert.Multiple(() =>
         {
-            Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Diff));
-            Assert.That(diff.OperationLogValue, Is.EqualTo("diff"));
+            Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Add));
+            Assert.That(diff.OperationLogValue, Is.EqualTo("add"));
             Assert.That(diff.ScrollImpact, Is.EqualTo(MovieViewScrollImpact.Recalculate));
-            Assert.That(diff.FallbackReason, Is.EqualTo("changed-path"));
+            Assert.That(diff.FallbackReason, Is.EqualTo("query"));
+            Assert.That(diff.AddedCount, Is.EqualTo(2));
+            Assert.That(diff.DeletedCount, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void Deleteは削除差分として分類する()
+    {
+        MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
+            sourceRevision: 13,
+            viewRevision: 14,
+            FilteredMovieRecsUpdateMode.Diff,
+            new FilteredMovieRecsUpdateResult(true, 1, 1, 2, 0, 0),
+            selectionRefreshApplied: false,
+            fallbackReason: "changed-path"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Delete));
+            Assert.That(diff.OperationLogValue, Is.EqualTo("delete"));
+            Assert.That(diff.ScrollImpact, Is.EqualTo(MovieViewScrollImpact.Recalculate));
+            Assert.That(diff.FallbackReason, Is.EqualTo("query"));
+            Assert.That(diff.AddedCount, Is.EqualTo(0));
+            Assert.That(diff.DeletedCount, Is.EqualTo(2));
+        });
+    }
+
+    [Test]
+    public void Updateは同一stable_keyの置換として分類する()
+    {
+        MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
+            sourceRevision: 13,
+            viewRevision: 14,
+            FilteredMovieRecsUpdateMode.Diff,
+            new FilteredMovieRecsUpdateResult(true, 1, 1, 2, 2, 0, UpdatedCount: 2),
+            selectionRefreshApplied: false,
+            fallbackReason: "dirty-fields-unsafe:Hash"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Update));
+            Assert.That(diff.OperationLogValue, Is.EqualTo("update"));
+            Assert.That(diff.FallbackReason, Is.EqualTo(MovieViewDiffFactory.FallbackReasonUnsafe));
+            Assert.That(diff.UpdatedCount, Is.EqualTo(2));
         });
     }
 
@@ -90,11 +138,13 @@ public sealed class MovieViewDiffTests
             Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Move));
             Assert.That(diff.OperationLogValue, Is.EqualTo("move"));
             Assert.That(diff.ScrollImpact, Is.EqualTo(MovieViewScrollImpact.Recalculate));
+            Assert.That(diff.FallbackReason, Is.EqualTo(MovieViewDiffFactory.FallbackReasonSort));
+            Assert.That(diff.MovedCount, Is.EqualTo(2));
         });
     }
 
     [Test]
-    public void Move指定でも追加削除が混ざる時はDiffとして扱う()
+    public void Move指定でも追加削除が混ざる時はUpdateとして扱う()
     {
         MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
             sourceRevision: 21,
@@ -105,6 +155,29 @@ public sealed class MovieViewDiffTests
             fallbackReason: "unsafe"
         );
 
-        Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Diff));
+        Assert.That(diff.Operation, Is.EqualTo(MovieViewDiffOperation.Update));
+    }
+
+    [TestCase("", MovieViewDiffFactory.FallbackReasonNone)]
+    [TestCase("sort-only", MovieViewDiffFactory.FallbackReasonSort)]
+    [TestCase("db-switch", MovieViewDiffFactory.FallbackReasonDbSwitch)]
+    [TestCase("dirty-fields-unsafe:Hash", MovieViewDiffFactory.FallbackReasonUnsafe)]
+    [TestCase("bulk-watch-batch", MovieViewDiffFactory.FallbackReasonMassive)]
+    [TestCase("changed-path", MovieViewDiffFactory.FallbackReasonQuery)]
+    public void FallbackReasonはログで選べる最小語彙へ畳む(
+        string fallbackReason,
+        string expected
+    )
+    {
+        MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
+            sourceRevision: 1,
+            viewRevision: 1,
+            FilteredMovieRecsUpdateMode.Diff,
+            new FilteredMovieRecsUpdateResult(true, 0, 0, 0, 1, 0),
+            selectionRefreshApplied: false,
+            fallbackReason
+        );
+
+        Assert.That(diff.FallbackReason, Is.EqualTo(expected));
     }
 }
