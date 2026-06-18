@@ -52,6 +52,60 @@ public sealed class UiWorkRequestPolicyTests
         });
     }
 
+    [Test]
+    public void WatchUiReloadRequest_queryOnlyはwatch小差分として契約語彙を固定する()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateWatchUiReloadRequest(
+            useQueryOnlyReload: true
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.Priority, Is.EqualTo(UiWorkPriority.WatchSmallDiff));
+            Assert.That(
+                request.CoalesceKey,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadCoalesceKey)
+            );
+            Assert.That(
+                request.LatestOnlyKey,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadLatestOnlyKey)
+            );
+            Assert.That(
+                request.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadQueryOnlyLogReason)
+            );
+            Assert.That(request.HasCoalesceKey, Is.True);
+            Assert.That(request.HasLatestOnlyKey, Is.True);
+        });
+    }
+
+    [Test]
+    public void WatchUiReloadRequest_fullFallbackはreload作業として契約語彙を固定する()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateWatchUiReloadRequest(
+            useQueryOnlyReload: false
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.Priority, Is.EqualTo(UiWorkPriority.WatchReload));
+            Assert.That(
+                request.CoalesceKey,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadCoalesceKey)
+            );
+            Assert.That(
+                request.LatestOnlyKey,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadLatestOnlyKey)
+            );
+            Assert.That(
+                request.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadFullFallbackLogReason)
+            );
+            Assert.That(request.HasCoalesceKey, Is.True);
+            Assert.That(request.HasLatestOnlyKey, Is.True);
+        });
+    }
+
     [TestCase(false, false, false, false, UiWorkRequestPolicy.RejectReasonDispatcherMissing)]
     [TestCase(true, true, false, false, UiWorkRequestPolicy.RejectReasonShutdownStarted)]
     [TestCase(true, false, true, false, UiWorkRequestPolicy.RejectReasonShutdownFinished)]

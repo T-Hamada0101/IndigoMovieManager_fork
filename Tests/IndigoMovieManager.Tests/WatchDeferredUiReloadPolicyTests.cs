@@ -646,6 +646,11 @@ public sealed class WatchDeferredUiReloadPolicyTests
                 result.Kind,
                 Is.EqualTo(MainWindow.WatchUiApplyRequestKind.InMemoryReadModelRefresh)
             );
+            Assert.That(result.WorkRequest.Priority, Is.EqualTo(UiWorkPriority.WatchSmallDiff));
+            Assert.That(
+                result.WorkRequest.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadQueryOnlyLogReason)
+            );
             Assert.That(result.ChangedMovies, Is.SameAs(changedMovies));
         });
     }
@@ -673,6 +678,11 @@ public sealed class WatchDeferredUiReloadPolicyTests
             Assert.That(
                 result.Kind,
                 Is.EqualTo(MainWindow.WatchUiApplyRequestKind.FullFallbackReload)
+            );
+            Assert.That(result.WorkRequest.Priority, Is.EqualTo(UiWorkPriority.WatchReload));
+            Assert.That(
+                result.WorkRequest.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadFullFallbackLogReason)
             );
             Assert.That(result.ChangedMovies, Is.Empty);
         });

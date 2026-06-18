@@ -30,6 +30,7 @@ internal enum UiWorkPriority
     VisibleImage = 40,
     LatestSearchSort = 50,
     WatchSmallDiff = 60,
+    WatchReload = 65,
     ThumbnailRefresh = 70,
     Rescue = 80,
     SkinCatalog = 90,
@@ -53,6 +54,11 @@ internal static class UiWorkRequestPolicy
     internal const string EverythingWatchPollLatestOnlyKey =
         "watch:everything-poll:latest-only";
     internal const string EverythingWatchPollLogReason = "watch.everything-poll";
+    internal const string WatchUiReloadCoalesceKey = "watch:ui-reload:coalesce";
+    internal const string WatchUiReloadLatestOnlyKey = "watch:ui-reload:latest-only";
+    internal const string WatchUiReloadQueryOnlyLogReason = "watch.ui-reload.query-only";
+    internal const string WatchUiReloadFullFallbackLogReason =
+        "watch.ui-reload.full-fallback";
 
     internal static UiWorkRequest CreateThumbnailProgressSnapshotRefreshRequest()
     {
@@ -71,6 +77,16 @@ internal static class UiWorkRequestPolicy
             EverythingWatchPollCoalesceKey,
             EverythingWatchPollLatestOnlyKey,
             EverythingWatchPollLogReason
+        );
+    }
+
+    internal static UiWorkRequest CreateWatchUiReloadRequest(bool useQueryOnlyReload)
+    {
+        return new UiWorkRequest(
+            useQueryOnlyReload ? UiWorkPriority.WatchSmallDiff : UiWorkPriority.WatchReload,
+            WatchUiReloadCoalesceKey,
+            WatchUiReloadLatestOnlyKey,
+            useQueryOnlyReload ? WatchUiReloadQueryOnlyLogReason : WatchUiReloadFullFallbackLogReason
         );
     }
 

@@ -56,6 +56,12 @@ public sealed class WorkerContractSourcePolicyTests
         );
         Assert.That(
             relativePaths,
+            Does.Contain(
+                "src/IndigoMovieManager.Thumbnail.Queue/QueuePipeline/ThumbnailQueueWorkerContractAdapter.cs"
+            )
+        );
+        Assert.That(
+            relativePaths,
             Does.Contain("Thumbnail/ThumbnailRescueWorkerJobJsonClient.cs")
         );
 
@@ -113,6 +119,25 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(dtoSource, Does.Contain("OutputArtifactPath"));
         Assert.That(dtoSource, Does.Contain("DiagnosticContext"));
         Assert.That(dtoSource, Does.Contain("Retryability"));
+    }
+
+    [Test]
+    public void ThumbnailQueueRequestはWorker契約Dtoへ写せる()
+    {
+        string repoRoot = FindRepoRoot();
+        string adapterSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/QueuePipeline/ThumbnailQueueWorkerContractAdapter.cs"
+            )
+        );
+
+        Assert.That(adapterSource, Does.Contain("ToWorkerJobRequestDto("));
+        Assert.That(adapterSource, Does.Contain("WorkerJobRequestDto"));
+        Assert.That(adapterSource, Does.Contain("thumbnail-create"));
+        Assert.That(adapterSource, Does.Contain("DiagnosticContext"));
+        Assert.That(adapterSource, Does.Not.Contain("Dispatcher"));
+        Assert.That(adapterSource, Does.Not.Contain("MainWindow"));
     }
 
     private static IEnumerable<string> EnumerateWorkerContractSourceFiles(string repoRoot)

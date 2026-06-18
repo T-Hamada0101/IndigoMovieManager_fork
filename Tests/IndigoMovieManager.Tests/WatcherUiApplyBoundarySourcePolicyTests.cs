@@ -122,9 +122,34 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
 
         Assert.That(source, Does.Contain("internal readonly record struct WatchUiApplyRequest("));
         Assert.That(source, Does.Contain("internal enum WatchUiApplyRequestKind"));
+        Assert.That(source, Does.Contain("UiWorkRequest WorkRequest"));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.InMemoryReadModelRefresh"));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.FullFallbackReload"));
+        Assert.That(
+            buildMethod,
+            Does.Contain("UiWorkRequestPolicy.CreateWatchUiReloadRequest(useQueryOnlyReload)")
+        );
         Assert.That(buildMethod, Does.Contain("useQueryOnlyReload ? (changedMovies ?? []) : []"));
+    }
+
+    [Test]
+    public void WatchUiReloadPolicy_reload予約はUiWorkRequest語彙を経由してログへ出す()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
+        string logMethod = GetMethodBlock(
+            source,
+            "internal static string BuildWatchUiWorkRequestLogFields("
+        );
+
+        Assert.That(
+            source,
+            Does.Contain("UiWorkRequestPolicy.CreateWatchUiReloadRequest(")
+        );
+        Assert.That(source, Does.Contain("BuildWatchUiWorkRequestLogFields(workRequest)"));
+        Assert.That(logMethod, Does.Contain("operation_reason={request.LogReason}"));
+        Assert.That(logMethod, Does.Contain("work_priority={request.Priority}"));
+        Assert.That(logMethod, Does.Contain("coalesce_key='{request.CoalesceKey}'"));
+        Assert.That(logMethod, Does.Contain("latest_only_key='{request.LatestOnlyKey}'"));
     }
 
     private static IEnumerable<string> EnumerateWatcherBoundaryCallLines(string needle)

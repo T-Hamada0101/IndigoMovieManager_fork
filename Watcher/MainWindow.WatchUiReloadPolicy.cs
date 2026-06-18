@@ -445,9 +445,12 @@ namespace IndigoMovieManager
                 previousCts.Dispose();
             }
 
+            UiWorkRequest workRequest = UiWorkRequestPolicy.CreateWatchUiReloadRequest(
+                useQueryOnlyReload
+            );
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"deferred ui reload scheduled: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovieCount} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} delay_ms={WatchDeferredUiReloadDelayMs}"
+                $"deferred ui reload scheduled: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovieCount} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest)} delay_ms={WatchDeferredUiReloadDelayMs}"
             );
             _ = RunDeferredWatchUiReloadAsync(
                 snapshotDbFullPath,
@@ -649,9 +652,12 @@ namespace IndigoMovieManager
             }
 
             string currentSort = MainVM?.DbInfo?.Sort ?? "";
+            UiWorkRequest workRequest = UiWorkRequestPolicy.CreateWatchUiReloadRequest(
+                useQueryOnlyReload
+            );
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"deferred ui reload apply: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} sort={currentSort} changed_paths={changedMovies.Count} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)}"
+                $"deferred ui reload apply: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} sort={currentSort} changed_paths={changedMovies.Count} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest)}"
             );
             InvokeWatchUiReload(
                 currentSort,
@@ -765,9 +771,12 @@ namespace IndigoMovieManager
             }
 
             CancelDeferredWatchUiReload($"immediate-reload:{mode}");
+            UiWorkRequest workRequest = UiWorkRequestPolicy.CreateWatchUiReloadRequest(
+                reloadPlan.UseQueryOnlyReload
+            );
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={resolvedCanUseQueryOnlyReload} {BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)}"
+                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={resolvedCanUseQueryOnlyReload} {BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest)}"
             );
             InvokeWatchUiReload(
                 currentSort,
@@ -791,8 +800,15 @@ namespace IndigoMovieManager
                 useQueryOnlyReload
                     ? WatchUiApplyRequestKind.InMemoryReadModelRefresh
                     : WatchUiApplyRequestKind.FullFallbackReload,
+                UiWorkRequestPolicy.CreateWatchUiReloadRequest(useQueryOnlyReload),
                 useQueryOnlyReload ? (changedMovies ?? []) : []
             );
+        }
+
+        // scheduler 本体は作らず、watch reload を既存ログ上で同じ作業要求語彙として読めるようにする。
+        internal static string BuildWatchUiWorkRequestLogFields(UiWorkRequest request)
+        {
+            return $"operation_reason={request.LogReason} work_priority={request.Priority} coalesce_key='{request.CoalesceKey}' latest_only_key='{request.LatestOnlyKey}'";
         }
 
         // watch の query-only は、DB再読込へ戻さず in-memory 一覧から再計算する。
@@ -873,6 +889,7 @@ namespace IndigoMovieManager
             string Sort,
             string Reason,
             WatchUiApplyRequestKind Kind,
+            UiWorkRequest WorkRequest,
             IReadOnlyList<WatchChangedMovie> ChangedMovies
         );
     }
