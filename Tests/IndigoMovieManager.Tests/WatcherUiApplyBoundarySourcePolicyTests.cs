@@ -97,13 +97,34 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
     {
         string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
         string invokeMethod = GetMethodBlock(source, "private void InvokeWatchUiReload(");
+        string adapterMethod = GetMethodBlock(source, "private void ApplyWatchUiApplyRequest(");
         string filterMethod = GetMethodBlock(source, "private void InvokeFilterAndSortForWatch(");
 
-        Assert.That(invokeMethod, Does.Contain("InvokeFilterAndSortForWatch(sort, true);"));
-        Assert.That(invokeMethod, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(invokeMethod, Does.Contain("WatchUiApplyRequest request = BuildWatchUiApplyRequest("));
+        Assert.That(invokeMethod, Does.Contain("ApplyWatchUiApplyRequest(request);"));
+        Assert.That(invokeMethod, Does.Not.Contain("InvokeFilterAndSortForWatch("));
+        Assert.That(invokeMethod, Does.Not.Contain("RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(adapterMethod, Does.Contain("InvokeFilterAndSortForWatch(request.Sort, true);"));
+        Assert.That(adapterMethod, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
         Assert.That(filterMethod, Does.Contain("FilterAndSort(sort, isGetNew);"));
-        Assert.That(source.Split("InvokeFilterAndSortForWatch(sort, true);").Length - 1, Is.EqualTo(1));
+        Assert.That(source.Split("InvokeFilterAndSortForWatch(request.Sort, true);").Length - 1, Is.EqualTo(1));
         Assert.That(source.Split("RefreshMovieViewFromCurrentSourceAsync(").Length - 1, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void WatchUiReloadPolicy_changeSetをrequest化してからadapterで実行する()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
+        string buildMethod = GetMethodBlock(
+            source,
+            "internal static WatchUiApplyRequest BuildWatchUiApplyRequest("
+        );
+
+        Assert.That(source, Does.Contain("internal readonly record struct WatchUiApplyRequest("));
+        Assert.That(source, Does.Contain("internal enum WatchUiApplyRequestKind"));
+        Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.InMemoryReadModelRefresh"));
+        Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.FullFallbackReload"));
+        Assert.That(buildMethod, Does.Contain("useQueryOnlyReload ? (changedMovies ?? []) : []"));
     }
 
     private static IEnumerable<string> EnumerateWatcherBoundaryCallLines(string needle)

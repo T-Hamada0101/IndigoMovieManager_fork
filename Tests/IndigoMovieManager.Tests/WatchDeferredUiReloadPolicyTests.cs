@@ -619,6 +619,65 @@ public sealed class WatchDeferredUiReloadPolicyTests
         Assert.That(result.UseQueryOnlyReload, Is.False);
     }
 
+    [Test]
+    public void BuildWatchUiApplyRequest_queryOnlyならReadModel再計算requestへ畳む()
+    {
+        MainWindow.WatchChangedMovie[] changedMovies =
+        [
+            new(
+                @"E:\Movies\sample.mp4",
+                MainWindow.WatchMovieChangeKind.ViewRepaired,
+                MainWindow.WatchMovieDirtyFields.None
+            ),
+        ];
+
+        MainWindow.WatchUiApplyRequest result = MainWindow.BuildWatchUiApplyRequest(
+            "28",
+            useQueryOnlyReload: true,
+            "deferred:watch-test",
+            changedMovies
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Sort, Is.EqualTo("28"));
+            Assert.That(result.Reason, Is.EqualTo("deferred:watch-test"));
+            Assert.That(
+                result.Kind,
+                Is.EqualTo(MainWindow.WatchUiApplyRequestKind.InMemoryReadModelRefresh)
+            );
+            Assert.That(result.ChangedMovies, Is.SameAs(changedMovies));
+        });
+    }
+
+    [Test]
+    public void BuildWatchUiApplyRequest_fullFallbackならchangeSetを空にしてreload_requestへ畳む()
+    {
+        MainWindow.WatchUiApplyRequest result = MainWindow.BuildWatchUiApplyRequest(
+            "12",
+            useQueryOnlyReload: false,
+            "",
+            [
+                new MainWindow.WatchChangedMovie(
+                    @"E:\Movies\sample.mp4",
+                    MainWindow.WatchMovieChangeKind.SourceInserted,
+                    MainWindow.WatchMovieDirtyFields.MovieName
+                ),
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Sort, Is.EqualTo("12"));
+            Assert.That(result.Reason, Is.EqualTo("watch"));
+            Assert.That(
+                result.Kind,
+                Is.EqualTo(MainWindow.WatchUiApplyRequestKind.FullFallbackReload)
+            );
+            Assert.That(result.ChangedMovies, Is.Empty);
+        });
+    }
+
     [TestCase(false, true, false, true, "no-changes")]
     [TestCase(true, true, true, true, "ui-suppressed")]
     [TestCase(true, false, false, true, "not-watch")]

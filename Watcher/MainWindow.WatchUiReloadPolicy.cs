@@ -777,6 +777,24 @@ namespace IndigoMovieManager
             );
         }
 
+        // watch の変更setを直接実行せず、reload policy / ReadModel 入口の request へ畳む。
+        internal static WatchUiApplyRequest BuildWatchUiApplyRequest(
+            string sort,
+            bool useQueryOnlyReload,
+            string reason,
+            IReadOnlyList<WatchChangedMovie> changedMovies
+        )
+        {
+            return new WatchUiApplyRequest(
+                string.IsNullOrWhiteSpace(sort) ? "" : sort,
+                string.IsNullOrWhiteSpace(reason) ? "watch" : reason,
+                useQueryOnlyReload
+                    ? WatchUiApplyRequestKind.InMemoryReadModelRefresh
+                    : WatchUiApplyRequestKind.FullFallbackReload,
+                useQueryOnlyReload ? (changedMovies ?? []) : []
+            );
+        }
+
         // watch の query-only は、DB再読込へ戻さず in-memory 一覧から再計算する。
         private void InvokeWatchUiReload(
             string sort,
@@ -785,9 +803,21 @@ namespace IndigoMovieManager
             IReadOnlyList<WatchChangedMovie> changedMovies
         )
         {
-            if (!useQueryOnlyReload)
+            WatchUiApplyRequest request = BuildWatchUiApplyRequest(
+                sort,
+                useQueryOnlyReload,
+                reason,
+                changedMovies
+            );
+            ApplyWatchUiApplyRequest(request);
+        }
+
+        // request の実行先をここだけに閉じ、次段で Scheduler / ReadModel へ差し替えやすくする。
+        private void ApplyWatchUiApplyRequest(WatchUiApplyRequest request)
+        {
+            if (request.Kind == WatchUiApplyRequestKind.FullFallbackReload)
             {
-                InvokeFilterAndSortForWatch(sort, true);
+                InvokeFilterAndSortForWatch(request.Sort, true);
                 return;
             }
 
@@ -795,15 +825,15 @@ namespace IndigoMovieManager
                 RefreshMovieViewFromCurrentSourceForTesting;
             if (refreshTestHook != null)
             {
-                refreshTestHook(sort, reason, changedMovies ?? []);
+                refreshTestHook(request.Sort, request.Reason, request.ChangedMovies);
                 return;
             }
 
             _ = RefreshMovieViewFromCurrentSourceAsync(
-                sort,
+                request.Sort,
                 "watch-query-only",
                 UiHangActivityKind.Watch,
-                changedMovies
+                request.ChangedMovies
             );
         }
 
@@ -831,6 +861,19 @@ namespace IndigoMovieManager
         internal readonly record struct WatchUiReloadPlan(
             WatchUiReloadAction Action,
             bool UseQueryOnlyReload
+        );
+
+        internal enum WatchUiApplyRequestKind
+        {
+            FullFallbackReload,
+            InMemoryReadModelRefresh,
+        }
+
+        internal readonly record struct WatchUiApplyRequest(
+            string Sort,
+            string Reason,
+            WatchUiApplyRequestKind Kind,
+            IReadOnlyList<WatchChangedMovie> ChangedMovies
         );
     }
 }
