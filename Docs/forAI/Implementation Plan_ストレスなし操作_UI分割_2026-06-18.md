@@ -1,0 +1,95 @@
+# Implementation Plan ストレスなし操作 UI分割 2026-06-18
+
+最終更新日: 2026-06-18
+
+## 1. 目的
+
+IndigoMovieManager の操作体感を、入力、検索、スクロール、選択、Player 操作が背後処理に押し負けない形へ寄せる。
+
+当面は WPF 一覧を維持し、WebView2 一覧化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換は行わない。
+
+## 2. v1 の実装方針
+
+- `MainWindow` は DB 読込、Dispatcher apply、既存互換ガードに集中する。
+- `FilterAndSortAsync(...)` と `RefreshMovieViewFromCurrentSourceAsync(...)` の検索 / 並び替え再計算、changed-path 局所更新、fallback reason の計算は `MovieViewReadModelBuilder` へ寄せる。
+- `SortDataAsync(...)` の sort-only 計算は v1 では既存経路を維持し、UI 反映だけを共通 apply helper へ通す。
+- UI 反映は `TryApplyMovieViewReadModelResultOnUiThread(...)` へ集約し、`SearchCount`、`filterList`、`ReplaceFilteredMovieRecs(...)`、選択詳細 refresh 判定、visible range refresh を同じ入口で扱う。
+- 既存テストが使う `MainWindow.TryBuildChangedMovieRefreshSource...` などの内部入口は wrapper として残し、呼び出し側の差分を小さくする。
+
+## 3. 実装内容
+
+- `Views/Main/MovieViewReadModelBuilder.cs` を追加した。
+  - `MovieViewReadModelRequest`
+  - `MovieViewReadModelResult`
+  - `MovieViewReadModelBuilder`
+- `FilterAndSortAsync(...)` は full reload 後の filter / sort 計算を builder へ委譲する。
+- `RefreshMovieViewFromCurrentSourceAsync(...)` は query-only / watch changed-path 計算を builder へ委譲する。
+- watch で拾った `ObservedState` は UI スレッド snapshot 取得時に `MovieRecords` へ反映し、builder は UI モデルを書き換えない。
+- `SortDataAsync(...)` は sort-only の UI 反映を共通 apply helper へ通す。
+- apply ログへ `request_revision`、`result_count`、`changed`、`update_mode`、`fallback_reason`、`apply_ms` を出す。
+- filter / refresh / sort の入口ログへ `snapshot_ms` を出し、UI 側 snapshot 取得の重さを分けて見る。
+
+## 3.1. v1.1 一覧UI適用境界の分離
+
+- `Views/Main/MainWindow.MovieViewReadModel.cs` を追加し、一覧の snapshot 取得、ObservedState 反映入口、ReadModel apply、sort-only UI 反映を `MainWindow.xaml.cs` から分離した。
+- `FilterAndSortAsync(...)` と `RefreshMovieViewFromCurrentSourceAsync(...)` は `MainWindow.xaml.cs` に残し、DB 読込、後着キャンセル、builder 呼び出し、Dispatcher apply 待ちの上位フローを維持する。
+- `ComboSort_SelectionChanged(...)` と `RefreshSelectionDetailAfterCollectionApplyIfNeeded(...)` は既存 UI イベント / 互換 refresh の入口として `MainWindow.xaml.cs` に残す。
+- callback service、汎用 applier class、DI 化は入れない。partial 分離だけで責務境界を締める。
+- source policy test で、新 partial に snapshot / apply / sort-only 経路があること、`MainWindow.xaml.cs` に `MovieViewReadModelSnapshot` / `TryApplyMovieViewReadModelResultOnUiThread(...)` / `SortDataAsync(...)` が戻らないことを固定する。
+
+## 3.2. Phase 1 ReadModel要求制御 partial の分離
+
+- `Views/Main/MainWindow.MovieViewRequests.cs` を追加し、`FilterAndSortAsync(...)` / `RefreshMovieViewFromCurrentSourceAsync(...)` / cancellation / full reload reason / apply-dispatch cancellation を `MainWindow.xaml.cs` から分離した。
+- `ComboSort_SelectionChanged(...)` と選択変化互換 `Refresh()` 入口は `MainWindow.xaml.cs` に残し、XAML event と互換 refresh の意味論を変えない。
+- `FilterAndSort(..., true)`、直書き `Refresh();`、`Items.Refresh()` の許容線は増やしていない。
+- 次は `MainWindow.MovieRecordFactory.cs` で表示レコード生成境界を分ける。
+
+## 4. 維持する禁止線
+
+- `Refresh()`、`Items.Refresh()`、`FilterAndSort(..., true)` の許容箇所を増やさない。
+- `.wb` は変更しない。
+- ユーザーDB上で外部 skin を有効化しない。
+- `header-reload` / `fallback-notice-retry` は CatalogRefresh のまま維持し、same-document skip 対象へ広げない。
+- UI テンポ改善を理由に Release 実機ログを削らない。
+
+## 5. 検証
+
+focused test:
+
+```powershell
+dotnet test Tests\IndigoMovieManager.Tests\IndigoMovieManager.Tests.csproj -c Release -p:Platform=x64 -p:UseSharedCompilation=false -p:BaseOutputPath=%TEMP%\imm-readmodel-test-output --filter "FullyQualifiedName~MainWindowFilterSortExecutionPolicyTests|FullyQualifiedName~WatchDeferredUiReloadPolicyTests|FullyQualifiedName~ExternalSkinHeaderChromePolicyTests|FullyQualifiedName~MainWindowViewModelFilteredMovieRecsTests" --no-restore
+```
+
+Release build:
+
+```powershell
+dotnet build IndigoMovieManager.sln --configuration Release -p:Platform=x64 -p:UseSharedCompilation=false -p:BaseOutputPath=%TEMP%\imm-readmodel-build-output -m:1 --no-restore
+```
+
+確認観点:
+
+- builder 経由でも full filter / query-only refresh / changed-path 局所更新の既存契約が維持される。
+- builder が `MovieRecords` を直接書き換えない。
+- UI apply が共通 helper に集約される。
+- `Items.Refresh()` を本体コードへ戻さない。
+- 直書き `Refresh()` と `FilterAndSort(..., true)` の許容箇所が増えない。
+
+2026-06-18 実施結果:
+
+- v1 focused test: 143 件成功。
+- v1.1 focused test: 167 件成功。
+- Phase 1 focused test: 169 件成功。
+- Release x64 build: 成功。
+- `git diff --check`: 成功。
+- 本ドキュメント: UTF-8 BOMなし、LF。
+- active skin 実機ログ: コピーDB + `INDIGO_DIAGNOSTIC_NO_PERSIST=1` / `INDIGO_DIAGNOSTIC_STARTUP_DB=<コピー.wb>` / `INDIGO_DIAGNOSTIC_REPEAT_SKIN_REFRESH=1` で採取成功。
+  - 初回: `active=True ready=True reason=dbinfo-DBFullPath host_navigate_ms=772.6 navigate_to_string_ms=171.6`
+  - repeat: `reason=dbinfo-Skin errorType=HostNavigateSkippedSameDocument navigate_skipped_current=True navigate_skip_reason='same-document' navigate_to_string_ms=0.0`
+
+## 6. 残確認
+
+- 通常 Release 出力は実行中の `IndigoMovieManager.exe` がロックしている場合がある。その時はユーザー実行中として扱い、プロセスを止めずに一時出力先で検証する。
+- active skin 実機採取は完了。今後の再採取も、コピー `.wb` と `INDIGO_DIAGNOSTIC_NO_PERSIST=1` / `INDIGO_DIAGNOSTIC_STARTUP_DB=<コピー.wb>` だけで行う。
+- same-document skip の自動確認時だけ `INDIGO_DIAGNOSTIC_REPEAT_SKIN_REFRESH=1` を併用する。通常起動やユーザーDBでは使わない。
+- 次の候補は、初回 active skin navigate の `host_navigate_ms` 772.6ms 帯を、WebView2 attach / initial document / `NavigateToString` / HTML準備のどれが支配しているかに分解すること。
+- さらに抜本的な UI 分割の次段は `Docs\forAI\Implementation Plan_抜本UI分割ロードマップ_2026-06-18.md` を正本にする。まず `MainWindow.MovieViewRequests.cs` へ ReadModel 要求制御を分ける。

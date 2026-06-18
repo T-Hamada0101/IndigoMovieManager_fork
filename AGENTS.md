@@ -74,8 +74,11 @@
 
 ## UI高速化プランの最新見直し（2026-06-18 AI必読）
 - 済: watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定し、`plan_reason` と並べて実機ログで読める契約を source policy で守る。
-- 済: `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。現 `debug-runtime.log` は旧形式で内訳未出力のため、削減実装は新ログ入り実機ログ再採取後に支配要因を見て決める。
+- 済: `DebugRuntimeLog.Write(...)` / `TaskStart(...)` / `TaskEnd(...)` は Release ビルドでも呼び出しが消えない。実機 `debug-runtime.log` 採取は設定と release-like 絞り込みで制御し、`Conditional("DEBUG")` へ戻さない。
+- 済: `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。2026-06-18 の Release 実機ログでは `_Anime - コピー.wb` で `elapsed_ms=150`、`watch_table_load_ms=3`、`registration_ms=6`、`failed=0` のため、このDBでは watcher 作成は現時点の支配要因ではない。
+- 済: active skin 新形式ログをコピーDB + no-persist 診断で採取した。`VSTB` 初回 navigate は `active=True ready=True reason=dbinfo-DBFullPath host_navigate_ms=772.6 navigate_to_string_ms=171.6`、診断 repeat の `dbinfo-Skin` は `errorType=HostNavigateSkippedSameDocument navigate_skipped_current=True navigate_skip_reason='same-document' navigate_to_string_ms=0.0` で閉じた。
 - 済: `FilterAndSort(..., true)` の直書き許容は起動 fallback full reload と段階ロード中 sort の2箇所に固定した。直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけ、`Items.Refresh()` は本体コードへ戻さない source policy で守る。
+- 済: ストレスなし操作の UI 分割 v1 として、`FilterAndSortAsync(...)` / `RefreshMovieViewFromCurrentSourceAsync(...)` の ReadModel 計算を `MovieViewReadModelBuilder` へ寄せ、`SortDataAsync(...)` を含む UI 反映を共通 apply helper へ通した。v1.1 では一覧 snapshot / apply / sort-only UI orchestration を `Views\Main\MainWindow.MovieViewReadModel.cs` partial へ切り出し、Phase 1 では ReadModel 要求制御を `Views\Main\MainWindow.MovieViewRequests.cs` partial へ切り出した。`MainWindow.xaml.cs` には `ComboSort_SelectionChanged(...)` と選択変化互換 `Refresh()` 入口を残し、`FilterAndSort(..., true)` / `Refresh()` / `Items.Refresh()` の許容線は増やしていない。抜本 UI 分割ロードマップは `Docs\forAI\Implementation Plan_抜本UI分割ロードマップ_2026-06-18.md` を見る。次段は `MainWindow.MovieRecordFactory.cs` で表示レコード生成境界を分ける。`ObservedState` は UI スレッド snapshot 取得時に反映し、builder は UI モデルを書き換えない。詳細は `Docs\forAI\Implementation Plan_ストレスなし操作_UI分割_2026-06-18.md` を見る。
 - 済: `RefreshMovieViewFromCurrentSourceAsync(...)` は背景計算だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡し、古い in-memory refresh が UI 反映待ち中に残った時は `stage=apply-dispatch` でキャンセルしてログへ閉じる。
 - 済: サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せ、タグ編集再表示を巻き込まずに選択中詳細のサムネ表示だけを揺すり直す。
 - 済: サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻し、shutdown 中は予約を積まない。
@@ -90,8 +93,9 @@
 - 済: 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じる。
 - 済: active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey なら再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実際に navigate する時だけ leave callback を送ること。実 navigate へ進む時は旧 reuse key を先に無効化し、same-document skip では外部サムネ許可リストを消さない。
 - PM判断: `header-reload` / `fallback-notice-retry` は明示 `CatalogRefresh` なので、実機ログで支配要因と表示互換を確認するまで same-document skip 対象へ広げない。速度目的で再読込の鮮度確認意味を変えない。
-- 現行実機ログでは `first-page shown` / `input ready` は良好で、次の確認軸は起動後 `CreateWatcher` 約13秒の内訳、active skin の WebView navigate 800〜980ms帯、過去1件の manual reload deferred scan NullReference。
-- 次は新ログ入りの実機 `debug-runtime.log` で、watcher 作成の遅延が Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれかを確定してから削る。skin は `host clear end elapsed_ms` と `refresh end host_navigate_ms` / `navigate_to_string_ms`、`navigate_skipped` / `navigate_skip_reason`、実WebView2表示崩れの有無を確認する。
+- 現行 Release 実機ログでは `first-page shown` / `input ready` は良好で、`CreateWatcher` は今回DBでは非支配。次の確認軸は active skin の `dbinfo-Skin` same-document skip が新形式ログで効くか、過去1件の manual reload deferred scan NullReference。
+- 済: active skin 新規実機採取用に、`INDIGO_DIAGNOSTIC_NO_PERSIST=1` と `INDIGO_DIAGNOSTIC_STARTUP_DB=<コピー.wb>` の診断導線を追加した。DB上書きは no-persist 時だけ有効で、LastDoc / Recent / MainWindow / Player / Theme / SettingsWindow の設定保存は skip ログへ閉じる。
+- active skin 新規実機採取は、ユーザーDB上で外部 skin を有効化しない。行う場合はコピー `.wb` と上記 no-persist 診断モードを使い、`host clear end elapsed_ms` と `refresh end host_navigate_ms` / `navigate_to_string_ms`、`navigate_skipped_current` / `navigate_skip_reason`、実WebView2表示崩れの有無を確認する。watcher は別DBで再び遅いログが出た時だけ、Everything availability / watch table / folder plan / registration / apply / 初回登録待ち / 登録失敗混入のどれかを見て削る。
 
 ## 2チーム体制（AI必読）
 - 本線チームは `AI向け_現在の全体プラン_workthree_2026-03-20.md` と `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として進める

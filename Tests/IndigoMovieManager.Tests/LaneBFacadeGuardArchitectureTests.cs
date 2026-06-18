@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
 namespace IndigoMovieManager.Tests;
@@ -10,10 +11,17 @@ public sealed class LaneBFacadeGuardArchitectureTests
     {
         string root = FindRepositoryRoot();
         string mainWindowPath = Path.Combine(root, "Views", "Main", "MainWindow.xaml.cs");
+        string movieViewRequestsPath = Path.Combine(
+            root,
+            "Views",
+            "Main",
+            "MainWindow.MovieViewRequests.cs"
+        );
         string startupPath = Path.Combine(root, "Views", "Main", "MainWindow.Startup.cs");
         string legacyStartupReaderPath = Path.Combine(root, "Startup", "StartupDbPageReader.cs");
 
         string mainWindowSource = File.ReadAllText(mainWindowPath);
+        string movieViewRequestsSource = File.ReadAllText(movieViewRequestsPath);
         string startupSource = File.ReadAllText(startupPath);
 
         // MainWindow 本体は read facade を握り、対象4口をそこ経由へ閉じる。
@@ -44,7 +52,7 @@ public sealed class LaneBFacadeGuardArchitectureTests
         );
 
         string filterAndSortBody = ExtractMethodBody(
-            mainWindowSource,
+            movieViewRequestsSource,
             "private async Task FilterAndSortAsync("
         );
         AssertMethodUsesFacadeOnly(
@@ -86,17 +94,27 @@ public sealed class LaneBFacadeGuardArchitectureTests
         );
     }
 
-    private static string FindRepositoryRoot()
+    private static string FindRepositoryRoot([CallerFilePath] string sourceFilePath = "")
     {
-        DirectoryInfo? current = new(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj")))
-            {
-                return current.FullName;
-            }
+        string[] startDirectories =
+        [
+            Path.GetDirectoryName(sourceFilePath) ?? "",
+            AppContext.BaseDirectory,
+            Environment.CurrentDirectory,
+        ];
 
-            current = current.Parent;
+        foreach (string startDirectory in startDirectories)
+        {
+            DirectoryInfo? current = new(startDirectory);
+            while (current is not null)
+            {
+                if (File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj")))
+                {
+                    return current.FullName;
+                }
+
+                current = current.Parent;
+            }
         }
 
         Assert.Fail("リポジトリルートを特定できませんでした。");

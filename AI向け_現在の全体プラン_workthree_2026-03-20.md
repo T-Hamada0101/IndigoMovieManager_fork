@@ -4,16 +4,19 @@
 
 変更概要:
 - watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定した。`plan_reason` と並べて実機ログで読める契約を source policy で守り、`dirty-fields-unsafe:*` の実頻度を見るまで Hash / MovieName などを安全扱いへ広げない。
-- `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。現 `debug-runtime.log` は旧形式で `availability_ms` / `registration_ms` / `apply_ms` などの内訳がないため、削減実装は新ログ入り実機ログ再採取後に最大支配要因を見て決める。
+- `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。2026-06-18 の Release 実機ログでは `_Anime - コピー.wb` で `elapsed_ms=150`、`watch_table_load_ms=3`、`registration_ms=6`、`failed=0` だったため、このDBでは watcher 作成を削らない。
+- `DebugRuntimeLog.Write(...)` / `TaskStart(...)` / `TaskEnd(...)` は Release ビルドでも呼び出しを残す。実機 `debug-runtime.log` が更新されない状態では速度判断をしない。
+- active skin 新形式ログをコピーDB + no-persist 診断で採取した。`VSTB` 初回 navigate は `active=True ready=True reason=dbinfo-DBFullPath host_navigate_ms=772.6 navigate_to_string_ms=171.6`、診断 repeat の `dbinfo-Skin` は `errorType=HostNavigateSkippedSameDocument navigate_skipped_current=True navigate_skip_reason='same-document' navigate_to_string_ms=0.0` で閉じた。
 - `FilterAndSort(..., true)` の直書き許容は起動 fallback full reload と段階ロード中 sort の2箇所に固定した。直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけ、`Items.Refresh()` は本体コードへ戻さない source policy で守る。
+- ストレスなし操作の UI 分割 v1 として、`FilterAndSortAsync(...)` / `RefreshMovieViewFromCurrentSourceAsync(...)` の ReadModel 計算を `MovieViewReadModelBuilder` へ寄せた。`MainWindow` は DB 読込、Dispatcher apply、既存互換ガードへ集中させ、`SortDataAsync(...)` を含む UI 反映は `TryApplyMovieViewReadModelResultOnUiThread(...)` へ集約した。v1.1 では一覧 snapshot / apply / sort-only UI orchestration を `Views\Main\MainWindow.MovieViewReadModel.cs` partial へ切り出し、Phase 1 では ReadModel 要求制御を `Views\Main\MainWindow.MovieViewRequests.cs` partial へ切り出した。`MainWindow.xaml.cs` には `ComboSort_SelectionChanged(...)` と選択変化互換 `Refresh()` 入口を残し、`FilterAndSort(..., true)` / `Refresh()` / `Items.Refresh()` の許容線は増やしていない。抜本 UI 分割ロードマップは `Docs\forAI\Implementation Plan_抜本UI分割ロードマップ_2026-06-18.md` に保存し、次段は `MainWindow.MovieRecordFactory.cs` で表示レコード生成境界を分ける。`ObservedState` は UI スレッド snapshot 取得時に反映し、builder は UI モデルを書き換えない。詳細は `Docs\forAI\Implementation Plan_ストレスなし操作_UI分割_2026-06-18.md`。
 - active skin の same-document skip は通常 `dbinfo-*` 同期だけに限定する契約を runtime test で固定した。`header-reload` / `fallback-notice-retry` / `minimal-chrome-reload` / `skin-tag-mutation` は不許可のまま維持し、`refresh end` には `navigate_skipped_current` / `navigate_skip_reason` を明示して今回の navigate が skip か実 navigate かを同じ行で読めるようにした。
 - Filter / in-memory refresh / sort / 動画削除後の `ReplaceFilteredMovieRecs(...)` 後処理は、Reset 互換が必要なタブでも選択レコードが前後で同一なら `Refresh()` を呼ばず、詳細＋タグ編集の再表示を省くようにした。Grid 系の安全 fallback と List / Player の Diff/Move 省略線は維持する。
 - サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻す。shutdown 中は予約を積まず、入力・描画の前に局所 refresh 予約が割り込みにくい形へ寄せた。
 - サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せた。対象は選択中詳細のサムネ表示だけに絞り、タグ編集再表示を巻き込まない。
 - `RefreshMovieViewFromCurrentSourceAsync(...)` は背景計算だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡すようにした。古い in-memory refresh が UI 反映待ち中に残った時は `stage=apply-dispatch` でキャンセルして閉じ、後着結果だけを UI へ通す。
-- 2026-06-17 のPM判断として、実機 `debug-runtime.log` 調査から `first-page shown` / `input ready` は良好、起動後 `CreateWatcher` と active skin navigate が次の支配要因候補と判断した。
+- 2026-06-18 のPM判断として、Release 実機 `debug-runtime.log` 調査から `first-page shown` / `input ready` は良好、今回DBの `CreateWatcher` は非支配、次は active skin の `dbinfo-Skin` same-document skip が新形式ログで効くかを確認軸にする。
 - 検索 full reload の DB 読込入口にも後着キャンセル token を通し、db-reload 段階のキャンセルは未観測例外にせず `filter canceled: ... stage=db-reload` でログへ閉じるようにした。
-- `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、さらに登録 apply 側へ `attempted` / `failed` / `first_registered_ms` を追加して、watcher 作成約13秒の内訳を実機ログで切れるようにした。
+- `CreateWatcher()` / `BuildWatcherCreationPlan(...)` に `availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` の分解計測を追加し、さらに登録 apply 側へ `attempted` / `failed` / `first_registered_ms` を追加した。別DBで watcher 作成が再び遅い場合は、この内訳で支配要因を見てから最小修正を選ぶ。
 - user-priority 解除ログへ `begin_reason` / `end_reason` / `elapsed_ms` / `release_reason` / `deferred_watch` を追加し、Scheduler 契約の release reason 観測を補強した。timeout は runtime release log へ接続済みで、強制解除は未導入。
 - manual reload deferred scan は `Dispatcher` / `MainVM` / DB path / queue 初期化状態の guard と skip reason ログを持ち、過去1件の NullReference 再発時も type / origin 付きで次の切り分けへ進めるようにした。
 - Header Reload は `reload_id` を発行し、`header reload begin/end/failed` と後続 `manual reload deferred scan scheduled/skipped/failed` を同じIDで結ぶ。短時間の連打や後着 scan でも runtime log だけで因果を追える。
@@ -25,6 +28,7 @@
 - user-priority timeout は runtime release log へ接続し、既定 30 秒を超えた最後の解除だけ `release_reason=timeout` として観測できるようにした。強制解除や新 Scheduler は入れていない。
 - active skin の通常 `dbinfo-*` refresh は同一 document / host 入力 / dbKey の時だけ再 `NavigateToString` を skip できる。skip 時は `onSkinLeave` を送らず、実 navigate へ進む時は旧 reuse key と旧 document 用の外部サムネ許可を明示的に切る。明示 reload / catalog refresh / teardown / stale は従来どおり navigate 側へ戻す。
 - PM判断として、`header-reload` / `fallback-notice-retry` は明示 `CatalogRefresh` のまま維持する。実機ログで `host clear` と navigate の支配度、表示崩れ、鮮度確認の必要性を確認するまでは same-document skip 対象へ広げない。
+- active skin の新規実機採取はユーザーDBを直接触らず、コピー `.wb` と `INDIGO_DIAGNOSTIC_NO_PERSIST=1` / `INDIGO_DIAGNOSTIC_STARTUP_DB=<コピー.wb>` を使う。診断DB上書きは no-persist 時だけ有効で、LastDoc / Recent / MainWindow / Player / Theme / SettingsWindow の設定保存は skip ログへ閉じる。設定画面や最小 chrome の skin 選択は `system.skin` / profile / LastDoc / Recent を汚し得るため、ユーザーDBでの採取は禁止線とする。
 - 2026-05-28 のPM判断として、`Docs\forAI\Goal_Indigoの未来図_2026-05-28.md` を上位判断基準へ追加した。ただし日々の着手順は、この全体プランと `Docs\forAI\Implementation Plan_UIを含む高速化のための抜本改善プラン_2026-04-17.md` を正本として維持する。
 - 当面の本線は WPF 一覧を維持した diff-first 化であり、本体一覧の即時 WebView2 化、IPC / sidecar 先行導入、`.wb` スキーマ変更、`MainWindow` 全面置換、検索仕様変更は非目標として固定した。
 - Application Core は巨大化した新 `MainWindow` にしない。`Dispatcher`、WPF control、`ObservableCollection`、ViewModel、WebView2 DOM を知らない `Command / Query / Event / Snapshot / Diff DTO` 境界へ寄せる。
@@ -112,7 +116,7 @@
 - Everything poll の watch folder snapshot / eligible snapshot は cache 参照と invalidation を同じ lock へ寄せつつ、watch table 読み取りと eligible 判定は lock 外へ逃がし、poll loop 背後化後の共有状態境界を固めた
 - `QueueCheckFolderAsync(...)` は enqueue 後の queue runner を ThreadPool 起動へ寄せ、runner task は 1 本共有にして、UI 操作から入った監視走査でも `CheckFolderAsync(...)` 前半を呼び出し元 UI スレッドへ残しにくくした
 - `CreateWatcher()` は起動後の watcher 作成計画を背景側で組み、watch table 読み込み / Everything availability 判定 / skip 判定を UI から外し、UI には DB 切替ガードと revision 確認後の `FileSystemWatcher` 登録だけを残した
-- `CreateWatcher()` の背景計画と UI apply は、`availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` / `attempted` / `failed` / `first_registered_ms` で分解計測できる。次の実機確認では watcher 作成の長時間化がどの段に寄っているかを先に確定する
+- `CreateWatcher()` の背景計画と UI apply は、`availability_ms` / `watch_table_load_ms` / `folder_plan_ms` / `registration_ms` / `apply_ms` / `attempted` / `failed` / `first_registered_ms` で分解計測できる。別DBで watcher 作成の長時間化が再発した時だけ、どの段に寄っているかを先に確定する
 - watcher 作成計画の `Everything-only` skip は登録直前に availability を再確認し、計画作成後に Everything が落ちた時は `FileSystemWatcher` 登録へ戻すようにした
 - watcher 登録フェーズでは UI 上の `Path.Exists(...)` 再実行を避け、背景計画で確認済みの対象だけを登録する形へ寄せた
 - watcher 作成 task は active count と最新 task 状態を shutdown handoff ログへ残し、終了時に未完了の背景作成があるかを追えるようにした

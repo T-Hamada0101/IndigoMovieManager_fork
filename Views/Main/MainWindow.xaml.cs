@@ -487,8 +487,18 @@ namespace IndigoMovieManager
 
         private void QueueStartupAutoOpenLastDocSwitch()
         {
-            bool autoOpenSnapshot = Properties.Settings.Default.AutoOpen;
-            string lastDocSnapshot = Properties.Settings.Default.LastDoc ?? "";
+            bool diagnosticNoPersist = App.IsDiagnosticNoPersistEnabled();
+            string diagnosticStartupDb = ResolveDiagnosticStartupDbOverride(
+                diagnosticNoPersist,
+                Environment.GetEnvironmentVariable(DiagnosticStartupDbEnvironmentVariable)
+            );
+            bool autoOpenSnapshot =
+                Properties.Settings.Default.AutoOpen
+                || !string.IsNullOrWhiteSpace(diagnosticStartupDb);
+            string lastDocSnapshot = !string.IsNullOrWhiteSpace(diagnosticStartupDb)
+                ? diagnosticStartupDb
+                : Properties.Settings.Default.LastDoc ?? "";
+            bool diagnosticStartupDbActive = !string.IsNullOrWhiteSpace(diagnosticStartupDb);
 
             if (!autoOpenSnapshot || string.IsNullOrWhiteSpace(lastDocSnapshot))
             {
@@ -496,12 +506,17 @@ namespace IndigoMovieManager
             }
 
             // 初回描画を先に通し、LastDoc の存在確認だけを背景へ逃がして UI 入力を塞がない。
-            _ = RunStartupAutoOpenLastDocSwitchAsync(autoOpenSnapshot, lastDocSnapshot);
+            _ = RunStartupAutoOpenLastDocSwitchAsync(
+                autoOpenSnapshot,
+                lastDocSnapshot,
+                diagnosticStartupDbActive
+            );
         }
 
         private async Task RunStartupAutoOpenLastDocSwitchAsync(
             bool autoOpenSnapshot,
-            string lastDocSnapshot
+            string lastDocSnapshot,
+            bool diagnosticStartupDbActive
         )
         {
             bool lastDocExists;
@@ -532,7 +547,8 @@ namespace IndigoMovieManager
                             if (
                                 !IsStartupAutoOpenLastDocSnapshotCurrent(
                                     autoOpenSnapshot,
-                                    lastDocSnapshot
+                                    lastDocSnapshot,
+                                    diagnosticStartupDbActive
                                 )
                             )
                             {
@@ -573,12 +589,18 @@ namespace IndigoMovieManager
 
         private bool IsStartupAutoOpenLastDocSnapshotCurrent(
             bool autoOpenSnapshot,
-            string lastDocSnapshot
+            string lastDocSnapshot,
+            bool diagnosticStartupDbActive
         )
         {
             if (IsStartupAutoOpenLastDocSwitchShutdownStarted())
             {
                 return false;
+            }
+
+            if (diagnosticStartupDbActive)
+            {
+                return autoOpenSnapshot && !string.IsNullOrWhiteSpace(lastDocSnapshot);
             }
 
             return autoOpenSnapshot
@@ -596,6 +618,33 @@ namespace IndigoMovieManager
             return Volatile.Read(ref _mainWindowClosingStarted) != 0
                 || Dispatcher.HasShutdownStarted
                 || Dispatcher.HasShutdownFinished;
+        }
+
+        private const string DiagnosticStartupDbEnvironmentVariable = "INDIGO_DIAGNOSTIC_STARTUP_DB";
+
+        private static string ResolveDiagnosticStartupDbOverride(
+            bool diagnosticNoPersist,
+            string rawStartupDbPath
+        )
+        {
+            return ResolveDiagnosticStartupDbOverrideForTesting(
+                diagnosticNoPersist,
+                rawStartupDbPath
+            );
+        }
+
+        internal static string ResolveDiagnosticStartupDbOverrideForTesting(
+            bool diagnosticNoPersist,
+            string rawStartupDbPath
+        )
+        {
+            // 診断用DB上書きは no-persist と組み合わせた時だけ有効にし、通常設定を汚さない。
+            if (!diagnosticNoPersist)
+            {
+                return "";
+            }
+
+            return rawStartupDbPath?.Trim() ?? "";
         }
 
         /// <summary>
@@ -621,7 +670,8 @@ namespace IndigoMovieManager
             }
 
             Volatile.Write(ref _mainWindowClosingStarted, 1);
-            bool skipProcessWideShutdownSideEffects = SkipMainWindowClosingSideEffectsForTesting;
+            bool skipProcessWideShutdownSideEffects =
+                SkipMainWindowClosingSideEffectsForTesting || App.IsDiagnosticNoPersistEnabled();
 
             try
             {
@@ -2238,513 +2288,7 @@ namespace IndigoMovieManager
             }
         }
 
-        /// <summary>
-        /// DB再取得から検索・並び替え・画面反映まで、すべてをワンボタンでフルコース提供する超最強の総合フィルターメソッド！🍔🍟🥤
-        /// </summary>
-        public void FilterAndSort(string id, bool IsGetNew = false)
-        {
-            CancelStartupFeed("filter-sort");
-            _ = FilterAndSortAsync(id, IsGetNew);
-        }
-
-        private async Task FilterAndSortAsync(string id, bool isGetNew)
-        {
-            using IDisposable uiHangScope = TrackUiHangActivity(UiHangActivityKind.Database);
-            Stopwatch totalStopwatch = Stopwatch.StartNew();
-            int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
-            using CancellationTokenSource filterAndSortCancellation =
-                BeginFilterAndSortCancellation();
-            CancellationToken filterAndSortCancellationToken = filterAndSortCancellation.Token;
-            DataTable latestMovieData = movieData;
-            MovieRecords[] latestMovieRecords = null;
-            long dbLoadElapsedMs = 0;
-            long sourceApplyElapsedMs = 0;
-            long filterSortElapsedMs = 0;
-            long refreshElapsedMs = 0;
-            string executionRoute = MainWindow.ResolveFilterSortExecutionRouteLabel(
-                hasSnapshotData: latestMovieData != null,
-                startupFeedLoadedAllPages: _startupFeedLoadedAllPages,
-                isGetNew: isGetNew
-            );
-            string fullReloadReason = MainWindow.ResolveFilterSortFullReloadReason(
-                hasSnapshotData: latestMovieData != null,
-                startupFeedLoadedAllPages: _startupFeedLoadedAllPages,
-                isGetNew: isGetNew
-            );
-
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"filter start: revision={requestRevision} sort={id} route={executionRoute} full_reload_reason={fullReloadReason} is_get_new={isGetNew} keyword='{MainVM.DbInfo.SearchKeyword}'"
-            );
-
-            if ((latestMovieData == null && !_startupFeedLoadedAllPages) || isGetNew)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage begin: revision={requestRevision} stage=db-reload sort={id} is_get_new={isGetNew}"
-                );
-                Stopwatch dbLoadStopwatch = Stopwatch.StartNew();
-                string dbFullPath = MainVM.DbInfo.DBFullPath;
-                // full reload の movie 読みは facade へ寄せ、並び順の SQL を UI から剥がす。
-                try
-                {
-                    filterAndSortCancellationToken.ThrowIfCancellationRequested();
-                    latestMovieData = await Task.Run(
-                        () => _mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id),
-                        filterAndSortCancellationToken
-                    );
-                    filterAndSortCancellationToken.ThrowIfCancellationRequested();
-                }
-                catch (OperationCanceledException) when (
-                    filterAndSortCancellationToken.IsCancellationRequested
-                )
-                {
-                    dbLoadStopwatch.Stop();
-                    DebugRuntimeLog.Write(
-                        "ui-tempo",
-                        $"filter canceled: revision={requestRevision} stage=db-reload elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                    );
-                    return;
-                }
-                dbLoadStopwatch.Stop();
-                dbLoadElapsedMs = dbLoadStopwatch.ElapsedMilliseconds;
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage end: revision={requestRevision} stage=db-reload rows={latestMovieData?.Rows.Count ?? -1} elapsed_ms={dbLoadElapsedMs}"
-                );
-                if (latestMovieData == null)
-                {
-                    DebugRuntimeLog.Write(
-                        "ui-tempo",
-                        $"filter abort: revision={requestRevision} reason=db_reload_returned_null elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                    );
-                    return;
-                }
-                if (requestRevision != _filterAndSortRequestRevision)
-                {
-                    DebugRuntimeLog.Write(
-                        "ui-tempo",
-                        $"filter skip stale reload: revision={requestRevision} current_revision={_filterAndSortRequestRevision} db_reload_ms={dbLoadElapsedMs}"
-                    );
-                    return;
-                }
-                movieData = latestMovieData;
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage begin: revision={requestRevision} stage=source-apply rows={latestMovieData.Rows.Count}"
-                );
-                Stopwatch sourceApplyStopwatch = Stopwatch.StartNew();
-                latestMovieRecords = await SetRecordsToSource(latestMovieData, requestRevision);
-                // DB読み込みと変換が完了したので、rawなDataTable参照を残さずに解放する。
-                movieData = null;
-                if (requestRevision != _filterAndSortRequestRevision)
-                {
-                    DebugRuntimeLog.Write(
-                        "ui-tempo",
-                        $"filter skip stale source set: revision={requestRevision} current_revision={_filterAndSortRequestRevision} source_apply_ms={sourceApplyStopwatch.ElapsedMilliseconds}"
-                    );
-                    return;
-                }
-                InvalidateThumbnailErrorRecords(refreshIfVisible: true);
-                sourceApplyStopwatch.Stop();
-                sourceApplyElapsedMs = sourceApplyStopwatch.ElapsedMilliseconds;
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage end: revision={requestRevision} stage=source-apply items={latestMovieRecords?.Length ?? -1} elapsed_ms={sourceApplyElapsedMs}"
-                );
-            }
-
-            if (requestRevision != _filterAndSortRequestRevision)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter skip stale apply: revision={requestRevision} current_revision={_filterAndSortRequestRevision} elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                );
-                return;
-            }
-
-            Stopwatch filterSortStopwatch = Stopwatch.StartNew();
-            string searchKeyword = MainVM.DbInfo.SearchKeyword;
-            MovieRecords[] filterSource = (latestMovieRecords?.AsEnumerable() ?? MainVM.MovieRecs)
-                .Where(movie => movie != null)
-                .ToArray();
-            bool runOnBackground = MainWindow.ShouldRunFilterSortOnBackground(filterSource.Length);
-            bool allowExpensiveAsciiPhoneticFallback =
-                !MainWindow.ShouldUseFastAsciiSearchProjection(filterSource.Length);
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"filter stage begin: revision={requestRevision} stage=filter-sort-compute route={executionRoute} source={filterSource.Length} keyword='{searchKeyword}' background={runOnBackground} ascii_fast_projection={!allowExpensiveAsciiPhoneticFallback}"
-            );
-
-            (MovieRecords[] sorted, int searchCount) ComputeFilterAndSortMovies()
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage begin: revision={requestRevision} stage=filter-movies source={filterSource.Length} keyword='{searchKeyword}'"
-                );
-                Stopwatch filterMoviesStopwatch = Stopwatch.StartNew();
-                MovieRecords[] filtered = MainVM
-                    .FilterMovies(
-                        filterSource,
-                        searchKeyword,
-                        filterAndSortCancellationToken,
-                        allowExpensiveAsciiPhoneticFallback
-                    )
-                    .ToArray();
-                filterAndSortCancellationToken.ThrowIfCancellationRequested();
-                filterMoviesStopwatch.Stop();
-                int resolvedSearchCount = filtered.Length;
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage end: revision={requestRevision} stage=filter-movies filtered={resolvedSearchCount} elapsed_ms={filterMoviesStopwatch.ElapsedMilliseconds}"
-                );
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage begin: revision={requestRevision} stage=sort-movies filtered={resolvedSearchCount} sort={id}"
-                );
-                Stopwatch sortMoviesStopwatch = Stopwatch.StartNew();
-                filterAndSortCancellationToken.ThrowIfCancellationRequested();
-                MovieRecords[] sortedMovies = MainVM.SortMovies(filtered, id).ToArray();
-                filterAndSortCancellationToken.ThrowIfCancellationRequested();
-                sortMoviesStopwatch.Stop();
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter stage end: revision={requestRevision} stage=sort-movies sorted={sortedMovies.Length} elapsed_ms={sortMoviesStopwatch.ElapsedMilliseconds}"
-                );
-                return (sortedMovies, resolvedSearchCount);
-            }
-
-            MovieRecords[] sorted = [];
-            int searchCount = 0;
-            try
-            {
-                (sorted, searchCount) = runOnBackground
-                    ? await Task.Run(ComputeFilterAndSortMovies, filterAndSortCancellationToken)
-                    : ComputeFilterAndSortMovies();
-            }
-            catch (OperationCanceledException) when (filterAndSortCancellationToken.IsCancellationRequested)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter canceled: revision={requestRevision} elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                );
-                return;
-            }
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"filter stage end: revision={requestRevision} stage=filter-sort-compute route={executionRoute} sorted={sorted.Length} search_count={searchCount} elapsed_ms={filterSortStopwatch.ElapsedMilliseconds}"
-            );
-            if (requestRevision != _filterAndSortRequestRevision)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"filter skip stale filter-sort: revision={requestRevision} current_revision={_filterAndSortRequestRevision} elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                );
-                return;
-            }
-            MainVM.DbInfo.SearchCount = searchCount;
-            filterList = sorted;
-            int currentTabIndex = TryGetCurrentUpperTabFixedIndex(out int resolvedTabIndex)
-                ? resolvedTabIndex
-                : UpperTabGridFixedIndex;
-            FilteredMovieRecsUpdateMode updateMode =
-                UpperTabCollectionUpdatePolicy.ResolveUpdateMode(
-                    currentTabIndex,
-                    isSortOnly: false
-                );
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"filter stage begin: revision={requestRevision} stage=replace-filtered update_mode={updateMode} sorted={sorted.Length}"
-            );
-            MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();
-            FilteredMovieRecsUpdateResult applyResult = MainVM.ReplaceFilteredMovieRecs(
-                sorted,
-                updateMode: updateMode
-            );
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"filter stage end: revision={requestRevision} stage=replace-filtered changed={applyResult.HasChanges} removed={applyResult.RemovedCount} inserted={applyResult.InsertedCount} moved={applyResult.MovedCount} elapsed_ms={filterSortStopwatch.ElapsedMilliseconds}"
-            );
-            filterSortStopwatch.Stop();
-            filterSortElapsedMs = filterSortStopwatch.ElapsedMilliseconds;
-
-            UpdateExtensionDetailVisibilityBySearchCount();
-
-            Stopwatch refreshStopwatch = Stopwatch.StartNew();
-            bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
-                selectedBeforeCollectionApply,
-                applyResult,
-                currentTabIndex,
-                updateMode
-            );
-            refreshStopwatch.Stop();
-            refreshElapsedMs = refreshStopwatch.ElapsedMilliseconds;
-            if (applyResult.HasChanges)
-            {
-                NotifyUpperTabViewportSourceChanged();
-                RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "filter");
-            }
-
-            if (id == "28")
-            {
-                RefreshThumbnailErrorRecords(force: true);
-            }
-
-            totalStopwatch.Stop();
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"filter end: revision={requestRevision} sort={id} route={executionRoute} full_reload_reason={fullReloadReason} is_get_new={isGetNew} count={MainVM.DbInfo.SearchCount} changed={applyResult.HasChanges} update_mode={updateMode} refresh_applied={shouldRefresh} prefix={applyResult.RetainedPrefixCount} suffix={applyResult.RetainedSuffixCount} removed={applyResult.RemovedCount} inserted={applyResult.InsertedCount} moved={applyResult.MovedCount} db_reload_ms={dbLoadElapsedMs} source_apply_ms={sourceApplyElapsedMs} filter_sort_ms={filterSortElapsedMs} refresh_ms={refreshElapsedMs} total_ms={totalStopwatch.ElapsedMilliseconds}"
-            );
-        }
-
-        // in-memory に載っている一覧だけで再検索・再整列し、DB再読込なしで表示を更新する。
-        private async Task RefreshMovieViewFromCurrentSourceAsync(
-            string sortId,
-            string traceName,
-            UiHangActivityKind uiHangActivityKind,
-            IReadOnlyList<WatchChangedMovie> changedMovies = null
-        )
-        {
-            string resolvedTraceName = string.IsNullOrWhiteSpace(traceName) ? "memory-refresh" : traceName;
-            using IDisposable uiHangScope = TrackUiHangActivity(uiHangActivityKind);
-            Stopwatch totalStopwatch = Stopwatch.StartNew();
-            int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
-            using CancellationTokenSource refreshCancellation = BeginFilterAndSortCancellation();
-            CancellationToken refreshCancellationToken = refreshCancellation.Token;
-            string resolvedSortId = string.IsNullOrWhiteSpace(sortId)
-                ? MainVM?.DbInfo?.Sort ?? ""
-                : sortId;
-            string searchKeyword = MainVM?.DbInfo?.SearchKeyword ?? "";
-            MovieRecords[] sourceMovies = MainVM?
-                .MovieRecs?
-                .Where(movie => movie != null)
-                .ToArray() ?? [];
-            MovieRecords[] currentFilteredMovies = MainVM?
-                .FilteredMovieRecs?
-                .Where(movie => movie != null)
-                .ToArray() ?? [];
-            MovieRecords[] filtered = [];
-            MovieRecords[] sorted = [];
-            int searchCount = 0;
-            bool usedChangedPathRefresh = false;
-            bool canReuseCurrentOrder = false;
-            string changedPathFallbackReason = "none";
-
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"{resolvedTraceName} refresh start: revision={requestRevision} sort={resolvedSortId} keyword='{searchKeyword}' source={sourceMovies.Length} changed_paths={changedMovies?.Count ?? 0}"
-            );
-
-            Stopwatch filterSortStopwatch = Stopwatch.StartNew();
-            bool allowExpensiveAsciiPhoneticFallback =
-                !MainWindow.ShouldUseFastAsciiSearchProjection(sourceMovies.Length);
-            try
-            {
-                await Task.Run(
-                    () =>
-                    {
-                        refreshCancellationToken.ThrowIfCancellationRequested();
-                        usedChangedPathRefresh = TryBuildChangedMovieRefreshSourceWithReason(
-                            sourceMovies,
-                            currentFilteredMovies,
-                            searchKeyword,
-                            resolvedSortId,
-                            changedMovies,
-                            (movies, keyword) =>
-                                MainVM.FilterMovies(
-                                    movies,
-                                    keyword,
-                                    refreshCancellationToken,
-                                    allowExpensiveAsciiPhoneticFallback
-                                ),
-                            out filtered,
-                            out canReuseCurrentOrder,
-                            out changedPathFallbackReason
-                        );
-                        refreshCancellationToken.ThrowIfCancellationRequested();
-                        if (!usedChangedPathRefresh)
-                        {
-                            filtered = MainVM
-                                .FilterMovies(
-                                    sourceMovies,
-                                    searchKeyword,
-                                    refreshCancellationToken,
-                                    allowExpensiveAsciiPhoneticFallback
-                                )
-                                .ToArray();
-                        }
-
-                        refreshCancellationToken.ThrowIfCancellationRequested();
-                        searchCount = filtered.Length;
-                        sorted = canReuseCurrentOrder
-                            ? filtered
-                            : MainVM.SortMovies(filtered, resolvedSortId).ToArray();
-                        refreshCancellationToken.ThrowIfCancellationRequested();
-                    },
-                    refreshCancellationToken
-                );
-            }
-            catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"{resolvedTraceName} refresh canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} changed_path_mode={(usedChangedPathRefresh ? "partial" : "full")} changed_path_fallback={changedPathFallbackReason} elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                );
-                return;
-            }
-            catch (ObjectDisposedException) when (refreshCancellationToken.IsCancellationRequested)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"{resolvedTraceName} refresh canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} reason=token-disposed elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                );
-                return;
-            }
-
-            if (requestRevision != _filterAndSortRequestRevision)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"{resolvedTraceName} refresh skip stale compute: revision={requestRevision} current_revision={_filterAndSortRequestRevision}"
-                );
-                return;
-            }
-
-            FilteredMovieRecsUpdateResult applyResult = default;
-            bool applied = false;
-            try
-            {
-                if (Dispatcher == null || Dispatcher.CheckAccess())
-                {
-                    refreshCancellationToken.ThrowIfCancellationRequested();
-                    // 既にUIスレッドなら再ディスパッチせず、その場で適用して待機時間を増やさない。
-                    applied = TryApplyMemoryRefreshResultOnUiThread(
-                        requestRevision,
-                        sorted,
-                        searchCount,
-                        resolvedSortId,
-                        resolvedTraceName,
-                        out applyResult
-                    );
-                }
-                else
-                {
-                    await Dispatcher.InvokeAsync(
-                        () =>
-                        {
-                            refreshCancellationToken.ThrowIfCancellationRequested();
-                            applied = TryApplyMemoryRefreshResultOnUiThread(
-                                requestRevision,
-                                sorted,
-                                searchCount,
-                                resolvedSortId,
-                                resolvedTraceName,
-                                out applyResult
-                            );
-                        },
-                        DispatcherPriority.Background,
-                        refreshCancellationToken
-                    );
-                }
-            }
-            catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"{resolvedTraceName} refresh canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} stage=apply-dispatch elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
-                );
-                return;
-            }
-
-            if (!applied)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"{resolvedTraceName} refresh skip stale apply: revision={requestRevision} current_revision={_filterAndSortRequestRevision}"
-                );
-                return;
-            }
-
-            filterSortStopwatch.Stop();
-            totalStopwatch.Stop();
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"{resolvedTraceName} refresh end: revision={requestRevision} sort={resolvedSortId} count={searchCount} changed={applyResult.HasChanges} changed_path_mode={(usedChangedPathRefresh ? "partial" : "full")} changed_path_fallback={changedPathFallbackReason} reuse_order={canReuseCurrentOrder} prefix={applyResult.RetainedPrefixCount} suffix={applyResult.RetainedSuffixCount} removed={applyResult.RemovedCount} inserted={applyResult.InsertedCount} moved={applyResult.MovedCount} filter_sort_ms={filterSortStopwatch.ElapsedMilliseconds} total_ms={totalStopwatch.ElapsedMilliseconds}"
-            );
-        }
-
-        // query-only更新結果のUI反映を1か所へ寄せ、Dispatcher呼び出し側を薄く保つ。
-        private bool TryApplyMemoryRefreshResultOnUiThread(
-            int requestRevision,
-            IReadOnlyList<MovieRecords> sortedMovies,
-            int searchCount,
-            string resolvedSortId,
-            string visibleRefreshReason,
-            out FilteredMovieRecsUpdateResult applyResult
-        )
-        {
-            applyResult = default;
-            if (requestRevision != _filterAndSortRequestRevision)
-            {
-                return false;
-            }
-
-            int currentTabIndex = TryGetCurrentUpperTabFixedIndex(out int resolvedTabIndex)
-                ? resolvedTabIndex
-                : UpperTabGridFixedIndex;
-            FilteredMovieRecsUpdateMode updateMode =
-                UpperTabCollectionUpdatePolicy.ResolveUpdateMode(
-                    currentTabIndex,
-                    isSortOnly: false
-                );
-
-            MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();
-            MainVM.DbInfo.SearchCount = searchCount;
-            filterList = sortedMovies;
-            applyResult = MainVM.ReplaceFilteredMovieRecs(sortedMovies, updateMode: updateMode);
-            UpdateExtensionDetailVisibilityBySearchCount();
-
-            bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
-                selectedBeforeCollectionApply,
-                applyResult,
-                currentTabIndex,
-                updateMode
-            );
-
-            if (applyResult.HasChanges)
-            {
-                NotifyUpperTabViewportSourceChanged();
-                RequestUpperTabVisibleRangeRefresh(
-                    immediate: true,
-                    reason: string.IsNullOrWhiteSpace(visibleRefreshReason)
-                        ? "memory-refresh"
-                        : visibleRefreshReason
-                );
-            }
-
-            if (string.Equals(resolvedSortId, "28", StringComparison.Ordinal))
-            {
-                RefreshThumbnailErrorRecords(force: true);
-            }
-
-            return true;
-        }
-
-        // rename 後は DB を読み直さず、いまメモリ上にある一覧だけで再検索・再整列する。
-        private Task RefreshMovieViewAfterRenameAsync(
-            string sortId,
-            IReadOnlyList<WatchChangedMovie> changedMovies = null
-        )
-        {
-            return RefreshMovieViewFromCurrentSourceAsync(
-                sortId,
-                "rename",
-                UiHangActivityKind.Watch,
-                changedMovies
-            );
-        }
-
-        // changed paths が少数の時は、現在の絞り込み結果から対象だけ抜き差しして全件 filter を避ける。
+        // changed paths の局所更新判定は ReadModel builder へ寄せ、MainWindow は互換入口だけを残す。
         internal static bool TryBuildChangedMovieRefreshSource(
             IEnumerable<MovieRecords> sourceMovies,
             IEnumerable<MovieRecords> currentFilteredMovies,
@@ -2781,114 +2325,23 @@ namespace IndigoMovieManager
             out string fallbackReason
         )
         {
-            nextFilteredMovies = [];
-            canReuseCurrentOrder = false;
-            fallbackReason = "none";
-            List<WatchChangedMovie> normalizedChangedMovies = MainWindow.MergeChangedMovies([], changedMovies);
-            if (normalizedChangedMovies.Count < 1)
-            {
-                fallbackReason = "no-changed-movies";
-                return false;
-            }
-
-            if (filterMovies == null)
-            {
-                fallbackReason = "filter-unavailable";
-                return false;
-            }
-
-            // {dup} は changed path 以外の既存行も結果へ出入りするので、局所更新ではなく全体再評価へ戻す。
-            bool isDuplicateSearch = IndigoMovieManager.Infrastructure.SearchService.IsDuplicateSearchKeyword(
-                searchKeyword
-            );
-            if (
-                isDuplicateSearch
-                && normalizedChangedMovies.Any(changedMovie =>
-                    (changedMovie.DirtyFields & WatchMovieDirtyFields.Hash)
-                    != WatchMovieDirtyFields.None
-                )
-            )
-            {
-                fallbackReason = "dup-hash-dirty";
-                return false;
-            }
-
-            HashSet<string> changedPathLookup = BuildChangedMoviePathLookup(normalizedChangedMovies);
-            Dictionary<string, MovieRecords> sourceByPath = BuildChangedSourceMovieLookup(
-                sourceMovies,
-                changedPathLookup
-            );
-
-            HashSet<string> currentFilteredPathLookup = new(
-                currentFilteredMovies?
-                    .Where(movie =>
-                        movie != null
-                        && !string.IsNullOrWhiteSpace(movie.Movie_Path)
-                        && changedPathLookup.Contains(movie.Movie_Path)
-                    )
-                    .Select(movie => movie.Movie_Path) ?? [],
-                StringComparer.OrdinalIgnoreCase
-            );
-            List<MovieRecords> nextMovies = currentFilteredMovies?
+            MovieRecords[] sourceSnapshot = sourceMovies?
                 .Where(movie => movie != null)
-                .ToList() ?? [];
+                .ToArray() ?? [];
+            WatchChangedMovie[] changedSnapshot = changedMovies?.ToArray() ?? [];
+            ApplyObservedStatesToMovieRecords(sourceSnapshot, changedSnapshot);
 
-            bool canBypassFilterForEmptySearch = string.IsNullOrWhiteSpace(searchKeyword);
-            bool shouldReapplySort = false;
-            foreach (WatchChangedMovie changedMovie in normalizedChangedMovies)
-            {
-                string moviePath = changedMovie.MoviePath;
-                if (!sourceByPath.TryGetValue(moviePath, out MovieRecords sourceMovie))
-                {
-                    RemoveMovieByPath(nextMovies, moviePath);
-                    continue;
-                }
-
-                ApplyObservedStateToMovieRecord(sourceMovie, changedMovie.ObservedState);
-                bool canIncludeDirectly = canBypassFilterForEmptySearch;
-                bool wasMatchedBefore = currentFilteredPathLookup.Contains(moviePath);
-                bool canReuseCurrentSearchState =
-                    !canBypassFilterForEmptySearch
-                    && changedMovie.ChangeKind == WatchMovieChangeKind.None
-                    && !DoesSearchDependOnDirtyFields(searchKeyword, changedMovie.DirtyFields);
-
-                bool isMatch =
-                    canIncludeDirectly
-                    || (
-                        canReuseCurrentSearchState
-                            ? wasMatchedBefore
-                            : filterMovies([sourceMovie], searchKeyword).Any()
-                );
-                if (isMatch)
-                {
-                    if (!wasMatchedBefore)
-                    {
-                        nextMovies.Add(sourceMovie);
-                        shouldReapplySort = true;
-                    }
-                    else if (DoesCurrentSortDependOnDirtyFields(sortId, changedMovie.DirtyFields))
-                    {
-                        shouldReapplySort = true;
-                    }
-                    else
-                    {
-                        ReplaceMovieByPath(nextMovies, sourceMovie);
-                    }
-
-                    if (wasMatchedBefore && shouldReapplySort)
-                    {
-                        ReplaceMovieByPath(nextMovies, sourceMovie);
-                    }
-                }
-                else if (wasMatchedBefore)
-                {
-                    RemoveMovieByPath(nextMovies, moviePath);
-                }
-            }
-
-            nextFilteredMovies = nextMovies.ToArray();
-            canReuseCurrentOrder = !shouldReapplySort;
-            return true;
+            return MovieViewReadModelBuilder.TryBuildChangedMovieRefreshSourceWithReason(
+                sourceSnapshot,
+                currentFilteredMovies,
+                searchKeyword,
+                sortId,
+                changedSnapshot,
+                filterMovies,
+                out nextFilteredMovies,
+                out canReuseCurrentOrder,
+                out fallbackReason
+            );
         }
 
         internal static Dictionary<string, MovieRecords> BuildChangedSourceMovieLookup(
@@ -2896,90 +2349,10 @@ namespace IndigoMovieManager
             IEnumerable<WatchChangedMovie> changedMovies
         )
         {
-            return BuildChangedSourceMovieLookup(
-                sourceMovies,
-                BuildChangedMoviePathLookup(changedMovies)
-            );
+            return MovieViewReadModelBuilder.BuildChangedSourceMovieLookup(sourceMovies, changedMovies);
         }
 
-        private static HashSet<string> BuildChangedMoviePathLookup(
-            IEnumerable<WatchChangedMovie> changedMovies
-        )
-        {
-            return new HashSet<string>(
-                changedMovies?
-                    .Where(changedMovie => !string.IsNullOrWhiteSpace(changedMovie.MoviePath))
-                    .Select(changedMovie => changedMovie.MoviePath) ?? [],
-                StringComparer.OrdinalIgnoreCase
-            );
-        }
-
-        private static Dictionary<string, MovieRecords> BuildChangedSourceMovieLookup(
-            IEnumerable<MovieRecords> sourceMovies,
-            HashSet<string> changedPathLookup
-        )
-        {
-            Dictionary<string, MovieRecords> sourceByPath = new(StringComparer.OrdinalIgnoreCase);
-            if (changedPathLookup.Count < 1 || sourceMovies == null)
-            {
-                return sourceByPath;
-            }
-
-            foreach (MovieRecords movie in sourceMovies)
-            {
-                if (movie == null || string.IsNullOrWhiteSpace(movie.Movie_Path))
-                {
-                    continue;
-                }
-
-                if (!changedPathLookup.Contains(movie.Movie_Path))
-                {
-                    continue;
-                }
-
-                // 同一pathが複数ある場合は、従来の GroupBy(...).Last() と同じく後勝ちにする。
-                sourceByPath[movie.Movie_Path] = movie;
-            }
-
-            return sourceByPath;
-        }
-
-        private static void ReplaceMovieByPath(List<MovieRecords> movies, MovieRecords sourceMovie)
-        {
-            if (movies == null || sourceMovie == null || string.IsNullOrWhiteSpace(sourceMovie.Movie_Path))
-            {
-                return;
-            }
-
-            int index = movies.FindIndex(movie =>
-                movie != null
-                && string.Equals(
-                    movie.Movie_Path,
-                    sourceMovie.Movie_Path,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            );
-            if (index >= 0)
-            {
-                // 順序を再利用できる変更では、既存位置を保ったまま中身だけ差し替える。
-                movies[index] = sourceMovie;
-            }
-        }
-
-        private static void RemoveMovieByPath(List<MovieRecords> movies, string moviePath)
-        {
-            if (movies == null || string.IsNullOrWhiteSpace(moviePath))
-            {
-                return;
-            }
-
-            movies.RemoveAll(movie =>
-                movie != null
-                && string.Equals(movie.Movie_Path, moviePath, StringComparison.OrdinalIgnoreCase)
-            );
-        }
-
-        // watch で拾った cheap な観測値だけを現在の行へ当て、DB再読込なしで sort/filter に効かせる。
+        // watch で拾った観測値は UI スレッド側で当ててから、ReadModel builder へ読むだけの source を渡す。
         internal static void ApplyObservedStateToMovieRecord(
             MovieRecords target,
             WatchMovieObservedState? observedState
@@ -3021,7 +2394,10 @@ namespace IndigoMovieManager
             }
         }
 
-        private static bool TryFormatObservedMovieLength(long movieLengthSeconds, out string movieLengthText)
+        private static bool TryFormatObservedMovieLength(
+            long movieLengthSeconds,
+            out string movieLengthText
+        )
         {
             movieLengthText = "";
             if (movieLengthSeconds < 0)
@@ -3029,141 +2405,8 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            movieLengthText = TimeSpan
-                .FromSeconds(movieLengthSeconds)
-                .ToString(@"hh\:mm\:ss");
+            movieLengthText = TimeSpan.FromSeconds(movieLengthSeconds).ToString(@"hh\:mm\:ss");
             return true;
-        }
-
-        // 今の検索文字列が dirty fields に依存しないなら、現在の一致状態をそのまま再利用できる。
-        internal static bool DoesSearchDependOnDirtyFields(
-            string searchKeyword,
-            WatchMovieDirtyFields dirtyFields
-        )
-        {
-            if (dirtyFields == WatchMovieDirtyFields.None || string.IsNullOrWhiteSpace(searchKeyword))
-            {
-                return false;
-            }
-
-            if (IndigoMovieManager.Infrastructure.SearchService.IsDuplicateSearchKeyword(searchKeyword))
-            {
-                return (dirtyFields & WatchMovieDirtyFields.Hash) != WatchMovieDirtyFields.None;
-            }
-
-            if (IndigoMovieManager.Infrastructure.SearchService.IsTagOnlySearchKeyword(searchKeyword))
-            {
-                return false;
-            }
-
-            WatchMovieDirtyFields searchRelevantFields =
-                WatchMovieDirtyFields.MovieName
-                | WatchMovieDirtyFields.MoviePath
-                | WatchMovieDirtyFields.Kana
-                | WatchMovieDirtyFields.Comment1
-                | WatchMovieDirtyFields.Comment2
-                | WatchMovieDirtyFields.Comment3;
-            return (dirtyFields & searchRelevantFields) != WatchMovieDirtyFields.None;
-        }
-
-        // 小件数は同期処理で済ませ、Task.Run の切り替えコストを避ける。
-        internal static bool ShouldRunFilterSortOnBackground(int sourceCount)
-        {
-            return sourceCount >= 64;
-        }
-
-        // 大件数検索では、ASCII入力のたびに名前/パスから読み仮名解析へ戻さない。
-        internal static bool ShouldUseFastAsciiSearchProjection(int sourceCount)
-        {
-            return sourceCount >= 64;
-        }
-
-        private CancellationTokenSource BeginFilterAndSortCancellation()
-        {
-            CancellationTokenSource current = new();
-            CancellationTokenSource previous;
-            lock (_filterAndSortCancellationGate)
-            {
-                previous = _filterAndSortCancellation;
-                _filterAndSortCancellation = current;
-            }
-
-            try
-            {
-                previous?.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-
-            return current;
-        }
-
-        // query-only と full reload を短い札にして、ui-tempo ログで経路を追いやすくする。
-        internal static string ResolveFilterSortExecutionRouteLabel(
-            bool hasSnapshotData,
-            bool startupFeedLoadedAllPages,
-            bool isGetNew
-        )
-        {
-            return ((!hasSnapshotData && !startupFeedLoadedAllPages) || isGetNew)
-                ? "full-reload"
-                : "query-only";
-        }
-
-        // full reload へ戻る理由を短い札にし、次の差分化候補をログから拾えるようにする。
-        internal static string ResolveFilterSortFullReloadReason(
-            bool hasSnapshotData,
-            bool startupFeedLoadedAllPages,
-            bool isGetNew
-        )
-        {
-            if (isGetNew)
-            {
-                return "is-get-new";
-            }
-
-            if (!hasSnapshotData && !startupFeedLoadedAllPages)
-            {
-                return "no-snapshot-startup-partial";
-            }
-
-            return "none";
-        }
-
-        // changed movie が現在の sort key に触っていないなら、既存の並び順をそのまま使える。
-        internal static bool DoesCurrentSortDependOnDirtyFields(
-            string sortId,
-            WatchMovieDirtyFields dirtyFields
-        )
-        {
-            if (dirtyFields == WatchMovieDirtyFields.None)
-            {
-                return false;
-            }
-
-            WatchMovieDirtyFields relevantFields = sortId switch
-            {
-                "0" or "1" => WatchMovieDirtyFields.LastDate,
-                "2" or "3" => WatchMovieDirtyFields.FileDate,
-                "6" or "7" => WatchMovieDirtyFields.Score,
-                "8" or "9" => WatchMovieDirtyFields.ViewCount,
-                "10" or "11" => WatchMovieDirtyFields.Kana,
-                "12" or "13" => WatchMovieDirtyFields.MovieName,
-                "14" or "15" => WatchMovieDirtyFields.MoviePath,
-                "16" or "17" => WatchMovieDirtyFields.MovieSize,
-                "18" or "19" => WatchMovieDirtyFields.RegistDate,
-                "20" or "21" => WatchMovieDirtyFields.MovieLength,
-                "22" or "23" => WatchMovieDirtyFields.Comment1,
-                "24" or "25" => WatchMovieDirtyFields.Comment2,
-                "26" or "27" => WatchMovieDirtyFields.Comment3,
-                "28" => WatchMovieDirtyFields.ThumbnailError
-                    | WatchMovieDirtyFields.MovieName
-                    | WatchMovieDirtyFields.MoviePath,
-                _ => WatchMovieDirtyFields.None,
-            };
-
-            return (dirtyFields & relevantFields) != WatchMovieDirtyFields.None;
         }
 
         /// <summary>
@@ -3173,120 +2416,6 @@ namespace IndigoMovieManager
         {
             // 並び替えロジックは ViewModel に寄せ、追加ソートの差分を 1 箇所へ閉じ込める。
             filterList = MainVM.SortMovies(filterList ?? [], id).ToArray();
-        }
-
-        /// <summary>
-        /// 今表示中の一覧だけを並べ直し、XAML バインディングを壊さず中身だけ更新する。
-        /// </summary>
-        private void SortData(string id)
-        {
-            _ = SortDataFromLegacyCallerAsync(id);
-        }
-
-        private async Task SortDataFromLegacyCallerAsync(string id)
-        {
-            try
-            {
-                await SortDataAsync(id);
-            }
-            catch (Exception ex)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"sort legacy caller failed: sort={id} message={ex.Message}"
-                );
-            }
-        }
-
-        private async Task<bool> SortDataAsync(string id)
-        {
-            Stopwatch sw = Stopwatch.StartNew();
-            int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
-            using CancellationTokenSource sortCancellation = BeginFilterAndSortCancellation();
-            CancellationToken sortCancellationToken = sortCancellation.Token;
-            MovieRecords[] source = MainVM.FilteredMovieRecs
-                .Where(movie => movie != null)
-                .ToArray();
-            MovieRecords selectedBeforeSort = GetSelectedItemByTabIndex();
-            bool runOnBackground = ShouldRunFilterSortOnBackground(source.Length);
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"sort start: revision={requestRevision} sort={id} source={source.Length} background={runOnBackground}"
-            );
-            try
-            {
-                MovieRecords[] sorted = runOnBackground
-                    ? await Task.Run(
-                        () =>
-                        {
-                            sortCancellationToken.ThrowIfCancellationRequested();
-                            MovieRecords[] result = MainVM.SortMovies(source, id).ToArray();
-                            sortCancellationToken.ThrowIfCancellationRequested();
-                            return result;
-                        },
-                        sortCancellationToken
-                    )
-                    : MainVM.SortMovies(source, id).ToArray();
-                sortCancellationToken.ThrowIfCancellationRequested();
-                if (requestRevision != _filterAndSortRequestRevision)
-                {
-                    DebugRuntimeLog.Write(
-                        "ui-tempo",
-                        $"sort skip stale: revision={requestRevision} current_revision={_filterAndSortRequestRevision} sort={id} total_ms={sw.ElapsedMilliseconds}"
-                    );
-                    return false;
-                }
-
-                filterList = sorted;
-                int currentTabIndex = TryGetCurrentUpperTabFixedIndex(out int resolvedTabIndex)
-                    ? resolvedTabIndex
-                    : UpperTabGridFixedIndex;
-                FilteredMovieRecsUpdateMode updateMode =
-                    UpperTabCollectionUpdatePolicy.ResolveUpdateMode(
-                        currentTabIndex,
-                        isSortOnly: true
-                    );
-                FilteredMovieRecsUpdateResult applyResult = MainVM.ReplaceFilteredMovieRecs(
-                    sorted,
-                    updateMode: updateMode
-                );
-                MainVM.DbInfo.SearchCount = sorted.Length;
-                bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
-                    selectedBeforeSort,
-                    applyResult,
-                    currentTabIndex,
-                    updateMode
-                );
-                if (applyResult.HasChanges)
-                {
-                    NotifyUpperTabViewportSourceChanged();
-                    RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "sort");
-                }
-                sw.Stop();
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"sort end: revision={requestRevision} sort={id} tab={currentTabIndex} changed={applyResult.HasChanges} prefix={applyResult.RetainedPrefixCount} suffix={applyResult.RetainedSuffixCount} removed={applyResult.RemovedCount} inserted={applyResult.InsertedCount} moved={applyResult.MovedCount} update_mode={updateMode} refresh_applied={shouldRefresh} count={sorted.Length} background={runOnBackground} total_ms={sw.ElapsedMilliseconds}"
-                );
-                return true;
-            }
-            catch (OperationCanceledException) when (sortCancellationToken.IsCancellationRequested)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"sort canceled: revision={requestRevision} current_revision={_filterAndSortRequestRevision} sort={id} total_ms={sw.ElapsedMilliseconds}"
-                );
-                return false;
-            }
-            catch (Exception err)
-            {
-                MessageBox.Show(
-                    err.Message,
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error
-                );
-                throw;
-            }
         }
 
         // 一覧差し替え後の互換 Refresh は、選択が実際に変わった時だけ詳細/タグへ流す。

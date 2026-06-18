@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace IndigoMovieManager.Tests;
 
 [TestFixture]
@@ -237,15 +239,20 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void RefreshMovieViewFromCurrentSourceAsync_後着キャンセルtokenをin_memory再計算へ通す()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
         string method = GetMethodBlock(
-            mainWindowSource,
+            requestSource,
             "private async Task RefreshMovieViewFromCurrentSourceAsync("
         );
 
+        Assert.That(requestSource, Does.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
         Assert.That(method, Does.Contain("BeginFilterAndSortCancellation();"));
         Assert.That(method, Does.Contain("CancellationToken refreshCancellationToken"));
         Assert.That(method, Does.Contain("refreshCancellationToken.ThrowIfCancellationRequested();"));
         Assert.That(method, Does.Contain("Task.Run("));
+        Assert.That(method, Does.Contain("MovieViewReadModelRequest readModelRequest = new()"));
+        Assert.That(method, Does.Contain("MovieViewReadModelBuilder.Build(readModelRequest)"));
         Assert.That(method, Does.Contain("MainVM.FilterMovies("));
         Assert.That(method, Does.Contain("refreshCancellationToken,"));
         int dispatcherPriorityIndex = method.IndexOf(
@@ -275,7 +282,8 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void FilterAndSortAsync_full_reloadのDB読込にも後着キャンセルtokenを通す()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
-        string method = GetMethodBlock(mainWindowSource, "private async Task FilterAndSortAsync(");
+        string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
+        string method = GetMethodBlock(requestSource, "private async Task FilterAndSortAsync(");
         int loadIndex = method.IndexOf(
             "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id)",
             StringComparison.Ordinal
@@ -290,6 +298,8 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             StringComparison.Ordinal
         );
 
+        Assert.That(requestSource, Does.Contain("private async Task FilterAndSortAsync("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task FilterAndSortAsync("));
         Assert.That(loadIndex, Is.GreaterThanOrEqualTo(0));
         Assert.That(
             method.IndexOf(
@@ -375,12 +385,13 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void SortDataAsync_大件数sortはbackgroundとrevision_guardへ寄せる()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
-        string legacyWrapper = GetMethodBlock(mainWindowSource, "private void SortData(");
+        string readModelUiSource = GetRepoText("Views", "Main", "MainWindow.MovieViewReadModel.cs");
+        string legacyWrapper = GetMethodBlock(readModelUiSource, "private void SortData(");
         string legacyAsyncWrapper = GetMethodBlock(
-            mainWindowSource,
+            readModelUiSource,
             "private async Task SortDataFromLegacyCallerAsync("
         );
-        string sortAsync = GetMethodBlock(mainWindowSource, "private async Task<bool> SortDataAsync(");
+        string sortAsync = GetMethodBlock(readModelUiSource, "private async Task<bool> SortDataAsync(");
         string comboChanged = GetMethodBlock(
             mainWindowSource,
             "private async void ComboSort_SelectionChanged("
@@ -395,6 +406,9 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortAsync, Does.Contain("Task.Run("));
         Assert.That(sortAsync, Does.Contain("sort skip stale:"));
         Assert.That(sortAsync, Does.Contain("sort canceled:"));
+        Assert.That(sortAsync, Does.Contain("snapshot_ms="));
+        Assert.That(sortAsync, Does.Contain("MovieViewReadModelResult.FromSorted("));
+        Assert.That(sortAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
         Assert.That(sortAsync, Does.Contain("sort end: revision="));
         Assert.That(comboChanged, Does.Contain("await SortDataAsync(id.ToString());"));
         Assert.That(comboChanged, Does.Contain("if (shouldSelectFirstItem)"));
@@ -404,35 +418,101 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void 一覧更新後の互換Refreshは選択変化時だけ詳細タグへ流す()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
+        string readModelUiSource = GetRepoText("Views", "Main", "MainWindow.MovieViewReadModel.cs");
         string filterAsync = GetMethodBlock(
-            mainWindowSource,
+            requestSource,
             "private async Task FilterAndSortAsync("
         );
-        string applyMemory = GetMethodBlock(
-            mainWindowSource,
-            "private bool TryApplyMemoryRefreshResultOnUiThread("
+        string applyReadModel = GetMethodBlock(
+            readModelUiSource,
+            "private bool TryApplyMovieViewReadModelResultOnUiThread("
         );
-        string sortAsync = GetMethodBlock(mainWindowSource, "private async Task<bool> SortDataAsync(");
+        string sortAsync = GetMethodBlock(readModelUiSource, "private async Task<bool> SortDataAsync(");
         string helper = GetMethodBlock(
             mainWindowSource,
             "private bool RefreshSelectionDetailAfterCollectionApplyIfNeeded("
         );
 
-        Assert.That(filterAsync, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
-        Assert.That(filterAsync, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(filterAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
+        Assert.That(filterAsync, Does.Not.Contain("MainVM.ReplaceFilteredMovieRecs("));
         Assert.That(filterAsync, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
+        Assert.That(mainWindowSource, Does.Not.Contain("private bool TryApplyMovieViewReadModelResultOnUiThread("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task<bool> SortDataAsync("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task FilterAndSortAsync("));
 
-        Assert.That(applyMemory, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
-        Assert.That(applyMemory, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
-        Assert.That(applyMemory, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
+        Assert.That(applyReadModel, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
+        Assert.That(applyReadModel, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
+        Assert.That(applyReadModel, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(applyReadModel, Does.Contain("!isSortOnly && string.Equals(resolvedSortId, \"28\", StringComparison.Ordinal)"));
+        Assert.That(applyReadModel, Does.Contain("readmodel apply end: request_revision="));
+        Assert.That(applyReadModel, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
 
-        Assert.That(sortAsync, Does.Contain("MovieRecords selectedBeforeSort = GetSelectedItemByTabIndex();"));
-        Assert.That(sortAsync, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(sortAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
+        Assert.That(sortAsync, Does.Not.Contain("MainVM.ReplaceFilteredMovieRecs("));
+        Assert.That(sortAsync, Does.Not.Contain("RefreshThumbnailErrorRecords(force: true)"));
         Assert.That(sortAsync, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
 
         Assert.That(helper, Does.Contain("ShouldRefreshAfterCollectionApply("));
         Assert.That(helper, Does.Contain("ReferenceEquals(selectedBeforeApply, selectedAfterApply)"));
         Assert.That(helper, Does.Contain("Refresh();"));
+    }
+
+    [Test]
+    public void MovieViewReadModelBuilder_検索sort計算をMainWindow外へ分離する()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
+        string builderSource = GetRepoText("Views", "Main", "MovieViewReadModelBuilder.cs");
+        string readModelUiSource = GetRepoText("Views", "Main", "MainWindow.MovieViewReadModel.cs");
+        string filterAsync = GetMethodBlock(
+            requestSource,
+            "private async Task FilterAndSortAsync("
+        );
+        string refreshAsync = GetMethodBlock(
+            requestSource,
+            "private async Task RefreshMovieViewFromCurrentSourceAsync("
+        );
+        string applyReadModel = GetMethodBlock(
+            readModelUiSource,
+            "private bool TryApplyMovieViewReadModelResultOnUiThread("
+        );
+
+        Assert.That(builderSource, Does.Contain("internal sealed class MovieViewReadModelRequest"));
+        Assert.That(builderSource, Does.Contain("internal sealed class MovieViewReadModelResult"));
+        Assert.That(builderSource, Does.Contain("internal static class MovieViewReadModelBuilder"));
+        Assert.That(builderSource, Does.Contain("public static MovieViewReadModelResult Build("));
+        Assert.That(builderSource, Does.Contain("TryBuildChangedMovieRefreshSourceWithReason("));
+        Assert.That(builderSource, Does.Not.Contain("ApplyObservedStateToMovieRecord("));
+        Assert.That(filterAsync, Does.Contain("MovieViewReadModelBuilder.Build(readModelRequest)"));
+        Assert.That(filterAsync, Does.Contain("snapshot_ms="));
+        Assert.That(refreshAsync, Does.Contain("MovieViewReadModelBuilder.Build(readModelRequest)"));
+        Assert.That(refreshAsync, Does.Contain("CaptureMovieViewReadModelSnapshotOnUiThreadAsync("));
+        Assert.That(refreshAsync, Does.Contain("snapshot_ms="));
+        Assert.That(readModelUiSource, Does.Contain("private readonly record struct MovieViewReadModelSnapshot"));
+        Assert.That(readModelUiSource, Does.Contain("private async Task<MovieViewReadModelSnapshot> CaptureMovieViewReadModelSnapshotOnUiThreadAsync("));
+        Assert.That(readModelUiSource, Does.Contain("private static void ApplyObservedStatesToMovieRecords("));
+        Assert.That(readModelUiSource, Does.Contain("private readonly record struct MovieViewReadModelApplyResult"));
+        Assert.That(readModelUiSource, Does.Contain("private async Task<bool> SortDataAsync("));
+        Assert.That(requestSource, Does.Contain("public void FilterAndSort(string id, bool IsGetNew = false)"));
+        Assert.That(requestSource, Does.Contain("private async Task FilterAndSortAsync("));
+        Assert.That(requestSource, Does.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(requestSource, Does.Contain("private Task RefreshMovieViewAfterRenameAsync("));
+        Assert.That(requestSource, Does.Contain("private CancellationTokenSource BeginFilterAndSortCancellation("));
+        Assert.That(requestSource, Does.Contain("internal static string ResolveFilterSortExecutionRouteLabel("));
+        Assert.That(requestSource, Does.Contain("internal static string ResolveFilterSortFullReloadReason("));
+        Assert.That(requestSource, Does.Contain("internal static bool DoesSearchDependOnDirtyFields("));
+        Assert.That(requestSource, Does.Contain("internal static bool DoesCurrentSortDependOnDirtyFields("));
+        Assert.That(requestSource, Does.Contain("internal static bool ShouldRunFilterSortOnBackground("));
+        Assert.That(requestSource, Does.Contain("internal static bool ShouldUseFastAsciiSearchProjection("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private readonly record struct MovieViewReadModelSnapshot"));
+        Assert.That(mainWindowSource, Does.Not.Contain("private bool TryApplyMovieViewReadModelResultOnUiThread("));
+        Assert.That(mainWindowSource, Does.Not.Contain("public void FilterAndSort(string id, bool IsGetNew = false)"));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task FilterAndSortAsync("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private Task RefreshMovieViewAfterRenameAsync("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private CancellationTokenSource BeginFilterAndSortCancellation("));
+        Assert.That(applyReadModel, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
     }
 
     [Test]
@@ -679,16 +759,19 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
             {
-                return File.ReadAllText(candidate);
-            }
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
 
-            current = current.Parent;
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
@@ -820,20 +903,43 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
     private static DirectoryInfo GetRepoRoot()
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
         {
-            string candidate = Path.Combine(current.FullName, "Views", "Main", "MainWindow.xaml.cs");
-            if (File.Exists(candidate))
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
             {
-                return current;
-            }
+                string candidate = Path.Combine(
+                    current.FullName,
+                    "Views",
+                    "Main",
+                    "MainWindow.xaml.cs"
+                );
+                if (File.Exists(candidate))
+                {
+                    return current;
+                }
 
-            current = current.Parent;
+                current = current.Parent;
+            }
         }
 
         Assert.Fail("Repository root not found.");
         return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
     }
 
     private static string NormalizeRepoRelativePath(DirectoryInfo repoRoot, string filePath)
