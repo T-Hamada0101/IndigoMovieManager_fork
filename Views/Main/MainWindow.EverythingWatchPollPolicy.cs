@@ -88,12 +88,12 @@ namespace IndigoMovieManager
         )
         {
             return UiOperationPriorityPolicy.ShouldDeferBackgroundWork(
-                new UiOperationPrioritySnapshot(
+                CreateEverythingWatchPollOperationSnapshot(
                     isUserPriorityActive,
-                    IsManualMode: false,
-                    IsWatchUiSuppressed: false,
-                    IsRecentViewportInteractionActive: false,
-                    IsPlayerPlaybackActive: false
+                    isManualMode: false,
+                    isWatchUiSuppressed: false,
+                    isRecentViewportInteractionActive: false,
+                    isPlayerPlaybackActive: false
                 )
             );
         }
@@ -121,12 +121,12 @@ namespace IndigoMovieManager
         )
         {
             return UiOperationPriorityPolicy.ResolveEverythingPollDeferReason(
-                new UiOperationPrioritySnapshot(
-                    IsUserPriorityActive: isDeferredByUserPriority,
-                    IsManualMode: false,
-                    IsWatchUiSuppressed: isDeferredByUiSuppression,
-                    IsRecentViewportInteractionActive: isRecentViewportInteractionActive,
-                    IsPlayerPlaybackActive: false
+                CreateEverythingWatchPollOperationSnapshot(
+                    isUserPriorityActive: isDeferredByUserPriority,
+                    isManualMode: false,
+                    isWatchUiSuppressed: isDeferredByUiSuppression,
+                    isRecentViewportInteractionActive: isRecentViewportInteractionActive,
+                    isPlayerPlaybackActive: false
                 )
             );
         }
@@ -145,12 +145,12 @@ namespace IndigoMovieManager
             bool isPlayerPlaybackActive
         )
         {
-            UiOperationPrioritySnapshot snapshot = new(
-                IsUserPriorityActive: isDeferredByUserPriority,
-                IsManualMode: false,
-                IsWatchUiSuppressed: isDeferredByUiSuppression,
-                IsRecentViewportInteractionActive: isRecentViewportInteractionActive,
-                IsPlayerPlaybackActive: isPlayerPlaybackActive
+            UiOperationSnapshot snapshot = CreateEverythingWatchPollOperationSnapshot(
+                isUserPriorityActive: isDeferredByUserPriority,
+                isManualMode: false,
+                isWatchUiSuppressed: isDeferredByUiSuppression,
+                isRecentViewportInteractionActive: isRecentViewportInteractionActive,
+                isPlayerPlaybackActive: isPlayerPlaybackActive
             );
             string deferReason = UiOperationPriorityPolicy.ResolveEverythingPollDeferReason(
                 snapshot
@@ -266,12 +266,12 @@ namespace IndigoMovieManager
                 delayMs = EverythingWatchPollIntervalMs;
             }
 
-            UiOperationPrioritySnapshot snapshot = new(
-                IsUserPriorityActive: isDeferredByUserPriority,
-                IsManualMode: false,
-                IsWatchUiSuppressed: isDeferredByUiSuppression,
-                IsRecentViewportInteractionActive: isRecentViewportInteractionActive,
-                IsPlayerPlaybackActive: isPlayerPlaybackActive
+            UiOperationSnapshot snapshot = CreateEverythingWatchPollOperationSnapshot(
+                isUserPriorityActive: isDeferredByUserPriority,
+                isManualMode: false,
+                isWatchUiSuppressed: isDeferredByUiSuppression,
+                isRecentViewportInteractionActive: isRecentViewportInteractionActive,
+                isPlayerPlaybackActive: isPlayerPlaybackActive
             );
             string deferReason = UiOperationPriorityPolicy.ResolveEverythingPollDeferReason(
                 snapshot
@@ -282,6 +282,24 @@ namespace IndigoMovieManager
             }
 
             return Math.Max(delayMs, EverythingWatchPollIntervalCalmMs);
+        }
+
+        // Everything poll の入力状態は UI Shell 共通 snapshot を正本にして、旧名 DTO へ戻さない。
+        private static UiOperationSnapshot CreateEverythingWatchPollOperationSnapshot(
+            bool isUserPriorityActive,
+            bool isManualMode,
+            bool isWatchUiSuppressed,
+            bool isRecentViewportInteractionActive,
+            bool isPlayerPlaybackActive
+        )
+        {
+            return new UiOperationSnapshot(
+                isUserPriorityActive,
+                isManualMode,
+                isWatchUiSuppressed,
+                isRecentViewportInteractionActive,
+                isPlayerPlaybackActive
+            );
         }
 
         // Everything 対象が無い周回では、queue DB 参照や短周期 wake-up を避ける。

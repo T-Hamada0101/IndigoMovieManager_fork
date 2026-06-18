@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using IndigoMovieManager;
@@ -597,6 +598,16 @@ public sealed class EverythingWatchPollPolicyTests
         Assert.That(result, Is.Empty);
     }
 
+    [Test]
+    public void EverythingWatchPoll実行経路は共通UiOperationSnapshotを使う()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.EverythingWatchPollPolicy.cs");
+
+        Assert.That(source, Does.Contain("private static UiOperationSnapshot CreateEverythingWatchPollOperationSnapshot("));
+        Assert.That(source, Does.Contain("return new UiOperationSnapshot("));
+        Assert.That(source, Does.Not.Contain("UiOperationPrioritySnapshot"));
+    }
+
     private static MainWindow CreateWindow()
     {
         return (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
@@ -643,5 +654,41 @@ public sealed class EverythingWatchPollPolicyTests
         )!;
         Assert.That(field, Is.Not.Null, fieldName);
         return (T)field.GetValue(window)!;
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
+        {
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
+        }
+
+        Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
+        return "";
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
     }
 }
