@@ -14,6 +14,9 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
         public const string ResultRetryable = "retryable";
         public const string ResultNotRetryable = "not-retryable";
         public const string ResultArtifactKind = "thumbnail-image";
+        public const string ProgressStageQueued = "queued";
+        public const string ProgressStageRunning = "running";
+        public const string ProgressStageCompleted = "completed";
         private const string ResultArtifactContentType = "image/jpeg";
 
         public static WorkerJobRequestDto ToWorkerJobRequestDto(
@@ -38,6 +41,76 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
                 Capabilities = [QueueCapability, WorkerKind, priority.ToString()],
                 DiagnosticContext = BuildDiagnosticContext(request, priority),
                 RequestedAtUtc = request.RequestedAtUtc,
+            };
+        }
+
+        public static WorkerJobProgressDto ToWorkerJobProgressDto(
+            QueueDbLeaseItem leasedItem,
+            int completedCount,
+            int totalCount,
+            int currentParallelism = 0,
+            int configuredParallelism = 0,
+            string stage = ProgressStageRunning,
+            string message = "",
+            DateTime? capturedAtUtc = null
+        )
+        {
+            leasedItem ??= new QueueDbLeaseItem();
+            string normalizedStage = NormalizeField(stage);
+            if (string.IsNullOrWhiteSpace(normalizedStage))
+            {
+                normalizedStage = ProgressStageRunning;
+            }
+
+            return new WorkerJobProgressDto
+            {
+                JobId = BuildJobId(leasedItem),
+                Stage = normalizedStage,
+                CompletedCount = Math.Max(0, completedCount),
+                TotalCount = NormalizeTotalCount(completedCount, totalCount),
+                CurrentInputFile = leasedItem.MoviePath ?? "",
+                Message = NormalizeField(message),
+                Metrics = BuildProgressMetrics(
+                    leasedItem,
+                    currentParallelism,
+                    configuredParallelism
+                ),
+                CapturedAtUtc = capturedAtUtc ?? DateTime.UtcNow,
+            };
+        }
+
+        public static WorkerJobProgressDto ToWorkerJobProgressDto(
+            ThumbnailProgressRuntimeSnapshot snapshot,
+            string stage = ProgressStageRunning,
+            string message = "",
+            DateTime? capturedAtUtc = null
+        )
+        {
+            snapshot ??= new ThumbnailProgressRuntimeSnapshot();
+            string normalizedStage = NormalizeField(stage);
+            if (string.IsNullOrWhiteSpace(normalizedStage))
+            {
+                normalizedStage = ProgressStageRunning;
+            }
+
+            ThumbnailProgressWorkerSnapshot currentWorker =
+                snapshot.ActiveWorkers?.FirstOrDefault(x => x?.IsActive == true)
+                ?? snapshot.RescueWorker;
+
+            // runtime snapshot から取れる軽量値だけを Worker 進捗語彙へ畳む。
+            return new WorkerJobProgressDto
+            {
+                JobId = BuildProgressSnapshotJobId(snapshot),
+                Stage = normalizedStage,
+                CompletedCount = Math.Max(0, snapshot.SessionCompletedCount),
+                TotalCount = NormalizeTotalCount(
+                    snapshot.SessionCompletedCount,
+                    snapshot.SessionTotalCount
+                ),
+                CurrentInputFile = currentWorker?.MoviePath ?? "",
+                Message = NormalizeField(message),
+                Metrics = BuildProgressSnapshotMetrics(snapshot, currentWorker),
+                CapturedAtUtc = capturedAtUtc ?? DateTime.UtcNow,
             };
         }
 
@@ -116,6 +189,14 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             );
         }
 
+        private static string BuildProgressSnapshotJobId(ThumbnailProgressRuntimeSnapshot snapshot)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"thumbnail-progress-snapshot-{Math.Max(0, snapshot.Version)}"
+            );
+        }
+
         private static Dictionary<string, string> BuildDiagnosticContext(
             QueueRequest request,
             ThumbnailQueuePriority priority
@@ -135,6 +216,59 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
                 ["thumbTimePos"] = request.ThumbTimePos?.ToString(CultureInfo.InvariantCulture)
                     ?? "",
                 ["priority"] = priority.ToString(),
+            };
+        }
+
+        private static Dictionary<string, string> BuildProgressMetrics(
+            QueueDbLeaseItem leasedItem,
+            int currentParallelism,
+            int configuredParallelism
+        )
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["queueId"] = Math.Max(0, leasedItem.QueueId)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["moviePathKey"] = ResolveMoviePathKey(
+                    leasedItem.MoviePathKey,
+                    leasedItem.MoviePath
+                ),
+                ["tabIndex"] = leasedItem.TabIndex.ToString(CultureInfo.InvariantCulture),
+                ["priority"] = ThumbnailQueuePriorityHelper.Normalize(leasedItem.Priority)
+                    .ToString(),
+                ["attemptCount"] = Math.Max(0, leasedItem.AttemptCount)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["ownerInstanceId"] = NormalizeField(leasedItem.OwnerInstanceId),
+                ["currentParallelism"] = Math.Max(0, currentParallelism)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["configuredParallelism"] = Math.Max(0, configuredParallelism)
+                    .ToString(CultureInfo.InvariantCulture),
+            };
+        }
+
+        private static Dictionary<string, string> BuildProgressSnapshotMetrics(
+            ThumbnailProgressRuntimeSnapshot snapshot,
+            ThumbnailProgressWorkerSnapshot currentWorker
+        )
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["version"] = Math.Max(0, snapshot.Version).ToString(CultureInfo.InvariantCulture),
+                ["sessionCompletedCount"] = Math.Max(0, snapshot.SessionCompletedCount)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["sessionTotalCount"] = Math.Max(0, snapshot.SessionTotalCount)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["totalCreatedCount"] = Math.Max(0, snapshot.TotalCreatedCount)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["currentParallelism"] = Math.Max(0, snapshot.CurrentParallelism)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["configuredParallelism"] = Math.Max(0, snapshot.ConfiguredParallelism)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["activeWorkerCount"] = Math.Max(0, snapshot.ActiveWorkers?.Count ?? 0)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["workerId"] = Math.Max(0, currentWorker?.WorkerId ?? 0)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["workerLabel"] = NormalizeField(currentWorker?.WorkerLabel),
             };
         }
 
@@ -277,6 +411,11 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             return string.IsNullOrWhiteSpace(moviePathKey)
                 ? QueueDbPathResolver.CreateMoviePathKey(moviePath ?? "")
                 : moviePathKey.Trim();
+        }
+
+        private static int NormalizeTotalCount(int completedCount, int totalCount)
+        {
+            return Math.Max(Math.Max(0, completedCount), Math.Max(0, totalCount));
         }
 
         private static string NormalizeField(string value)

@@ -19,7 +19,7 @@
 | Phase 3. In-process Scheduler | 31% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。runtime 接続はまだ行わない | 実行器本体を作る前に、実機ログで watch cancel / poll defer / thumbnail refresh の発生頻度と支配時間を揃える |
 | Phase 4. Image Pipeline 統一 | 36% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作り、詳細サムネ背景確認は `ImageProbeRequest` / `ImageProbeResult` で missing / ERROR marker / stamp を説明できる | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard を確認する |
 | Phase 5. Persistence Pipeline | 36% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` により、settings / score / tag / view_count / movie_path / bookmark / skin profile の保存失敗は `dirty` / `failed` / `retryable` / `notify_ui` の共通 fields で読める入口になった | 実機ログで失敗時だけ共通 fields が出ること、通知が必要な非 retryable だけを UI 通知候補にすることを確認する |
-| Phase 6. Worker 契約 | 43% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果、watch metadata probe 入出力から Worker DTO へ写す adapter と focused test を追加済み | metadata probe の実行ログ / progress 語彙を、実機支配要因を見て必要最小限で接続する |
+| Phase 6. Worker 契約 | 44% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力から Worker DTO へ写す adapter と focused test を追加済み | metadata probe の実行ログ / progress 語彙を、実機支配要因を見て必要最小限で接続する |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 22% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
 ## 1. Summary
@@ -58,6 +58,7 @@
 - rescue worker job JSON は `WorkerJobRequestDto` / `WorkerJobResultDto` へ写す adapter を持ち、既存 worker 実行を壊さず契約語彙へ寄せる入口ができた。
 - thumbnail queue の `QueueRequest` は `ThumbnailQueueWorkerContractAdapter` で `WorkerJobRequestDto` へ写せるようになり、queue runtime 側も UI 非依存の worker request 語彙で説明できる入口ができた。
 - thumbnail queue の実行結果は、runtime 挙動を変えずに `WorkerJobResultDto` へ artifact path / failure kind / elapsed / retryability / metrics を写せる入口を追加した。
+- thumbnail queue の進捗は、runtime 挙動を変えずに `QueueDbLeaseItem` と `ThumbnailProgressRuntimeSnapshot` の軽量値から `WorkerJobProgressDto` へ写せる入口を追加した。
 - watch の metadata probe は `WatchMetadataProbeWorkerContractAdapter` で `WorkerJobRequestDto` / `WorkerJobResultDto` へ写せるようになり、既存 probe 実行順や DB 更新を変えずに request / result / artifact / metrics 語彙へ寄せる入口ができた。
 - Watcher change set は `WatchUiApplyRequest` へ畳んでから full fallback / in-memory ReadModel 再計算へ流し、Watcher 側が表示 collection を直接 apply しない禁止線を source policy で固定した。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。

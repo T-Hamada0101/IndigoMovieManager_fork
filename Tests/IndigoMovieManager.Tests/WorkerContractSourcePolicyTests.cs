@@ -171,6 +171,30 @@ public sealed class WorkerContractSourcePolicyTests
     }
 
     [Test]
+    public void ThumbnailQueue進捗はWorker契約Dtoへ写せる()
+    {
+        string repoRoot = FindRepoRoot();
+        string adapterSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/QueuePipeline/ThumbnailQueueWorkerContractAdapter.cs"
+            )
+        );
+
+        Assert.That(adapterSource, Does.Contain("WorkerJobProgressDto"));
+        Assert.That(adapterSource, Does.Contain("ThumbnailProgressRuntimeSnapshot"));
+        Assert.That(adapterSource, Does.Contain("ProgressStageRunning"));
+        Assert.That(adapterSource, Does.Contain("CompletedCount"));
+        Assert.That(adapterSource, Does.Contain("TotalCount"));
+        Assert.That(adapterSource, Does.Contain("CurrentInputFile"));
+        Assert.That(adapterSource, Does.Not.Contain("Path.Exists"));
+        Assert.That(adapterSource, Does.Not.Contain("File."));
+        Assert.That(adapterSource, Does.Not.Contain("Directory."));
+        Assert.That(adapterSource, Does.Not.Contain("Dispatcher"));
+        Assert.That(adapterSource, Does.Not.Contain("MainWindow"));
+    }
+
+    [Test]
     public void MetadataProbeはWorker契約Dtoへ写せる()
     {
         string repoRoot = FindRepoRoot();

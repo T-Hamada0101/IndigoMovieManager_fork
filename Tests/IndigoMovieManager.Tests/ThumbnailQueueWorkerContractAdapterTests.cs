@@ -89,6 +89,104 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
     }
 
     [Test]
+    public void Queue進捗をWorkerJobProgressDtoへ写せる()
+    {
+        DateTime capturedAt = DateTime.SpecifyKind(
+            new DateTime(2026, 6, 18, 12, 0, 0, 123),
+            DateTimeKind.Utc
+        );
+        QueueDbLeaseItem leasedItem = CreateLeaseItem();
+
+        WorkerJobProgressDto dto =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobProgressDto(
+                leasedItem,
+                completedCount: 2,
+                totalCount: 10,
+                currentParallelism: 3,
+                configuredParallelism: 6,
+                stage: "  running  ",
+                message: "  working  ",
+                capturedAtUtc: capturedAt
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.JobId, Is.EqualTo("thumbnail-movie-key-001-queue-77"));
+            Assert.That(dto.Stage, Is.EqualTo("running"));
+            Assert.That(dto.CompletedCount, Is.EqualTo(2));
+            Assert.That(dto.TotalCount, Is.EqualTo(10));
+            Assert.That(dto.CurrentInputFile, Is.EqualTo("movies/sample.mp4"));
+            Assert.That(dto.Message, Is.EqualTo("working"));
+            Assert.That(dto.CapturedAtUtc, Is.EqualTo(capturedAt));
+            Assert.That(dto.CapturedAtUtc.Kind, Is.EqualTo(DateTimeKind.Utc));
+            Assert.That(dto.Metrics["queueId"], Is.EqualTo("77"));
+            Assert.That(dto.Metrics["moviePathKey"], Is.EqualTo("movie-key-001"));
+            Assert.That(dto.Metrics["tabIndex"], Is.EqualTo("2"));
+            Assert.That(dto.Metrics["priority"], Is.EqualTo("Preferred"));
+            Assert.That(dto.Metrics["attemptCount"], Is.EqualTo("3"));
+            Assert.That(dto.Metrics["ownerInstanceId"], Is.EqualTo("worker-a"));
+            Assert.That(dto.Metrics["currentParallelism"], Is.EqualTo("3"));
+            Assert.That(dto.Metrics["configuredParallelism"], Is.EqualTo("6"));
+        });
+    }
+
+    [Test]
+    public void QueueRuntimeSnapshotから最小ProgressDtoを作れる()
+    {
+        DateTime capturedAt = DateTime.SpecifyKind(
+            new DateTime(2026, 6, 18, 12, 30, 0),
+            DateTimeKind.Utc
+        );
+        ThumbnailProgressRuntimeSnapshot snapshot = new()
+        {
+            Version = 15,
+            SessionCompletedCount = 4,
+            SessionTotalCount = 3,
+            TotalCreatedCount = 120,
+            CurrentParallelism = 2,
+            ConfiguredParallelism = 5,
+            ActiveWorkers =
+            [
+                new ThumbnailProgressWorkerSnapshot
+                {
+                    WorkerId = 8,
+                    WorkerLabel = "Thread 8",
+                    MoviePath = "movies/current.mp4",
+                    IsActive = true,
+                },
+            ],
+        };
+
+        WorkerJobProgressDto dto =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobProgressDto(
+                snapshot,
+                stage: "",
+                message: "session",
+                capturedAtUtc: capturedAt
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.JobId, Is.EqualTo("thumbnail-progress-snapshot-15"));
+            Assert.That(dto.Stage, Is.EqualTo("running"));
+            Assert.That(dto.CompletedCount, Is.EqualTo(4));
+            Assert.That(dto.TotalCount, Is.EqualTo(4));
+            Assert.That(dto.CurrentInputFile, Is.EqualTo("movies/current.mp4"));
+            Assert.That(dto.Message, Is.EqualTo("session"));
+            Assert.That(dto.CapturedAtUtc, Is.EqualTo(capturedAt));
+            Assert.That(dto.Metrics["version"], Is.EqualTo("15"));
+            Assert.That(dto.Metrics["sessionCompletedCount"], Is.EqualTo("4"));
+            Assert.That(dto.Metrics["sessionTotalCount"], Is.EqualTo("3"));
+            Assert.That(dto.Metrics["totalCreatedCount"], Is.EqualTo("120"));
+            Assert.That(dto.Metrics["currentParallelism"], Is.EqualTo("2"));
+            Assert.That(dto.Metrics["configuredParallelism"], Is.EqualTo("5"));
+            Assert.That(dto.Metrics["activeWorkerCount"], Is.EqualTo("1"));
+            Assert.That(dto.Metrics["workerId"], Is.EqualTo("8"));
+            Assert.That(dto.Metrics["workerLabel"], Is.EqualTo("Thread 8"));
+        });
+    }
+
+    [Test]
     public void Queue実行成功結果をWorkerJobResultDtoへ写せる()
     {
         QueueDbLeaseItem leasedItem = CreateLeaseItem();
