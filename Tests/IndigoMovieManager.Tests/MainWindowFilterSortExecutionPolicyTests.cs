@@ -345,8 +345,13 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void DataRowToViewData_単発追加の存在確認は背景bulk経路と後追い更新へ逃がす()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string movieRecordFactorySource = GetRepoText(
+            "Views",
+            "Main",
+            "MainWindow.MovieRecordFactory.cs"
+        );
         string method = GetMethodBlock(
-            mainWindowSource,
+            movieRecordFactorySource,
             "private async Task DataRowToViewData("
         );
         string watcherSource = GetRepoText("Watcher", "MainWindow.WatcherUiBridge.cs");
@@ -378,6 +383,24 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(method, Does.Contain("QueueMovieExistsRefresh([item], _filterAndSortRequestRevision);"));
         Assert.That(method, Does.Not.Contain("CreateMovieRecordFromDataRow(row);"));
         Assert.That(method, Does.Not.Contain("Path.Exists("));
+        Assert.That(movieRecordFactorySource, Does.Contain("private MovieRecords CreateMovieRecordFromDataRow("));
+        Assert.That(movieRecordFactorySource, Does.Contain("private readonly record struct MovieRecordBulkBuildContext"));
+        Assert.That(movieRecordFactorySource, Does.Contain("private sealed class MovieRecordBulkBuildCache"));
+        Assert.That(movieRecordFactorySource, Does.Contain("private MovieRecordBulkBuildContext CaptureMovieRecordBulkBuildContext("));
+        Assert.That(movieRecordFactorySource, Does.Contain("private static MovieRecordBulkBuildCache BuildMovieRecordBulkBuildCache("));
+        Assert.That(movieRecordFactorySource, Does.Contain("private static string ResolveThumbnailDisplayPath("));
+        Assert.That(movieRecordFactorySource, Does.Contain("private async Task<MovieRecords[]> SetRecordsToSource("));
+        Assert.That(movieRecordFactorySource, Does.Contain("private void QueueMovieExistsRefresh("));
+        Assert.That(movieRecordFactorySource, Does.Contain("private Task ApplyMovieExistsRefreshBatchAsync("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task DataRowToViewData("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private MovieRecords CreateMovieRecordFromDataRow("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private readonly record struct MovieRecordBulkBuildContext"));
+        Assert.That(mainWindowSource, Does.Not.Contain("private sealed class MovieRecordBulkBuildCache"));
+        Assert.That(mainWindowSource, Does.Not.Contain("private MovieRecordBulkBuildContext CaptureMovieRecordBulkBuildContext("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private static MovieRecordBulkBuildCache BuildMovieRecordBulkBuildCache("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private static string ResolveThumbnailDisplayPath("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private async Task<MovieRecords[]> SetRecordsToSource("));
+        Assert.That(mainWindowSource, Does.Not.Contain("private Task ApplyMovieExistsRefreshBatchAsync("));
         Assert.That(appendMethod, Does.Contain("DataRowToViewData(targetRow, snapshotDbFullPath);"));
     }
 

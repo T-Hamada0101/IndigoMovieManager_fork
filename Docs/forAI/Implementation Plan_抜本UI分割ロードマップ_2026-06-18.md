@@ -356,4 +356,30 @@ active skin 採取は、引き続きコピー `.wb` と `INDIGO_DIAGNOSTIC_NO_PE
 
 次の推奨:
 
-- Phase 2 として `Views/Main/MainWindow.MovieRecordFactory.cs` を追加し、DB row から `MovieRecords` を作る境界を分ける。
+- Phase 2 は完了済み。次は Phase 3 として `Views/Main/MainWindow.MainDbRuntime.cs` を追加し、DB runtime 境界を分ける。
+
+## 11. 2026-06-18 Phase 2 実施結果
+
+実施内容:
+
+- `Views/Main/MainWindow.MovieRecordFactory.cs` を追加し、表示レコード生成境界を `MainWindow.xaml.cs` から分離した。
+- `MovieRecordBulkBuildContext`、`MovieRecordBulkBuildCache`、`DataRowToViewData(...)`、`CreateMovieRecordFromDataRow(...)`、`CaptureMovieRecordBulkBuildContext(...)`、`BuildMovieRecordBulkBuildCache(...)`、`BuildThumbnailFileNameLookup(...)`、`ResolveThumbnailDisplayPath(...)`、`SetRecordsToSource(...)`、`QueueMovieExistsRefresh(...)`、`ApplyMovieExistsRefreshBatchAsync(...)` を新 partial へ移した。
+- `MainWindow.Startup.cs` の startup first-page / partial feed 専用変換は今回は残した。通常 DataRow 変換と起動 feed 変換は意味論が違うため、安易に共通化しない。
+- `FilterAndSort(..., true)`、直書き `Refresh();`、`Items.Refresh()` の許容線は増やしていない。
+
+親レビュー:
+
+- 全体観点レビューでは、移動対象は Phase 2 と整合し、`SetRecordsToSource(...)` / `QueueMovieExistsRefresh(...)` / `ApplyMovieExistsRefreshBatchAsync(...)` は将来 helper 化する場合も `MainVM.ReplaceMovieRecs`、Dispatcher、revision guard を外へ漏らさないことを確認した。
+- シンプル実装レビューでは、新 service / interface / DI / DTO 全面置換を作らず partial 分離だけに留める判断で妥当とした。
+- 親レビューでは、`DataRowToViewData(...)` の DB path guard、`SetRecordsToSource(...)` の source apply revision guard、movie exists 後追い更新の revision guard を維持したことを確認した。
+
+検証:
+
+- focused test: 171 件成功。
+- Release x64 build: 成功。`NETSDK1206` 警告 2 件は既存の SQLitePCLRaw RID 警告。
+- `git diff --check`: 成功。
+- 更新ドキュメントと新規 partial は UTF-8 BOMなし + LF。
+
+次の推奨:
+
+- Phase 3 として `Views/Main/MainWindow.MainDbRuntime.cs` を追加し、DB 切替、system/history/watch table 読込、ヘッダー件数更新の境界を分ける。
