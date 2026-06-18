@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Thumbnail.FailureDb;
+using IndigoMovieManager.Thumbnail.Ipc;
 
 namespace IndigoMovieManager.Tests;
 
@@ -1050,6 +1051,21 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(json, Does.Contain("\"mode\": \"rescue-main\""));
             Assert.That(json, Does.Contain("\"requestId\": \"req-001\""));
             Assert.That(json, Does.Contain("\"mainDbFullPath\": \"C:\\\\db\\\\anime.wb\""));
+
+            WorkerJobRequestDto workerRequest =
+                ThumbnailRescueWorkerJobJsonClient.ToWorkerJobRequestDto(
+                    request,
+                    outputArtifactPath: "rescue-worker.result.json",
+                    timeoutMs: 300000
+                );
+            Assert.That(workerRequest.JobId, Is.EqualTo(request.RequestId));
+            Assert.That(workerRequest.Kind, Is.EqualTo("thumbnail-rescue"));
+            Assert.That(workerRequest.InputFiles.Single(), Is.EqualTo(request.MainDbFullPath));
+            Assert.That(workerRequest.OutputArtifactPath, Is.EqualTo("rescue-worker.result.json"));
+            Assert.That(workerRequest.TimeoutMs, Is.EqualTo(300000));
+            Assert.That(workerRequest.Capabilities, Does.Contain("rescue-job-json"));
+            Assert.That(workerRequest.DiagnosticContext["mode"], Is.EqualTo("rescue-main"));
+            Assert.That(workerRequest.DiagnosticContext["requestedFailureId"], Is.EqualTo("12"));
         }
         finally
         {
@@ -1105,6 +1121,19 @@ public sealed class ThumbnailRescueWorkerLauncherTests
                 result.Artifacts[0].Path,
                 Is.EqualTo("C:/logs/thumbnail-create-process.csv")
             );
+            WorkerJobResultDto workerResult =
+                ThumbnailRescueWorkerJobJsonClient.ToWorkerJobResultDto(result);
+            Assert.That(workerResult.JobId, Is.EqualTo("req-002"));
+            Assert.That(workerResult.Status, Is.EqualTo("success"));
+            Assert.That(workerResult.Artifact.ArtifactKind, Is.EqualTo("process-log"));
+            Assert.That(
+                workerResult.Artifact.Path,
+                Is.EqualTo("C:/logs/thumbnail-create-process.csv")
+            );
+            Assert.That(workerResult.FailureReason, Is.Empty);
+            Assert.That(workerResult.Retryability, Is.EqualTo("not-retryable"));
+            Assert.That(workerResult.ElapsedMs, Is.EqualTo(62000));
+            Assert.That(workerResult.Metrics["resultCode"], Is.EqualTo("OK"));
             Assert.That(
                 ThumbnailRescueWorkerJobJsonClient.BuildResultSummaryLine(result),
                 Does.Contain("request_id=req-002")

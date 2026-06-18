@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.IO;
+using IndigoMovieManager.Thumbnail.Ipc;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -76,6 +77,78 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     ["caller"] = "IndigoMovieManager",
                     ["callerVersion"] = ResolveCallerVersion(),
+                },
+            };
+        }
+
+        internal static WorkerJobRequestDto ToWorkerJobRequestDto(
+            ThumbnailRescueWorkerMainJobRequest request,
+            string outputArtifactPath = "",
+            long timeoutMs = 0
+        )
+        {
+            request ??= new ThumbnailRescueWorkerMainJobRequest();
+            Dictionary<string, string> diagnosticContext = new(
+                request.Metadata ?? [],
+                StringComparer.OrdinalIgnoreCase
+            )
+            {
+                ["contractVersion"] = request.ContractVersion ?? "",
+                ["mode"] = request.Mode ?? "",
+                ["thumbFolderOverride"] = request.ThumbFolderOverride ?? "",
+                ["logDirectoryPath"] = request.LogDirectoryPath ?? "",
+                ["failureDbDirectoryPath"] = request.FailureDbDirectoryPath ?? "",
+                ["requestedFailureId"] = request.RequestedFailureId.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture
+                ),
+            };
+
+            List<string> inputFiles = [];
+            if (!string.IsNullOrWhiteSpace(request.MainDbFullPath))
+            {
+                inputFiles.Add(request.MainDbFullPath);
+            }
+
+            return new WorkerJobRequestDto
+            {
+                JobId = request.RequestId ?? "",
+                Kind = "thumbnail-rescue",
+                InputFiles = inputFiles,
+                OutputArtifactPath = outputArtifactPath ?? "",
+                TimeoutMs = Math.Max(0, timeoutMs),
+                Capabilities = [SupportedEntryMode, Mode],
+                DiagnosticContext = diagnosticContext,
+            };
+        }
+
+        internal static WorkerJobResultDto ToWorkerJobResultDto(
+            ThumbnailRescueWorkerMainJobResult result
+        )
+        {
+            result ??= new ThumbnailRescueWorkerMainJobResult();
+            ThumbnailRescueWorkerMainJobArtifact firstArtifact =
+                result.Artifacts?.FirstOrDefault() ?? new ThumbnailRescueWorkerMainJobArtifact();
+            string failureReason = ResolveWorkerFailureReason(result);
+            long elapsedMs = ResolveWorkerElapsedMs(result.StartedAt, result.FinishedAt);
+
+            return new WorkerJobResultDto
+            {
+                JobId = result.RequestId ?? "",
+                Status = result.Status ?? "",
+                Artifact = new WorkerJobArtifactDto
+                {
+                    ArtifactKind = firstArtifact.Type ?? "",
+                    Path = firstArtifact.Path ?? "",
+                },
+                FailureReason = failureReason,
+                ElapsedMs = elapsedMs,
+                Retryability = ResolveWorkerRetryability(result.Status, failureReason),
+                Logs = string.IsNullOrWhiteSpace(result.Message) ? [] : [result.Message.Trim()],
+                Metrics = new Dictionary<string, string>
+                {
+                    ["resultCode"] = result.ResultCode ?? "",
+                    ["engineVersion"] = result.EngineVersion ?? "",
+                    ["compatibilityVersion"] = result.CompatibilityVersion ?? "",
                 },
             };
         }
@@ -266,6 +339,49 @@ namespace IndigoMovieManager.Thumbnail
             return version.Build >= 0
                 ? $"{version.Major}.{version.Minor}.{version.Build}"
                 : $"{version.Major}.{version.Minor}";
+        }
+
+        private static string ResolveWorkerFailureReason(ThumbnailRescueWorkerMainJobResult result)
+        {
+            if (result?.Errors != null && result.Errors.Count > 0)
+            {
+                ThumbnailRescueWorkerMainJobError firstError = result.Errors[0];
+                string code = firstError.Code ?? "";
+                string message = firstError.Message ?? "";
+                string target = firstError.Target ?? "";
+                return string.Join(
+                    " ",
+                    new[] { code, message, target }
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Select(x => x.Trim())
+                );
+            }
+
+            bool succeeded = string.Equals(result?.Status, "success", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(result?.Status, "succeeded", StringComparison.OrdinalIgnoreCase);
+            return succeeded ? "" : result?.Message?.Trim() ?? "";
+        }
+
+        private static string ResolveWorkerRetryability(string status, string failureReason)
+        {
+            if (string.IsNullOrWhiteSpace(failureReason))
+            {
+                return "not-retryable";
+            }
+
+            return string.Equals(status, "canceled", StringComparison.OrdinalIgnoreCase)
+                ? "retryable"
+                : "unknown";
+        }
+
+        private static long ResolveWorkerElapsedMs(DateTimeOffset startedAt, DateTimeOffset finishedAt)
+        {
+            if (startedAt == default || finishedAt == default || finishedAt < startedAt)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, (long)(finishedAt - startedAt).TotalMilliseconds);
         }
     }
 
