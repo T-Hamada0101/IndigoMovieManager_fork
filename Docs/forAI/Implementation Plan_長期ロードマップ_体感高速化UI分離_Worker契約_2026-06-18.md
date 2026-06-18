@@ -12,7 +12,7 @@
 |---|---:|---|---|
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 45% | `UiOperationSnapshot` を追加し、旧 `UiOperationPrioritySnapshot` から段階移行できる入口を固定済み | UI event handler を snapshot 生成へさらに寄せる |
-| Phase 2. ReadModel Store と Diff-first | 20% | ReadModel 計算と apply 境界は分離済み | 小変更の diff apply と fallback reason を通常経路へ入れる |
+| Phase 2. ReadModel Store と Diff-first | 25% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiff` で apply log の operation / selection / scroll / fallback 語彙を追加済み | 小変更の diff apply と fallback reason を通常経路へ入れる |
 | Phase 3. In-process Scheduler | 5% | user-priority / latest-only / deferred log の部品はある | watch / poll / thumbnail refresh 予約から小さく載せる |
 | Phase 4. Image Pipeline 統一 | 15% | visible range refresh と局所サムネ反映の土台あり | 画像存在確認、stamp、decode、ERROR marker を UI 外へ揃える |
 | Phase 5. Persistence Pipeline | 10% | no-persist 診断と一部設定保存 guard はある | 表示先行、背景直列保存、失敗時最小通知の共通方針へ寄せる |

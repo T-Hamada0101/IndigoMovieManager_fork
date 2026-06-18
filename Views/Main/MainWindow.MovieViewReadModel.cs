@@ -99,6 +99,7 @@ namespace IndigoMovieManager
         private readonly record struct MovieViewReadModelApplyResult(
             FilteredMovieRecsUpdateResult CollectionResult,
             FilteredMovieRecsUpdateMode UpdateMode,
+            MovieViewDiff Diff,
             bool SelectionRefreshApplied,
             long ApplyElapsedMs,
             long SelectionRefreshElapsedMs
@@ -175,16 +176,25 @@ namespace IndigoMovieManager
             }
 
             applyStopwatch.Stop();
+            MovieViewDiff diff = MovieViewDiffFactory.FromCollectionUpdate(
+                sourceRevision: requestRevision,
+                viewRevision: _filterAndSortRequestRevision,
+                updateMode,
+                collectionResult,
+                shouldRefresh,
+                resolvedFallbackReason
+            );
             applyResult = new MovieViewReadModelApplyResult(
                 collectionResult,
                 updateMode,
+                diff,
                 shouldRefresh,
                 applyStopwatch.ElapsedMilliseconds,
                 selectionRefreshStopwatch.ElapsedMilliseconds
             );
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"readmodel apply end: request_revision={requestRevision} result_count={sortedMovies.Count} changed={collectionResult.HasChanges} update_mode={updateMode} fallback_reason={resolvedFallbackReason} refresh_applied={shouldRefresh} apply_ms={applyResult.ApplyElapsedMs}"
+                $"readmodel apply end: request_revision={requestRevision} result_count={sortedMovies.Count} changed={collectionResult.HasChanges} update_mode={updateMode} fallback_reason={resolvedFallbackReason} diff_operation={diff.OperationLogValue} diff_stable_key={diff.StableKey} diff_source_revision={diff.SourceRevision} diff_view_revision={diff.ViewRevision} diff_selection={diff.SelectionImpactLogValue} diff_scroll={diff.ScrollImpactLogValue} diff_fallback_reason={diff.FallbackReason} refresh_applied={shouldRefresh} apply_ms={applyResult.ApplyElapsedMs}"
             );
             return true;
         }
