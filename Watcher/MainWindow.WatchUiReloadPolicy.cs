@@ -845,7 +845,7 @@ namespace IndigoMovieManager
             string releaseReason
         )
         {
-            return $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, releaseReason)} operation_reason={request.LogReason}";
+            return $"{UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, releaseReason)} operation_reason={request.LogReason}";
         }
 
         // watch の query-only は、DB再読込へ戻さず in-memory 一覧から再計算する。

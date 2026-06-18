@@ -163,7 +163,7 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         );
         Assert.That(
             logMethod,
-            Does.Contain("UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, releaseReason)")
+            Does.Contain("UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, releaseReason)")
         );
         Assert.That(logMethod, Does.Contain("operation_reason={request.LogReason}"));
         Assert.That(source, Does.Contain("UiWorkRequestPolicy.ReleaseReasonCanceled"));

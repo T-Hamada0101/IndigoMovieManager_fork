@@ -226,7 +226,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"snapshot refresh rejected: {UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, acceptance.ReleaseReason)} skip_reason={acceptance.SkipReason}"
+                    $"snapshot refresh rejected: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, acceptance.ReleaseReason)} skip_reason={acceptance.SkipReason}"
                 );
             }
 
@@ -2090,7 +2090,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "thumbnail-progress",
-                $"snapshot refresh deferred: {UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} delay_ms={(int)delay.TotalMilliseconds}"
+                $"snapshot refresh deferred: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} delay_ms={(int)delay.TotalMilliseconds}"
             );
             _ = RunDelayedThumbnailProgressSnapshotRefreshAsync(delay, request);
         }
@@ -2108,7 +2108,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"delayed snapshot refresh failed: {UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, UiWorkRequestPolicy.ReleaseReasonFailed)} {ex.Message}"
+                    $"delayed snapshot refresh failed: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonFailed)} {ex.Message}"
                 );
             }
             finally
@@ -2137,7 +2137,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"snapshot refresh failed: {UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, UiWorkRequestPolicy.ReleaseReasonFailed)} {ex.Message}"
+                    $"snapshot refresh failed: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonFailed)} {ex.Message}"
                 );
             }
             finally
@@ -2146,7 +2146,7 @@ namespace IndigoMovieManager
                 {
                     DebugRuntimeLog.Write(
                         "thumbnail-progress",
-                        $"snapshot refresh completed: {UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, UiWorkRequestPolicy.ReleaseReasonCompleted)}"
+                        $"snapshot refresh completed: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonCompleted)}"
                     );
                 }
 

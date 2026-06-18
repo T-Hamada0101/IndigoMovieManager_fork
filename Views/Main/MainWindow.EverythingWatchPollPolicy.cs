@@ -170,7 +170,7 @@ namespace IndigoMovieManager
         )
         {
             return
-                $"everything poll deferred: {UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} operation_reason={operationReason} defer_reason={deferReason} recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} catch_up={FormatLogBool(shouldQueueCatchUp)}";
+                $"everything poll deferred: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} operation_reason={operationReason} defer_reason={deferReason} recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} catch_up={FormatLogBool(shouldQueueCatchUp)}";
         }
 
         // poll 自体は定期処理なので、検索などの明示操作中は1周見送り、解除後のwatchで追いつく。

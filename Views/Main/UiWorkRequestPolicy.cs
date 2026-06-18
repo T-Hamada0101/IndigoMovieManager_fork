@@ -59,6 +59,7 @@ internal static class UiWorkRequestPolicy
     internal const string BoundedDrainCancellationToken = "cancellation-token";
     internal const string BoundedDrainDeferredRequestCts = "deferred-request-cts";
     internal const string TimeoutPolicyNone = "none";
+    internal const int ExistingReservationQueueCapacity = 1;
 
     internal const string ThumbnailProgressSnapshotRefreshCoalesceKey =
         "thumbnail-progress:snapshot-refresh:coalesce";
@@ -160,6 +161,22 @@ internal static class UiWorkRequestPolicy
     )
     {
         return $"{BuildRequestLifecycleLogFields(request, releaseReason)} work_priority={request.Priority} coalesce_key='{request.CoalesceKey ?? ""}' latest_only_key='{request.LatestOnlyKey ?? ""}' timeout_policy={NormalizeTimeoutPolicy(request.TimeoutPolicy)}";
+    }
+
+    // 既存予約は実queueへ載せ替えず、入場語彙だけをScheduler policyで説明できる形にそろえる。
+    internal static string BuildRequestAdmissionLogFields(
+        UiWorkRequest request,
+        string releaseReason,
+        int queueCapacity = ExistingReservationQueueCapacity
+    )
+    {
+        UiWorkSchedulerAdmissionDecision decision = UiWorkSchedulerPolicy.EvaluateAdmission(
+            request,
+            Array.Empty<UiWorkSchedulerPendingRequest>(),
+            queueCapacity
+        );
+
+        return $"{BuildRequestSchedulerLogFields(request, releaseReason)} admission_action={decision.Action} admission_reason={decision.AdmissionReason} queue_capacity={decision.BoundedCapacity}";
     }
 
     private static UiWorkRequestAcceptance Reject(UiWorkRequest request, string skipReason)

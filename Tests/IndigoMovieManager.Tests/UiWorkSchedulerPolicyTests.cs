@@ -263,6 +263,7 @@ public sealed class UiWorkSchedulerPolicyTests
         Assert.That(logFields, Does.Contain("queue_depth_before=0"));
         Assert.That(logFields, Does.Contain("queue_depth_after=1"));
         Assert.That(logFields, Does.Contain("bounded_capacity=1"));
+        Assert.That(logFields, Does.Contain("queue_capacity=1"));
         Assert.That(logFields, Does.Contain("replaced_release_reason=none"));
     }
 

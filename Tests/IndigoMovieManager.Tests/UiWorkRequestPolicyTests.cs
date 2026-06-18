@@ -198,4 +198,22 @@ public sealed class UiWorkRequestPolicyTests
         Assert.That(logFields, Does.Contain("latest_only_key='watch:everything-poll:latest-only'"));
         Assert.That(logFields, Does.Contain("timeout_policy=none"));
     }
+
+    [Test]
+    public void BuildRequestAdmissionLogFields_既存予約を入場語彙で説明する()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
+
+        string logFields = UiWorkRequestPolicy.BuildRequestAdmissionLogFields(
+            request,
+            UiWorkRequestPolicy.ReleaseReasonDeferred
+        );
+
+        Assert.That(logFields, Does.Contain("log_reason=watch.everything-poll"));
+        Assert.That(logFields, Does.Contain("release_reason=deferred"));
+        Assert.That(logFields, Does.Contain("work_priority=WatchSmallDiff"));
+        Assert.That(logFields, Does.Contain("admission_action=Enqueue"));
+        Assert.That(logFields, Does.Contain("admission_reason=queued"));
+        Assert.That(logFields, Does.Contain("queue_capacity=1"));
+    }
 }

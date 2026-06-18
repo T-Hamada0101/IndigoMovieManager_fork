@@ -212,7 +212,7 @@ internal static class UiWorkSchedulerPolicy
     )
     {
         return
-            $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, decision.ReleaseReason)} admission_action={decision.Action} admission_reason={decision.AdmissionReason} skip_reason={decision.SkipReason} queue_depth_before={decision.QueueDepthBefore} queue_depth_after={decision.QueueDepthAfter} bounded_capacity={decision.BoundedCapacity} replaced_release_reason={decision.ReplacedReleaseReason}";
+            $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, decision.ReleaseReason)} admission_action={decision.Action} admission_reason={decision.AdmissionReason} skip_reason={decision.SkipReason} queue_depth_before={decision.QueueDepthBefore} queue_depth_after={decision.QueueDepthAfter} bounded_capacity={decision.BoundedCapacity} queue_capacity={decision.BoundedCapacity} replaced_release_reason={decision.ReplacedReleaseReason}";
     }
 
     internal static string BuildTimeoutLogFields(UiWorkSchedulerTimeoutDecision decision)
