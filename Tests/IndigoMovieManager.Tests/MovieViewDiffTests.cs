@@ -248,4 +248,76 @@ public sealed class MovieViewDiffTests
             Assert.That(diff.FullFallbackReason, Is.EqualTo(MovieViewDiffFactory.FallbackReasonNone));
         });
     }
+
+    [Test]
+    public void WatchQueryOnlyの変更setはReadModel差分ログと同じdiff_apply候補になる()
+    {
+        MovieViewDiffApplyPlan requestPlan =
+            MovieViewDiffApplyPolicy.ResolveWatchUiApplyCandidate(
+                useQueryOnlyReload: true,
+                changedMovieCount: 1,
+                fullFallbackReason: ""
+            );
+        MovieViewDiff readModelDiff = MovieViewDiffFactory.FromCollectionUpdate(
+            sourceRevision: 3,
+            viewRevision: 3,
+            FilteredMovieRecsUpdateMode.Diff,
+            new FilteredMovieRecsUpdateResult(true, 1, 1, 0, 0, 0, UpdatedCount: 1),
+            selectionRefreshApplied: false,
+            fallbackReason: "changed-path"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(requestPlan.IsDiffApplyCandidate, Is.True);
+            Assert.That(
+                requestPlan.ApplyKindLogValue,
+                Is.EqualTo(readModelDiff.ApplyKindLogValue)
+            );
+            Assert.That(
+                requestPlan.FullFallbackReason,
+                Is.EqualTo(readModelDiff.FullFallbackReason)
+            );
+            Assert.That(readModelDiff.IsDiffApplyCandidate, Is.True);
+            Assert.That(readModelDiff.ApplyKindLogValue, Is.EqualTo("diff-apply"));
+        });
+    }
+
+    [Test]
+    public void WatchFullFallbackの理由はReadModel差分ログと同じfull_fallback語彙へ畳む()
+    {
+        MovieViewDiffApplyPlan requestPlan =
+            MovieViewDiffApplyPolicy.ResolveWatchUiApplyCandidate(
+                useQueryOnlyReload: false,
+                changedMovieCount: 1,
+                fullFallbackReason: "dirty-fields-unsafe:Hash"
+            );
+        MovieViewDiff readModelDiff = MovieViewDiffFactory.FromCollectionUpdate(
+            sourceRevision: 4,
+            viewRevision: 4,
+            FilteredMovieRecsUpdateMode.Reset,
+            new FilteredMovieRecsUpdateResult(true, 0, 0, 1, 1, 0),
+            selectionRefreshApplied: true,
+            fallbackReason: "dirty-fields-unsafe:Hash"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(requestPlan.IsDiffApplyCandidate, Is.False);
+            Assert.That(
+                requestPlan.ApplyKindLogValue,
+                Is.EqualTo(readModelDiff.ApplyKindLogValue)
+            );
+            Assert.That(
+                requestPlan.FullFallbackReason,
+                Is.EqualTo(readModelDiff.FullFallbackReason)
+            );
+            Assert.That(readModelDiff.IsDiffApplyCandidate, Is.False);
+            Assert.That(readModelDiff.ApplyKindLogValue, Is.EqualTo("full-fallback"));
+            Assert.That(
+                readModelDiff.FullFallbackReason,
+                Is.EqualTo(MovieViewDiffFactory.FallbackReasonUnsafe)
+            );
+        });
+    }
 }

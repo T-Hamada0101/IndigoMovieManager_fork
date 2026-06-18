@@ -870,6 +870,11 @@ namespace IndigoMovieManager
         // request の実行先をここだけに閉じ、次段で Scheduler / ReadModel へ差し替えやすくする。
         private void ApplyWatchUiApplyRequest(WatchUiApplyRequest request)
         {
+            DebugRuntimeLog.Write(
+                "watch-check",
+                $"watch ui apply request: kind={request.Kind} sort={request.Sort} reason={request.Reason} changed_paths={request.ChangedMovies?.Count ?? 0} source_changed_paths={request.ChangedMovieCount} diff_apply_kind={request.DiffApplyPlan.ApplyKindLogValue} diff_apply_candidate={request.DiffApplyPlan.IsDiffApplyCandidate} diff_full_fallback_reason={request.DiffApplyPlan.FullFallbackReason}"
+            );
+
             if (request.Kind == WatchUiApplyRequestKind.FullFallbackReload)
             {
                 InvokeFilterAndSortForWatch(request.Sort, true);

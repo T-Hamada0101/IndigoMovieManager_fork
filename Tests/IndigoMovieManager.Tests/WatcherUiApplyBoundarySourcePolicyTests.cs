@@ -106,6 +106,9 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         Assert.That(invokeMethod, Does.Not.Contain("RefreshMovieViewFromCurrentSourceAsync("));
         Assert.That(adapterMethod, Does.Contain("InvokeFilterAndSortForWatch(request.Sort, true);"));
         Assert.That(adapterMethod, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(adapterMethod, Does.Contain("diff_apply_kind={request.DiffApplyPlan.ApplyKindLogValue}"));
+        Assert.That(adapterMethod, Does.Contain("diff_apply_candidate={request.DiffApplyPlan.IsDiffApplyCandidate}"));
+        Assert.That(adapterMethod, Does.Contain("diff_full_fallback_reason={request.DiffApplyPlan.FullFallbackReason}"));
         Assert.That(filterMethod, Does.Contain("FilterAndSort(sort, isGetNew);"));
         Assert.That(source.Split("InvokeFilterAndSortForWatch(request.Sort, true);").Length - 1, Is.EqualTo(1));
         Assert.That(source.Split("RefreshMovieViewFromCurrentSourceAsync(").Length - 1, Is.EqualTo(1));
