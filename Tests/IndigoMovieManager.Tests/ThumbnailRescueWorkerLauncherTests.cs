@@ -1066,6 +1066,15 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(workerRequest.Capabilities, Does.Contain("rescue-job-json"));
             Assert.That(workerRequest.DiagnosticContext["mode"], Is.EqualTo("rescue-main"));
             Assert.That(workerRequest.DiagnosticContext["requestedFailureId"], Is.EqualTo("12"));
+
+            string requestLogFields =
+                ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobRequestLogFields(workerRequest);
+            Assert.That(requestLogFields, Does.Contain("job_id=req-001"));
+            Assert.That(requestLogFields, Does.Contain("worker_kind=thumbnail-rescue"));
+            Assert.That(
+                requestLogFields,
+                Does.Contain("output_artifact_path=rescue-worker.result.json")
+            );
         }
         finally
         {
@@ -1134,6 +1143,19 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(workerResult.Retryability, Is.EqualTo("not-retryable"));
             Assert.That(workerResult.ElapsedMs, Is.EqualTo(62000));
             Assert.That(workerResult.Metrics["resultCode"], Is.EqualTo("OK"));
+            string resultLogFields =
+                ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(workerResult);
+            Assert.That(resultLogFields, Does.Contain("job_id=req-002"));
+            Assert.That(resultLogFields, Does.Contain("worker_kind=thumbnail-rescue"));
+            Assert.That(resultLogFields, Does.Contain("status=success"));
+            Assert.That(resultLogFields, Does.Contain("artifact_kind=process-log"));
+            Assert.That(resultLogFields, Does.Contain("retryability=not-retryable"));
+            Assert.That(resultLogFields, Does.Contain("elapsed_ms=62000"));
+            Assert.That(resultLogFields, Does.Contain("failure_reason=''"));
+            Assert.That(
+                resultLogFields,
+                Does.Contain("output_artifact_path=C:/logs/thumbnail-create-process.csv")
+            );
             Assert.That(
                 ThumbnailRescueWorkerJobJsonClient.BuildResultSummaryLine(result),
                 Does.Contain("request_id=req-002")

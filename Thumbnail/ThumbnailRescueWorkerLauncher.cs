@@ -162,6 +162,7 @@ namespace IndigoMovieManager.Thumbnail
                 string jobJsonPath = "";
                 string resultJsonPath = "";
                 string expectedJobJsonRequestId = "";
+                string expectedJobJsonRequestLogFields = "";
                 string workerArguments = BuildWorkerArguments(
                     mainDbFullPath,
                     resolvedThumbFolder,
@@ -184,6 +185,13 @@ namespace IndigoMovieManager.Thumbnail
                             requestedFailureId
                         );
                     expectedJobJsonRequestId = mainJobRequest.RequestId;
+                    expectedJobJsonRequestLogFields =
+                        ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobRequestLogFields(
+                            ThumbnailRescueWorkerJobJsonClient.ToWorkerJobRequestDto(
+                                mainJobRequest,
+                                outputArtifactPath: resultJsonPath
+                            )
+                        );
                     if (
                         !ThumbnailRescueWorkerJobJsonClient.TryWriteMainJobRequest(
                             jobJsonPath,
@@ -221,7 +229,13 @@ namespace IndigoMovieManager.Thumbnail
                 process.ErrorDataReceived += (_, e) =>
                     ForwardWorkerPipeLine("stderr", e.Data, log);
                 process.Exited += (_, _) =>
-                    HandleWorkerExited(process, sessionDirectory, expectedJobJsonRequestId, log);
+                    HandleWorkerExited(
+                        process,
+                        sessionDirectory,
+                        expectedJobJsonRequestId,
+                        expectedJobJsonRequestLogFields,
+                        log
+                    );
                 if (!process.Start())
                 {
                     return false;
@@ -249,7 +263,10 @@ namespace IndigoMovieManager.Thumbnail
 
                 string launchLogLine = string.IsNullOrWhiteSpace(jobJsonPath)
                     ? $"rescue worker launched: pid={process.Id} session='{sessionDirectory}'"
-                    : $"rescue worker launched: pid={process.Id} session='{sessionDirectory}' job='{jobJsonPath}' result='{resultJsonPath}'";
+                    : AppendWorkerLogFields(
+                        $"rescue worker launched: pid={process.Id} session='{sessionDirectory}' job='{jobJsonPath}' result='{resultJsonPath}'",
+                        expectedJobJsonRequestLogFields
+                    );
                 log?.Invoke(launchLogLine);
                 return true;
             }
@@ -376,7 +393,7 @@ namespace IndigoMovieManager.Thumbnail
                 process.ErrorDataReceived += (_, e) =>
                     ForwardWorkerPipeLine("stderr", e.Data, log);
                 process.Exited += (_, _) =>
-                    HandleWorkerExited(process, sessionDirectory, "", log);
+                    HandleWorkerExited(process, sessionDirectory, "", "", log);
                 if (!process.Start())
                 {
                     return false;
@@ -579,6 +596,7 @@ namespace IndigoMovieManager.Thumbnail
             Process process,
             string sessionDirectory,
             string expectedJobJsonRequestId,
+            string expectedJobJsonRequestLogFields,
             Action<string> log
         )
         {
@@ -607,12 +625,22 @@ namespace IndigoMovieManager.Thumbnail
                     )
                     {
                         log?.Invoke(
-                            ThumbnailRescueWorkerJobJsonClient.BuildResultSummaryLine(result)
+                            AppendWorkerLogFields(
+                                ThumbnailRescueWorkerJobJsonClient.BuildResultSummaryLine(result),
+                                ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(
+                                    ThumbnailRescueWorkerJobJsonClient.ToWorkerJobResultDto(result)
+                                )
+                            )
                         );
                     }
                     else if (!string.IsNullOrWhiteSpace(resultDiagnostic))
                     {
-                        log?.Invoke($"rescue worker result missing: {resultDiagnostic}");
+                        log?.Invoke(
+                            AppendWorkerLogFields(
+                                $"rescue worker result missing: {resultDiagnostic}",
+                                expectedJobJsonRequestLogFields
+                            )
+                        );
                     }
                 }
             }
@@ -634,6 +662,16 @@ namespace IndigoMovieManager.Thumbnail
             TryDisposeProcess(processToDispose);
             _ = TryTerminateSessionToolProcesses(sessionDirectory, log);
             TryDeleteDirectoryQuietly(sessionDirectory);
+        }
+
+        private static string AppendWorkerLogFields(string message, string workerLogFields)
+        {
+            if (string.IsNullOrWhiteSpace(workerLogFields))
+            {
+                return message ?? "";
+            }
+
+            return $"{message ?? ""} {workerLogFields.Trim()}";
         }
 
         private static void TryDisposeProcess(Process process)

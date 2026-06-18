@@ -211,6 +211,38 @@ public sealed class WorkerContractSourcePolicyTests
     }
 
     [Test]
+    public void RescueWorkerJobResultログはWorker契約Fieldsを併記する()
+    {
+        string repoRoot = FindRepoRoot();
+        string jobJsonClientSource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Thumbnail/ThumbnailRescueWorkerJobJsonClient.cs")
+        );
+        string launcherSource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Thumbnail/ThumbnailRescueWorkerLauncher.cs")
+        );
+
+        Assert.That(jobJsonClientSource, Does.Contain("BuildWorkerJobRequestLogFields("));
+        Assert.That(jobJsonClientSource, Does.Contain("BuildWorkerJobResultLogFields("));
+        Assert.That(jobJsonClientSource, Does.Contain("job_id="));
+        Assert.That(jobJsonClientSource, Does.Contain("worker_kind="));
+        Assert.That(jobJsonClientSource, Does.Contain("artifact_kind="));
+        Assert.That(jobJsonClientSource, Does.Contain("retryability="));
+        Assert.That(jobJsonClientSource, Does.Contain("elapsed_ms="));
+        Assert.That(jobJsonClientSource, Does.Contain("failure_reason="));
+        Assert.That(jobJsonClientSource, Does.Contain("output_artifact_path="));
+        Assert.That(
+            launcherSource,
+            Does.Contain("ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobRequestLogFields(")
+        );
+        Assert.That(
+            launcherSource,
+            Does.Contain("ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(")
+        );
+        Assert.That(launcherSource, Does.Contain("AppendWorkerLogFields("));
+        Assert.That(launcherSource, Does.Contain("rescue worker result missing:"));
+    }
+
+    [Test]
     public void ThumbnailQueue進捗はWorker契約Dtoへ写せる()
     {
         string repoRoot = FindRepoRoot();

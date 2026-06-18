@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.IO;
+using System.Globalization;
 using IndigoMovieManager.Thumbnail.Ipc;
 
 namespace IndigoMovieManager.Thumbnail
@@ -15,6 +16,7 @@ namespace IndigoMovieManager.Thumbnail
         internal const string ResultJsonFileName = "rescue-worker.result.json";
         internal const string ContractVersion = "1";
         internal const string Mode = "rescue-main";
+        internal const string WorkerKind = "thumbnail-rescue";
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -112,7 +114,7 @@ namespace IndigoMovieManager.Thumbnail
             return new WorkerJobRequestDto
             {
                 JobId = request.RequestId ?? "",
-                Kind = "thumbnail-rescue",
+                Kind = WorkerKind,
                 InputFiles = inputFiles,
                 OutputArtifactPath = outputArtifactPath ?? "",
                 TimeoutMs = Math.Max(0, timeoutMs),
@@ -151,6 +153,27 @@ namespace IndigoMovieManager.Thumbnail
                     ["compatibilityVersion"] = result.CompatibilityVersion ?? "",
                 },
             };
+        }
+
+        internal static string BuildWorkerJobRequestLogFields(WorkerJobRequestDto request)
+        {
+            request ??= new WorkerJobRequestDto();
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)}"
+            );
+        }
+
+        internal static string BuildWorkerJobResultLogFields(WorkerJobResultDto result)
+        {
+            result ??= new WorkerJobResultDto();
+            WorkerJobArtifactDto artifact = result.Artifact ?? new WorkerJobArtifactDto();
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)}"
+            );
         }
 
         internal static bool TryWriteMainJobRequest(
@@ -382,6 +405,30 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return Math.Max(0, (long)(finishedAt - startedAt).TotalMilliseconds);
+        }
+
+        private static string FormatLogValue(string value)
+        {
+            string normalized = NormalizeLogValue(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "''";
+            }
+
+            if (normalized.Any(char.IsWhiteSpace))
+            {
+                return $"'{normalized.Replace("'", "\\'", StringComparison.Ordinal)}'";
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizeLogValue(string value)
+        {
+            return (value ?? "").Trim()
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal)
+                .Replace("\t", " ", StringComparison.Ordinal);
         }
     }
 
