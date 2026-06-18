@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -10,7 +12,7 @@ public sealed class MainWindowSettingsPersistencePolicyTests
     {
         string persistenceSource = GetRepoText("Views", "Main", "MainWindow.SettingsPersistence.cs");
         string dbSwitchSource = GetRepoText("Views", "Main", "MainWindow.DbSwitch.cs");
-        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string lifecycleSource = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
         string fullscreenSource = GetRepoText(
             "UpperTabs",
             "Player",
@@ -37,9 +39,9 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(dbSwitchSource, Does.Contain("QueueApplicationSettingsSave(\"main-db-last-doc\")"));
         Assert.That(dbSwitchSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
 
-        Assert.That(mainWindowSource, Does.Contain("QueueApplicationSettingsSave(\"main-window-closing\")"));
-        Assert.That(mainWindowSource, Does.Contain("WaitForPlayerVolumeSettingSaveForShutdown();"));
-        Assert.That(mainWindowSource, Does.Contain("WaitForApplicationSettingsSaveForShutdown(\"main-window-closing\")"));
+        Assert.That(lifecycleSource, Does.Contain("QueueApplicationSettingsSave(\"main-window-closing\")"));
+        Assert.That(lifecycleSource, Does.Contain("WaitForPlayerVolumeSettingSaveForShutdown();"));
+        Assert.That(lifecycleSource, Does.Contain("WaitForApplicationSettingsSaveForShutdown(\"main-window-closing\")"));
         Assert.That(fullscreenSource, Does.Contain("QueueApplicationSettingsSave(\"player-fullscreen-debug-enable\")"));
         Assert.That(fullscreenSource, Does.Contain("QueueApplicationSettingsSave(\"player-fullscreen-debug-restore\")"));
         Assert.That(detailThumbnailSource, Does.Contain("QueueApplicationSettingsSave(\"extension-detail-thumbnail-mode\")"));
@@ -50,19 +52,37 @@ public sealed class MainWindowSettingsPersistencePolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
             {
-                return File.ReadAllText(candidate);
-            }
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
 
-            current = current.Parent;
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
     }
 }

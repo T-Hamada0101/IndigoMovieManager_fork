@@ -27,18 +27,18 @@ public sealed class UiHangOverlayLifecycleSourceTests
     [Test]
     public void MainWindow_Closingはwatcher入力停止後にwatch_queueとcreated_pipelineとcheck_folder_runnerを待つ()
     {
-        string mainWindowSource = GetSourceText(new[] { "Views", "Main", "MainWindow.xaml.cs" })
+        string lifecycleSource = GetSourceText(new[] { "Views", "Main", "MainWindow.Lifecycle.cs" })
             .Replace("\r\n", "\n");
         string watcherQueueSource = GetSourceText(new[] { "Watcher", "MainWindow.WatcherEventQueue.cs" })
             .Replace("\r\n", "\n");
 
-        Assert.That(mainWindowSource, Does.Contain("StopAndClearFileWatchers();"));
+        Assert.That(lifecycleSource, Does.Contain("StopAndClearFileWatchers();"));
         Assert.That(
-            mainWindowSource,
+            lifecycleSource,
             Does.Contain("BeginWatchEventQueueShutdownForClosing();")
         );
         Assert.That(
-            mainWindowSource,
+            lifecycleSource,
             Does.Contain("DrainWatchEventPipelinesForShutdown();")
         );
         Assert.That(
@@ -70,7 +70,11 @@ public sealed class UiHangOverlayLifecycleSourceTests
     [Test]
     public void Watcher作成は背景計画の後着をrevisionで捨てる()
     {
-        string mainWindowSource = GetSourceText(new[] { "Views", "Main", "MainWindow.xaml.cs" })
+        string lifecycleSource = GetSourceText(new[] { "Views", "Main", "MainWindow.Lifecycle.cs" })
+            .Replace("\r\n", "\n");
+        string mainDbRuntimeSource = GetSourceText(
+                new[] { "Views", "Main", "MainWindow.MainDbRuntime.cs" }
+            )
             .Replace("\r\n", "\n");
         string startupSource = GetSourceText(new[] { "Views", "Main", "MainWindow.Startup.cs" })
             .Replace("\r\n", "\n");
@@ -165,9 +169,9 @@ public sealed class UiHangOverlayLifecycleSourceTests
             Does.Contain("_watcherCreationActiveTaskCount")
         );
         Assert.That(watcherRegistrationSource, Does.Contain("active={activeTaskCount}"));
-        Assert.That(mainWindowSource, Does.Contain("InvalidateWatcherCreation(\"window-closing\")"));
+        Assert.That(lifecycleSource, Does.Contain("InvalidateWatcherCreation(\"window-closing\")"));
         Assert.That(
-            mainWindowSource,
+            mainDbRuntimeSource,
             Does.Contain("InvalidateWatcherCreation(\"shutdown-current-db\")")
         );
         Assert.That(

@@ -63,7 +63,7 @@ public sealed class MainWindowUiIoDeferralSourceTests
     [Test]
     public void ContentRenderedではThumbnailProgressSnapshotを直接更新しない()
     {
-        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string source = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
         string contentRendered = ExtractMethod(source, "private void MainWindow_ContentRendered(");
 
         Assert.That(contentRendered, Does.Contain("EnsureThumbnailProgressUiTimerRunning();"));
@@ -74,7 +74,7 @@ public sealed class MainWindowUiIoDeferralSourceTests
     [Test]
     public void ContentRenderedではStartupAutoOpenLastDoc存在確認を直接実行しない()
     {
-        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string source = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
         string contentRendered = ExtractMethod(source, "private void MainWindow_ContentRendered(");
 
         Assert.That(contentRendered, Does.Contain("QueueStartupAutoOpenLastDocSwitch();"));
@@ -85,7 +85,7 @@ public sealed class MainWindowUiIoDeferralSourceTests
     [Test]
     public void StartupAutoOpenLastDoc存在確認は背景で実行しUI側で切り替える()
     {
-        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string source = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
         string queueMethod = ExtractMethod(
             source,
             "private void QueueStartupAutoOpenLastDocSwitch()"
@@ -208,9 +208,64 @@ public sealed class MainWindowUiIoDeferralSourceTests
     }
 
     [Test]
+    public void LifecycleとDockLayout境界はMainWindow本体へ戻さない()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string lifecycleSource = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
+        string dockLayoutSource = GetRepoText("Views", "Main", "MainWindow.DockLayout.cs");
+
+        string[] lifecycleSignatures =
+        [
+            "private void MainWindow_ContentRendered(",
+            "private void QueueStartupAutoOpenLastDocSwitch(",
+            "private async Task RunStartupAutoOpenLastDocSwitchAsync(",
+            "private bool IsStartupAutoOpenLastDocSnapshotCurrent(",
+            "private bool IsStartupAutoOpenLastDocSwitchShutdownStarted()",
+            "internal static string ResolveDiagnosticStartupDbOverrideForTesting(",
+            "private void MainWindow_Closing(",
+            "private static void WaitBackgroundTaskForShutdown(",
+            "private static void WaitBackgroundTasksForShutdown(",
+        ];
+
+        foreach (string signature in lifecycleSignatures)
+        {
+            Assert.That(lifecycleSource, Does.Contain(signature));
+            Assert.That(mainWindowSource, Does.Not.Contain(signature));
+        }
+
+        string[] dockLayoutSignatures =
+        [
+            "private void TryRestoreDockLayout()",
+            "private async Task RunRestoreDockLayoutAsync(",
+            "private async Task<bool> TryRestoreDockLayoutFromFile(",
+            "private DockLayoutRestoreFileLoadResult LoadDockLayoutRestoreText(",
+            "private bool TryDeserializeDockLayoutText(",
+            "internal static string FindMissingRequiredDockLayoutReason(",
+            "private sealed record DockLayoutRestoreFileLoadResult(",
+            "private void EnsureRequiredBottomTabsPresent()",
+            "private void SaveDockLayoutToFile(",
+            "private static void BackupLegacyDockLayout(",
+            "private void RestoreWindowBoundsSafely()",
+        ];
+
+        foreach (string signature in dockLayoutSignatures)
+        {
+            Assert.That(dockLayoutSource, Does.Contain(signature));
+            Assert.That(mainWindowSource, Does.Not.Contain(signature));
+        }
+
+        Assert.That(lifecycleSource, Does.Contain("SkipMainWindowClosingSideEffectsForTesting || App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(lifecycleSource, Does.Contain("QueueApplicationSettingsSave(\"main-window-closing\")"));
+        Assert.That(lifecycleSource, Does.Contain("DrainWatchEventPipelinesForShutdown();"));
+        Assert.That(dockLayoutSource, Does.Contain("DispatcherPriority.ContextIdle"));
+        Assert.That(dockLayoutSource, Does.Contain("FindMissingRequiredDockLayoutReason("));
+        Assert.That(dockLayoutSource, Does.Contain("EnsureRequiredBottomTabsPresent();"));
+    }
+
+    [Test]
     public void StartupAutoOpenLastDoc復帰前に設定Snapshotと終了状態を確認する()
     {
-        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string source = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
         string runMethod = ExtractMethod(
             source,
             "private async Task RunStartupAutoOpenLastDocSwitchAsync("
@@ -453,7 +508,7 @@ public sealed class MainWindowUiIoDeferralSourceTests
     [Test]
     public void レイアウト復元は検証済みテキストを再利用し二重読込しない()
     {
-        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string source = GetRepoText("Views", "Main", "MainWindow.DockLayout.cs");
 
         Assert.That(source, Does.Contain("using var reader = new StringReader(loadResult.LayoutText);"));
         Assert.That(source, Does.Not.Contain("using var reader = new StreamReader(layoutFilePath);"));
@@ -462,7 +517,7 @@ public sealed class MainWindowUiIoDeferralSourceTests
     [Test]
     public void レイアウト復元入口はファイルIOを直接実行しない()
     {
-        string source = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string source = GetRepoText("Views", "Main", "MainWindow.DockLayout.cs");
         string restoreMethod = ExtractMethod(source, "private void TryRestoreDockLayout()");
         string restoreFileMethod = ExtractMethod(
             source,
