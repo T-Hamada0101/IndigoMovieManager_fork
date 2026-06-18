@@ -401,6 +401,41 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void 一覧更新後の互換Refreshは選択変化時だけ詳細タグへ流す()
+    {
+        string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string filterAsync = GetMethodBlock(
+            mainWindowSource,
+            "private async Task FilterAndSortAsync("
+        );
+        string applyMemory = GetMethodBlock(
+            mainWindowSource,
+            "private bool TryApplyMemoryRefreshResultOnUiThread("
+        );
+        string sortAsync = GetMethodBlock(mainWindowSource, "private async Task<bool> SortDataAsync(");
+        string helper = GetMethodBlock(
+            mainWindowSource,
+            "private bool RefreshSelectionDetailAfterCollectionApplyIfNeeded("
+        );
+
+        Assert.That(filterAsync, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
+        Assert.That(filterAsync, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(filterAsync, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
+
+        Assert.That(applyMemory, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
+        Assert.That(applyMemory, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(applyMemory, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
+
+        Assert.That(sortAsync, Does.Contain("MovieRecords selectedBeforeSort = GetSelectedItemByTabIndex();"));
+        Assert.That(sortAsync, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(sortAsync, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
+
+        Assert.That(helper, Does.Contain("ShouldRefreshAfterCollectionApply("));
+        Assert.That(helper, Does.Contain("ReferenceEquals(selectedBeforeApply, selectedAfterApply)"));
+        Assert.That(helper, Does.Contain("Refresh();"));
+    }
+
+    [Test]
     public void ComboSort_段階ロード中のFilterAndSortTrueは全件順序復旧fallbackとして残す()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");

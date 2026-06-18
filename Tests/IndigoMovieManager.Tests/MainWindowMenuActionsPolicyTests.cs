@@ -357,10 +357,13 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(refreshMethod, Does.Contain("RemoveDeletedMovieRecordsById(MainVM.MovieRecs, deletedMovieIds);"));
         Assert.That(refreshMethod, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
         Assert.That(refreshMethod, Does.Contain("MainVM.DbInfo.SearchCount = nextFilteredMovies.Length;"));
+        Assert.That(refreshMethod, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
+        Assert.That(refreshMethod, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
         Assert.That(refreshMethod, Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"movie-delete\");"));
         Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
         Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
         Assert.That(refreshMethod, Does.Not.Contain("FilterAndSort("));
+        Assert.That(refreshMethod, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
     }
 
     [Test]

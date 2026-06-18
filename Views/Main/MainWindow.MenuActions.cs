@@ -1315,6 +1315,7 @@ namespace IndigoMovieManager
                     currentTabIndex,
                     isSortOnly: false
                 );
+            MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();
             FilteredMovieRecsUpdateResult applyResult = MainVM.ReplaceFilteredMovieRecs(
                 nextFilteredMovies,
                 updateMode: updateMode
@@ -1325,16 +1326,12 @@ namespace IndigoMovieManager
             UpdateExtensionDetailVisibilityBySearchCount();
 
             bool hasChanges = sourceRemovedCount > 0 || applyResult.HasChanges;
-            bool shouldRefresh =
-                applyResult.HasChanges
-                && UpperTabCollectionUpdatePolicy.ShouldRefreshAfterCollectionApply(
-                    currentTabIndex,
-                    updateMode
-                );
-            if (shouldRefresh)
-            {
-                Refresh();
-            }
+            bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
+                selectedBeforeCollectionApply,
+                applyResult,
+                currentTabIndex,
+                updateMode
+            );
 
             if (hasChanges)
             {

@@ -3,6 +3,7 @@
 最終更新日: 2026-06-18
 
 変更概要:
+- Filter / in-memory refresh / sort / 動画削除後の `ReplaceFilteredMovieRecs(...)` 後処理は、Reset 互換が必要なタブでも選択レコードが前後で同一なら `Refresh()` を呼ばず、詳細＋タグ編集の再表示を省くようにした。Grid 系の安全 fallback と List / Player の Diff/Move 省略線は維持する。
 - サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻す。shutdown 中は予約を積まず、入力・描画の前に局所 refresh 予約が割り込みにくい形へ寄せた。
 - サムネ成功 / rescued sync の選択中反映は、汎用 `Refresh()` ではなく `RefreshSelectedThumbnailDetail()` へ寄せた。対象は選択中詳細のサムネ表示だけに絞り、タグ編集再表示を巻き込まない。
 - `RefreshMovieViewFromCurrentSourceAsync(...)` は背景計算だけでなく Dispatcher apply 待ちにも後着キャンセル token を渡すようにした。古い in-memory refresh が UI 反映待ち中に残った時は `stage=apply-dispatch` でキャンセルして閉じ、後着結果だけを UI へ通す。

@@ -2456,6 +2456,7 @@ namespace IndigoMovieManager
                 "ui-tempo",
                 $"filter stage begin: revision={requestRevision} stage=replace-filtered update_mode={updateMode} sorted={sorted.Length}"
             );
+            MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();
             FilteredMovieRecsUpdateResult applyResult = MainVM.ReplaceFilteredMovieRecs(
                 sorted,
                 updateMode: updateMode
@@ -2470,16 +2471,12 @@ namespace IndigoMovieManager
             UpdateExtensionDetailVisibilityBySearchCount();
 
             Stopwatch refreshStopwatch = Stopwatch.StartNew();
-            bool shouldRefresh =
-                applyResult.HasChanges
-                && UpperTabCollectionUpdatePolicy.ShouldRefreshAfterCollectionApply(
-                    currentTabIndex,
-                    updateMode
-                );
-            if (shouldRefresh)
-            {
-                Refresh();
-            }
+            bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
+                selectedBeforeCollectionApply,
+                applyResult,
+                currentTabIndex,
+                updateMode
+            );
             refreshStopwatch.Stop();
             refreshElapsedMs = refreshStopwatch.ElapsedMilliseconds;
             if (applyResult.HasChanges)
@@ -2701,21 +2698,18 @@ namespace IndigoMovieManager
                     isSortOnly: false
                 );
 
+            MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();
             MainVM.DbInfo.SearchCount = searchCount;
             filterList = sortedMovies;
             applyResult = MainVM.ReplaceFilteredMovieRecs(sortedMovies, updateMode: updateMode);
             UpdateExtensionDetailVisibilityBySearchCount();
 
-            bool shouldRefresh =
-                applyResult.HasChanges
-                && UpperTabCollectionUpdatePolicy.ShouldRefreshAfterCollectionApply(
-                    currentTabIndex,
-                    updateMode
-                );
-            if (shouldRefresh)
-            {
-                Refresh();
-            }
+            bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
+                selectedBeforeCollectionApply,
+                applyResult,
+                currentTabIndex,
+                updateMode
+            );
 
             if (applyResult.HasChanges)
             {
@@ -3213,6 +3207,7 @@ namespace IndigoMovieManager
             MovieRecords[] source = MainVM.FilteredMovieRecs
                 .Where(movie => movie != null)
                 .ToArray();
+            MovieRecords selectedBeforeSort = GetSelectedItemByTabIndex();
             bool runOnBackground = ShouldRunFilterSortOnBackground(source.Length);
             DebugRuntimeLog.Write(
                 "ui-tempo",
@@ -3256,19 +3251,15 @@ namespace IndigoMovieManager
                     updateMode: updateMode
                 );
                 MainVM.DbInfo.SearchCount = sorted.Length;
-                bool shouldRefresh =
-                    applyResult.HasChanges
-                    && UpperTabCollectionUpdatePolicy.ShouldRefreshAfterCollectionApply(
-                        currentTabIndex,
-                        updateMode
-                    );
+                bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
+                    selectedBeforeSort,
+                    applyResult,
+                    currentTabIndex,
+                    updateMode
+                );
                 if (applyResult.HasChanges)
                 {
                     NotifyUpperTabViewportSourceChanged();
-                    if (shouldRefresh)
-                    {
-                        Refresh();
-                    }
                     RequestUpperTabVisibleRangeRefresh(immediate: true, reason: "sort");
                 }
                 sw.Stop();
@@ -3296,6 +3287,38 @@ namespace IndigoMovieManager
                 );
                 throw;
             }
+        }
+
+        // 一覧差し替え後の互換 Refresh は、選択が実際に変わった時だけ詳細/タグへ流す。
+        private bool RefreshSelectionDetailAfterCollectionApplyIfNeeded(
+            MovieRecords selectedBeforeApply,
+            FilteredMovieRecsUpdateResult applyResult,
+            int currentTabIndex,
+            FilteredMovieRecsUpdateMode updateMode
+        )
+        {
+            bool requiresCompatibilityRefresh =
+                applyResult.HasChanges
+                && UpperTabCollectionUpdatePolicy.ShouldRefreshAfterCollectionApply(
+                    currentTabIndex,
+                    updateMode
+                );
+            if (!requiresCompatibilityRefresh)
+            {
+                return false;
+            }
+
+            MovieRecords selectedAfterApply = GetSelectedItemByTabIndex();
+            if (
+                selectedAfterApply != null
+                && ReferenceEquals(selectedBeforeApply, selectedAfterApply)
+            )
+            {
+                return false;
+            }
+
+            Refresh();
+            return true;
         }
 
         /// <summary>
