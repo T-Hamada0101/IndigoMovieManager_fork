@@ -292,8 +292,8 @@ public sealed class ImageRequestTests
         ImageLoadResult missing = ImageLoadResult.Missing(request, resultRevision: 51);
         ImageLoadResult canceled = ImageLoadResult.Canceled(
             request,
-            resultRevision: 51,
-            failureReason: "stale-apply",
+            resultRevision: 52,
+            failureReason: "stale-image-request",
             isStale: true
         );
         ImageLoadResult failed = ImageLoadResult.Failed(
@@ -319,8 +319,11 @@ public sealed class ImageRequestTests
             Assert.That(readyLog, Does.Contain("resolved=true"));
             Assert.That(missingLog, Does.Contain("image_outcome=missing"));
             Assert.That(missingLog, Does.Contain("resolved=false"));
+            Assert.That(canceledLog, Does.Contain("image_request_revision=51"));
+            Assert.That(canceledLog, Does.Contain("image_result_revision=52"));
+            Assert.That(canceledLog, Does.Contain("image_outcome=canceled"));
             Assert.That(canceledLog, Does.Contain("stale=true"));
-            Assert.That(canceledLog, Does.Contain("failure_reason=stale-apply"));
+            Assert.That(canceledLog, Does.Contain("failure_reason=stale-image-request"));
             Assert.That(failedLog, Does.Contain("placeholder=true"));
             Assert.That(failedLog, Does.Contain("failure_reason=error-marker"));
         });

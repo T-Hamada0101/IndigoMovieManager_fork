@@ -490,13 +490,26 @@ namespace IndigoMovieManager
                 {
                     ThumbnailPath = nextThumbDetail,
                 };
+                int currentImageRequestRevision = Volatile.Read(
+                    ref _extensionDetailThumbnailRequestVersion
+                );
                 if (
                     !ShouldApplyExtensionDetailImageRequest(
                         imageRequest,
-                        Volatile.Read(ref _extensionDetailThumbnailRequestVersion)
+                        currentImageRequestRevision
                     )
                 )
                 {
+                    ImageLoadResult canceledResult = ImageLoadResult.Canceled(
+                        imageRequest,
+                        currentImageRequestRevision,
+                        "stale-image-request",
+                        isStale: true
+                    );
+                    DebugRuntimeLog.Write(
+                        "ui-tempo",
+                        $"detail thumbnail image request discarded: path='{request.MoviePath}' {ImageLoadLogFields.Build(canceledResult)}"
+                    );
                     return;
                 }
 

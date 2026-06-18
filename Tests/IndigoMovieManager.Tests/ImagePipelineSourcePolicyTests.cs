@@ -125,7 +125,8 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(captureMethod, Does.Contain("CreateExtensionDetailImageRequest("));
         Assert.That(captureMethod, Does.Contain("ImageProbeRequest.ForExtensionDetailStatus(imageRequest)"));
         Assert.That(applyMethod, Does.Contain("ShouldApplyExtensionDetailImageRequest("));
-        Assert.That(applyMethod, Does.Contain("Volatile.Read(ref _extensionDetailThumbnailRequestVersion)"));
+        Assert.That(applyMethod, Does.Contain("int currentImageRequestRevision = Volatile.Read("));
+        Assert.That(applyMethod, Does.Contain("ref _extensionDetailThumbnailRequestVersion"));
     }
 
     [Test]
@@ -184,7 +185,9 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(loadMethod, Does.Contain("\"stale-background\""));
         Assert.That(applyMethod, Does.Contain("ImageLoadResult.Canceled("));
         Assert.That(applyMethod, Does.Contain("\"stale-apply\""));
+        Assert.That(applyMethod, Does.Contain("\"stale-image-request\""));
         Assert.That(applyMethod, Does.Contain("ImageLoadLogFields.Build("));
+        Assert.That(applyMethod, Does.Contain("detail thumbnail image request discarded"));
     }
 
     [Test]
