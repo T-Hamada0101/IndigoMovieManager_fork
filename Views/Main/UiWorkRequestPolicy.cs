@@ -77,6 +77,12 @@ internal static class UiWorkRequestPolicy
     internal const string WatchUiReloadQueryOnlyLogReason = "watch.ui-reload.query-only";
     internal const string WatchUiReloadFullFallbackLogReason =
         "watch.ui-reload.full-fallback";
+    internal const string KanaBackfillMovieViewRefreshCoalesceKey =
+        "kana-backfill:movie-view-refresh:coalesce";
+    internal const string KanaBackfillMovieViewRefreshLatestOnlyKey =
+        "kana-backfill:movie-view-refresh:latest-only";
+    internal const string KanaBackfillMovieViewRefreshLogReason =
+        "kana-backfill.movie-view-refresh";
     internal const string ExternalSkinHostRefreshCoalesceKey =
         "skin:host-refresh:coalesce";
     internal const string ExternalSkinHostRefreshLatestOnlyKey =
@@ -115,6 +121,18 @@ internal static class UiWorkRequestPolicy
             WatchUiReloadLatestOnlyKey,
             useQueryOnlyReload ? WatchUiReloadQueryOnlyLogReason : WatchUiReloadFullFallbackLogReason,
             BoundedDrainDeferredRequestCts,
+            TimeoutPolicyNone
+        );
+    }
+
+    internal static UiWorkRequest CreateKanaBackfillMovieViewRefreshRequest()
+    {
+        return new UiWorkRequest(
+            UiWorkPriority.WatchSmallDiff,
+            KanaBackfillMovieViewRefreshCoalesceKey,
+            KanaBackfillMovieViewRefreshLatestOnlyKey,
+            KanaBackfillMovieViewRefreshLogReason,
+            BoundedDrainCancellationToken,
             TimeoutPolicyNone
         );
     }

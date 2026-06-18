@@ -127,6 +127,36 @@ public sealed class UiWorkRequestPolicyTests
     }
 
     [Test]
+    public void KanaBackfillMovieViewRefreshRequest_watch小差分として契約語彙を固定する()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateKanaBackfillMovieViewRefreshRequest();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.Priority, Is.EqualTo(UiWorkPriority.WatchSmallDiff));
+            Assert.That(
+                request.CoalesceKey,
+                Is.EqualTo(UiWorkRequestPolicy.KanaBackfillMovieViewRefreshCoalesceKey)
+            );
+            Assert.That(
+                request.LatestOnlyKey,
+                Is.EqualTo(UiWorkRequestPolicy.KanaBackfillMovieViewRefreshLatestOnlyKey)
+            );
+            Assert.That(
+                request.LogReason,
+                Is.EqualTo(UiWorkRequestPolicy.KanaBackfillMovieViewRefreshLogReason)
+            );
+            Assert.That(
+                request.BoundedDrain,
+                Is.EqualTo(UiWorkRequestPolicy.BoundedDrainCancellationToken)
+            );
+            Assert.That(request.TimeoutPolicy, Is.EqualTo(UiWorkRequestPolicy.TimeoutPolicyNone));
+            Assert.That(request.HasCoalesceKey, Is.True);
+            Assert.That(request.HasLatestOnlyKey, Is.True);
+        });
+    }
+
+    [Test]
     public void ExternalSkinHostRefreshRequest_skinCatalog作業として契約語彙を固定する()
     {
         UiWorkRequest request = UiWorkRequestPolicy.CreateExternalSkinHostRefreshRequest();

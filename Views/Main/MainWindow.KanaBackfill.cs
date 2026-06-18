@@ -228,11 +228,14 @@ namespace IndigoMovieManager
                 return;
             }
 
+            UiWorkRequest request =
+                UiWorkRequestPolicy.CreateKanaBackfillMovieViewRefreshRequest();
+            bool hasChangedMovies = changedMovies != null && changedMovies.Count > 0;
             if (changedMovies == null || changedMovies.Count < 1)
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"kana backfill local refresh fallback: reason=missing-path updated={updatedMovieCount}"
+                    $"kana backfill local refresh fallback: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} reason=missing-path updated={updatedMovieCount}"
                 );
             }
 
@@ -240,11 +243,9 @@ namespace IndigoMovieManager
             // DB再読込ではなく現在 snapshot の再検索・再整列だけを予約する。
             _ = RefreshMovieViewFromCurrentSourceAsync(
                 sortId,
-                changedMovies == null || changedMovies.Count < 1
-                    ? "kana-backfill-query"
-                    : "kana-backfill",
+                hasChangedMovies ? "kana-backfill" : "kana-backfill-query",
                 UiHangActivityKind.Database,
-                changedMovies == null || changedMovies.Count < 1 ? null : changedMovies
+                hasChangedMovies ? changedMovies : null
             );
         }
 

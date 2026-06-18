@@ -67,6 +67,11 @@ public sealed class TagKanaLocalRefreshSourceTests
         Assert.Multiple(() =>
         {
             Assert.That(source, Does.Contain("QueueKanaBackfillMovieViewRefresh("));
+            Assert.That(
+                source,
+                Does.Contain("UiWorkRequestPolicy.CreateKanaBackfillMovieViewRefreshRequest()")
+            );
+            Assert.That(source, Does.Contain("UiWorkRequestPolicy.BuildRequestAdmissionLogFields("));
             Assert.That(source, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
             Assert.That(source, Does.Contain("kana backfill local refresh fallback:"));
             Assert.That(source, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, true)"));
