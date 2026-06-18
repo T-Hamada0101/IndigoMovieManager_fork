@@ -19,6 +19,7 @@
   xmlns:thumbnailErrorTab="clr-namespace:IndigoMovieManager.BottomTabs.ThumbnailError"
   xmlns:thumbnailProgressTab="clr-namespace:IndigoMovieManager.BottomTabs.ThumbnailProgress"
   xmlns:upperTabsCommon="clr-namespace:IndigoMovieManager.UpperTabs.Common"
+  xmlns:upperTabsPlayer="clr-namespace:IndigoMovieManager.UpperTabs.Player"
   xmlns:rescueTab="clr-namespace:IndigoMovieManager.UpperTabs.Rescue"
   xmlns:duplicateVideosTab="clr-namespace:IndigoMovieManager.UpperTabs.DuplicateVideos"
   xmlns:view="clr-namespace:IndigoMovieManager.UserControls"
@@ -39,6 +40,7 @@
     <c:TagSummaryConverter x:Key="tagSummaryConverter" />
     <c:ThumbnailProgressPreviewConverter x:Key="thumbnailProgressPreviewConverter" />
     <upperTabsCommon:UpperTabImageSourceConverter x:Key="upperTabImageSourceConverter" />
+    <upperTabsPlayer:PlayerRightRailImageSourceConverter x:Key="playerRightRailImageSourceConverter" />
     <Style x:Key="UpperTabListCellTextStyle" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{DynamicResource UpperTabPanelForegroundBrush}" />
     </Style>
@@ -1061,7 +1063,7 @@
                                       <Image SnapsToDevicePixels="True" Stretch="UniformToFill">
                                         <Image.Source>
                                           <MultiBinding
-                                            Converter="{StaticResource upperTabImageSourceConverter}"
+                                            Converter="{StaticResource playerRightRailImageSourceConverter}"
                                             ConverterParameter="{x:Static upperTabsCommon:UpperTabDecodeProfile.GridDecodePixelHeight}"
                                           >
                                             <Binding Path="ThumbPathGrid" />

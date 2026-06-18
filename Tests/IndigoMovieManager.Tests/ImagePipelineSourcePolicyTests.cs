@@ -124,6 +124,22 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(applyMethod, Does.Contain("Volatile.Read(ref _extensionDetailThumbnailRequestVersion)"));
     }
 
+    [Test]
+    public void Player右レールconverterはImageRequestを作ってからdecodeへ進む()
+    {
+        string converterSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "PlayerRightRailImageSourceConverter.cs"
+        );
+        string convertMethod = ExtractMethod(converterSource, "public object Convert(");
+
+        Assert.That(convertMethod, Does.Contain("CreatePlayerRightRailImageRequest("));
+        Assert.That(convertMethod, Does.Contain("ShouldApplyPlayerRightRailImageRequest("));
+        Assert.That(convertMethod, Does.Contain("ResolveImageRequestRevision("));
+        Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
+    }
+
     private static void AssertMethodDoesNotContainImageIo(string methodSource, string methodName)
     {
         foreach (string fragment in ImageIoFragments)

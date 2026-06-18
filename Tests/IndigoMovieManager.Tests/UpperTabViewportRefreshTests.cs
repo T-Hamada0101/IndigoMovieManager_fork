@@ -224,9 +224,17 @@ public sealed class UpperTabViewportRefreshTests
     {
         string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         string playerThumbnailImageBinding = GetPlayerThumbnailImageBinding(mainWindowXaml);
-        string converterSource = GetRepoText("UpperTabs", "Common", "UpperTabImageSourceConverter.cs");
+        string converterSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "PlayerRightRailImageSourceConverter.cs"
+        );
 
-        // 5番目の Binding は converter の判定値ではなく、preferred key 更新後の再評価 trigger として使う。
+        // 5番目の Binding は Player右レール request の revision として扱い、古い要求だけ捨てる。
+        Assert.That(
+            playerThumbnailImageBinding,
+            Does.Contain("Converter=\"{StaticResource playerRightRailImageSourceConverter}\"")
+        );
         Assert.That(playerThumbnailImageBinding, Does.Contain("<Binding Path=\"ThumbPathGrid\" />"));
         Assert.That(playerThumbnailImageBinding, Does.Contain("<Binding Path=\"IsExists\" />"));
         Assert.That(
@@ -239,7 +247,8 @@ public sealed class UpperTabViewportRefreshTests
             Does.Contain("<Binding Source=\"{x:Reference window}\" Path=\"UpperTabPreferredMoviePathKeysRevision\" />")
         );
         Assert.That(converterSource, Does.Contain("object moviePathValue = values.Length > 3 ? values[3] : null;"));
-        Assert.That(converterSource, Does.Not.Contain("values[4]"));
+        Assert.That(converterSource, Does.Contain("object revisionValue = values.Length > 4 ? values[4] : null;"));
+        Assert.That(converterSource, Does.Contain("ResolveImageRequestRevision(revisionValue)"));
     }
 
     [TestCase("SmallList", "ThumbPathSmall")]
@@ -277,7 +286,7 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(listStart, Is.GreaterThanOrEqualTo(0));
 
         int converterIndex = mainWindowXaml.IndexOf(
-            "Converter=\"{StaticResource upperTabImageSourceConverter}\"",
+            "Converter=\"{StaticResource playerRightRailImageSourceConverter}\"",
             listStart,
             StringComparison.Ordinal
         );

@@ -46,9 +46,50 @@ namespace IndigoMovieManager.UpperTabs.Common
             );
         }
 
+        internal static ImageRequest CreatePlayerRightRailImageRequest(
+            object thumbnailPathValue,
+            object isVisibleValue,
+            object moviePathValue,
+            int requestRevision
+        )
+        {
+            string moviePathKey = ResolveMoviePathKey(moviePathValue);
+            bool isVisiblePriority = ResolveUpperTabVisiblePriority(
+                isVisibleValue,
+                moviePathKey,
+                moviePathValue
+            );
+            return ImageRequest.ForPlayerRightRail(
+                thumbnailPathValue as string,
+                moviePathKey,
+                isVisiblePriority,
+                requestRevision
+            );
+        }
+
         internal static bool ShouldApplyImageRequest(ImageRequest request)
         {
             return request.ShouldDecode;
+        }
+
+        internal static bool ShouldApplyPlayerRightRailImageRequest(
+            ImageRequest request,
+            int currentRevision
+        )
+        {
+            return request.ThumbnailRole == ImageRequestThumbnailRole.PlayerRightRail
+                && request.RequestRevision == currentRevision;
+        }
+
+        internal static int ResolveImageRequestRevision(object revisionValue)
+        {
+            return revisionValue switch
+            {
+                int intValue => intValue,
+                long longValue when longValue >= int.MinValue && longValue <= int.MaxValue =>
+                    (int)longValue,
+                _ => 0,
+            };
         }
 
         private static bool ResolveUpperTabVisiblePriority(

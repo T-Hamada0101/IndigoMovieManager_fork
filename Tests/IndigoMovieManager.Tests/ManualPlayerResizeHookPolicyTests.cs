@@ -323,7 +323,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(listStart, Is.GreaterThanOrEqualTo(0));
 
         int converterIndex = mainWindowXaml.IndexOf(
-            "Converter=\"{StaticResource upperTabImageSourceConverter}\"",
+            "Converter=\"{StaticResource playerRightRailImageSourceConverter}\"",
             listStart,
             StringComparison.Ordinal
         );

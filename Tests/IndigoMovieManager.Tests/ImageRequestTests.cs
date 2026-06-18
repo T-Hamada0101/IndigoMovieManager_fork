@@ -139,4 +139,58 @@ public sealed class ImageRequestTests
             Assert.That(MainWindow.ShouldApplyExtensionDetailImageRequest(staleRequest, 13), Is.False);
         });
     }
+
+    [Test]
+    public void Player右レール要求はrole_visible_cache_revisionを保持する()
+    {
+        string moviePath = Path.Combine("movies", "player-right-rail.mp4");
+        ImageRequest request = UpperTabActivationGate.CreatePlayerRightRailImageRequest(
+            @"C:\thumb\player-right-rail.jpg",
+            true,
+            moviePath,
+            requestRevision: 21
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(request.ThumbnailRole, Is.EqualTo(ImageRequestThumbnailRole.PlayerRightRail));
+            Assert.That(request.CachePolicy, Is.EqualTo(ImageRequestCachePolicy.UseConverterCache));
+            Assert.That(request.RequestRevision, Is.EqualTo(21));
+            Assert.That(request.ThumbnailPath, Is.EqualTo(@"C:\thumb\player-right-rail.jpg"));
+            Assert.That(request.MoviePathKey, Is.EqualTo(QueueDbPathResolver.CreateMoviePathKey(moviePath)));
+            Assert.That(request.IsVisiblePriority, Is.True);
+            Assert.That(UpperTabActivationGate.ShouldApplyPlayerRightRailImageRequest(request, 21), Is.True);
+        });
+    }
+
+    [Test]
+    public void Player右レール要求は非表示でも状態を保持し古いrevisionだけ捨てる()
+    {
+        ImageRequest hiddenRequest = UpperTabActivationGate.CreatePlayerRightRailImageRequest(
+            @"C:\thumb\hidden-player-right-rail.jpg",
+            false,
+            Path.Combine("movies", "hidden-player-right-rail.mp4"),
+            requestRevision: 22
+        );
+        ImageRequest staleRequest = UpperTabActivationGate.CreatePlayerRightRailImageRequest(
+            @"C:\thumb\stale-player-right-rail.jpg",
+            true,
+            Path.Combine("movies", "stale-player-right-rail.mp4"),
+            requestRevision: 22
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(hiddenRequest.IsVisiblePriority, Is.False);
+            Assert.That(
+                UpperTabActivationGate.ShouldApplyPlayerRightRailImageRequest(hiddenRequest, 22),
+                Is.True
+            );
+            Assert.That(staleRequest.IsVisiblePriority, Is.True);
+            Assert.That(
+                UpperTabActivationGate.ShouldApplyPlayerRightRailImageRequest(staleRequest, 23),
+                Is.False
+            );
+        });
+    }
 }

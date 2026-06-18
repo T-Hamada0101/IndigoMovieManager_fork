@@ -4,6 +4,7 @@ namespace IndigoMovieManager.UpperTabs.Common
     {
         UpperTab,
         ExtensionDetail,
+        PlayerRightRail,
     }
 
     internal enum ImageRequestCachePolicy
@@ -50,6 +51,23 @@ namespace IndigoMovieManager.UpperTabs.Common
                 thumbnailPath ?? "",
                 moviePathKey ?? "",
                 ImageRequestThumbnailRole.ExtensionDetail,
+                isVisiblePriority,
+                ImageRequestCachePolicy.UseConverterCache,
+                requestRevision
+            );
+        }
+
+        internal static ImageRequest ForPlayerRightRail(
+            string thumbnailPath,
+            string moviePathKey,
+            bool isVisiblePriority,
+            int requestRevision
+        )
+        {
+            return new ImageRequest(
+                thumbnailPath ?? "",
+                moviePathKey ?? "",
+                ImageRequestThumbnailRole.PlayerRightRail,
                 isVisiblePriority,
                 ImageRequestCachePolicy.UseConverterCache,
                 requestRevision
