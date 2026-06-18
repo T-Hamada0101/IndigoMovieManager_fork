@@ -438,7 +438,12 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(backgroundVolumeSaveMethod, Does.Contain("TaskScheduler.Default"));
         Assert.That(backgroundVolumeSaveMethod, Does.Contain("BuildPlayerVolumeSettingsWriteRequest()"));
         Assert.That(saveVolumeMethod, Does.Contain("Properties.Settings.Default.Save();"));
+        Assert.That(saveVolumeMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
         Assert.That(saveVolumeMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+        Assert.That(
+            saveVolumeMethod,
+            Does.Contain("player volume settings save succeeded: {result.LogFields}")
+        );
         Assert.That(playbackStatsPersistMethod, Does.Contain("Task.Run("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));

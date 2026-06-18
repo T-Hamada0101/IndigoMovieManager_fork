@@ -273,6 +273,15 @@ namespace IndigoMovieManager
                 {
                     Properties.Settings.Default.Save();
                 }
+
+                PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
+                    writeRequest,
+                    stopwatch.Elapsed
+                );
+                DebugRuntimeLog.Write(
+                    "player",
+                    $"player volume settings save succeeded: {result.LogFields}"
+                );
             }
             catch (Exception ex)
             {

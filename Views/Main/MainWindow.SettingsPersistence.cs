@@ -62,6 +62,15 @@ namespace IndigoMovieManager
                 {
                     Properties.Settings.Default.Save();
                 }
+
+                PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
+                    writeRequest,
+                    stopwatch.Elapsed
+                );
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"application settings save succeeded: {result.LogFields}"
+                );
             }
             catch (Exception ex)
             {

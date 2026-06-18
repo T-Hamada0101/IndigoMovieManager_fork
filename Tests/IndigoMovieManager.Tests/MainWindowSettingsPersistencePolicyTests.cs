@@ -43,7 +43,14 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(persistenceSource, Does.Contain("Properties.Settings.Default.Save();"));
         Assert.That(persistenceSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
         Assert.That(persistenceSource, Does.Contain("BuildApplicationSettingsWriteRequest(reason)"));
+        Assert.That(persistenceSource, Does.Contain("PersistenceWriteResult.FromSuccess("));
         Assert.That(persistenceSource, Does.Contain("PersistenceWriteResult.FromFailure("));
+        Assert.That(
+            persistenceSource,
+            Does.Contain(
+                "application settings save succeeded: {result.LogFields}"
+            )
+        );
         Assert.That(
             persistenceSource,
             Does.Contain(
@@ -54,6 +61,13 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(playerSource, Does.Contain("BuildPlayerVolumeSettingsWriteRequest()"));
         Assert.That(playerSource, Does.Contain("PersistenceWriteKind.BackgroundDbWrite"));
         Assert.That(playerSource, Does.Contain("main-db-playback-stats"));
+        Assert.That(playerSource, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(
+            playerSource,
+            Does.Contain(
+                "player volume settings save succeeded: {result.LogFields}"
+            )
+        );
         Assert.That(
             playerSource,
             Does.Contain(
