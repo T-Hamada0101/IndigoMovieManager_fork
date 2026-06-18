@@ -395,7 +395,7 @@ namespace IndigoMovieManager
                                 UiOperationPriorityPolicy.DeferReasonUiSuppression,
                                 isRecentViewportInteractionActive,
                                 shouldQueueCatchUp: true,
-                                everythingPollRequest.LogReason
+                                everythingPollRequest
                             )
                         );
                     }

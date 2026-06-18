@@ -222,6 +222,14 @@ namespace IndigoMovieManager
                 Dispatcher?.HasShutdownStarted == true,
                 Dispatcher?.HasShutdownFinished == true
             );
+            if (!acceptance.Accepted)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-progress",
+                    $"snapshot refresh rejected: {UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, acceptance.ReleaseReason)} skip_reason={acceptance.SkipReason}"
+                );
+            }
+
             return acceptance.Accepted;
         }
 
@@ -2080,6 +2088,10 @@ namespace IndigoMovieManager
                 return;
             }
 
+            DebugRuntimeLog.Write(
+                "thumbnail-progress",
+                $"snapshot refresh deferred: {UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} delay_ms={(int)delay.TotalMilliseconds}"
+            );
             _ = RunDelayedThumbnailProgressSnapshotRefreshAsync(delay, request);
         }
 
@@ -2096,7 +2108,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"delayed snapshot refresh failed: log_reason={request.LogReason} {ex.Message}"
+                    $"delayed snapshot refresh failed: {UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, UiWorkRequestPolicy.ReleaseReasonFailed)} {ex.Message}"
                 );
             }
             finally
@@ -2112,22 +2124,32 @@ namespace IndigoMovieManager
 
         private void ProcessThumbnailProgressSnapshotRefreshQueue(UiWorkRequest request)
         {
+            bool updated = false;
             try
             {
                 if (Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshRequested, 0) == 1)
                 {
                     UpdateThumbnailProgressSnapshotUi(requireVisibleSelection: false);
+                    updated = true;
                 }
             }
             catch (Exception ex)
             {
                 DebugRuntimeLog.Write(
                     "thumbnail-progress",
-                    $"snapshot refresh failed: log_reason={request.LogReason} {ex.Message}"
+                    $"snapshot refresh failed: {UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, UiWorkRequestPolicy.ReleaseReasonFailed)} {ex.Message}"
                 );
             }
             finally
             {
+                if (updated)
+                {
+                    DebugRuntimeLog.Write(
+                        "thumbnail-progress",
+                        $"snapshot refresh completed: {UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, UiWorkRequestPolicy.ReleaseReasonCompleted)}"
+                    );
+                }
+
                 _ = Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshQueued, 0);
                 if (Interlocked.CompareExchange(ref _thumbnailProgressSnapshotRefreshRequested, 0, 0) == 1)
                 {

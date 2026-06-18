@@ -166,11 +166,11 @@ namespace IndigoMovieManager
             string deferReason,
             bool isRecentViewportInteractionActive,
             bool shouldQueueCatchUp,
-            string logReason
+            UiWorkRequest request
         )
         {
             return
-                $"everything poll deferred: log_reason={logReason ?? ""} operation_reason={operationReason} defer_reason={deferReason} recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} catch_up={FormatLogBool(shouldQueueCatchUp)}";
+                $"everything poll deferred: {UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, UiWorkRequestPolicy.ReleaseReasonDeferred)} operation_reason={operationReason} defer_reason={deferReason} recent_viewport={FormatLogBool(isRecentViewportInteractionActive)} catch_up={FormatLogBool(shouldQueueCatchUp)}";
         }
 
         // poll 自体は定期処理なので、検索などの明示操作中は1周見送り、解除後のwatchで追いつく。
@@ -203,7 +203,7 @@ namespace IndigoMovieManager
                     UiOperationPriorityPolicy.DeferReasonUserPriority,
                     isRecentViewportInteractionActive,
                     shouldQueueCatchUp: true,
-                    request.LogReason
+                    request
                 )
             );
             return true;
@@ -231,7 +231,7 @@ namespace IndigoMovieManager
                     UiOperationPriorityPolicy.DeferReasonRecentViewport,
                     isRecentViewportInteractionActive,
                     shouldQueueCatchUp: false,
-                    request.LogReason
+                    request
                 )
             );
             return true;

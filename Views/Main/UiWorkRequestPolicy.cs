@@ -7,7 +7,8 @@ internal readonly record struct UiWorkRequest(
     UiWorkPriority Priority,
     string CoalesceKey,
     string LatestOnlyKey,
-    string LogReason
+    string LogReason,
+    string BoundedDrain
 )
 {
     internal bool HasCoalesceKey => !string.IsNullOrWhiteSpace(CoalesceKey);
@@ -17,7 +18,9 @@ internal readonly record struct UiWorkRequest(
 internal readonly record struct UiWorkRequestAcceptance(
     bool Accepted,
     string SkipReason,
-    string LogReason
+    string LogReason,
+    string ReleaseReason,
+    string BoundedDrain
 );
 
 // 数値が小さいほど、ユーザー操作に近い作業として扱う。
@@ -42,6 +45,15 @@ internal static class UiWorkRequestPolicy
     internal const string RejectReasonDispatcherMissing = "dispatcher-missing";
     internal const string RejectReasonShutdownStarted = "dispatcher-shutdown-started";
     internal const string RejectReasonShutdownFinished = "dispatcher-shutdown-finished";
+    internal const string ReleaseReasonAccepted = "accepted";
+    internal const string ReleaseReasonRejected = "rejected";
+    internal const string ReleaseReasonDeferred = "deferred";
+    internal const string ReleaseReasonReleased = "released";
+    internal const string ReleaseReasonCompleted = "completed";
+    internal const string ReleaseReasonFailed = "failed";
+    internal const string BoundedDrainDispatcherShutdownGuard = "dispatcher-shutdown-guard";
+    internal const string BoundedDrainCancellationToken = "cancellation-token";
+    internal const string BoundedDrainDeferredRequestCts = "deferred-request-cts";
 
     internal const string ThumbnailProgressSnapshotRefreshCoalesceKey =
         "thumbnail-progress:snapshot-refresh:coalesce";
@@ -66,7 +78,8 @@ internal static class UiWorkRequestPolicy
             UiWorkPriority.ThumbnailRefresh,
             ThumbnailProgressSnapshotRefreshCoalesceKey,
             ThumbnailProgressSnapshotRefreshLatestOnlyKey,
-            ThumbnailProgressSnapshotRefreshLogReason
+            ThumbnailProgressSnapshotRefreshLogReason,
+            BoundedDrainDispatcherShutdownGuard
         );
     }
 
@@ -76,7 +89,8 @@ internal static class UiWorkRequestPolicy
             UiWorkPriority.WatchSmallDiff,
             EverythingWatchPollCoalesceKey,
             EverythingWatchPollLatestOnlyKey,
-            EverythingWatchPollLogReason
+            EverythingWatchPollLogReason,
+            BoundedDrainCancellationToken
         );
     }
 
@@ -86,7 +100,8 @@ internal static class UiWorkRequestPolicy
             useQueryOnlyReload ? UiWorkPriority.WatchSmallDiff : UiWorkPriority.WatchReload,
             WatchUiReloadCoalesceKey,
             WatchUiReloadLatestOnlyKey,
-            useQueryOnlyReload ? WatchUiReloadQueryOnlyLogReason : WatchUiReloadFullFallbackLogReason
+            useQueryOnlyReload ? WatchUiReloadQueryOnlyLogReason : WatchUiReloadFullFallbackLogReason,
+            BoundedDrainDeferredRequestCts
         );
     }
 
@@ -115,8 +130,18 @@ internal static class UiWorkRequestPolicy
         return new UiWorkRequestAcceptance(
             Accepted: true,
             SkipReason: AcceptReasonNone,
-            LogReason: request.LogReason ?? ""
+            LogReason: request.LogReason ?? "",
+            ReleaseReason: ReleaseReasonAccepted,
+            BoundedDrain: request.BoundedDrain ?? ""
         );
+    }
+
+    internal static string BuildRequestLifecycleLogFields(
+        UiWorkRequest request,
+        string releaseReason
+    )
+    {
+        return $"log_reason={request.LogReason ?? ""} release_reason={NormalizeReleaseReason(releaseReason)} bounded_drain={request.BoundedDrain ?? ""}";
     }
 
     private static UiWorkRequestAcceptance Reject(UiWorkRequest request, string skipReason)
@@ -124,7 +149,14 @@ internal static class UiWorkRequestPolicy
         return new UiWorkRequestAcceptance(
             Accepted: false,
             SkipReason: skipReason ?? "",
-            LogReason: request.LogReason ?? ""
+            LogReason: request.LogReason ?? "",
+            ReleaseReason: ReleaseReasonRejected,
+            BoundedDrain: request.BoundedDrain ?? ""
         );
+    }
+
+    private static string NormalizeReleaseReason(string releaseReason)
+    {
+        return string.IsNullOrWhiteSpace(releaseReason) ? ReleaseReasonCompleted : releaseReason;
     }
 }

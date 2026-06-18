@@ -450,7 +450,7 @@ namespace IndigoMovieManager
             );
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"deferred ui reload scheduled: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovieCount} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest)} delay_ms={WatchDeferredUiReloadDelayMs}"
+                $"deferred ui reload scheduled: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovieCount} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest, UiWorkRequestPolicy.ReleaseReasonDeferred)} delay_ms={WatchDeferredUiReloadDelayMs}"
             );
             _ = RunDeferredWatchUiReloadAsync(
                 snapshotDbFullPath,
@@ -657,7 +657,7 @@ namespace IndigoMovieManager
             );
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"deferred ui reload apply: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} sort={currentSort} changed_paths={changedMovies.Count} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest)}"
+                $"deferred ui reload apply: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} reload={(useQueryOnlyReload ? "query-only" : "full")} sort={currentSort} changed_paths={changedMovies.Count} {BuildWatchUiReloadPlanLogFields(planReason, recoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest, UiWorkRequestPolicy.ReleaseReasonReleased)}"
             );
             InvokeWatchUiReload(
                 currentSort,
@@ -776,7 +776,7 @@ namespace IndigoMovieManager
             );
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={resolvedCanUseQueryOnlyReload} {BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest)}"
+                $"final folder check ui reload apply: mode={mode} db='{snapshotDbFullPath}' reload={(reloadPlan.UseQueryOnlyReload ? "query-only" : "full")} changed_paths={changedMovies?.Count ?? 0} can_query_only={resolvedCanUseQueryOnlyReload} {BuildWatchUiReloadPlanLogFields(planReason, queryOnlyRecoveryReason)} {BuildWatchUiWorkRequestLogFields(workRequest, UiWorkRequestPolicy.ReleaseReasonReleased)}"
             );
             InvokeWatchUiReload(
                 currentSort,
@@ -806,9 +806,12 @@ namespace IndigoMovieManager
         }
 
         // scheduler 本体は作らず、watch reload を既存ログ上で同じ作業要求語彙として読めるようにする。
-        internal static string BuildWatchUiWorkRequestLogFields(UiWorkRequest request)
+        internal static string BuildWatchUiWorkRequestLogFields(
+            UiWorkRequest request,
+            string releaseReason
+        )
         {
-            return $"operation_reason={request.LogReason} work_priority={request.Priority} coalesce_key='{request.CoalesceKey}' latest_only_key='{request.LatestOnlyKey}'";
+            return $"{UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, releaseReason)} operation_reason={request.LogReason} work_priority={request.Priority} coalesce_key='{request.CoalesceKey}' latest_only_key='{request.LatestOnlyKey}'";
         }
 
         // watch の query-only は、DB再読込へ戻さず in-memory 一覧から再計算する。

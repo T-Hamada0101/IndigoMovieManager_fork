@@ -25,6 +25,10 @@ public sealed class UiWorkRequestPolicyTests
                 request.LogReason,
                 Is.EqualTo(UiWorkRequestPolicy.ThumbnailProgressSnapshotRefreshLogReason)
             );
+            Assert.That(
+                request.BoundedDrain,
+                Is.EqualTo(UiWorkRequestPolicy.BoundedDrainDispatcherShutdownGuard)
+            );
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
         });
@@ -47,6 +51,10 @@ public sealed class UiWorkRequestPolicyTests
                 Is.EqualTo(UiWorkRequestPolicy.EverythingWatchPollLatestOnlyKey)
             );
             Assert.That(request.LogReason, Is.EqualTo(UiWorkRequestPolicy.EverythingWatchPollLogReason));
+            Assert.That(
+                request.BoundedDrain,
+                Is.EqualTo(UiWorkRequestPolicy.BoundedDrainCancellationToken)
+            );
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
         });
@@ -74,6 +82,10 @@ public sealed class UiWorkRequestPolicyTests
                 request.LogReason,
                 Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadQueryOnlyLogReason)
             );
+            Assert.That(
+                request.BoundedDrain,
+                Is.EqualTo(UiWorkRequestPolicy.BoundedDrainDeferredRequestCts)
+            );
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
         });
@@ -100,6 +112,10 @@ public sealed class UiWorkRequestPolicyTests
             Assert.That(
                 request.LogReason,
                 Is.EqualTo(UiWorkRequestPolicy.WatchUiReloadFullFallbackLogReason)
+            );
+            Assert.That(
+                request.BoundedDrain,
+                Is.EqualTo(UiWorkRequestPolicy.BoundedDrainDeferredRequestCts)
             );
             Assert.That(request.HasCoalesceKey, Is.True);
             Assert.That(request.HasLatestOnlyKey, Is.True);
@@ -132,6 +148,30 @@ public sealed class UiWorkRequestPolicyTests
             Assert.That(acceptance.Accepted, Is.EqualTo(expectedAccepted));
             Assert.That(acceptance.SkipReason, Is.EqualTo(expectedReason));
             Assert.That(acceptance.LogReason, Is.EqualTo(request.LogReason));
+            Assert.That(acceptance.BoundedDrain, Is.EqualTo(request.BoundedDrain));
+            Assert.That(
+                acceptance.ReleaseReason,
+                Is.EqualTo(
+                    expectedAccepted
+                        ? UiWorkRequestPolicy.ReleaseReasonAccepted
+                        : UiWorkRequestPolicy.ReleaseReasonRejected
+                )
+            );
         });
+    }
+
+    [Test]
+    public void BuildRequestLifecycleLogFields_releaseReasonとboundedDrainを共通形式で出す()
+    {
+        UiWorkRequest request = UiWorkRequestPolicy.CreateEverythingWatchPollRequest();
+
+        string logFields = UiWorkRequestPolicy.BuildRequestLifecycleLogFields(
+            request,
+            UiWorkRequestPolicy.ReleaseReasonDeferred
+        );
+
+        Assert.That(logFields, Does.Contain("log_reason=watch.everything-poll"));
+        Assert.That(logFields, Does.Contain("release_reason=deferred"));
+        Assert.That(logFields, Does.Contain("bounded_drain=cancellation-token"));
     }
 }

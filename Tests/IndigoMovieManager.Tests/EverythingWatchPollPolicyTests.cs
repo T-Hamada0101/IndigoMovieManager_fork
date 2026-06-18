@@ -275,10 +275,12 @@ public sealed class EverythingWatchPollPolicyTests
             deferReason: UiOperationPriorityPolicy.DeferReasonUserPriority,
             isRecentViewportInteractionActive: false,
             shouldQueueCatchUp: true,
-            logReason: UiWorkRequestPolicy.CreateEverythingWatchPollRequest().LogReason
+            request: UiWorkRequestPolicy.CreateEverythingWatchPollRequest()
         );
 
         Assert.That(message, Does.Contain("log_reason=watch.everything-poll"));
+        Assert.That(message, Does.Contain("release_reason=deferred"));
+        Assert.That(message, Does.Contain("bounded_drain=cancellation-token"));
         Assert.That(message, Does.Contain("operation_reason=user-priority"));
         Assert.That(message, Does.Contain("catch_up=true"));
     }

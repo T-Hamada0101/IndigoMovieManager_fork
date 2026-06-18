@@ -145,7 +145,19 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
             source,
             Does.Contain("UiWorkRequestPolicy.CreateWatchUiReloadRequest(")
         );
-        Assert.That(source, Does.Contain("BuildWatchUiWorkRequestLogFields(workRequest)"));
+        Assert.That(source, Does.Contain("BuildWatchUiWorkRequestLogFields(workRequest,"));
+        Assert.That(
+            source,
+            Does.Contain("BuildWatchUiWorkRequestLogFields(workRequest, UiWorkRequestPolicy.ReleaseReasonDeferred)")
+        );
+        Assert.That(
+            source,
+            Does.Contain("BuildWatchUiWorkRequestLogFields(workRequest, UiWorkRequestPolicy.ReleaseReasonReleased)")
+        );
+        Assert.That(
+            logMethod,
+            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(request, releaseReason)")
+        );
         Assert.That(logMethod, Does.Contain("operation_reason={request.LogReason}"));
         Assert.That(logMethod, Does.Contain("work_priority={request.Priority}"));
         Assert.That(logMethod, Does.Contain("coalesce_key='{request.CoalesceKey}'"));

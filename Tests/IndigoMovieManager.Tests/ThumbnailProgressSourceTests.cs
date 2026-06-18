@@ -271,7 +271,11 @@ public sealed class ThumbnailProgressSourceTests
             )
         );
         Assert.That(delayedRunMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
-        Assert.That(delayedRunMethod, Does.Contain("log_reason={request.LogReason}"));
+        Assert.That(
+            delayedRunMethod,
+            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(")
+        );
+        Assert.That(delayedRunMethod, Does.Contain("UiWorkRequestPolicy.ReleaseReasonFailed"));
 
         Assert.That(
             processMethod,
@@ -284,7 +288,12 @@ public sealed class ThumbnailProgressSourceTests
             )
         );
         Assert.That(processMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
-        Assert.That(processMethod, Does.Contain("log_reason={request.LogReason}"));
+        Assert.That(
+            processMethod,
+            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(")
+        );
+        Assert.That(processMethod, Does.Contain("UiWorkRequestPolicy.ReleaseReasonCompleted"));
+        Assert.That(processMethod, Does.Contain("UiWorkRequestPolicy.ReleaseReasonFailed"));
     }
 
     [Test]
@@ -308,6 +317,12 @@ public sealed class ThumbnailProgressSourceTests
         Assert.That(acceptMethod, Does.Contain("Dispatcher != null"));
         Assert.That(acceptMethod, Does.Contain("Dispatcher?.HasShutdownStarted == true"));
         Assert.That(acceptMethod, Does.Contain("Dispatcher?.HasShutdownFinished == true"));
+        Assert.That(
+            acceptMethod,
+            Does.Contain("UiWorkRequestPolicy.BuildRequestLifecycleLogFields(")
+        );
+        Assert.That(acceptMethod, Does.Contain("acceptance.ReleaseReason"));
+        Assert.That(acceptMethod, Does.Contain("skip_reason={acceptance.SkipReason}"));
         Assert.That(
             requestMethod,
             Does.Contain("if (!CanAcceptThumbnailProgressSnapshotRefresh(request))")
