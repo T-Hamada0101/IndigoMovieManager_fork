@@ -383,6 +383,68 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayerSurface操作は保存処理とDB書込を直接持たない()
+    {
+        // surface操作は見た目の反映だけに閉じ、保存は既存のqueue/background経路へ任せる。
+        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+
+        string[] surfaceMethods =
+        [
+            GetMethodBlock(upperTabPlayerSource, "private void ShowPlayerSurface()"),
+            GetMethodBlock(upperTabPlayerSource, "private void ShowPlayerEmptyState()"),
+            GetMethodBlock(upperTabPlayerSource, "private void ResetWebViewPlayerSurface()"),
+            GetMethodBlock(mainWindowPlayerSource, "private void UpdateManualPlayerViewport()"),
+            GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementSizeIfChanged("),
+            GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementWidthIfChanged("),
+            GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementHeightIfChanged("),
+            GetMethodBlock(mainWindowPlayerSource, "private void CloseManualPlayerOverlay()"),
+        ];
+
+        foreach (string surfaceMethod in surfaceMethods)
+        {
+            AssertPlayerSurfaceMethodDoesNotPersist(surfaceMethod);
+        }
+    }
+
+    [Test]
+    public void Player保存経路はsurface操作から分離した既存queueとbackgroundへ寄せる()
+    {
+        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
+
+        string applyVolumeMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void ApplyPlayerVolumeSetting("
+        );
+        string queueVolumeSaveMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void QueuePlayerVolumeSettingSave()"
+        );
+        string backgroundVolumeSaveMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void QueuePlayerVolumeSettingSaveInBackground()"
+        );
+        string saveVolumeMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void SavePlayerVolumeSettingInBackground()"
+        );
+        string playbackStatsPersistMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void QueueMoviePlaybackStatsPersist("
+        );
+
+        Assert.That(applyVolumeMethod, Does.Contain("QueuePlayerVolumeSettingSave();"));
+        Assert.That(queueVolumeSaveMethod, Does.Contain("DispatcherTimer"));
+        Assert.That(backgroundVolumeSaveMethod, Does.Contain("TaskScheduler.Default"));
+        Assert.That(saveVolumeMethod, Does.Contain("Properties.Settings.Default.Save();"));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("Task.Run("));
+        Assert.That(
+            playbackStatsPersistMethod,
+            Does.Contain("PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)")
+        );
+    }
+
+    [Test]
     public void PlayerThumbnailSelectionSync_同一選択では再スクロールとvisible更新を積まない()
     {
         // プレイヤータブ内の同一動画再生では、選択同期だけで重い visible refresh を再投入しない。
@@ -784,5 +846,23 @@ public sealed class ManualPlayerResizeHookPolicyTests
 
         Assert.Fail($"{signature} の本文終了が見つかりません。");
         return string.Empty;
+    }
+
+    private static void AssertPlayerSurfaceMethodDoesNotPersist(string method)
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(method, Does.Not.Contain("Properties.Settings.Default.Save("));
+            Assert.That(method, Does.Not.Contain("QueueApplicationSettingsSave("));
+            Assert.That(method, Does.Not.Contain("QueuePlayerVolumeSettingSave("));
+            Assert.That(method, Does.Not.Contain("QueueMoviePlaybackStatsPersist("));
+            Assert.That(method, Does.Not.Contain("QueueBookmarkViewCountUpdate("));
+            Assert.That(method, Does.Not.Contain("ExecuteNonQuery("));
+            Assert.That(method, Does.Not.Contain("_mainDbMovieMutationFacade."));
+            Assert.That(method, Does.Not.Contain("UpdateScore("));
+            Assert.That(method, Does.Not.Contain("UpdateViewCount("));
+            Assert.That(method, Does.Not.Contain("UpdateLastDate("));
+            Assert.That(method, Does.Not.Contain("UpdateBookmarkViewCount("));
+        });
     }
 }
