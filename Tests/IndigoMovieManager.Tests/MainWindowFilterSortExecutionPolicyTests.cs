@@ -214,6 +214,11 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "Main",
             "MainWindow.MainDbRuntime.cs"
         );
+        string registeredMovieCountPolicySource = GetRepoText(
+            "Views",
+            "Main",
+            "RegisteredMovieCountRefreshPolicy.cs"
+        );
         string[] signatures =
         [
             "private void ResetMainHeaderCounts(",
@@ -255,6 +260,17 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
                 $"{signature} を MainWindow.xaml.cs へ戻さない。"
             );
         }
+
+        Assert.That(
+            mainDbRuntimeSource,
+            Does.Contain("RegisteredMovieCountRefreshPolicy.ShouldApplyRefreshResult(")
+        );
+        Assert.That(
+            registeredMovieCountPolicySource,
+            Does.Contain("internal static class RegisteredMovieCountRefreshPolicy")
+        );
+        Assert.That(registeredMovieCountPolicySource, Does.Not.Contain("System.Windows"));
+        Assert.That(registeredMovieCountPolicySource, Does.Not.Contain("Dispatcher"));
     }
 
     [Test]

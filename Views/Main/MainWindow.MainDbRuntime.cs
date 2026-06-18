@@ -104,16 +104,16 @@ namespace IndigoMovieManager
                 await Dispatcher.InvokeAsync(
                     () =>
                     {
-                        if (revision != Volatile.Read(ref _registeredMovieCountRevision))
-                        {
-                            return;
-                        }
-
+                        bool isCurrentDb = string.Equals(
+                            MainVM?.DbInfo?.DBFullPath,
+                            dbFullPath,
+                            StringComparison.OrdinalIgnoreCase
+                        );
                         if (
-                            !string.Equals(
-                                MainVM?.DbInfo?.DBFullPath,
-                                dbFullPath,
-                                StringComparison.OrdinalIgnoreCase
+                            !RegisteredMovieCountRefreshPolicy.ShouldApplyRefreshResult(
+                                revision,
+                                Volatile.Read(ref _registeredMovieCountRevision),
+                                isCurrentDb
                             )
                         )
                         {
