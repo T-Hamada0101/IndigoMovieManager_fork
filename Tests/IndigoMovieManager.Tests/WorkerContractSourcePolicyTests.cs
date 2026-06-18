@@ -14,6 +14,7 @@ public sealed class WorkerContractSourcePolicyTests
     private static readonly string[] WorkerContractSourceFiles =
     [
         "Thumbnail/ThumbnailRescueWorkerJobJsonClient.cs",
+        "Watcher/WatchMetadataProbeWorkerContractAdapter.cs",
     ];
 
     private static readonly string[] ForbiddenUiFragments =
@@ -63,6 +64,10 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(
             relativePaths,
             Does.Contain("Thumbnail/ThumbnailRescueWorkerJobJsonClient.cs")
+        );
+        Assert.That(
+            relativePaths,
+            Does.Contain("Watcher/WatchMetadataProbeWorkerContractAdapter.cs")
         );
 
         foreach (string relativePath in relativePaths)
@@ -158,6 +163,29 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("elapsedMs"));
         Assert.That(adapterSource, Does.Contain("retryable"));
         Assert.That(adapterSource, Does.Contain("metrics"));
+        Assert.That(adapterSource, Does.Not.Contain("Path.Exists"));
+        Assert.That(adapterSource, Does.Not.Contain("File."));
+        Assert.That(adapterSource, Does.Not.Contain("Directory."));
+        Assert.That(adapterSource, Does.Not.Contain("Dispatcher"));
+        Assert.That(adapterSource, Does.Not.Contain("MainWindow"));
+    }
+
+    [Test]
+    public void MetadataProbeはWorker契約Dtoへ写せる()
+    {
+        string repoRoot = FindRepoRoot();
+        string adapterSource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Watcher/WatchMetadataProbeWorkerContractAdapter.cs")
+        );
+
+        Assert.That(adapterSource, Does.Contain("ToWorkerJobRequestDto("));
+        Assert.That(adapterSource, Does.Contain("ToWorkerJobResultDto("));
+        Assert.That(adapterSource, Does.Contain("WorkerJobRequestDto"));
+        Assert.That(adapterSource, Does.Contain("WorkerJobResultDto"));
+        Assert.That(adapterSource, Does.Contain("WorkerJobArtifactDto"));
+        Assert.That(adapterSource, Does.Contain("metadata-probe"));
+        Assert.That(adapterSource, Does.Contain("watch-metadata-probe"));
+        Assert.That(adapterSource, Does.Contain("DiagnosticContext"));
         Assert.That(adapterSource, Does.Not.Contain("Path.Exists"));
         Assert.That(adapterSource, Does.Not.Contain("File."));
         Assert.That(adapterSource, Does.Not.Contain("Directory."));
