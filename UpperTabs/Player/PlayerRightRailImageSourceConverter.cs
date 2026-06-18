@@ -40,17 +40,24 @@ namespace IndigoMovieManager.UpperTabs.Player
                 )
             )
             {
-                return DependencyProperty.UnsetValue;
+                return ResolveStalePlayerRightRailImageResult(
+                    request,
+                    requestRevision,
+                    out _
+                );
             }
 
             bool isExists = values[1] is not bool exists || exists;
             int decodePixelHeight = NoLockImageConverter.ResolveDecodePixelHeight(parameter);
-            return NoLockImageConverter.ConvertImageRequest(
+            ImageDecodeRequest decodeRequest = NoLockImageConverter.BuildImageDecodeRequest(
                 request,
-                isExists: isExists,
-                decodePixelHeight: decodePixelHeight,
-                logReason: "image.player-right-rail.sync-decode"
+                decodePixelHeight,
+                "image.player-right-rail.sync-decode"
             );
+            NoLockImageConverter.ImageDecodeExecutionResult executionResult =
+                NoLockImageConverter.ConvertDecodeRequest(decodeRequest, isExists);
+            ImageDecodeResult decodeResult = executionResult.DecodeResult;
+            return ResolvePlayerRightRailDecodeImage(executionResult.Image, decodeResult);
         }
 
         public object[] ConvertBack(
@@ -61,6 +68,36 @@ namespace IndigoMovieManager.UpperTabs.Player
         )
         {
             throw new NotImplementedException();
+        }
+
+        internal static object ResolveStalePlayerRightRailImageResult(
+            ImageRequest request,
+            int currentRevision,
+            out ImageDecodeResult decodeResult
+        )
+        {
+            ImageLoadResult loadResult = ImageLoadResult.Canceled(
+                request,
+                currentRevision,
+                "stale-player-right-rail",
+                isStale: true
+            );
+            decodeResult = new ImageDecodeResult(
+                loadResult,
+                DecodeElapsedMilliseconds: 0,
+                CacheHit: false
+            );
+            return DependencyProperty.UnsetValue;
+        }
+
+        private static object ResolvePlayerRightRailDecodeImage(
+            object image,
+            ImageDecodeResult decodeResult
+        )
+        {
+            return decodeResult.ImageRequest.ThumbnailRole == ImageRequestThumbnailRole.PlayerRightRail
+                ? image
+                : DependencyProperty.UnsetValue;
         }
     }
 }

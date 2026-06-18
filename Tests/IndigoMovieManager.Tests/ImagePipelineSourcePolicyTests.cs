@@ -203,8 +203,25 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("CreatePlayerRightRailImageRequest("));
         Assert.That(convertMethod, Does.Contain("ShouldApplyPlayerRightRailImageRequest("));
         Assert.That(convertMethod, Does.Contain("ResolveImageRequestRevision("));
-        Assert.That(convertMethod, Does.Contain("ConvertImageRequest("));
+        Assert.That(convertMethod, Does.Contain("BuildImageDecodeRequest("));
+        Assert.That(convertMethod, Does.Contain("ConvertDecodeRequest("));
+        Assert.That(convertMethod, Does.Contain("ImageDecodeResult"));
+        Assert.That(convertMethod, Does.Not.Contain("ConvertImageRequest("));
         Assert.That(convertMethod, Does.Contain("\"image.player-right-rail.sync-decode\""));
+        Assert.That(converterSource, Does.Contain("ImageLoadResult.Canceled("));
+        Assert.That(converterSource, Does.Contain("\"stale-player-right-rail\""));
+    }
+
+    [Test]
+    public void ImagePipeline軽量語彙はsource_policyで固定する()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "ImageRequest.cs");
+
+        Assert.That(source, Does.Contain("internal readonly record struct ImageRequest("));
+        Assert.That(source, Does.Contain("internal readonly record struct ImageDecodeRequest("));
+        Assert.That(source, Does.Contain("internal readonly record struct ImageDecodeResult("));
+        Assert.That(source, Does.Contain("ImageDecodeRequest ForSynchronousDecode("));
+        Assert.That(source, Does.Contain("ImageLoadResult ImageLoadResult"));
     }
 
     [Test]

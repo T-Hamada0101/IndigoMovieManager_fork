@@ -1,5 +1,7 @@
 using IndigoMovieManager.Thumbnail.QueueDb;
 using IndigoMovieManager.UpperTabs.Common;
+using IndigoMovieManager.UpperTabs.Player;
+using System.Windows;
 
 namespace IndigoMovieManager.Tests;
 
@@ -228,6 +230,38 @@ public sealed class ImageRequestTests
                 UpperTabActivationGate.ShouldApplyPlayerRightRailImageRequest(staleRequest, 23),
                 Is.False
             );
+        });
+    }
+
+    [Test]
+    public void Player右レールstale_skipはcanceled_decode_resultを保持する()
+    {
+        ImageRequest request = UpperTabActivationGate.CreatePlayerRightRailImageRequest(
+            @"C:\thumb\stale-player-right-rail.jpg",
+            true,
+            Path.Combine("movies", "stale-player-right-rail.mp4"),
+            requestRevision: 22
+        );
+
+        object image = PlayerRightRailImageSourceConverter.ResolveStalePlayerRightRailImageResult(
+            request,
+            currentRevision: 23,
+            out ImageDecodeResult decodeResult
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(image, Is.SameAs(DependencyProperty.UnsetValue));
+            Assert.That(decodeResult.ImageRequest, Is.EqualTo(request));
+            Assert.That(decodeResult.Outcome, Is.EqualTo(ImageLoadOutcome.Canceled));
+            Assert.That(decodeResult.ImageLoadResult.IsStale, Is.True);
+            Assert.That(
+                decodeResult.ImageLoadResult.FailureReason,
+                Is.EqualTo("stale-player-right-rail")
+            );
+            Assert.That(decodeResult.ImageLoadResult.ResultRevision, Is.EqualTo(23));
+            Assert.That(decodeResult.DecodeElapsedMilliseconds, Is.EqualTo(0));
+            Assert.That(decodeResult.CacheHit, Is.False);
         });
     }
 
