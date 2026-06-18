@@ -38,12 +38,15 @@ namespace IndigoMovieManager.UpperTabs.Common
 
             bool isExists = values[1] is not bool exists || exists;
             int decodePixelHeight = NoLockImageConverter.ResolveDecodePixelHeight(parameter);
-            return NoLockImageConverter.ConvertImageRequest(
+            ImageDecodeRequest decodeRequest = NoLockImageConverter.BuildImageDecodeRequest(
                 request,
-                isExists: isExists,
-                decodePixelHeight: decodePixelHeight,
-                logReason: "image.upper-tab.sync-decode"
+                decodePixelHeight,
+                "image.upper-tab.sync-decode"
             );
+            NoLockImageConverter.ImageDecodeExecutionResult executionResult =
+                NoLockImageConverter.ConvertDecodeRequest(decodeRequest, isExists);
+            ImageDecodeResult decodeResult = executionResult.DecodeResult;
+            return ResolveUpperTabDecodeImage(executionResult.Image, decodeResult);
         }
 
         public object[] ConvertBack(
@@ -54,6 +57,17 @@ namespace IndigoMovieManager.UpperTabs.Common
         )
         {
             throw new NotImplementedException();
+        }
+
+        private static object ResolveUpperTabDecodeImage(
+            object image,
+            ImageDecodeResult decodeResult
+        )
+        {
+            // decode 済み結果も ImageRequest の役割で受け直し、別用途の画像結果を混ぜない。
+            return decodeResult.ImageRequest.ThumbnailRole == ImageRequestThumbnailRole.UpperTab
+                ? image
+                : DependencyProperty.UnsetValue;
         }
     }
 }

@@ -96,7 +96,11 @@ public sealed class ImagePipelineSourcePolicyTests
 
         Assert.That(convertMethod, Does.Contain("CreateUpperTabImageRequest("));
         Assert.That(convertMethod, Does.Contain("ShouldApplyImageRequest(request)"));
-        Assert.That(convertMethod, Does.Contain("ConvertImageRequest("));
+        Assert.That(convertMethod, Does.Contain("BuildImageDecodeRequest("));
+        Assert.That(convertMethod, Does.Contain("ConvertDecodeRequest("));
+        Assert.That(convertMethod, Does.Contain("ImageDecodeResult"));
+        Assert.That(convertMethod, Does.Not.Contain("ConvertImageRequest("));
+        Assert.That(converterSource, Does.Contain("ImageRequestThumbnailRole.UpperTab"));
         Assert.That(convertMethod, Does.Contain("\"image.upper-tab.sync-decode\""));
     }
 
