@@ -94,6 +94,27 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(projectSource, Does.Not.Contain("Microsoft.Xaml"));
     }
 
+    [Test]
+    public void Worker契約Dtoはロードマップ語彙を保持する()
+    {
+        string repoRoot = FindRepoRoot();
+        string dtoSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/Ipc/ThumbnailIpcDtos.cs"
+            )
+        );
+
+        Assert.That(dtoSource, Does.Contain("WorkerJobRequestDto"));
+        Assert.That(dtoSource, Does.Contain("WorkerJobResultDto"));
+        Assert.That(dtoSource, Does.Contain("WorkerJobProgressDto"));
+        Assert.That(dtoSource, Does.Contain("WorkerJobArtifactDto"));
+        Assert.That(dtoSource, Does.Contain("InputFiles"));
+        Assert.That(dtoSource, Does.Contain("OutputArtifactPath"));
+        Assert.That(dtoSource, Does.Contain("DiagnosticContext"));
+        Assert.That(dtoSource, Does.Contain("Retryability"));
+    }
+
     private static IEnumerable<string> EnumerateWorkerContractSourceFiles(string repoRoot)
     {
         foreach (string sourceDirectory in WorkerContractSourceDirectories)

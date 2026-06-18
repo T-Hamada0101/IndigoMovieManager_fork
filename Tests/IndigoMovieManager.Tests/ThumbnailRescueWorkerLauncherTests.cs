@@ -1099,6 +1099,12 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(result.RequestId, Is.EqualTo("req-002"));
             Assert.That(result.Status, Is.EqualTo("success"));
             Assert.That(result.ResultCode, Is.EqualTo("OK"));
+            Assert.That(result.Artifacts, Has.Count.EqualTo(1));
+            Assert.That(result.Artifacts[0].Type, Is.EqualTo("process-log"));
+            Assert.That(
+                result.Artifacts[0].Path,
+                Is.EqualTo("C:/logs/thumbnail-create-process.csv")
+            );
             Assert.That(
                 ThumbnailRescueWorkerJobJsonClient.BuildResultSummaryLine(result),
                 Does.Contain("request_id=req-002")

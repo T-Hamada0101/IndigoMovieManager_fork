@@ -173,4 +173,76 @@ namespace IndigoMovieManager.Thumbnail.Ipc
             init => capturedAtUtc = ThumbnailIpcDateTimeNormalizer.NormalizeUtc(value);
         }
     }
+
+    // Workerへ渡す要求はUIの状態を持たず、ファイル、成果物、診断文脈だけで閉じる。
+    public sealed record WorkerJobRequestDto
+    {
+        private DateTime requestedAtUtc = DateTime.UtcNow;
+
+        public string JobId { get; init; } = "";
+        public string Kind { get; init; } = "";
+        public List<string> InputFiles { get; init; } = [];
+        public string OutputArtifactPath { get; init; } = "";
+        public long TimeoutMs { get; init; }
+        public List<string> Capabilities { get; init; } = [];
+        public Dictionary<string, string> DiagnosticContext { get; init; } = [];
+
+        public DateTime RequestedAtUtc
+        {
+            get => requestedAtUtc;
+            init => requestedAtUtc = ThumbnailIpcDateTimeNormalizer.NormalizeUtc(value);
+        }
+    }
+
+    // 成果物は種別と実体パスを分け、将来のin-process/sidecar差し替えでも同じ形で扱う。
+    public sealed record WorkerJobArtifactDto
+    {
+        public string ArtifactKind { get; init; } = "";
+        public string Path { get; init; } = "";
+        public string ContentType { get; init; } = "";
+        public long SizeBytes { get; init; }
+        public string Sha256 { get; init; } = "";
+        public Dictionary<string, string> Metadata { get; init; } = [];
+    }
+
+    // 進捗は表示文言ではなく段階と件数を正本にし、UI側の見せ方を契約へ混ぜない。
+    public sealed record WorkerJobProgressDto
+    {
+        private DateTime capturedAtUtc = DateTime.UtcNow;
+
+        public string JobId { get; init; } = "";
+        public string Stage { get; init; } = "";
+        public int CompletedCount { get; init; }
+        public int TotalCount { get; init; }
+        public string CurrentInputFile { get; init; } = "";
+        public string Message { get; init; } = "";
+        public Dictionary<string, string> Metrics { get; init; } = [];
+
+        public DateTime CapturedAtUtc
+        {
+            get => capturedAtUtc;
+            init => capturedAtUtc = ThumbnailIpcDateTimeNormalizer.NormalizeUtc(value);
+        }
+    }
+
+    // Worker結果はstatus、artifact、failure、retryabilityを分け、ログだけに意味を閉じ込めない。
+    public sealed record WorkerJobResultDto
+    {
+        private DateTime finishedAtUtc = DateTime.UtcNow;
+
+        public string JobId { get; init; } = "";
+        public string Status { get; init; } = "";
+        public WorkerJobArtifactDto Artifact { get; init; } = new();
+        public string FailureReason { get; init; } = "";
+        public long ElapsedMs { get; init; }
+        public string Retryability { get; init; } = "";
+        public List<string> Logs { get; init; } = [];
+        public Dictionary<string, string> Metrics { get; init; } = [];
+
+        public DateTime FinishedAtUtc
+        {
+            get => finishedAtUtc;
+            init => finishedAtUtc = ThumbnailIpcDateTimeNormalizer.NormalizeUtc(value);
+        }
+    }
 }
