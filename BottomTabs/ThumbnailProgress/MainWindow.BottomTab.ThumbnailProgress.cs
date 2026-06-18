@@ -209,7 +209,9 @@ namespace IndigoMovieManager
 
         private bool IsThumbnailProgressUiEnabled()
         {
-            return !Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished;
+            return Dispatcher != null
+                && !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished;
         }
 
         private void TryFlushThumbnailProgressUiIfVisible()

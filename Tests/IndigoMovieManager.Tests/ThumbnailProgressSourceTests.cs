@@ -196,6 +196,118 @@ public sealed class ThumbnailProgressSourceTests
         );
     }
 
+    [Test]
+    public void SnapshotRefresh予約はCoalesceとLatestOnlyで1本化する()
+    {
+        string source = GetThumbnailProgressSource();
+        string requestMethod = ExtractMethod(
+            source,
+            "private void RequestThumbnailProgressSnapshotRefresh()"
+        );
+        string delayedQueueMethod = ExtractMethod(
+            source,
+            "private void QueueDelayedThumbnailProgressSnapshotRefresh("
+        );
+        string delayedRunMethod = ExtractMethod(
+            source,
+            "private async Task RunDelayedThumbnailProgressSnapshotRefreshAsync("
+        );
+        string processMethod = ExtractMethod(
+            source,
+            "private void ProcessThumbnailProgressSnapshotRefreshQueue()"
+        );
+
+        Assert.That(
+            requestMethod,
+            Does.Contain("Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshRequested, 1)")
+        );
+        Assert.That(
+            requestMethod,
+            Does.Contain(
+                "Interlocked.CompareExchange(ref _thumbnailProgressSnapshotRefreshQueued, 0, 0) == 1"
+            )
+        );
+        Assert.That(
+            requestMethod,
+            Does.Contain("QueueDelayedThumbnailProgressSnapshotRefresh(decision.Delay);")
+        );
+        Assert.That(requestMethod, Does.Contain("DispatcherPriority.Background"));
+        Assert.That(
+            requestMethod.IndexOf(
+                "QueueDelayedThumbnailProgressSnapshotRefresh(decision.Delay);",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(requestMethod.IndexOf("Dispatcher.BeginInvoke(", StringComparison.Ordinal))
+        );
+
+        Assert.That(
+            delayedQueueMethod,
+            Does.Contain(
+                "Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshDelayQueued, 1) == 1"
+            )
+        );
+        Assert.That(
+            delayedQueueMethod,
+            Does.Contain("RunDelayedThumbnailProgressSnapshotRefreshAsync(delay)")
+        );
+        Assert.That(
+            delayedRunMethod,
+            Does.Contain("Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshDelayQueued, 0)")
+        );
+        Assert.That(
+            delayedRunMethod,
+            Does.Contain(
+                "Interlocked.CompareExchange(ref _thumbnailProgressSnapshotRefreshRequested, 0, 0) == 1"
+            )
+        );
+        Assert.That(delayedRunMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+
+        Assert.That(
+            processMethod,
+            Does.Contain("Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshQueued, 0)")
+        );
+        Assert.That(
+            processMethod,
+            Does.Contain(
+                "Interlocked.CompareExchange(ref _thumbnailProgressSnapshotRefreshRequested, 0, 0) == 1"
+            )
+        );
+        Assert.That(processMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
+    }
+
+    [Test]
+    public void SnapshotRefresh予約はShutdownまたはDispatcher未使用時に積み増さない()
+    {
+        string source = GetThumbnailProgressSource();
+        string enabledMethod = ExtractMethod(source, "private bool IsThumbnailProgressUiEnabled()");
+        string requestMethod = ExtractMethod(
+            source,
+            "private void RequestThumbnailProgressSnapshotRefresh()"
+        );
+
+        Assert.That(enabledMethod, Does.Contain("Dispatcher != null"));
+        Assert.That(enabledMethod, Does.Contain("!Dispatcher.HasShutdownStarted"));
+        Assert.That(enabledMethod, Does.Contain("!Dispatcher.HasShutdownFinished"));
+        Assert.That(requestMethod, Does.Contain("if (!IsThumbnailProgressUiEnabled())"));
+
+        int guardIndex = requestMethod.IndexOf(
+            "if (!IsThumbnailProgressUiEnabled())",
+            StringComparison.Ordinal
+        );
+        int requestFlagIndex = requestMethod.IndexOf(
+            "_thumbnailProgressSnapshotRefreshRequested",
+            StringComparison.Ordinal
+        );
+        int beginInvokeIndex = requestMethod.IndexOf(
+            "Dispatcher.BeginInvoke(",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(guardIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(requestFlagIndex, Is.GreaterThan(guardIndex));
+        Assert.That(beginInvokeIndex, Is.GreaterThan(guardIndex));
+    }
+
     private static string GetThumbnailProgressSource()
     {
         return GetRepoText(
