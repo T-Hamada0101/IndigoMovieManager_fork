@@ -4,7 +4,7 @@
 
 更新日: 2026-06-18
 
-全体進捗目安: `[###-------] 33%`
+全体進捗目安: `[####------] 36%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -15,9 +15,9 @@
 | Phase 2. ReadModel Store と Diff-first | 25% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiff` で apply log の operation / selection / scroll / fallback 語彙を追加済み | 小変更の diff apply と fallback reason を通常経路へ入れる |
 | Phase 3. In-process Scheduler | 18% | `UiWorkRequest` / `UiWorkRequestPolicy` を追加し、thumbnail 進捗 refresh 予約へ priority / coalesce / latest-only / log reason / shutdown受理可否の語彙を接続済み | watch / poll 予約も同じ小さな scheduler 語彙へ揃える |
 | Phase 4. Image Pipeline 統一 | 28% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter が `ImageRequest` を作り、visible-first / stale discard / role / cache / revision の語彙で decode 入口を説明できる | stamp取得、decode、ERROR marker 判定を UI 外へ揃える |
-| Phase 5. Persistence Pipeline | 16% | no-persist 診断、設定保存 background queue、score / tag hot path の背景保存入口を source policy で固定済み | view_count / bookmark / skin profile / movie_path も同じ直列保存方針へ寄せる |
+| Phase 5. Persistence Pipeline | 24% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み | bookmark / skin profile の失敗時 dirty / failed / retryable 表現を揃える |
 | Phase 6. Worker 契約 | 28% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、JSON roundtrip とUI非依存 source policy を固定済み | 既存 rescue / thumbnail 実処理を in-process adapter でこの契約へ寄せる |
-| Phase 7. Skin / Player / Watcher の Core 接続 | 10% | skin / Player / Watcher それぞれに分離済み判断とログがある | UI 直押し込みを Scheduler / ReadModel / Persistence 経由へ段階移行する |
+| Phase 7. Skin / Player / Watcher の Core 接続 | 16% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set の UI 直接 apply 禁止線を source policy で固定済み | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
 ## 1. Summary
 
@@ -36,7 +36,9 @@
 - 画像 hot path は、詳細サムネ、Player右レール、上側タブ viewport 更新入口で file I/O / decode へ進まないことを source policy で固定した。
 - 上側タブ画像 converter は `ImageRequest` を作ってから decode へ進む形へ寄せ、visible-first と stale discard を test で説明できるようにした。
 - 保存 hot path は、UI操作中に同期 `Save()` や score / tag の直接DB更新へ戻らないことを source policy で固定した。
+- view_count と movie_path は UI 表示値を先に反映し、DB 保存を背景へ送ることを source policy で固定した。
 - Worker DTO は request / result / progress / artifact の語彙を `ThumbnailIpcDtos` に追加し、JSON roundtrip と null なし既定値を focused test で固定した。
+- Watcher change set は `WatchUiReloadPolicy` / ReadModel 再計算入口へ寄せ、Watcher 側が表示 collection を直接 apply しない禁止線を source policy で固定した。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
 - 次の段階は、新しい巨大 core を作ることではなく、既存境界の上に小さな契約を積み、実機ログで支配要因を確認しながら差し替えること。
