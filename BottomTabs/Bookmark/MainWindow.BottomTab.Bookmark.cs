@@ -277,7 +277,7 @@ namespace IndigoMovieManager
             PlayerController.Visibility = Visibility.Collapsed;
             uxVideoPlayer.Visibility = Visibility.Collapsed;
             uxVideoPlayer.Stop();
-            IsPlaying = false;
+            SetPlayerPlaybackActive(false, "bookmark-add");
 
             if (string.IsNullOrWhiteSpace(dbFullPath))
             {

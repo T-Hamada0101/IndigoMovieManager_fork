@@ -220,7 +220,7 @@ namespace IndigoMovieManager
             {
                 await ApplyPlayerWebViewPlaybackSnapshotAsync(uxWebVideoPlayer, snapshot);
                 UpdatePlayerPositionUi(TimeSpan.FromSeconds(snapshot.CurrentTime));
-                IsPlaying = !snapshot.Paused;
+                SetPlayerPlaybackActive(!snapshot.Paused, "fullscreen-restore-failed");
             }
 
             RestorePlayerFullscreenDebugLoggingIfNeeded();
@@ -411,7 +411,7 @@ namespace IndigoMovieManager
             {
                 await ApplyPlayerWebViewPlaybackSnapshotAsync(uxWebVideoPlayer, snapshot);
                 UpdatePlayerPositionUi(TimeSpan.FromSeconds(snapshot.CurrentTime));
-                IsPlaying = !snapshot.Paused;
+                SetPlayerPlaybackActive(!snapshot.Paused, "fullscreen-return");
             }
 
             RestorePlayerFullscreenDebugLoggingIfNeeded();

@@ -660,17 +660,31 @@ namespace IndigoMovieManager
             );
         }
 
-        private bool IsPlaying = false;
+        private int _isPlayerPlaybackActiveFlag;
 
         // 背後の poll loop からも読むため、再生中フラグは必ずこの入口で扱う。
         private bool IsPlayerPlaybackActive()
         {
-            return Volatile.Read(ref IsPlaying);
+            return Volatile.Read(ref _isPlayerPlaybackActiveFlag) != 0;
         }
 
-        private void SetPlayerPlaybackActive(bool isActive)
+        private void SetPlayerPlaybackActive(bool isActive, string reason = "")
         {
-            Volatile.Write(ref IsPlaying, isActive);
+            int nextValue = isActive ? 1 : 0;
+            int previousValue = Interlocked.Exchange(
+                ref _isPlayerPlaybackActiveFlag,
+                nextValue
+            );
+            if (previousValue == nextValue)
+            {
+                return;
+            }
+
+            // 実際の遷移だけをログ化し、Everything poll の延期理由と Player 操作を同じ語彙で結ぶ。
+            DebugRuntimeLog.Write(
+                "player",
+                $"player playback state changed: active={FormatLogBool(isActive)} operation_reason={UiOperationPriorityPolicy.OperationReasonPlayerPlayback} reason={reason}"
+            );
         }
 
         /// <summary>
@@ -681,7 +695,7 @@ namespace IndigoMovieManager
         {
             if (_isWebViewPlayerActive)
             {
-                SetPlayerPlaybackActive(true);
+                SetPlayerPlaybackActive(true, "start-webview");
                 _ = uxWebVideoPlayer?.ExecuteScriptAsync(
                     "document.querySelector('video')?.play();"
                 );
@@ -690,7 +704,7 @@ namespace IndigoMovieManager
 
             ShowPlayerSurface();
             uxVideoPlayer.Play();
-            SetPlayerPlaybackActive(true);
+            SetPlayerPlaybackActive(true, "start");
             uxTimeSlider.Value = uxVideoPlayer.Position.TotalMilliseconds;
             TryStartDispatcherTimer(timer, nameof(timer));
         }
@@ -707,7 +721,7 @@ namespace IndigoMovieManager
             }
 
             uxVideoPlayer.Pause();
-            SetPlayerPlaybackActive(false);
+            SetPlayerPlaybackActive(false, "pause");
         }
 
         private void UxVideoPlayer_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -715,12 +729,12 @@ namespace IndigoMovieManager
             if (IsPlayerPlaybackActive())
             {
                 uxVideoPlayer.Pause();
-                SetPlayerPlaybackActive(false);
+                SetPlayerPlaybackActive(false, "toggle-pause");
             }
             else
             {
                 uxVideoPlayer.Play();
-                SetPlayerPlaybackActive(true);
+                SetPlayerPlaybackActive(true, "toggle-play");
             }
         }
 
@@ -774,7 +788,7 @@ namespace IndigoMovieManager
         private void UxVideoPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e)
         {
             // ロード失敗時も user-priority を解放し、背後監視を永久停止させない。
-            SetPlayerPlaybackActive(false);
+            SetPlayerPlaybackActive(false, "media-failed");
             _hasPendingPlayerPlaybackRequest = false;
             ReleasePendingPlayerUserPriorityWork();
             StopDispatcherTimerSafely(timer, nameof(timer));
@@ -787,7 +801,7 @@ namespace IndigoMovieManager
         private void UxVideoPlayer_MediaEnded(object sender, RoutedEventArgs e)
         {
             // 再生終了後は poll の再生中扱いを解除し、通常の監視間隔へ戻す。
-            SetPlayerPlaybackActive(false);
+            SetPlayerPlaybackActive(false, "media-ended");
             StopDispatcherTimerSafely(timer, nameof(timer));
             UpdatePlayerPositionUi(uxVideoPlayer.Position);
         }
@@ -1016,7 +1030,7 @@ namespace IndigoMovieManager
             _hasPendingPlayerPlaybackRequest = false;
             _currentPlayerMoviePath = "";
             ResetWebViewPlayerSurface();
-            SetPlayerPlaybackActive(false);
+            SetPlayerPlaybackActive(false, "close-overlay");
             uxTimeSlider.Value = 0;
             uxTimeSlider.Maximum = 0;
             uxTime.Text = "00:00:00";

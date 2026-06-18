@@ -686,14 +686,14 @@ namespace IndigoMovieManager
 
                 if (playImmediately)
                 {
-                    IsPlaying = true;
+                    SetPlayerPlaybackActive(true, "player-tab-open");
                     TryStartDispatcherTimer(timer, nameof(timer));
                 }
                 else
                 {
                     await WaitForPlayerDispatcherBackgroundAsync();
                     uxVideoPlayer.Pause();
-                    IsPlaying = false;
+                    SetPlayerPlaybackActive(false, "player-tab-open-paused");
                     StopDispatcherTimerSafely(timer, nameof(timer));
 
                     if (!mute)
@@ -816,7 +816,7 @@ namespace IndigoMovieManager
             }
 
             uxVideoPlayer.Pause();
-            IsPlaying = false;
+            SetPlayerPlaybackActive(false, "background-pause");
             StopDispatcherTimerSafely(timer, nameof(timer));
         }
 
@@ -1001,7 +1001,7 @@ namespace IndigoMovieManager
                     })();
                     """;
                 await uxWebVideoPlayer.ExecuteScriptAsync(script);
-                IsPlaying = playImmediately;
+                SetPlayerPlaybackActive(playImmediately, "webview-playback-request");
                 UpdatePlayerPositionUi(System.TimeSpan.FromMilliseconds(startMilliseconds));
             }
             finally
@@ -1042,7 +1042,7 @@ namespace IndigoMovieManager
             if (!e.IsSuccess)
             {
                 _hasPendingWebViewPlaybackRequest = false;
-                IsPlaying = false;
+                SetPlayerPlaybackActive(false, "webview-navigation-failed");
                 ReleasePendingPlayerUserPriorityWork();
                 return;
             }
@@ -1448,7 +1448,7 @@ namespace IndigoMovieManager
                 // 破棄競合中は黙って抜け、タブ切替を止めない。
             }
 
-            IsPlaying = false;
+            SetPlayerPlaybackActive(false, "webview-pause");
             StopDispatcherTimerSafely(timer, nameof(timer));
         }
 

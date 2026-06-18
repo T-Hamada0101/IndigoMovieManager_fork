@@ -711,11 +711,52 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(mainWindowXaml, Does.Contain("MediaFailed=\"UxVideoPlayer_MediaFailed\""));
         Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaFailed("));
         Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaEnded("));
-        Assert.That(mainWindowPlayerSource, Does.Contain("SetPlayerPlaybackActive(false);"));
+        Assert.That(mainWindowPlayerSource, Does.Contain("SetPlayerPlaybackActive(false,"));
         Assert.That(mainWindowPlayerSource, Does.Contain("_hasPendingPlayerPlaybackRequest = false;"));
         Assert.That(upperTabPlayerSource, Does.Contain("try"));
         Assert.That(upperTabPlayerSource, Does.Contain("finally"));
         Assert.That(upperTabPlayerSource, Does.Contain("EndUserPriorityWork(\"player\");"));
+    }
+
+    [Test]
+    public void PlayerPlaybackState_実遷移だけplayer_playback理由でログに残す()
+    {
+        // 再生中フラグは Everything poll の入力なので、状態遷移だけを操作優先語彙で観測する。
+        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
+        string bookmarkSource = GetRepoText(
+            "BottomTabs",
+            "Bookmark",
+            "MainWindow.BottomTab.Bookmark.cs"
+        );
+        string stateMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void SetPlayerPlaybackActive(bool isActive, string reason = \"\")"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mainWindowPlayerSource, Does.Contain("private int _isPlayerPlaybackActiveFlag;"));
+            Assert.That(stateMethod, Does.Contain("Interlocked.Exchange("));
+            Assert.That(stateMethod, Does.Contain("if (previousValue == nextValue)"));
+            Assert.That(
+                stateMethod,
+                Does.Contain("player playback state changed: active={FormatLogBool(isActive)}")
+            );
+            Assert.That(
+                stateMethod,
+                Does.Contain("operation_reason={UiOperationPriorityPolicy.OperationReasonPlayerPlayback}")
+            );
+            Assert.That(stateMethod, Does.Contain("reason={reason}"));
+            Assert.That(mainWindowPlayerSource, Does.Not.Contain("IsPlaying ="));
+            Assert.That(upperTabPlayerSource, Does.Not.Contain("IsPlaying ="));
+            Assert.That(fullscreenWindowSource, Does.Not.Contain("IsPlaying ="));
+            Assert.That(bookmarkSource, Does.Not.Contain("IsPlaying ="));
+            Assert.That(upperTabPlayerSource, Does.Contain("SetPlayerPlaybackActive(playImmediately,"));
+            Assert.That(fullscreenWindowSource, Does.Contain("SetPlayerPlaybackActive(!snapshot.Paused,"));
+            Assert.That(bookmarkSource, Does.Contain("SetPlayerPlaybackActive(false, \"bookmark-add\")"));
+        });
     }
 
     [Test]
