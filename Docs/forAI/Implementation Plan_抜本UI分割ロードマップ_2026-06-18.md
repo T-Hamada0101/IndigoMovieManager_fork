@@ -333,7 +333,7 @@ active skin 採取は、引き続きコピー `.wb` と `INDIGO_DIAGNOSTIC_NO_PE
 
 ## 9. 次に着手する最小単位
 
-次の実装は抜本 UI 分割ロードマップの完了監査を推奨する。
+抜本 UI 分割ロードマップは 2026-06-18 の完了監査で、計画範囲として完了扱いにする。
 
 理由:
 
@@ -342,7 +342,12 @@ active skin 採取は、引き続きコピー `.wb` と `INDIGO_DIAGNOSTIC_NO_PE
 - Phase 6-B では登録動画総数 refresh 結果の stale guard だけを `RegisteredMovieCountRefreshPolicy` へ分離済み。
 - Phase 6-C では sort combo 選択変更時の経路判断だけを `SortComboSelectionPolicy` へ分離済み。
 - Phase 6-D では MainDB 切替時の副作用 plan 判断だけを `MainDbSwitchPlanPolicy` へ分離済み。
-- これ以上の候補は、preflight guard、DB read、dialog/path I/O、WPF event routing などの実処理境界に近づくため、追加切り出しより完了監査を優先する。
+- これ以上の候補は、preflight guard、DB read、dialog/path I/O、WPF event routing などの実処理境界に近づくため、追加切り出しより実機ログが新しい支配要因を示した時の局所施策を優先する。
+
+次に見るもの:
+
+- 最新の実機ログに sort / watch の新規操作が入った時だけ、完了監査のログ証跡を補強する。
+- active skin 初回 navigate が再び支配要因になった時は、WebView2 attach / initial document / `NavigateToString` / HTML 準備の内訳を追う。
 
 ## 10. 2026-06-18 Phase 1 実施結果
 
@@ -584,3 +589,43 @@ active skin 採取は、引き続きコピー `.wb` と `INDIGO_DIAGNOSTIC_NO_PE
 次の推奨:
 
 - 抜本 UI 分割ロードマップの完了監査へ進む。追加実装より、要件、禁止線、テスト、Release build、実機ログ確認状況を証拠ベースで照合する。
+
+## 19. 2026-06-18 完了監査結果
+
+判定:
+
+- 抜本 UI 分割は、計画範囲では完了扱いにする。
+- 追加の UI 分離実装は行わない。次は実機ログが新しい詰まりを示した時だけ、局所施策として扱う。
+
+照合:
+
+- `Views/Main/MainWindow.xaml.cs` は 766 行。constructor、不可避の Window / XAML event shell、共有 field、互換 refresh helper が中心になっている。
+- ReadModel 計算は `Views/Main/MovieViewReadModelBuilder.cs`、一覧 snapshot / apply / sort-only UI 反映は `Views/Main/MainWindow.MovieViewReadModel.cs`、要求制御は `Views/Main/MainWindow.MovieViewRequests.cs`、表示レコード生成は `Views/Main/MainWindow.MovieRecordFactory.cs`、DB runtime は `Views/Main/MainWindow.MainDbRuntime.cs`、lifecycle は `Views/Main/MainWindow.Lifecycle.cs`、dock layout は `Views/Main/MainWindow.DockLayout.cs`、入力 routing は `Views/Main/MainWindow.InputRouting.cs` へ分離済み。
+- WPF 非依存の純粋判断は `DockLayoutRestorePolicy`、`RegisteredMovieCountRefreshPolicy`、`SortComboSelectionPolicy`、`MainDbSwitchPlanPolicy` へ小さく切り出し済み。
+- `FilterAndSort(..., true)` の許容は `MainWindow.Startup.cs` の startup fallback と `MainWindow.InputRouting.cs` の段階ロード中 sort fallback の 2 箇所だけ。直書き `Refresh();` は startup first page と選択変化互換 helper の 2 箇所だけ。`Items.Refresh()` は本体コードへ戻っていない。
+- `MainWindowFilterSortExecutionPolicyTests` が partial 逆流、`Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` の禁止線、ReadModel apply / snapshot / sort-only 経路、input routing 分離を固定している。
+
+検証:
+
+- completion focused test: 206 件成功。
+- Release x64 build: 成功。`NETSDK1206` は既存の SQLitePCLRaw RID 警告。
+- `git diff --check`: 成功。
+- 更新ドキュメントは UTF-8 BOMなし + LF で確認済み。
+
+実機ログ:
+
+- 最新 `debug-runtime.log` では `first-page shown` 9 件、`input ready` 9 件、`filter start/end` 2 件、`readmodel apply` 2 件、`refresh end` 19 件、`host_navigate_ms` / `navigate_to_string_ms` / `navigate_skipped_current` / `navigate_skip_reason` 19 件を確認した。
+- active skin は `active=True ready=True reason=dbinfo-DBFullPath host_navigate_ms=772.6 navigate_to_string_ms=171.6` と、repeat 側 `HostNavigateSkippedSameDocument navigate_skipped_current=True navigate_skip_reason='same-document' navigate_to_string_ms=0.0` を確認した。
+- sort は最新ログでは操作未発生のため `sort start/end` 0 件だが、過去 `debug-runtime_20260527.log` などで `sort end` を確認でき、`sort`、`count`、`background`、`total_ms` で支配要因を説明できる。
+- watch は `debug-runtime_20260418.log` などで `deferred ui reload scheduled/apply/canceled/suppressed` と `watch work deferred by ui suppression` を確認でき、revision、reason、reload、sort、changed_paths で支配要因を説明できる。
+
+監査上の弱い点:
+
+- 最新 `debug-runtime.log` だけでは sort 操作と watch reload の新規発生を確認できない。今回は過去ログで補完した。
+- 最新の検索ログは full reload 中心で、実入力を伴う検索操作ログは厚くない。次に実機操作ログを採る時は、検索入力、sort 変更、watch reload を同じ Release run に入れると監査証跡がさらに強くなる。
+- `MainWindow.xaml.cs` は十分薄くなったが完全な shell ではない。選択変化互換 `Refresh()` など、互換性のため残すべき入口は残している。
+
+親レビュー:
+
+- これ以上の helper 化候補は DB read、path / dialog I/O、Dispatcher、WPF event routing に近く、今回の「ストレスなし操作」の単純化目的に対して過剰になりやすい。
+- PM 判断として、今回のロードマップはここで閉じる。次の改善は、実機ログ上で新しい支配要因が見えた時に別の小さな計画として扱う。
