@@ -1915,10 +1915,50 @@ DELETE FROM watch;";
             InsertBookmarkTable(dbFullPath, mvi.ToMovieCore());
         }
 
+        public static bool TryInsertBookmarkTable(
+            string dbFullPath,
+            MovieInfo mvi,
+            out string failureReason
+        )
+        {
+            try
+            {
+                ArgumentNullException.ThrowIfNull(mvi);
+                InsertBookmarkTableCore(dbFullPath, mvi.ToMovieCore());
+                failureReason = "";
+                return true;
+            }
+            catch (Exception e)
+            {
+                failureReason = DescribeDbWriteFailure(e);
+                return false;
+            }
+        }
+
         public static void InsertBookmarkTable(string dbFullPath, MovieRecords record)
         {
             ArgumentNullException.ThrowIfNull(record);
             InsertBookmarkTable(dbFullPath, record.ToMovieCore());
+        }
+
+        public static bool TryInsertBookmarkTable(
+            string dbFullPath,
+            MovieRecords record,
+            out string failureReason
+        )
+        {
+            try
+            {
+                ArgumentNullException.ThrowIfNull(record);
+                InsertBookmarkTableCore(dbFullPath, record.ToMovieCore());
+                failureReason = "";
+                return true;
+            }
+            catch (Exception e)
+            {
+                failureReason = DescribeDbWriteFailure(e);
+                return false;
+            }
         }
 
         /// <summary>
@@ -1928,71 +1968,7 @@ DELETE FROM watch;";
         {
             try
             {
-                (string kana, string roma) = ComputeReadingValues(movie.MovieName, movie.MoviePath);
-                using SQLiteConnection connection = CreateReadWriteConnection(dbFullPath);
-                connection.Open();
-                bool hasKanaColumn = HasTableColumn(connection, "bookmark", "kana");
-                bool hasRomaColumn = HasTableColumn(connection, "bookmark", "roma");
-                string sql = "select max(movie_id) from bookmark";
-                using SQLiteCommand selectCmd = connection.CreateCommand();
-                selectCmd.CommandText = sql;
-                SQLiteDataAdapter da = new(selectCmd);
-                DataTable dt = new();
-                da.Fill(dt);
-                long movieId = 1;
-                if (dt.Rows.Count > 0 && dt.Rows[0][0].ToString() != "")
-                {
-                    movieId = (long)dt.Rows[0][0] + 1;
-                }
-                var now = DateTime.Now;
-                var result = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    List<string> columns =
-                    ["movie_id", "movie_name", "movie_path", "last_date", "file_date"];
-                    List<string> values =
-                    ["@movie_id", "@movie_name", "@movie_path", "@last_date", "@file_date"];
-
-                    if (hasKanaColumn)
-                    {
-                        columns.Add("kana");
-                        values.Add("@kana");
-                    }
-
-                    if (hasRomaColumn)
-                    {
-                        columns.Add("roma");
-                        values.Add("@roma");
-                    }
-
-                    columns.Add("regist_date");
-                    values.Add("@regist_date");
-                    cmd.CommandText =
-                        $"insert into bookmark ({string.Join(",", columns)}) values ({string.Join(",", values)})";
-                    cmd.Parameters.Add(new SQLiteParameter("@movie_id", movieId));
-                    cmd.Parameters.Add(
-                        new SQLiteParameter("@movie_name", (movie.MovieName ?? "").ToLower())
-                    );
-                    cmd.Parameters.Add(
-                        new SQLiteParameter("@movie_path", (movie.MoviePath ?? "").ToLower())
-                    );
-                    cmd.Parameters.Add(new SQLiteParameter("@last_date", FormatDbDateTime(result)));
-                    cmd.Parameters.Add(new SQLiteParameter("@file_date", FormatDbDateTime(result)));
-                    if (hasKanaColumn)
-                    {
-                        cmd.Parameters.Add(new SQLiteParameter("@kana", kana));
-                    }
-                    if (hasRomaColumn)
-                    {
-                        cmd.Parameters.Add(new SQLiteParameter("@roma", roma));
-                    }
-                    cmd.Parameters.Add(
-                        new SQLiteParameter("@regist_date", FormatDbDateTime(result))
-                    );
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
+                InsertBookmarkTableCore(dbFullPath, movie);
             }
             catch (Exception e)
             {
@@ -2002,6 +1978,94 @@ DELETE FROM watch;";
             }
         }
 
+        public static bool TryInsertBookmarkTable(
+            string dbFullPath,
+            MovieCore movie,
+            out string failureReason
+        )
+        {
+            try
+            {
+                InsertBookmarkTableCore(dbFullPath, movie);
+                failureReason = "";
+                return true;
+            }
+            catch (Exception e)
+            {
+                failureReason = DescribeDbWriteFailure(e);
+                return false;
+            }
+        }
+
+        private static void InsertBookmarkTableCore(string dbFullPath, MovieCore movie)
+        {
+            ArgumentNullException.ThrowIfNull(movie);
+
+            (string kana, string roma) = ComputeReadingValues(movie.MovieName, movie.MoviePath);
+            using SQLiteConnection connection = CreateReadWriteConnection(dbFullPath);
+            connection.Open();
+            bool hasKanaColumn = HasTableColumn(connection, "bookmark", "kana");
+            bool hasRomaColumn = HasTableColumn(connection, "bookmark", "roma");
+            string sql = "select max(movie_id) from bookmark";
+            using SQLiteCommand selectCmd = connection.CreateCommand();
+            selectCmd.CommandText = sql;
+            SQLiteDataAdapter da = new(selectCmd);
+            DataTable dt = new();
+            da.Fill(dt);
+            long movieId = 1;
+            if (dt.Rows.Count > 0 && dt.Rows[0][0].ToString() != "")
+            {
+                movieId = (long)dt.Rows[0][0] + 1;
+            }
+            var now = DateTime.Now;
+            var result = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
+            using var transaction = connection.BeginTransaction();
+            using (SQLiteCommand cmd = connection.CreateCommand())
+            {
+                List<string> columns =
+                ["movie_id", "movie_name", "movie_path", "last_date", "file_date"];
+                List<string> values =
+                ["@movie_id", "@movie_name", "@movie_path", "@last_date", "@file_date"];
+
+                if (hasKanaColumn)
+                {
+                    columns.Add("kana");
+                    values.Add("@kana");
+                }
+
+                if (hasRomaColumn)
+                {
+                    columns.Add("roma");
+                    values.Add("@roma");
+                }
+
+                columns.Add("regist_date");
+                values.Add("@regist_date");
+                cmd.CommandText =
+                    $"insert into bookmark ({string.Join(",", columns)}) values ({string.Join(",", values)})";
+                cmd.Parameters.Add(new SQLiteParameter("@movie_id", movieId));
+                cmd.Parameters.Add(
+                    new SQLiteParameter("@movie_name", (movie.MovieName ?? "").ToLower())
+                );
+                cmd.Parameters.Add(
+                    new SQLiteParameter("@movie_path", (movie.MoviePath ?? "").ToLower())
+                );
+                cmd.Parameters.Add(new SQLiteParameter("@last_date", FormatDbDateTime(result)));
+                cmd.Parameters.Add(new SQLiteParameter("@file_date", FormatDbDateTime(result)));
+                if (hasKanaColumn)
+                {
+                    cmd.Parameters.Add(new SQLiteParameter("@kana", kana));
+                }
+                if (hasRomaColumn)
+                {
+                    cmd.Parameters.Add(new SQLiteParameter("@roma", roma));
+                }
+                cmd.Parameters.Add(new SQLiteParameter("@regist_date", FormatDbDateTime(result)));
+                cmd.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+
         /// <summary>
         /// ブックマーク動画の再生回数(view_count)をインクリメント！「また見たな！」と刻み込むぜ！👀✨
         /// </summary>
@@ -2009,18 +2073,7 @@ DELETE FROM watch;";
         {
             try
             {
-                using SQLiteConnection connection = CreateReadWriteConnection(dbFullPath);
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText =
-                        "update bookmark set view_count = view_count + 1 where movie_id = @id";
-                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
+                UpdateBookmarkViewCountCore(dbFullPath, movieId);
             }
             catch (Exception e)
             {
@@ -2028,6 +2081,41 @@ DELETE FROM watch;";
                     $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
                 ReportDbError(e, title);
             }
+        }
+
+        public static bool TryUpdateBookmarkViewCount(
+            string dbFullPath,
+            long movieId,
+            out string failureReason
+        )
+        {
+            try
+            {
+                UpdateBookmarkViewCountCore(dbFullPath, movieId);
+                failureReason = "";
+                return true;
+            }
+            catch (Exception e)
+            {
+                failureReason = DescribeDbWriteFailure(e);
+                return false;
+            }
+        }
+
+        private static void UpdateBookmarkViewCountCore(string dbFullPath, long movieId)
+        {
+            using SQLiteConnection connection = CreateReadWriteConnection(dbFullPath);
+            connection.Open();
+
+            using var transaction = connection.BeginTransaction();
+            using (SQLiteCommand cmd = connection.CreateCommand())
+            {
+                cmd.CommandText =
+                    "update bookmark set view_count = view_count + 1 where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.ExecuteNonQuery();
+            }
+            transaction.Commit();
         }
 
         /// <summary>
@@ -2096,17 +2184,7 @@ DELETE FROM watch;";
         {
             try
             {
-                using SQLiteConnection connection = CreateReadWriteConnection(dbFullPath);
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = "DELETE from bookmark where movie_id = @id";
-                    cmd.Parameters.Add(new SQLiteParameter("@id", movie_id));
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
+                DeleteBookmarkTableCore(dbFullPath, movie_id);
             }
             catch (Exception e)
             {
@@ -2114,6 +2192,47 @@ DELETE FROM watch;";
                     $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
                 ReportDbError(e, title);
             }
+        }
+
+        public static bool TryDeleteBookmarkTable(
+            string dbFullPath,
+            long movieId,
+            out string failureReason
+        )
+        {
+            try
+            {
+                DeleteBookmarkTableCore(dbFullPath, movieId);
+                failureReason = "";
+                return true;
+            }
+            catch (Exception e)
+            {
+                failureReason = DescribeDbWriteFailure(e);
+                return false;
+            }
+        }
+
+        private static void DeleteBookmarkTableCore(string dbFullPath, long movieId)
+        {
+            using SQLiteConnection connection = CreateReadWriteConnection(dbFullPath);
+            connection.Open();
+
+            using var transaction = connection.BeginTransaction();
+            using (SQLiteCommand cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = "DELETE from bookmark where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+
+        private static string DescribeDbWriteFailure(Exception exception)
+        {
+            string errorType = exception?.GetType().Name ?? nameof(Exception);
+            string message = exception?.Message ?? "";
+            return string.IsNullOrWhiteSpace(message) ? errorType : $"{errorType}: {message}";
         }
 
         internal static List<KanaBackfillTarget> ReadMovieKanaBackfillTargets(

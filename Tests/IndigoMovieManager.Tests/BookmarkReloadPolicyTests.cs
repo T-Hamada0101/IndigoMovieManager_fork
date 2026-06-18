@@ -19,7 +19,7 @@ public sealed class BookmarkReloadPolicyTests
         );
         string persistMethod = GetMethodBlock(
             source,
-            "private static void PersistPreparedBookmarkInBackground("
+            "private static BookmarkPersistResult PersistPreparedBookmarkInBackground("
         );
 
         Assert.That(clickMethod, Does.Contain("Task.Run("));
@@ -30,7 +30,7 @@ public sealed class BookmarkReloadPolicyTests
         Assert.That(prepareMethod, Does.Contain("MovieInfo movieInfo = new("));
         Assert.That(prepareMethod, Does.Contain("Directory.CreateDirectory("));
         Assert.That(prepareMethod, Does.Not.Contain("InsertBookmarkTable("));
-        Assert.That(persistMethod, Does.Contain("InsertBookmarkTable("));
+        Assert.That(persistMethod, Does.Contain("TryInsertBookmarkTable("));
     }
 
     [Test]
@@ -40,13 +40,14 @@ public sealed class BookmarkReloadPolicyTests
         string deleteMethod = GetMethodBlock(source, "public async void DeleteBookmark(");
         string backgroundMethod = GetMethodBlock(
             source,
-            "private static void DeleteBookmarkInBackground("
+            "private static BookmarkPersistResult DeleteBookmarkInBackground("
         );
 
         Assert.That(deleteMethod, Does.Contain("Task.Run("));
         Assert.That(deleteMethod, Does.Contain("AreSameMainDbPath("));
         Assert.That(deleteMethod, Does.Not.Contain("DeleteBookmarkTable("));
-        Assert.That(backgroundMethod, Does.Contain("DeleteBookmarkTable("));
+        Assert.That(backgroundMethod, Does.Contain("TryDeleteBookmarkTable("));
+        Assert.That(backgroundMethod, Does.Not.Match(@"(?<!Try)DeleteBookmarkTable\("));
     }
 
     [Test]
@@ -60,6 +61,51 @@ public sealed class BookmarkReloadPolicyTests
 
         Assert.That(reloadMethod, Does.Contain("AreSameMainDbPath(dbFullPath"));
         Assert.That(reloadMethod, Does.Contain("bookmarkData = snapshot.BookmarkData;"));
+    }
+
+    [Test]
+    public void Bookmark保存失敗はdirty_failed_retryableを軽量状態とログで読める()
+    {
+        MainWindow.BookmarkPersistenceState state =
+            MainWindow.BuildBookmarkPersistenceFailureState(
+                "add-db",
+                "sample.wb",
+                12,
+                "sample.mp4",
+                "SQLiteException"
+            );
+        string log = MainWindow.BuildBookmarkPersistenceFailureLog(state);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Dirty, Is.True);
+            Assert.That(state.Failed, Is.True);
+            Assert.That(state.Retryable, Is.True);
+            Assert.That(state.Operation, Is.EqualTo("add-db"));
+            Assert.That(state.FailureReason, Is.EqualTo("SQLiteException"));
+            Assert.That(log, Does.Contain("bookmark persist failed:"));
+            Assert.That(log, Does.Contain("operation='add-db'"));
+            Assert.That(log, Does.Contain("dirty=true"));
+            Assert.That(log, Does.Contain("failed=true"));
+            Assert.That(log, Does.Contain("retryable=true"));
+            Assert.That(log, Does.Contain("reason='SQLiteException'"));
+        });
+    }
+
+    [Test]
+    public void Bookmark保存のUI経路はTry入口で失敗状態を受け取る()
+    {
+        string source = GetRepoText("BottomTabs", "Bookmark", "MainWindow.BottomTab.Bookmark.cs");
+        string clickMethod = GetMethodBlock(source, "private async void AddBookmark_Click(");
+        string persistMethod = GetMethodBlock(
+            source,
+            "private static BookmarkPersistResult PersistPreparedBookmarkInBackground("
+        );
+
+        Assert.That(clickMethod, Does.Contain("ApplyBookmarkPersistResult("));
+        Assert.That(clickMethod, Does.Not.Contain("InsertBookmarkTable("));
+        Assert.That(persistMethod, Does.Contain("TryInsertBookmarkTable("));
+        Assert.That(persistMethod, Does.Not.Match(@"(?<!Try)InsertBookmarkTable\("));
     }
 
     [Test]

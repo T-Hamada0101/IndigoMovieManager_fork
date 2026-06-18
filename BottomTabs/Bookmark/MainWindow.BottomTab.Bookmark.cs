@@ -18,6 +18,10 @@ namespace IndigoMovieManager
     {
         private BookmarkTabPresenter _bookmarkTabPresenter;
         private int _bookmarkReloadRevision;
+        private BookmarkPersistenceState _bookmarkPersistenceState = BookmarkPersistenceState.Clean;
+
+        internal BookmarkPersistenceState BookmarkPersistenceStateForTesting =>
+            _bookmarkPersistenceState;
 
         private void InitializeBookmarkTabSupport()
         {
@@ -201,8 +205,16 @@ namespace IndigoMovieManager
                 return;
             }
 
-            await Task.Run(() => DeleteBookmarkInBackground(dbFullPath, movieId));
+            BookmarkPersistResult persistResult = await Task.Run(
+                () => DeleteBookmarkInBackground(dbFullPath, movieId)
+            );
             if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                return;
+            }
+
+            ApplyBookmarkPersistResult(persistResult);
+            if (!persistResult.Succeeded)
             {
                 return;
             }
@@ -210,9 +222,14 @@ namespace IndigoMovieManager
             ReloadBookmarkTabData();
         }
 
-        private static void DeleteBookmarkInBackground(string dbFullPath, long movieId)
+        private static BookmarkPersistResult DeleteBookmarkInBackground(
+            string dbFullPath,
+            long movieId
+        )
         {
-            DeleteBookmarkTable(dbFullPath, movieId);
+            return TryDeleteBookmarkTable(dbFullPath, movieId, out string failureReason)
+                ? BookmarkPersistResult.Success("delete-db", dbFullPath, movieId, "")
+                : BookmarkPersistResult.Failure("delete-db", dbFullPath, movieId, "", failureReason);
         }
 
         // 再生位置からBookmarkサムネを作り、一覧まで更新する。
@@ -300,7 +317,20 @@ namespace IndigoMovieManager
                 return;
             }
 
-            await Task.Run(() => PersistPreparedBookmarkInBackground(dbFullPath, result));
+            BookmarkPersistResult persistResult = await Task.Run(
+                () => PersistPreparedBookmarkInBackground(dbFullPath, result)
+            );
+            if (!AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? ""))
+            {
+                return;
+            }
+
+            ApplyBookmarkPersistResult(persistResult);
+            if (!persistResult.Succeeded)
+            {
+                return;
+            }
+
             ReloadBookmarkTabData();
         }
 
@@ -341,12 +371,88 @@ namespace IndigoMovieManager
             );
         }
 
-        private static void PersistPreparedBookmarkInBackground(
+        private static BookmarkPersistResult PersistPreparedBookmarkInBackground(
             string dbFullPath,
             BookmarkAddResult result
         )
         {
-            InsertBookmarkTable(dbFullPath, result.MovieInfo);
+            return TryInsertBookmarkTable(dbFullPath, result.MovieInfo, out string failureReason)
+                ? BookmarkPersistResult.Success(
+                    "add-db",
+                    dbFullPath,
+                    0,
+                    result.MovieFullPath
+                )
+                : BookmarkPersistResult.Failure(
+                    "add-db",
+                    dbFullPath,
+                    0,
+                    result.MovieFullPath,
+                    failureReason
+                );
+        }
+
+        private void ApplyBookmarkPersistResult(BookmarkPersistResult result)
+        {
+            if (result.Succeeded)
+            {
+                _bookmarkPersistenceState = BookmarkPersistenceState.Clean;
+                return;
+            }
+
+            _bookmarkPersistenceState = BuildBookmarkPersistenceFailureState(
+                result.Operation,
+                result.DbFullPath,
+                result.MovieId,
+                result.MoviePath,
+                result.FailureReason
+            );
+            DebugRuntimeLog.Write(
+                "bookmark",
+                BuildBookmarkPersistenceFailureLog(_bookmarkPersistenceState)
+            );
+        }
+
+        internal static BookmarkPersistenceState BuildBookmarkPersistenceFailureState(
+            string operation,
+            string dbFullPath,
+            long movieId,
+            string moviePath,
+            string failureReason
+        )
+        {
+            return new BookmarkPersistenceState(
+                Dirty: true,
+                Failed: true,
+                Retryable: true,
+                Operation: operation ?? "",
+                DbFullPath: dbFullPath ?? "",
+                MovieId: movieId,
+                MoviePath: moviePath ?? "",
+                FailureReason: string.IsNullOrWhiteSpace(failureReason)
+                    ? "unknown"
+                    : failureReason
+            );
+        }
+
+        internal static string BuildBookmarkPersistenceFailureLog(
+            BookmarkPersistenceState state
+        )
+        {
+            return "bookmark persist failed: "
+                + $"operation='{state.Operation}' "
+                + $"dirty={ToLogBool(state.Dirty)} "
+                + $"failed={ToLogBool(state.Failed)} "
+                + $"retryable={ToLogBool(state.Retryable)} "
+                + $"db='{state.DbFullPath}' "
+                + $"movie_id={state.MovieId} "
+                + $"path='{state.MoviePath}' "
+                + $"reason='{state.FailureReason}'";
+        }
+
+        private static string ToLogBool(bool value)
+        {
+            return value ? "true" : "false";
         }
 
         private sealed record BookmarkAddResult(
@@ -355,6 +461,66 @@ namespace IndigoMovieManager
             int PositionSeconds,
             MovieInfo MovieInfo
         );
+
+        private sealed record BookmarkPersistResult(
+            bool Succeeded,
+            string Operation,
+            string DbFullPath,
+            long MovieId,
+            string MoviePath,
+            string FailureReason
+        )
+        {
+            public static BookmarkPersistResult Success(
+                string operation,
+                string dbFullPath,
+                long movieId,
+                string moviePath
+            )
+            {
+                return new BookmarkPersistResult(
+                    true,
+                    operation,
+                    dbFullPath,
+                    movieId,
+                    moviePath,
+                    ""
+                );
+            }
+
+            public static BookmarkPersistResult Failure(
+                string operation,
+                string dbFullPath,
+                long movieId,
+                string moviePath,
+                string failureReason
+            )
+            {
+                return new BookmarkPersistResult(
+                    false,
+                    operation,
+                    dbFullPath,
+                    movieId,
+                    moviePath,
+                    failureReason
+                );
+            }
+        }
+
+        internal sealed record BookmarkPersistenceState(
+            bool Dirty,
+            bool Failed,
+            bool Retryable,
+            string Operation,
+            string DbFullPath,
+            long MovieId,
+            string MoviePath,
+            string FailureReason
+        )
+        {
+            public static BookmarkPersistenceState Clean { get; } =
+                new(false, false, false, "", "", 0, "", "");
+        }
 
         private sealed class BookmarkReloadSnapshot
         {

@@ -571,13 +571,43 @@ namespace IndigoMovieManager
                 {
                     try
                     {
-                        UpdateBookmarkViewCount(dbFullPath, movieId);
+                        if (
+                            TryUpdateBookmarkViewCount(
+                                dbFullPath,
+                                movieId,
+                                out string failureReason
+                            )
+                        )
+                        {
+                            return;
+                        }
+
+                        BookmarkPersistenceState failureState =
+                            BuildBookmarkPersistenceFailureState(
+                                "view-count",
+                                dbFullPath,
+                                movieId,
+                                "",
+                                failureReason
+                            );
+                        DebugRuntimeLog.Write(
+                            "player",
+                            BuildBookmarkPersistenceFailureLog(failureState)
+                        );
                     }
                     catch (Exception ex)
                     {
+                        BookmarkPersistenceState failureState =
+                            BuildBookmarkPersistenceFailureState(
+                                "view-count",
+                                dbFullPath,
+                                movieId,
+                                "",
+                                ex.GetType().Name
+                            );
                         DebugRuntimeLog.Write(
                             "player",
-                            $"bookmark view count persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                            BuildBookmarkPersistenceFailureLog(failureState)
                         );
                     }
                 }

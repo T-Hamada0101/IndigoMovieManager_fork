@@ -120,7 +120,9 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(movieStatsMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateViewCount("));
         Assert.That(movieStatsMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateLastDate("));
         Assert.That(bookmarkStatsMethod, Does.Contain("Task.Run("));
-        Assert.That(bookmarkStatsMethod, Does.Contain("UpdateBookmarkViewCount("));
+        Assert.That(bookmarkStatsMethod, Does.Contain("TryUpdateBookmarkViewCount("));
+        Assert.That(bookmarkStatsMethod, Does.Contain("BuildBookmarkPersistenceFailureState("));
+        Assert.That(bookmarkStatsMethod, Does.Contain("BuildBookmarkPersistenceFailureLog("));
     }
 
     [Test]
