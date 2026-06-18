@@ -210,6 +210,7 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(playMovieMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("Task.Run("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(
             playbackStatsPersistMethod,
@@ -218,6 +219,12 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(
             playbackStatsPersistMethod,
             Does.Contain("_mainDbMovieMutationFacade.UpdateLastDate(")
+        );
+        Assert.That(
+            playbackStatsPersistMethod,
+            Does.Contain(
+                "playback stats persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+            )
         );
         Assert.That(
             playbackStatsPersistMethod,

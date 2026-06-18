@@ -446,7 +446,14 @@ public sealed class ManualPlayerResizeHookPolicyTests
         );
         Assert.That(playbackStatsPersistMethod, Does.Contain("Task.Run("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
         Assert.That(playbackStatsPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
+        Assert.That(
+            playbackStatsPersistMethod,
+            Does.Contain(
+                "playback stats persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+            )
+        );
         Assert.That(
             playbackStatsPersistMethod,
             Does.Contain("playback stats persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields}")

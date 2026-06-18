@@ -580,6 +580,14 @@ namespace IndigoMovieManager
                         _mainDbMovieMutationFacade.UpdateScore(dbFullPath, movieId, score);
                         _mainDbMovieMutationFacade.UpdateViewCount(dbFullPath, movieId, viewCount);
                         _mainDbMovieMutationFacade.UpdateLastDate(dbFullPath, movieId, lastDate);
+                        PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
+                            writeRequest,
+                            stopwatch.Elapsed
+                        );
+                        DebugRuntimeLog.Write(
+                            "player",
+                            $"playback stats persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+                        );
                     }
                     catch (Exception ex)
                     {
