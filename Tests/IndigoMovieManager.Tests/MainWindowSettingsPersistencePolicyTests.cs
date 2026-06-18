@@ -71,6 +71,7 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             "Player",
             "MainWindow.UpperTabs.PlayerTab.cs"
         );
+        string playerSource = GetRepoText("Views", "Main", "MainWindow.Player.cs");
         string menuSource = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
         string tagSource = GetRepoText("Views", "Main", "MainWindow.Tag.cs");
         string detailThumbnailSource = GetRepoText(
@@ -88,6 +89,23 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         string tagPasteMethod = ExtractMethod(tagSource, "private void TagPaste_Click(");
         string tagAddMethod = ExtractMethod(tagSource, "private void ApplyTagsToRecords(");
         string tagPersistMethod = ExtractMethod(tagSource, "internal void QueueMovieTagPersist(");
+        string fileMoveCompleteMethod = ExtractMethod(
+            menuSource,
+            "private async Task CompleteMovieFileMoveOnUiAsync("
+        );
+        string reflectMovedMovieMethod = ExtractMethod(
+            menuSource,
+            "private int ReflectMovedMovieRecordsOnUi("
+        );
+        string moviePathPersistMethod = ExtractMethod(
+            menuSource,
+            "private void QueueMoviePathPersist("
+        );
+        string playMovieMethod = ExtractMethod(playerSource, "public async void PlayMovie_Click(");
+        string playbackStatsPersistMethod = ExtractMethod(
+            playerSource,
+            "private void QueueMoviePlaybackStatsPersist("
+        );
 
         Assert.That(scoreClickMethod, Does.Contain("QueueMovieScorePersist("));
         Assert.That(scoreClickMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateScore("));
@@ -101,6 +119,40 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(tagAddMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateTag("));
         Assert.That(tagAddMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(tagPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+
+        Assert.That(fileMoveCompleteMethod, Does.Contain("QueueMoviePathPersist("));
+        Assert.That(fileMoveCompleteMethod, Does.Contain("ReflectMovedMovieRecordsOnUi("));
+        Assert.That(fileMoveCompleteMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+        Assert.That(fileMoveCompleteMethod, Does.Not.Contain("ExecuteNonQuery("));
+        Assert.That(reflectMovedMovieMethod, Does.Contain("record.Movie_Path = movedSnapshot.DestinationPath;"));
+        Assert.That(reflectMovedMovieMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+        Assert.That(moviePathPersistMethod, Does.Contain("Task.Run("));
+        Assert.That(moviePathPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+
+        int viewCountDisplayIndex = playMovieMethod.IndexOf(
+            "mv.View_Count += 1;",
+            StringComparison.Ordinal
+        );
+        int viewCountPersistIndex = playMovieMethod.IndexOf(
+            "QueueMoviePlaybackStatsPersist(",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(playMovieMethod, Does.Contain("mv.View_Count += 1;"));
+        Assert.That(playMovieMethod, Does.Contain("mv.Last_Date = result.ToString("));
+        Assert.That(viewCountPersistIndex, Is.GreaterThan(viewCountDisplayIndex));
+        Assert.That(playMovieMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateViewCount("));
+        Assert.That(playMovieMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateLastDate("));
+        Assert.That(playMovieMethod, Does.Not.Contain("ExecuteNonQuery("));
+        Assert.That(playbackStatsPersistMethod, Does.Contain("Task.Run("));
+        Assert.That(
+            playbackStatsPersistMethod,
+            Does.Contain("_mainDbMovieMutationFacade.UpdateViewCount(")
+        );
+        Assert.That(
+            playbackStatsPersistMethod,
+            Does.Contain("_mainDbMovieMutationFacade.UpdateLastDate(")
+        );
     }
 
     private static string GetRepoText(params string[] relativePathParts)
