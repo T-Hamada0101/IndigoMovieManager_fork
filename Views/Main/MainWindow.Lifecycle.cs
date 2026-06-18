@@ -316,6 +316,7 @@ namespace IndigoMovieManager
                 _thumbnailQueuePersisterCts.Cancel();
                 CancelKanaBackfill("window-closing");
                 BeginWatchEventQueueShutdownForClosing();
+                LogUiWorkSchedulerPendingWorkForShutdown("window-closing");
 
                 // 即終了優先を守るため、各タスク待機は最大500msで打ち切る。
                 ShowUiHangShutdownStatus("終了処理: 後始末を実行中(1/5): サムネイル消費タスク停止待機");
@@ -348,6 +349,32 @@ namespace IndigoMovieManager
                 ShowUiHangShutdownStatus("終了処理: 後始末を実行中: オーバーレイ停止中");
                 HideUiHangShutdownStatus();
                 StopUiHangNotificationSupport();
+            }
+        }
+
+        private void LogUiWorkSchedulerPendingWorkForShutdown(string reason)
+        {
+            UiWorkSchedulerPendingRequest[] pendingRequests;
+            lock (_uiWorkSchedulerRuntimeSyncRoot)
+            {
+                pendingRequests = [.. _uiWorkSchedulerRuntime.PendingRequests];
+            }
+
+            if (pendingRequests.Length == 0)
+            {
+                return;
+            }
+
+            DebugRuntimeLog.Write(
+                "lifecycle",
+                $"ui work scheduler shutdown pending: reason={reason ?? ""} pending_count={pendingRequests.Length}"
+            );
+            foreach (UiWorkSchedulerPendingRequest pendingRequest in pendingRequests)
+            {
+                DebugRuntimeLog.Write(
+                    "lifecycle",
+                    $"ui work scheduler shutdown pending item: reason={reason ?? ""} sequence={pendingRequest.Sequence} {UiWorkRequestPolicy.BuildRequestSchedulerLogFields(pendingRequest.Request, UiWorkRequestPolicy.ReleaseReasonCanceled)}"
+                );
             }
         }
 

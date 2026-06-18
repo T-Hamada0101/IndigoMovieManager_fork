@@ -68,6 +68,33 @@ public sealed class UiHangOverlayLifecycleSourceTests
     }
 
     [Test]
+    public void MainWindow_ClosingはUiWorkSchedulerのpendingを終了ログへ残す()
+    {
+        string lifecycleSource = GetSourceText(new[] { "Views", "Main", "MainWindow.Lifecycle.cs" })
+            .Replace("\r\n", "\n");
+        string closingMethod = ExtractMethod(lifecycleSource, "private void MainWindow_Closing(");
+        string pendingLogMethod = ExtractMethod(
+            lifecycleSource,
+            "private void LogUiWorkSchedulerPendingWorkForShutdown("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                closingMethod,
+                Does.Contain("LogUiWorkSchedulerPendingWorkForShutdown(\"window-closing\");")
+            );
+            Assert.That(pendingLogMethod, Does.Contain("lock (_uiWorkSchedulerRuntimeSyncRoot)"));
+            Assert.That(pendingLogMethod, Does.Contain("_uiWorkSchedulerRuntime.PendingRequests"));
+            Assert.That(pendingLogMethod, Does.Contain("ReleaseReasonCanceled"));
+            Assert.That(
+                pendingLogMethod,
+                Does.Contain("ui work scheduler shutdown pending item")
+            );
+        });
+    }
+
+    [Test]
     public void Watcher作成は背景計画の後着をrevisionで捨てる()
     {
         string lifecycleSource = GetSourceText(new[] { "Views", "Main", "MainWindow.Lifecycle.cs" })
