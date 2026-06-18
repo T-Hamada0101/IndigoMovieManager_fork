@@ -51,6 +51,7 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             Assert.That(state.IsDirty, Is.True);
             Assert.That(state.IsFailed, Is.False);
             Assert.That(state.IsRetryable, Is.False);
+            Assert.That(state.NotifyUi, Is.False);
         });
     }
 
@@ -92,6 +93,7 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             Assert.That(state.IsDirty, Is.False);
             Assert.That(state.IsFailed, Is.False);
             Assert.That(state.IsRetryable, Is.False);
+            Assert.That(state.NotifyUi, Is.False);
         });
     }
 
@@ -139,6 +141,7 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             Assert.That(state.IsDirty, Is.True);
             Assert.That(state.IsFailed, Is.True);
             Assert.That(state.IsRetryable, Is.True);
+            Assert.That(state.NotifyUi, Is.False);
         });
     }
 
@@ -171,6 +174,7 @@ public sealed class WhiteBrowserSkinProfileValueCacheTests
             Assert.That(state.IsDirty, Is.True);
             Assert.That(state.IsFailed, Is.True);
             Assert.That(state.IsRetryable, Is.True);
+            Assert.That(state.NotifyUi, Is.False);
         });
     }
 }

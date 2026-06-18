@@ -86,9 +86,11 @@ namespace IndigoMovieManager.Skin
         internal string BuildFailureStateLogFields()
         {
             // profile は session cache で未保存状態を追えるため、失敗時だけ retryable としてログへ出す。
-            return TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile
-                ? "dirty=true failed=true retryable=true"
-                : "dirty=false failed=true retryable=false";
+            PersistenceFailureKind failureKind =
+                TargetKind == WhiteBrowserSkinStatePersistTargetKind.Profile
+                    ? PersistenceFailureKind.SkinProfile
+                    : PersistenceFailureKind.SkinSystem;
+            return PersistenceFailureNotificationPolicy.BuildLogFields(failureKind);
         }
     }
 }

@@ -42,7 +42,19 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(persistenceSource, Does.Contain("TaskScheduler.Default"));
         Assert.That(persistenceSource, Does.Contain("Properties.Settings.Default.Save();"));
         Assert.That(persistenceSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(
+            persistenceSource,
+            Does.Contain(
+                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)"
+            )
+        );
         Assert.That(playerSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
+        Assert.That(
+            playerSource,
+            Does.Contain(
+                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)"
+            )
+        );
         Assert.That(settingsWindowSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
         Assert.That(appSource, Does.Contain("internal const string DiagnosticNoPersistEnvironmentVariable"));
         Assert.That(appSource, Does.Contain("internal static bool IsDiagnosticNoPersistEnabled()"));
@@ -111,6 +123,12 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(scoreClickMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateScore("));
         Assert.That(scoreClickMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(scorePersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateScore("));
+        Assert.That(
+            scorePersistMethod,
+            Does.Contain(
+                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+            )
+        );
 
         Assert.That(tagPasteMethod, Does.Contain("QueueMovieTagPersist("));
         Assert.That(tagPasteMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateTag("));
@@ -119,6 +137,12 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(tagAddMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateTag("));
         Assert.That(tagAddMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(tagPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateTag("));
+        Assert.That(
+            tagPersistMethod,
+            Does.Contain(
+                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+            )
+        );
 
         Assert.That(fileMoveCompleteMethod, Does.Contain("QueueMoviePathPersist("));
         Assert.That(fileMoveCompleteMethod, Does.Contain("ReflectMovedMovieRecordsOnUi("));
@@ -128,6 +152,12 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(reflectMovedMovieMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
         Assert.That(moviePathPersistMethod, Does.Contain("Task.Run("));
         Assert.That(moviePathPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
+        Assert.That(
+            moviePathPersistMethod,
+            Does.Contain(
+                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+            )
+        );
 
         int viewCountDisplayIndex = playMovieMethod.IndexOf(
             "mv.View_Count += 1;",
@@ -153,6 +183,46 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             playbackStatsPersistMethod,
             Does.Contain("_mainDbMovieMutationFacade.UpdateLastDate(")
         );
+        Assert.That(
+            playbackStatsPersistMethod,
+            Does.Contain(
+                "PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)"
+            )
+        );
+    }
+
+    [Test]
+    public void PersistenceFailureNotificationPolicy_保存失敗の軽量状態と通知条件を共通化する()
+    {
+        PersistenceFailureNotificationState retryableState =
+            PersistenceFailureNotificationPolicy.BuildFailureState(
+                PersistenceFailureKind.BackgroundDbWrite
+            );
+        PersistenceFailureNotificationState systemState =
+            PersistenceFailureNotificationPolicy.BuildFailureState(
+                PersistenceFailureKind.SkinSystem
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(retryableState.Dirty, Is.True);
+            Assert.That(retryableState.Failed, Is.True);
+            Assert.That(retryableState.Retryable, Is.True);
+            Assert.That(retryableState.NotifyUi, Is.False);
+            Assert.That(
+                PersistenceFailureNotificationPolicy.BuildLogFields(retryableState),
+                Is.EqualTo("dirty=true failed=true retryable=true notify_ui=false")
+            );
+
+            Assert.That(systemState.Dirty, Is.False);
+            Assert.That(systemState.Failed, Is.True);
+            Assert.That(systemState.Retryable, Is.False);
+            Assert.That(systemState.NotifyUi, Is.True);
+            Assert.That(
+                PersistenceFailureNotificationPolicy.BuildLogFields(systemState),
+                Is.EqualTo("dirty=false failed=true retryable=false notify_ui=true")
+            );
+        });
     }
 
     [Test]

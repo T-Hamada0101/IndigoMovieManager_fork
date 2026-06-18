@@ -81,6 +81,7 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(state.Dirty, Is.True);
             Assert.That(state.Failed, Is.True);
             Assert.That(state.Retryable, Is.True);
+            Assert.That(state.NotifyUi, Is.False);
             Assert.That(state.Operation, Is.EqualTo("add-db"));
             Assert.That(state.FailureReason, Is.EqualTo("SQLiteException"));
             Assert.That(log, Does.Contain("bookmark persist failed:"));
@@ -88,6 +89,7 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(log, Does.Contain("dirty=true"));
             Assert.That(log, Does.Contain("failed=true"));
             Assert.That(log, Does.Contain("retryable=true"));
+            Assert.That(log, Does.Contain("notify_ui=false"));
             Assert.That(log, Does.Contain("reason='SQLiteException'"));
         });
     }

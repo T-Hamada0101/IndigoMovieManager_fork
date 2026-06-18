@@ -421,10 +421,16 @@ namespace IndigoMovieManager
             string failureReason
         )
         {
+            PersistenceFailureNotificationState notificationState =
+                PersistenceFailureNotificationPolicy.BuildFailureState(
+                    PersistenceFailureKind.Bookmark
+                );
+
             return new BookmarkPersistenceState(
-                Dirty: true,
-                Failed: true,
-                Retryable: true,
+                Dirty: notificationState.Dirty,
+                Failed: notificationState.Failed,
+                Retryable: notificationState.Retryable,
+                NotifyUi: notificationState.NotifyUi,
                 Operation: operation ?? "",
                 DbFullPath: dbFullPath ?? "",
                 MovieId: movieId,
@@ -441,18 +447,19 @@ namespace IndigoMovieManager
         {
             return "bookmark persist failed: "
                 + $"operation='{state.Operation}' "
-                + $"dirty={ToLogBool(state.Dirty)} "
-                + $"failed={ToLogBool(state.Failed)} "
-                + $"retryable={ToLogBool(state.Retryable)} "
+                + PersistenceFailureNotificationPolicy.BuildLogFields(
+                    new PersistenceFailureNotificationState(
+                        state.Dirty,
+                        state.Failed,
+                        state.Retryable,
+                        state.NotifyUi
+                    )
+                )
+                + " "
                 + $"db='{state.DbFullPath}' "
                 + $"movie_id={state.MovieId} "
                 + $"path='{state.MoviePath}' "
                 + $"reason='{state.FailureReason}'";
-        }
-
-        private static string ToLogBool(bool value)
-        {
-            return value ? "true" : "false";
         }
 
         private sealed record BookmarkAddResult(
@@ -511,6 +518,7 @@ namespace IndigoMovieManager
             bool Dirty,
             bool Failed,
             bool Retryable,
+            bool NotifyUi,
             string Operation,
             string DbFullPath,
             long MovieId,
@@ -519,7 +527,7 @@ namespace IndigoMovieManager
         )
         {
             public static BookmarkPersistenceState Clean { get; } =
-                new(false, false, false, "", "", 0, "", "");
+                new(false, false, false, false, "", "", 0, "", "");
         }
 
         private sealed class BookmarkReloadSnapshot

@@ -413,7 +413,7 @@ namespace IndigoMovieManager
                     {
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"tag persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                            $"tag persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
                         );
                     }
                 }

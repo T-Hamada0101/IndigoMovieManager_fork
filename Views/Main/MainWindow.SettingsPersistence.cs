@@ -54,7 +54,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"application settings save failed: reason={reason ?? ""} err='{ex.GetType().Name}: {ex.Message}'"
+                    $"application settings save failed: reason={reason ?? ""} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }

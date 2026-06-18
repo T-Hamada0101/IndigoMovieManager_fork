@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#####-----] 49%`
+> 進捗メータ: `[#####-----] 50%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-18
 
-全体進捗目安: `[#####-----] 49%`
+全体進捗目安: `[#####-----] 50%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -15,10 +15,10 @@
 |---|---:|---|---|
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 45% | `UiOperationSnapshot` を追加し、旧 `UiOperationPrioritySnapshot` から段階移行できる入口を固定済み | UI event handler を snapshot 生成へさらに寄せる |
-| Phase 2. ReadModel Store と Diff-first | 28% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiff` は add / delete / update / move / full fallback / no-change と、query / sort / db-switch / unsafe / massive / none の fallback 語彙で apply log を読める入口になった | 小変更の diff apply 本体を通常経路へ入れる |
+| Phase 2. ReadModel Store と Diff-first | 31% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、changed-path などの小変更は diff apply 候補として読める入口になった | diff apply 候補を実際の通常経路へ広げ、実機ログで watch 1件追加 / rename の full fallback 戻りを確認する |
 | Phase 3. In-process Scheduler | 31% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。runtime 接続はまだ行わない | 実行器本体を作る前に、実機ログで watch cancel / poll defer / thumbnail refresh の発生頻度と支配時間を揃える |
 | Phase 4. Image Pipeline 統一 | 36% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作り、詳細サムネ背景確認は `ImageProbeRequest` / `ImageProbeResult` で missing / ERROR marker / stamp を説明できる | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard を確認する |
-| Phase 5. Persistence Pipeline | 33% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み。skin profile と bookmark は失敗時に cache / log / 軽量状態で dirty / failed / retryable を読める入口を追加済み | skin profile / bookmark の最小 UI 通知条件を揃え、実機ログで失敗時だけ表現されることを確認する |
+| Phase 5. Persistence Pipeline | 36% | no-persist 診断、設定保存 background queue、score / tag / view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` により、settings / score / tag / view_count / movie_path / bookmark / skin profile の保存失敗は `dirty` / `failed` / `retryable` / `notify_ui` の共通 fields で読める入口になった | 実機ログで失敗時だけ共通 fields が出ること、通知が必要な非 retryable だけを UI 通知候補にすることを確認する |
 | Phase 6. Worker 契約 | 43% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果、watch metadata probe 入出力から Worker DTO へ写す adapter と focused test を追加済み | metadata probe の実行ログ / progress 語彙を、実機支配要因を見て必要最小限で接続する |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 22% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
@@ -41,7 +41,7 @@
 - `BuildRequestSchedulerLogFields(...)` を追加し、thumbnail / Everything poll / watch reload の既存予約ログへ `work_priority`、`coalesce_key`、`latest_only_key`、`timeout_policy`、`bounded_drain`、`release_reason` を同じ形式で出すようにした。巨大 scheduler 本体はまだ作らない。
 - watch 遅延 reload の cancel ログは、pending がある時だけ `release_reason=canceled` と `bounded_drain=deferred-request-cts` を出し、latest-only で古い要求を落とした証跡を読めるようにした。
 - `UiWorkSchedulerPolicy` を追加し、bounded capacity、latest-only 置換、coalesce 畳み込み、満杯時の priority preempt、次実行選択、timeout release 判定を pure test で固定した。まだ `MainWindow` / `Dispatcher` / DB / UI event handler へは接続しない。
-- `MovieViewDiff` は add / delete / update / move / full fallback / no-change と fallback category を分け、既存 `ReplaceFilteredMovieRecs(...)` 互換のまま diff-first の観測語彙を一段細かくした。
+- `MovieViewDiffApplyPolicy` を追加し、query / sort / db-switch / unsafe / massive だけを full fallback 理由として判定する。`changed-path`、thumbnail 成功、単発更新のような小変更札は `none` へ畳み、既存 `ReplaceFilteredMovieRecs(...)` 互換のまま `diff_apply_kind` / `diff_apply_candidate` / `diff_full_fallback_reason` を apply log で読める入口にした。
 - 画像 hot path は、詳細サムネ、Player右レール、上側タブ viewport 更新入口で file I/O / decode へ進まないことを source policy で固定した。
 - 上側タブ画像 converter は `ImageRequest` を作ってから decode へ進む形へ寄せ、visible-first と stale discard を test で説明できるようにした。
 - 詳細サムネ snapshot は `ImageRequest` を持ち、UI apply 直前に visible-first と request revision stale discard を通す入口を追加した。
@@ -53,6 +53,7 @@
 - view_count と movie_path は UI 表示値を先に反映し、DB 保存を背景へ送ることを source policy で固定した。
 - skin profile write は UI hot path を enqueue のみに保ったまま、queue / persister / fallback 失敗時だけ cache と `skin-db` ログへ `dirty=true failed=true retryable=true` を出す入口を追加した。
 - bookmark add / delete / view_count は既存背景経路を維持し、DB write 失敗時だけ軽量状態と `bookmark persist failed` ログへ `dirty=true failed=true retryable=true` を出す入口を追加した。
+- `PersistenceFailureNotificationPolicy` を追加し、settings / score / tag / view_count / movie_path / bookmark / skin profile の保存失敗を `dirty` / `failed` / `retryable` / `notify_ui` の共通語彙へ寄せた。profile / bookmark / DB値系は retryable dirty として log-only、system 系の非 retryable 失敗だけ UI 通知候補として判定できる。同期 `Save()` や DB write は UI hot path へ戻していない。
 - Worker DTO は request / result / progress / artifact の語彙を `ThumbnailIpcDtos` に追加し、JSON roundtrip と null なし既定値を focused test で固定した。
 - rescue worker job JSON は `WorkerJobRequestDto` / `WorkerJobResultDto` へ写す adapter を持ち、既存 worker 実行を壊さず契約語彙へ寄せる入口ができた。
 - thumbnail queue の `QueueRequest` は `ThumbnailQueueWorkerContractAdapter` で `WorkerJobRequestDto` へ写せるようになり、queue runtime 側も UI 非依存の worker request 語彙で説明できる入口ができた。
@@ -123,7 +124,7 @@
 - `UiOperationSnapshot`
   - 入力中、sort中、Player操作中、recent viewport、manual reload、watch suppression、再生中を持つ軽量状態。
 - `MovieViewDiff`
-  - stable key、source revision、view revision、operation、selection impact、scroll impact、fallback reason を持つ。
+  - stable key、source revision、view revision、operation、selection impact、scroll impact、fallback reason、diff apply 候補判定を持つ。
 - `UiWorkRequest`
   - priority、coalesce key、latest-only key、cancel token、timeout、log reason を持つ。
 - `ImageRequest`

@@ -242,6 +242,7 @@ public sealed class WhiteBrowserSkinStatePersisterTests
             Assert.That(state.IsDirty, Is.True);
             Assert.That(state.IsFailed, Is.True);
             Assert.That(state.IsRetryable, Is.True);
+            Assert.That(state.NotifyUi, Is.False);
             Assert.That(
                 logs.Any(
                     static x =>
@@ -249,6 +250,7 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                         && x.Contains("dirty=true", StringComparison.Ordinal)
                         && x.Contains("failed=true", StringComparison.Ordinal)
                         && x.Contains("retryable=true", StringComparison.Ordinal)
+                        && x.Contains("notify_ui=false", StringComparison.Ordinal)
                 ),
                 Is.True
             );
@@ -268,7 +270,23 @@ public sealed class WhiteBrowserSkinStatePersisterTests
 
         Assert.That(
             request.BuildFailureStateLogFields(),
-            Is.EqualTo("dirty=true failed=true retryable=true")
+            Is.EqualTo("dirty=true failed=true retryable=true notify_ui=false")
+        );
+    }
+
+    [Test]
+    public void PersistRequest_System失敗ログは非dirty_nonretryable通知条件を持つ()
+    {
+        WhiteBrowserSkinStatePersistRequest request =
+            WhiteBrowserSkinStatePersistRequest.CreateSystem(
+                "missing.wb",
+                "skin",
+                "DefaultGrid"
+            );
+
+        Assert.That(
+            request.BuildFailureStateLogFields(),
+            Is.EqualTo("dirty=false failed=true retryable=false notify_ui=true")
         );
     }
 

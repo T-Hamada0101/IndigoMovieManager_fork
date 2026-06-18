@@ -645,7 +645,7 @@ namespace IndigoMovieManager
                     {
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"score persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                            $"score persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
                         );
                     }
                 }
@@ -676,7 +676,7 @@ namespace IndigoMovieManager
                     {
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"movie path persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                            $"movie path persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
                         );
                     }
                 }

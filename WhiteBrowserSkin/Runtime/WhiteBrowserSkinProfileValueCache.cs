@@ -13,7 +13,8 @@ namespace IndigoMovieManager.Skin.Runtime
         string Value,
         bool IsDirty,
         bool IsFailed,
-        bool IsRetryable
+        bool IsRetryable,
+        bool NotifyUi
     );
 
     /// <summary>
@@ -77,23 +78,30 @@ namespace IndigoMovieManager.Skin.Runtime
                 return;
             }
 
+            PersistenceFailureNotificationState failureState =
+                PersistenceFailureNotificationPolicy.BuildFailureState(
+                    PersistenceFailureKind.SkinProfile
+                );
+
             Entries.AddOrUpdate(
                 identityKey,
                 _ =>
                     new CacheEntry(
                         WhiteBrowserSkinProfileValueCacheState.Faulted,
                         value ?? "",
-                        isDirty: true,
-                        isFailed: true,
-                        isRetryable: true
+                        isDirty: failureState.Dirty,
+                        isFailed: failureState.Failed,
+                        isRetryable: failureState.Retryable,
+                        notifyUi: failureState.NotifyUi
                     ),
                 (_, previous) =>
                     new CacheEntry(
                         WhiteBrowserSkinProfileValueCacheState.Faulted,
                         value ?? previous?.Value ?? "",
-                        isDirty: true,
-                        isFailed: true,
-                        isRetryable: true
+                        isDirty: failureState.Dirty,
+                        isFailed: failureState.Failed,
+                        isRetryable: failureState.Retryable,
+                        notifyUi: failureState.NotifyUi
                     )
             );
         }
@@ -168,7 +176,8 @@ namespace IndigoMovieManager.Skin.Runtime
                 entry.Value ?? "",
                 entry.IsDirty,
                 entry.IsFailed,
-                entry.IsRetryable
+                entry.IsRetryable,
+                entry.NotifyUi
             );
             return true;
         }
@@ -197,7 +206,8 @@ namespace IndigoMovieManager.Skin.Runtime
                 string value,
                 bool isDirty,
                 bool isFailed,
-                bool isRetryable
+                bool isRetryable,
+                bool notifyUi = false
             )
             {
                 State = state;
@@ -205,6 +215,7 @@ namespace IndigoMovieManager.Skin.Runtime
                 IsDirty = isDirty;
                 IsFailed = isFailed;
                 IsRetryable = isRetryable;
+                NotifyUi = notifyUi;
             }
 
             internal WhiteBrowserSkinProfileValueCacheState State { get; }
@@ -212,6 +223,7 @@ namespace IndigoMovieManager.Skin.Runtime
             internal bool IsDirty { get; }
             internal bool IsFailed { get; }
             internal bool IsRetryable { get; }
+            internal bool NotifyUi { get; }
         }
     }
 }

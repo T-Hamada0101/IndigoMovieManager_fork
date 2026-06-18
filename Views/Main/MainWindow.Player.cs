@@ -266,7 +266,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "player",
-                    $"player volume settings save failed: err='{ex.GetType().Name}: {ex.Message}'"
+                    $"player volume settings save failed: {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.ApplicationSettings)} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }
@@ -552,7 +552,7 @@ namespace IndigoMovieManager
                     {
                         DebugRuntimeLog.Write(
                             "player",
-                            $"playback stats persist failed: db='{dbFullPath}' movie_id={movieId} err='{ex.GetType().Name}'"
+                            $"playback stats persist failed: db='{dbFullPath}' movie_id={movieId} {PersistenceFailureNotificationPolicy.BuildLogFields(PersistenceFailureKind.BackgroundDbWrite)} err='{ex.GetType().Name}'"
                         );
                     }
                 }
