@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#######---] 68%`
+> 進捗メータ: `[#######---] 69%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-19
 
-全体進捗目安: `[#######---] 68%`
+全体進捗目安: `[#######---] 69%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -17,9 +17,9 @@
 | Phase 1. UI Shell 入力契約 | 47% | `UiOperationSnapshot` を追加し、Everything watch / poll の実行経路も共通 snapshot を正本にした。旧 `UiOperationPrioritySnapshot` は互換入口として残す | UI event handler を snapshot 生成へさらに寄せる |
 | Phase 2. ReadModel Store と Diff-first | 47% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った | watch 1件追加 / rename が full fallback へ戻らない実機ログと、大量変更時 fallback の妥当性を確認する |
 | Phase 3. In-process Scheduler | 50% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue も scheduler 語彙で読めるようにした | 実機ログで scheduler admission が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
-| Phase 4. Image Pipeline 統一 | 48% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。ERROR 一覧の集約は背景側の存在確認、placeholder、ERROR marker、missing、failed を反映する | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard と error tab image aggregate を確認する |
+| Phase 4. Image Pipeline 統一 | 50% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。Player右レール converter も decode result と stale canceled 語彙を保持する | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard と error tab image aggregate を確認する |
 | Phase 5. Persistence Pipeline | 54% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume の成功ログも共通語彙へ寄せた | 実機ログで保存成功 / 失敗時の dirty / failed / retryable と UI 通知候補を確認する |
-| Phase 6. Worker 契約 | 48% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue の既存結果ログへ Worker DTO fields を併記し始めた | 実機ログで Worker DTO fields が UI 詰まりの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
+| Phase 6. Worker 契約 | 50% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue と rescue worker の既存結果ログへ Worker DTO fields を併記し始めた | 実機ログで Worker DTO fields が UI 詰まりの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 25% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続した | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
 ## 1. Summary
@@ -62,6 +62,7 @@
 - 詳細サムネ背景確認は `ImageLoadResult` も持ち、ready / missing / canceled / failed と stale skip を同じ `debug-runtime.log` で読める入口へ寄せた。
 - converter 同期 decode の挙動は変えず、`ImageDecodeRequest` / `ImageDecodeResult` を追加した。上側タブ、Player右レール、サムネ進捗 preview、ThumbnailError 一覧は decode 前に同じ軽量語彙を作れる。
 - Player右レール画像 converter は `ImageRequest` の `PlayerRightRail` role を作り、非表示だけでは捨てず request revision 不一致だけを stale discard する入口へ寄せた。
+- 2026-06-19 Worker H: Player右レール converter は `ConvertImageRequest(...)` 丸投げではなく、`ImageDecodeRequest` から `ImageDecodeResult` を受ける形へ寄せ、stale revision skip は `ImageLoadResult.Canceled(..., "stale-player-right-rail")` として保持できる。
 - サムネ進捗 preview の file fallback は `ImageRequest` の `ThumbnailProgressPreview` role を作ってから decode へ進み、メモリ優先のまま下側進捗UIも画像契約語彙で読める入口へ寄せた。
 - 下側 ThumbnailError / ERROR 一覧は、背景集計で preview パスと revision を表示モデルへ持たせ、`ThumbnailErrorList` role の `ImageRequest` を作ってから converter decode へ進む入口に寄せた。UI event handler へ画像存在確認、ERROR marker 判定、decode を戻さない source policy も追加済み。
 - 詳細サムネの UI apply 直前で stale image request を捨てる時も、`ImageLoadResult.Canceled(..., "stale-image-request")` と `ImageLoadLogFields` で実機ログへ残す。
@@ -76,6 +77,7 @@
 - 2026-06-19 Worker F: application settings / player volume の保存成功時も `PersistenceWriteResult.FromSuccess(...)` の共通 fields を1行だけ出し、失敗 / no-persist / background save 順序は変えていない。
 - Worker DTO は request / result / progress / artifact の語彙を `ThumbnailIpcDtos` に追加し、JSON roundtrip と null なし既定値を focused test で固定した。
 - rescue worker job JSON は `WorkerJobRequestDto` / `WorkerJobResultDto` へ写す adapter を持ち、既存 worker 実行を壊さず契約語彙へ寄せる入口ができた。
+- 2026-06-19 Worker G: rescue worker の launch / result / missing result ログにも `WorkerJobRequestDto` / `WorkerJobResultDto` 由来の job id、kind、artifact、retryability、elapsed、output artifact fields を併記した。JSON schema、process launch、failfast は変えない。
 - thumbnail queue の `QueueRequest` は `ThumbnailQueueWorkerContractAdapter` で `WorkerJobRequestDto` へ写せるようになり、queue runtime 側も UI 非依存の worker request 語彙で説明できる入口ができた。
 - thumbnail queue の実行結果は、runtime 挙動を変えずに `WorkerJobResultDto` へ artifact path / failure kind / elapsed / retryability / metrics を写せる入口を追加した。
 - 2026-06-19 Worker E: thumbnail queue の既存 `consumer done skipped` / `consumer status skipped` / `consumer failed` ログへ `WorkerJobResultDto` 由来の job id、kind、status、artifact、retryability、elapsed、failure reason fields を併記した。通常成功ごとの大量ログは増やさない。
@@ -124,6 +126,7 @@
 - 画像存在確認、stamp取得、decode、ERROR marker判定は UI スレッドから外す。
 - cache miss は placeholder で先に返し、成功 / missing / canceled / failed を revision 付きで戻す。
 - 現在は下側 ThumbnailError 一覧の preview fallback と画像状態集約を `ImageRequest` / `ImageLoadResult` 語彙へ寄せた段階。次は decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard と aggregate を確認する。
+- Player右レールは同期decodeのまま、`ImageDecodeResult` と stale canceled 語彙を保持する。次は実機ログで stale discard の発生有無を確認する。
 
 ### Phase 5. Persistence Pipeline
 
@@ -138,6 +141,7 @@
 - 既存の `ThumbnailIpcDtos`、rescue worker job json、thumbnail queue runtime を土台に、まず in-process adapter で契約を固定する。
 - 済: watch metadata probe は `WatchMetadataProbeWorkerContractAdapter` で request / result / artifact / metrics へ写せる入口を追加した。runtime 挙動変更や IPC 接続はまだ行わない。
 - 済: thumbnail queue の結果ログは一部 `WorkerJobResultDto` fields を併記する。成功全件ログ化はせず、既存の結果系ログだけに留める。
+- 済: rescue worker の job/result JSON 経路も既存ログへ Worker DTO fields を併記する。schema変更や IPC 導入は行わない。
 - sidecar / IPC は、契約が固定され、実機ログで UI 詰まりの支配要因が worker 境界にあると確認できた後だけ導入する。
 
 ### Phase 7. Skin / Player / Watcher の Core 接続
