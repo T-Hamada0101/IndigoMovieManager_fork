@@ -20,14 +20,14 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(scoreMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateScore("));
         Assert.That(persistMethod, Does.Contain("Task.Run("));
         Assert.That(persistMethod, Does.Contain("PersistenceWriteRequest.Create("));
-        Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(persistMethod, Does.Contain("BuildWriteSuccessResultLogFields("));
         Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(persistMethod, Does.Contain("\"movie-score\""));
         Assert.That(persistMethod, Does.Contain("\"main-db-score\""));
         Assert.That(persistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateScore("));
         Assert.That(persistMethod, Does.Contain("score persist succeeded"));
         Assert.That(persistMethod, Does.Contain("score persist failed"));
-        Assert.That(persistMethod, Does.Contain("{result.LogFields}"));
+        Assert.That(persistMethod, Does.Contain("{successLogFields}"));
     }
 
     [Test]
@@ -57,14 +57,14 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(moveMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
         Assert.That(persistMethod, Does.Contain("Task.Run("));
         Assert.That(persistMethod, Does.Contain("PersistenceWriteRequest.Create("));
-        Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(persistMethod, Does.Contain("BuildWriteSuccessResultLogFields("));
         Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(persistMethod, Does.Contain("\"movie-path\""));
         Assert.That(persistMethod, Does.Contain("\"main-db-movie-path\""));
         Assert.That(persistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
         Assert.That(persistMethod, Does.Contain("movie path persist succeeded"));
         Assert.That(persistMethod, Does.Contain("movie path persist failed"));
-        Assert.That(persistMethod, Does.Contain("{result.LogFields}"));
+        Assert.That(persistMethod, Does.Contain("{successLogFields}"));
     }
 
     [Test]
@@ -420,14 +420,14 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(tagControlSource, Does.Not.Contain("MainDbMovieMutationFacade.UpdateTag("));
         Assert.That(persistMethod, Does.Contain("Task.Run("));
         Assert.That(persistMethod, Does.Contain("PersistenceWriteRequest.Create("));
-        Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(persistMethod, Does.Contain("BuildWriteSuccessResultLogFields("));
         Assert.That(persistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(persistMethod, Does.Contain("\"movie-tag\""));
         Assert.That(persistMethod, Does.Contain("\"main-db-tag\""));
         Assert.That(persistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateTag("));
         Assert.That(persistMethod, Does.Contain("tag persist succeeded"));
         Assert.That(persistMethod, Does.Contain("tag persist failed"));
-        Assert.That(persistMethod, Does.Contain("{result.LogFields}"));
+        Assert.That(persistMethod, Does.Contain("{successLogFields}"));
     }
 
     private static string GetRepoText(params string[] relativePathParts)

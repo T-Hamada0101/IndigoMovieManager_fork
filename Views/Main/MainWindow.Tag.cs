@@ -416,13 +416,12 @@ namespace IndigoMovieManager
                     try
                     {
                         _mainDbMovieMutationFacade.UpdateTag(dbFullPath, movieId, tagSnapshot);
-                        PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
-                            writeRequest,
+                        string successLogFields = writeRequest.BuildWriteSuccessResultLogFields(
                             stopwatch.Elapsed
                         );
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"tag persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+                            $"tag persist succeeded: db='{dbFullPath}' movie_id={movieId} {successLogFields}"
                         );
                     }
                     catch (Exception ex)

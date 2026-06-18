@@ -39,6 +39,11 @@ namespace IndigoMovieManager
                 + $"retryable_policy={ToLogBool(Retryable)}";
         }
 
+        internal string BuildWriteSuccessResultLogFields(TimeSpan elapsed)
+        {
+            return PersistenceWriteResult.FromSuccess(this, elapsed).LogFields;
+        }
+
         private static string NormalizeLogValue(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim();

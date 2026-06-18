@@ -143,10 +143,16 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(scoreClickMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(scorePersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateScore("));
         Assert.That(scorePersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
-        Assert.That(scorePersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(scorePersistMethod, Does.Contain("BuildWriteSuccessResultLogFields("));
         Assert.That(scorePersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(scorePersistMethod, Does.Contain("\"movie-score\""));
         Assert.That(scorePersistMethod, Does.Contain("\"main-db-score\""));
+        Assert.That(
+            scorePersistMethod,
+            Does.Contain(
+                "score persist succeeded: db='{dbFullPath}' movie_id={movieId} {successLogFields}"
+            )
+        );
         Assert.That(
             scorePersistMethod,
             Does.Contain(
@@ -162,10 +168,16 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(tagAddMethod, Does.Not.Contain("ExecuteNonQuery("));
         Assert.That(tagPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateTag("));
         Assert.That(tagPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
-        Assert.That(tagPersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(tagPersistMethod, Does.Contain("BuildWriteSuccessResultLogFields("));
         Assert.That(tagPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(tagPersistMethod, Does.Contain("\"movie-tag\""));
         Assert.That(tagPersistMethod, Does.Contain("\"main-db-tag\""));
+        Assert.That(
+            tagPersistMethod,
+            Does.Contain(
+                "tag persist succeeded: db='{dbFullPath}' movie_id={movieId} {successLogFields}"
+            )
+        );
         Assert.That(
             tagPersistMethod,
             Does.Contain(
@@ -182,10 +194,16 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(moviePathPersistMethod, Does.Contain("Task.Run("));
         Assert.That(moviePathPersistMethod, Does.Contain("_mainDbMovieMutationFacade.UpdateMoviePath("));
         Assert.That(moviePathPersistMethod, Does.Contain("PersistenceWriteRequest.Create("));
-        Assert.That(moviePathPersistMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
+        Assert.That(moviePathPersistMethod, Does.Contain("BuildWriteSuccessResultLogFields("));
         Assert.That(moviePathPersistMethod, Does.Contain("PersistenceWriteResult.FromFailure("));
         Assert.That(moviePathPersistMethod, Does.Contain("\"movie-path\""));
         Assert.That(moviePathPersistMethod, Does.Contain("\"main-db-movie-path\""));
+        Assert.That(
+            moviePathPersistMethod,
+            Does.Contain(
+                "movie path persist succeeded: db='{dbFullPath}' movie_id={movieId} {successLogFields}"
+            )
+        );
         Assert.That(
             moviePathPersistMethod,
             Does.Contain(
@@ -252,6 +270,9 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             request,
             TimeSpan.FromMilliseconds(1.2d)
         );
+        string successLogFields = request.BuildWriteSuccessResultLogFields(
+            TimeSpan.FromMilliseconds(1.2d)
+        );
 
         Assert.Multiple(() =>
         {
@@ -274,6 +295,7 @@ public sealed class MainWindowSettingsPersistencePolicyTests
                 success.LogFields,
                 Does.Contain("write_succeeded=true elapsed_ms=1.2 failure_kind=none")
             );
+            Assert.That(successLogFields, Is.EqualTo(success.LogFields));
         });
     }
 

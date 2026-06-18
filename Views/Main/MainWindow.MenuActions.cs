@@ -647,13 +647,12 @@ namespace IndigoMovieManager
                     try
                     {
                         _mainDbMovieMutationFacade.UpdateScore(dbFullPath, movieId, score);
-                        PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
-                            writeRequest,
+                        string successLogFields = writeRequest.BuildWriteSuccessResultLogFields(
                             stopwatch.Elapsed
                         );
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"score persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+                            $"score persist succeeded: db='{dbFullPath}' movie_id={movieId} {successLogFields}"
                         );
                     }
                     catch (Exception ex)
@@ -698,13 +697,12 @@ namespace IndigoMovieManager
                             movieId,
                             moviePathSnapshot
                         );
-                        PersistenceWriteResult result = PersistenceWriteResult.FromSuccess(
-                            writeRequest,
+                        string successLogFields = writeRequest.BuildWriteSuccessResultLogFields(
                             stopwatch.Elapsed
                         );
                         DebugRuntimeLog.Write(
                             "ui-tempo",
-                            $"movie path persist succeeded: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
+                            $"movie path persist succeeded: db='{dbFullPath}' movie_id={movieId} {successLogFields}"
                         );
                     }
                     catch (Exception ex)
