@@ -141,6 +141,72 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
     }
 
     [Test]
+    public void MetadataProbe進捗をWorkerJobProgressDtoへ写せる()
+    {
+        DateTime capturedAt = DateTime.SpecifyKind(
+            new DateTime(2026, 6, 18, 13, 1, 2, 345),
+            DateTimeKind.Utc
+        );
+
+        WorkerJobProgressDto dto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobProgressDto(
+                new WatchMetadataProbeProgress
+                {
+                    JobId = "metadata-probe-job-1",
+                    MoviePath = "%USERPROFILE%/videos/sample.mp4",
+                    Stage = WatchMetadataProbeWorkerContractAdapter.ProgressStageRunning,
+                    CompletedCount = 0,
+                    TotalCount = 1,
+                    Message = "probing metadata",
+                    CapturedAtUtc = capturedAt,
+                },
+                new Dictionary<string, string> { ["source"] = "watch-existing-movie" }
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.JobId, Is.EqualTo("metadata-probe-job-1"));
+            Assert.That(dto.Stage, Is.EqualTo("running"));
+            Assert.That(dto.CompletedCount, Is.Zero);
+            Assert.That(dto.TotalCount, Is.EqualTo(1));
+            Assert.That(dto.CurrentInputFile, Is.EqualTo("%USERPROFILE%/videos/sample.mp4"));
+            Assert.That(dto.Message, Is.EqualTo("probing metadata"));
+            Assert.That(dto.Metrics["workerKind"], Is.EqualTo("metadata-probe"));
+            Assert.That(dto.Metrics["moviePathKey"], Is.Not.Empty);
+            Assert.That(dto.Metrics["stage"], Is.EqualTo("running"));
+            Assert.That(dto.Metrics["completedCount"], Is.EqualTo("0"));
+            Assert.That(dto.Metrics["totalCount"], Is.EqualTo("1"));
+            Assert.That(dto.Metrics["source"], Is.EqualTo("watch-existing-movie"));
+            Assert.That(dto.CapturedAtUtc, Is.EqualTo(capturedAt));
+            Assert.That(dto.CapturedAtUtc.Kind, Is.EqualTo(DateTimeKind.Utc));
+        });
+    }
+
+    [Test]
+    public void MetadataProbe進捗が空でも最小Progressを返す()
+    {
+        WorkerJobProgressDto dto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobProgressDto(
+                null!,
+                new Dictionary<string, string> { ["note"] = null! }
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.JobId, Does.StartWith("metadata-probe-empty-"));
+            Assert.That(dto.Stage, Is.EqualTo("running"));
+            Assert.That(dto.CompletedCount, Is.Zero);
+            Assert.That(dto.TotalCount, Is.Zero);
+            Assert.That(dto.CurrentInputFile, Is.Empty);
+            Assert.That(dto.Message, Is.Empty);
+            Assert.That(dto.Metrics["workerKind"], Is.EqualTo("metadata-probe"));
+            Assert.That(dto.Metrics["moviePathKey"], Is.EqualTo("empty"));
+            Assert.That(dto.Metrics["note"], Is.Empty);
+            Assert.That(dto.CapturedAtUtc.Kind, Is.EqualTo(DateTimeKind.Utc));
+        });
+    }
+
+    [Test]
     public void MetadataProbe失敗結果はfailureKindとretryableをWorkerJobResultDtoへ写せる()
     {
         WorkerJobResultDto dto =

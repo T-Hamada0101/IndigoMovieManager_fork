@@ -204,12 +204,17 @@ public sealed class WorkerContractSourcePolicyTests
 
         Assert.That(adapterSource, Does.Contain("ToWorkerJobRequestDto("));
         Assert.That(adapterSource, Does.Contain("ToWorkerJobResultDto("));
+        Assert.That(adapterSource, Does.Contain("ToWorkerJobProgressDto("));
         Assert.That(adapterSource, Does.Contain("WorkerJobRequestDto"));
         Assert.That(adapterSource, Does.Contain("WorkerJobResultDto"));
+        Assert.That(adapterSource, Does.Contain("WorkerJobProgressDto"));
         Assert.That(adapterSource, Does.Contain("WorkerJobArtifactDto"));
         Assert.That(adapterSource, Does.Contain("metadata-probe"));
         Assert.That(adapterSource, Does.Contain("watch-metadata-probe"));
         Assert.That(adapterSource, Does.Contain("DiagnosticContext"));
+        Assert.That(adapterSource, Does.Contain("ProgressStageRunning"));
+        Assert.That(adapterSource, Does.Contain("CurrentInputFile"));
+        Assert.That(adapterSource, Does.Contain("Metrics"));
         Assert.That(adapterSource, Does.Not.Contain("Path.Exists"));
         Assert.That(adapterSource, Does.Not.Contain("File."));
         Assert.That(adapterSource, Does.Not.Contain("Directory."));

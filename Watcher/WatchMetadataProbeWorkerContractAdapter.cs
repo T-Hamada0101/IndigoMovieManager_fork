@@ -76,6 +76,40 @@ namespace IndigoMovieManager.Watcher
         }
     }
 
+    // probe の軽量進捗を Worker 進捗語彙へ写すための入口。
+    internal sealed record WatchMetadataProbeProgress
+    {
+        private DateTime capturedAtUtc = DateTime.UtcNow;
+
+        public string JobId { get; init; } = "";
+        public string MoviePath { get; init; } = "";
+        public string Stage { get; init; } = "running";
+        public int CompletedCount { get; init; }
+        public int TotalCount { get; init; }
+        public string Message { get; init; } = "";
+
+        public DateTime CapturedAtUtc
+        {
+            get => capturedAtUtc;
+            init => capturedAtUtc = NormalizeUtc(value);
+        }
+
+        private static DateTime NormalizeUtc(DateTime value)
+        {
+            if (value.Kind == DateTimeKind.Local)
+            {
+                return value.ToUniversalTime();
+            }
+
+            if (value.Kind == DateTimeKind.Unspecified)
+            {
+                return DateTime.SpecifyKind(value, DateTimeKind.Utc);
+            }
+
+            return value;
+        }
+    }
+
     // 既存 probe の実行方式は変えず、将来 worker 化できる入出力形だけを先に固定する。
     internal static class WatchMetadataProbeWorkerContractAdapter
     {
@@ -86,6 +120,9 @@ namespace IndigoMovieManager.Watcher
         public const string ResultRetryable = "retryable";
         public const string ResultNotRetryable = "not-retryable";
         public const string ResultArtifactKind = "metadata-probe-state";
+        public const string ProgressStageQueued = "queued";
+        public const string ProgressStageRunning = "running";
+        public const string ProgressStageCompleted = "completed";
         private const string ResultArtifactContentType = "application/x.indigo.metadata-probe";
 
         public static WorkerJobRequestDto ToWorkerJobRequestDto(
@@ -145,6 +182,40 @@ namespace IndigoMovieManager.Watcher
                     metrics
                 ),
                 FinishedAtUtc = result.FinishedAtUtc,
+            };
+        }
+
+        public static WorkerJobProgressDto ToWorkerJobProgressDto(
+            WatchMetadataProbeProgress progress,
+            IReadOnlyDictionary<string, string> metrics = null
+        )
+        {
+            progress ??= new WatchMetadataProbeProgress();
+            string normalizedStage = NormalizeField(progress.Stage);
+            if (string.IsNullOrWhiteSpace(normalizedStage))
+            {
+                normalizedStage = ProgressStageRunning;
+            }
+
+            int completedCount = Math.Max(0, progress.CompletedCount);
+            int totalCount = NormalizeTotalCount(completedCount, progress.TotalCount);
+
+            return new WorkerJobProgressDto
+            {
+                JobId = ResolveProgressJobId(progress),
+                Stage = normalizedStage,
+                CompletedCount = completedCount,
+                TotalCount = totalCount,
+                CurrentInputFile = NormalizeField(progress.MoviePath),
+                Message = NormalizeField(progress.Message),
+                Metrics = BuildProgressMetrics(
+                    progress,
+                    normalizedStage,
+                    completedCount,
+                    totalCount,
+                    metrics
+                ),
+                CapturedAtUtc = progress.CapturedAtUtc,
             };
         }
 
@@ -252,6 +323,42 @@ namespace IndigoMovieManager.Watcher
             return resultMetrics;
         }
 
+        private static Dictionary<string, string> BuildProgressMetrics(
+            WatchMetadataProbeProgress progress,
+            string stage,
+            int completedCount,
+            int totalCount,
+            IReadOnlyDictionary<string, string> metrics
+        )
+        {
+            Dictionary<string, string> progressMetrics =
+                new(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["workerKind"] = WorkerKind,
+                    ["moviePathKey"] = BuildMoviePathKey(progress.MoviePath),
+                    ["stage"] = NormalizeField(stage),
+                    ["completedCount"] = completedCount.ToString(CultureInfo.InvariantCulture),
+                    ["totalCount"] = totalCount.ToString(CultureInfo.InvariantCulture),
+                };
+
+            if (metrics == null)
+            {
+                return progressMetrics;
+            }
+
+            foreach (KeyValuePair<string, string> pair in metrics)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key))
+                {
+                    continue;
+                }
+
+                progressMetrics[pair.Key.Trim()] = pair.Value ?? "";
+            }
+
+            return progressMetrics;
+        }
+
         private static List<string> BuildResultLogs(
             WatchMetadataProbeResult result,
             string status,
@@ -319,6 +426,22 @@ namespace IndigoMovieManager.Watcher
 
                 return hash.ToString("x8", CultureInfo.InvariantCulture);
             }
+        }
+
+        private static string ResolveProgressJobId(WatchMetadataProbeProgress progress)
+        {
+            string jobId = NormalizeField(progress.JobId);
+            if (!string.IsNullOrWhiteSpace(jobId))
+            {
+                return jobId;
+            }
+
+            return BuildJobId(BuildMoviePathKey(progress.MoviePath), progress.CapturedAtUtc);
+        }
+
+        private static int NormalizeTotalCount(int completedCount, int totalCount)
+        {
+            return Math.Max(Math.Max(0, completedCount), Math.Max(0, totalCount));
         }
 
         private static string NormalizeField(string value)
