@@ -11,8 +11,6 @@ namespace IndigoMovieManager.Converter
     /// </summary>
     internal sealed class ThumbnailProgressPreviewConverter : IMultiValueConverter
     {
-        private static readonly NoLockImageConverter FallbackConverter = new();
-
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
             string previewCacheKey = values != null && values.Length > 0 ? values[0] as string : "";
@@ -36,11 +34,12 @@ namespace IndigoMovieManager.Converter
                 previewCacheKey,
                 ResolveImageRequestRevision(previewRevision)
             );
-            object fallback = FallbackConverter.Convert(
-                fallbackRequest.ThumbnailPath,
-                targetType,
-                parameter,
-                culture
+            int decodePixelHeight = ResolveDecodePixelHeight(parameter);
+            object fallback = NoLockImageConverter.ConvertImageRequest(
+                fallbackRequest,
+                isExists: true,
+                decodePixelHeight: decodePixelHeight,
+                logReason: "image.thumbnail-progress-preview.sync-decode"
             );
             if (!ReferenceEquals(fallback, Binding.DoNothing))
             {
@@ -103,6 +102,11 @@ namespace IndigoMovieManager.Converter
             }
 
             return (int)previewRevision;
+        }
+
+        private static int ResolveDecodePixelHeight(object parameter)
+        {
+            return NoLockImageConverter.ResolveDecodePixelHeight(parameter);
         }
     }
 }

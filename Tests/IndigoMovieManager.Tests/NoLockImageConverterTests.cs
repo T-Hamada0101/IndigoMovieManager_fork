@@ -1,4 +1,6 @@
 using IndigoMovieManager.Converter;
+using IndigoMovieManager.UpperTabs.Common;
+using System.Windows.Data;
 
 namespace IndigoMovieManager.Tests;
 
@@ -45,5 +47,58 @@ public sealed class NoLockImageConverterTests
         int actual = NoLockImageConverter.ResolveBitmapLoadMaxAttempts(isUiThread: false);
 
         Assert.That(actual, Is.EqualTo(NoLockImageConverter.BackgroundBitmapLoadMaxAttempts));
+    }
+
+    [Test]
+    public void 同期decode入口はImageRequestからDecodeRequestを作る()
+    {
+        ImageRequest request = ImageRequest.ForUpperTab(
+            Path.Combine("thumb", "missing.jpg"),
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 5
+        );
+
+        ImageDecodeRequest decodeRequest = NoLockImageConverter.BuildImageDecodeRequest(
+            request,
+            decodePixelHeight: 36,
+            logReason: "image.upper-tab.sync-decode"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(decodeRequest.ImageRequest, Is.EqualTo(request));
+            Assert.That(decodeRequest.DecodePixelHeight, Is.EqualTo(36));
+            Assert.That(decodeRequest.RequestRevision, Is.EqualTo(5));
+            Assert.That(decodeRequest.LogReason, Is.EqualTo("image.upper-tab.sync-decode"));
+        });
+    }
+
+    [Test]
+    public void 同期decode入口は既存どおり存在しない画像をDoNothingへ畳む()
+    {
+        ImageRequest request = ImageRequest.ForUpperTab(
+            "",
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 6
+        );
+        ImageDecodeRequest decodeRequest = NoLockImageConverter.BuildImageDecodeRequest(
+            request,
+            decodePixelHeight: 0,
+            logReason: "image.upper-tab.sync-decode"
+        );
+
+        NoLockImageConverter.ImageDecodeExecutionResult result =
+            NoLockImageConverter.ConvertDecodeRequest(decodeRequest, isExists: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Image, Is.SameAs(Binding.DoNothing));
+            Assert.That(result.DecodeResult.ImageRequest, Is.EqualTo(request));
+            Assert.That(result.DecodeResult.Outcome, Is.EqualTo(ImageLoadOutcome.Missing));
+            Assert.That(result.DecodeResult.CacheHit, Is.False);
+            Assert.That(result.DecodeResult.DecodeElapsedMilliseconds, Is.GreaterThanOrEqualTo(0));
+        });
     }
 }

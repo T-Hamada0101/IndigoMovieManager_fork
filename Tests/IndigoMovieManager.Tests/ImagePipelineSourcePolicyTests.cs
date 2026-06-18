@@ -96,7 +96,8 @@ public sealed class ImagePipelineSourcePolicyTests
 
         Assert.That(convertMethod, Does.Contain("CreateUpperTabImageRequest("));
         Assert.That(convertMethod, Does.Contain("ShouldApplyImageRequest(request)"));
-        Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
+        Assert.That(convertMethod, Does.Contain("ConvertImageRequest("));
+        Assert.That(convertMethod, Does.Contain("\"image.upper-tab.sync-decode\""));
     }
 
     [Test]
@@ -199,7 +200,8 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("CreatePlayerRightRailImageRequest("));
         Assert.That(convertMethod, Does.Contain("ShouldApplyPlayerRightRailImageRequest("));
         Assert.That(convertMethod, Does.Contain("ResolveImageRequestRevision("));
-        Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
+        Assert.That(convertMethod, Does.Contain("ConvertImageRequest("));
+        Assert.That(convertMethod, Does.Contain("\"image.player-right-rail.sync-decode\""));
     }
 
     [Test]
@@ -213,7 +215,8 @@ public sealed class ImagePipelineSourcePolicyTests
         string convertMethod = ExtractMethod(converterSource, "public object Convert(");
 
         Assert.That(convertMethod, Does.Contain("ImageRequest.ForThumbnailProgressPreview("));
-        Assert.That(convertMethod, Does.Contain("fallbackRequest.ThumbnailPath"));
+        Assert.That(convertMethod, Does.Contain("ConvertImageRequest("));
+        Assert.That(convertMethod, Does.Contain("\"image.thumbnail-progress-preview.sync-decode\""));
         Assert.That(convertMethod, Does.Contain("ThumbnailPreviewCache.Shared.TryGet("));
     }
 
@@ -229,7 +232,8 @@ public sealed class ImagePipelineSourcePolicyTests
 
         Assert.That(convertMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
         Assert.That(convertMethod, Does.Contain("ShouldApplyThumbnailErrorListImageRequest(request)"));
-        Assert.That(convertMethod, Does.Contain("request.ThumbnailPath"));
+        Assert.That(convertMethod, Does.Contain("ConvertImageRequest("));
+        Assert.That(convertMethod, Does.Contain("\"image.thumbnail-error-list.sync-decode\""));
         Assert.That(converterSource, Does.Contain("ImageRequestThumbnailRole.ThumbnailErrorList"));
     }
 

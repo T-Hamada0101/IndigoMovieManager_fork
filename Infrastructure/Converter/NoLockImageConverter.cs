@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Threading;
@@ -8,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using IndigoMovieManager.Properties;
+using IndigoMovieManager.UpperTabs.Common;
 
 namespace IndigoMovieManager.Converter
 {
@@ -67,6 +69,66 @@ namespace IndigoMovieManager.Converter
             );
         }
 
+        internal static object ConvertImageRequest(
+            ImageRequest request,
+            bool isExists,
+            int decodePixelHeight = 0,
+            string logReason = "image.converter.sync-decode"
+        )
+        {
+            ImageDecodeRequest decodeRequest = BuildImageDecodeRequest(
+                request,
+                decodePixelHeight,
+                logReason
+            );
+            return ConvertDecodeRequest(decodeRequest, isExists).Image;
+        }
+
+        internal static ImageDecodeRequest BuildImageDecodeRequest(
+            ImageRequest request,
+            int decodePixelHeight,
+            string logReason
+        )
+        {
+            return ImageDecodeRequest.ForSynchronousDecode(request, decodePixelHeight, logReason);
+        }
+
+        internal static ImageDecodeExecutionResult ConvertDecodeRequest(
+            ImageDecodeRequest request,
+            bool isExists
+        )
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool cacheHit = false;
+            object image = ConvertWithOptions(
+                request.ImageRequest.ThumbnailPath,
+                new ConvertOptions
+                {
+                    UseGray = !isExists,
+                    DecodePixelHeight = request.DecodePixelHeight,
+                },
+                out cacheHit
+            );
+            stopwatch.Stop();
+
+            bool hasImage = !ReferenceEquals(image, Binding.DoNothing);
+            ImageLoadResult loadResult = hasImage
+                ? ImageLoadResult.Ready(
+                    request.ImageRequest,
+                    usesPlaceholder: !isExists,
+                    resultRevision: request.RequestRevision
+                )
+                : ImageLoadResult.Missing(
+                    request.ImageRequest,
+                    resultRevision: request.RequestRevision
+                );
+
+            return new ImageDecodeExecutionResult(
+                image,
+                new ImageDecodeResult(loadResult, stopwatch.ElapsedMilliseconds, cacheHit)
+            );
+        }
+
         internal static int ResolveDecodePixelHeight(object parameter)
         {
             return TryReadDecodePixelHeight(parameter, out int decodePixelHeight)
@@ -76,6 +138,16 @@ namespace IndigoMovieManager.Converter
 
         private static object ConvertWithOptions(string filePath, ConvertOptions options)
         {
+            return ConvertWithOptions(filePath, options, out _);
+        }
+
+        private static object ConvertWithOptions(
+            string filePath,
+            ConvertOptions options,
+            out bool cacheHit
+        )
+        {
+            cacheHit = false;
             if (string.IsNullOrWhiteSpace(filePath))
             {
                 return Binding.DoNothing;
@@ -104,6 +176,7 @@ namespace IndigoMovieManager.Converter
                     )
                 )
                 {
+                    cacheHit = true;
                     return cachedImage;
                 }
 
@@ -623,5 +696,10 @@ namespace IndigoMovieManager.Converter
             public bool UseGray { get; set; }
             public int DecodePixelHeight { get; set; }
         }
+
+        internal readonly record struct ImageDecodeExecutionResult(
+            object Image,
+            ImageDecodeResult DecodeResult
+        );
     }
 }

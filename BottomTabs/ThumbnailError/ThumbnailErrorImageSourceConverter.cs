@@ -37,10 +37,11 @@ namespace IndigoMovieManager.BottomTabs.ThumbnailError
             }
 
             int decodePixelHeight = NoLockImageConverter.ResolveDecodePixelHeight(parameter);
-            return NoLockImageConverter.ConvertFilePath(
-                request.ThumbnailPath,
+            return NoLockImageConverter.ConvertImageRequest(
+                request,
                 isExists: true,
-                decodePixelHeight
+                decodePixelHeight: decodePixelHeight,
+                logReason: "image.thumbnail-error-list.sync-decode"
             );
         }
 

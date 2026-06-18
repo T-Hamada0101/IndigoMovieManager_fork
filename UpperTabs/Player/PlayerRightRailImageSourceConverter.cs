@@ -45,10 +45,11 @@ namespace IndigoMovieManager.UpperTabs.Player
 
             bool isExists = values[1] is not bool exists || exists;
             int decodePixelHeight = NoLockImageConverter.ResolveDecodePixelHeight(parameter);
-            return NoLockImageConverter.ConvertFilePath(
-                request.ThumbnailPath,
-                isExists,
-                decodePixelHeight
+            return NoLockImageConverter.ConvertImageRequest(
+                request,
+                isExists: isExists,
+                decodePixelHeight: decodePixelHeight,
+                logReason: "image.player-right-rail.sync-decode"
             );
         }
 

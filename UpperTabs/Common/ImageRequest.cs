@@ -187,6 +187,28 @@ namespace IndigoMovieManager.UpperTabs.Common
         }
     }
 
+    internal readonly record struct ImageDecodeRequest(
+        ImageRequest ImageRequest,
+        int DecodePixelHeight,
+        string LogReason,
+        int RequestRevision
+    )
+    {
+        internal static ImageDecodeRequest ForSynchronousDecode(
+            ImageRequest imageRequest,
+            int decodePixelHeight,
+            string logReason
+        )
+        {
+            return new ImageDecodeRequest(
+                imageRequest,
+                decodePixelHeight > 0 ? decodePixelHeight : 0,
+                logReason ?? "",
+                imageRequest.RequestRevision
+            );
+        }
+    }
+
     internal readonly record struct ImageLoadResult(
         ImageRequest ImageRequest,
         ImageLoadOutcome Outcome,
@@ -270,6 +292,30 @@ namespace IndigoMovieManager.UpperTabs.Common
                 FailureReason: failureReason ?? "",
                 ResultRevision: resultRevision
             );
+        }
+    }
+
+    internal readonly record struct ImageDecodeResult(
+        ImageLoadResult ImageLoadResult,
+        long DecodeElapsedMilliseconds,
+        bool CacheHit
+    )
+    {
+        internal ImageRequest ImageRequest => ImageLoadResult.ImageRequest;
+        internal ImageLoadOutcome Outcome => ImageLoadResult.Outcome;
+    }
+
+    internal static class ImageDecodeLogFields
+    {
+        internal static string Build(ImageDecodeRequest request, ImageDecodeResult result)
+        {
+            return
+                $"image_log_reason={request.LogReason ?? ""} image_role={request.ImageRequest.ThumbnailRole} image_request_revision={request.RequestRevision} decode_pixel_height={request.DecodePixelHeight} decode_elapsed_ms={result.DecodeElapsedMilliseconds} cache_hit={FormatLogBool(result.CacheHit)} image_outcome={result.ImageLoadResult.OutcomeLogValue}";
+        }
+
+        private static string FormatLogBool(bool value)
+        {
+            return value ? "true" : "false";
         }
     }
 

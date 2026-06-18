@@ -325,4 +325,68 @@ public sealed class ImageRequestTests
             Assert.That(failedLog, Does.Contain("failure_reason=error-marker"));
         });
     }
+
+    [Test]
+    public void ImageDecodeRequestはdecode最小語彙をImageRequestから作る()
+    {
+        ImageRequest imageRequest = ImageRequest.ForUpperTab(
+            Path.Combine("thumb", "visible.jpg"),
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 61
+        );
+
+        ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+            imageRequest,
+            decodePixelHeight: 72,
+            logReason: "image.upper-tab.sync-decode"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(decodeRequest.ImageRequest, Is.EqualTo(imageRequest));
+            Assert.That(decodeRequest.DecodePixelHeight, Is.EqualTo(72));
+            Assert.That(decodeRequest.LogReason, Is.EqualTo("image.upper-tab.sync-decode"));
+            Assert.That(decodeRequest.RequestRevision, Is.EqualTo(61));
+        });
+    }
+
+    [Test]
+    public void ImageDecodeResultはload結果とdecode計測を保持する()
+    {
+        ImageRequest imageRequest = ImageRequest.ForThumbnailErrorList(
+            Path.Combine("thumb", "error.jpg"),
+            "movie-key",
+            requestRevision: 71
+        );
+        ImageLoadResult loadResult = ImageLoadResult.Ready(
+            imageRequest,
+            usesPlaceholder: false,
+            resultRevision: 71
+        );
+        ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+            imageRequest,
+            decodePixelHeight: 18,
+            logReason: "image.thumbnail-error-list.sync-decode"
+        );
+
+        ImageDecodeResult decodeResult = new(
+            loadResult,
+            DecodeElapsedMilliseconds: 12,
+            CacheHit: true
+        );
+        string logFields = ImageDecodeLogFields.Build(decodeRequest, decodeResult);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(decodeResult.ImageRequest, Is.EqualTo(imageRequest));
+            Assert.That(decodeResult.Outcome, Is.EqualTo(ImageLoadOutcome.Ready));
+            Assert.That(decodeResult.DecodeElapsedMilliseconds, Is.EqualTo(12));
+            Assert.That(decodeResult.CacheHit, Is.True);
+            Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.sync-decode"));
+            Assert.That(logFields, Does.Contain("decode_pixel_height=18"));
+            Assert.That(logFields, Does.Contain("decode_elapsed_ms=12"));
+            Assert.That(logFields, Does.Contain("cache_hit=true"));
+        });
+    }
 }
