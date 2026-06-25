@@ -39,11 +39,13 @@ public sealed class LogTabPreviewIoPolicyTests
         Assert.That(loadMethod, Does.Contain("ReadLogPreview(logPath)"));
 
         Assert.That(readMethod, Does.Contain("BuildLogPreviewTextWithSummary(text)"));
-        Assert.That(summaryMethod, Does.Contain("DebugRuntimeLogRunSlicePolicy.SliceLatestRun(lines)"));
-        Assert.That(summaryMethod, Does.Contain("DebugRuntimeLogEvidencePolicy.Evaluate(latestRunLines)"));
+        Assert.That(summaryMethod, Does.Contain("DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines)"));
+        Assert.That(summaryMethod, Does.Contain("summary.BuildSummaryText()"));
+        Assert.That(summaryMethod, Does.Not.Contain("DebugRuntimeLogRunSlicePolicy.SliceLatestRun("));
+        Assert.That(summaryMethod, Does.Not.Contain("DebugRuntimeLogEvidencePolicy.Evaluate("));
         Assert.That(
             summaryMethod,
-            Does.Contain("DebugRuntimeLogPhase0EvidencePolicy.Evaluate(latestRunLines)")
+            Does.Not.Contain("DebugRuntimeLogPhase0EvidencePolicy.Evaluate(")
         );
     }
 

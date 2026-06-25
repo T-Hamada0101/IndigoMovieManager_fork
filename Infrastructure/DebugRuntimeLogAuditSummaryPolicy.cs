@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 
 namespace IndigoMovieManager.Infrastructure;
@@ -44,7 +45,7 @@ public sealed class DebugRuntimeLogAuditSummary
     {
         // 監査入口では、最新run、契約evidence、Phase0操作evidenceを固定順で並べる。
         return string.Join(
-            "\n",
+            Environment.NewLine,
             RunSlice.BuildSummaryText(),
             ContractEvidence.BuildSummaryText(),
             Phase0Evidence.BuildSummaryText()

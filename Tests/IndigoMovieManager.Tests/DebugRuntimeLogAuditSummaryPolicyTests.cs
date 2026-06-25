@@ -68,7 +68,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             summary.BuildSummaryText(),
             Is.EqualTo(
                 string.Join(
-                    "\n",
+                    Environment.NewLine,
                     "log_run_lines=2/2 has_sequence=true sequence=1-2 resets=0",
                     "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core",
                     "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core"
@@ -103,7 +103,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 summary.BuildSummaryText(),
                 Is.EqualTo(
                     string.Join(
-                        "\n",
+                        Environment.NewLine,
                         "log_run_lines=0/0 has_sequence=false sequence=none resets=0",
                         "log_evidence=0/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core,watch-core",
                         "phase0_log_evidence=0/12 missing=startup-first-page,startup-input-ready,search-input,sort-input,scroll-input,player-core,watch-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core"

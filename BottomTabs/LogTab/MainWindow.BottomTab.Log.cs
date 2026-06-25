@@ -368,17 +368,11 @@ namespace IndigoMovieManager
                 .Split('\n')
                 .Select(line => line.TrimEnd('\r'))
                 .ToArray();
-            DebugRuntimeLogRunSliceResult latestRun =
-                DebugRuntimeLogRunSlicePolicy.SliceLatestRun(lines);
-            string[] latestRunLines = latestRun.Lines.ToArray();
+            DebugRuntimeLogAuditSummary summary =
+                DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines);
 
             // 採取済み末尾ログだけから、今のrunと証跡の要約を先頭へ薄く添える。
-            string summaryText = string.Join(
-                Environment.NewLine,
-                latestRun.BuildSummaryText(),
-                DebugRuntimeLogEvidencePolicy.Evaluate(latestRunLines).BuildSummaryText(),
-                DebugRuntimeLogPhase0EvidencePolicy.Evaluate(latestRunLines).BuildSummaryText()
-            );
+            string summaryText = summary.BuildSummaryText();
 
             return string.Join(Environment.NewLine, summaryText, "", text);
         }
