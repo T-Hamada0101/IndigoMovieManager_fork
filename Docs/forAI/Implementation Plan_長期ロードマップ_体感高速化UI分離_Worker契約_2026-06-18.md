@@ -13,7 +13,7 @@
 
 | Phase | 進捗目安 | 状態 | 次に閉じること |
 |---|---:|---|---|
-| Phase 0. 現状固定とログ証跡補強 | 68% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。さらに UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract source policy を focused test 159件で確認済み。最新run切り出し、run要約、contract / Phase0 evidence 集計の純粋 policy も focused test 14件で確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
+| Phase 0. 現状固定とログ証跡補強 | 69% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。さらに UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract source policy を focused test 159件で確認済み。最新run切り出し、run要約、contract / Phase0 evidence 集計の純粋 policy と Logタブ preview summary も focused test 15件で確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 53% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない。2026-06-25 Worker E で snapshot 共通ログ fields を追加し、user-priority begin / end でも UI Shell 入力状態を同じ語彙で読めるようにした。Worker Averroes で search / sort 入力入口にも `ui shell input` と snapshot fields、Worker Hilbert で `ui_shell_contract=ui-shell-v1` を追加した | UI event handler を snapshot 生成へさらに寄せ、実機ログで `ui_shell_contract=ui-shell-v1` と search / sort / player の入口状態を確認する |
 | Phase 2. ReadModel Store と Diff-first | 54% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める。2026-06-25 Worker F で watch apply request ログへ source / applied changed paths と `diff_change_set`、Worker Curie で diff ログへ `diff_changed_total`、Worker Fermat で watch apply request の change set ログにも `diff_changed_total`、Worker Chandrasekhar で `diff_contract=readmodel-diff-v1` を追加した | watch 1件追加 / rename が `diff_contract=readmodel-diff-v1`、`diff_change_set=single`、`diff_changed_total=1` のまま full fallback へ戻らない実機ログと、大量変更時 fallback の `diff_changed_total` の妥当性を確認する |
 | Phase 3. In-process Scheduler | 58% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強し、Worker Lagrange で admission / take ログへ判定結果 fields、Worker Zeno で timeout ログへ `timeout_released`、Worker Locke で timeout release ログへ `sequence` / `pending_count_after`、Worker Curie(Scheduler) で `scheduler_contract=scheduler-v1` を追加した | 実機ログで `scheduler_contract=scheduler-v1`、scheduler admission / released / pending_count / accepted / target_index / has_request / timeout_released / pending_count_after が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
@@ -130,6 +130,8 @@
 - 2026-06-25 Worker Volta: `DebugRuntimeLogRunSlicePolicy` を追加し、sequence 巻き戻りから同一ログファイル内の最新起動runだけを切り出せるようにした。ログ出力形式や app runtime の挙動は変えていない。
 - 2026-06-25 Worker Linnaeus: `DebugRuntimeLogRunSliceResult.BuildSummaryText()` を追加し、最新runの行数、sequence 範囲、reset 数を `log_run_lines=...` の1行で確認できるようにした。切り出し判定と実機完了判定は変えていない。
 - 2026-06-25 Worker Carson: `DebugRuntimeLogPhase0EvidencePolicy` を追加し、startup first-page / input ready、search / sort 入力、Player / Watcher / Image / Persistence / Worker / Skin の Phase0 evidence 欠落を確認できるようにした。ファイルI/Oや UI 接続は入れていない。
+- 2026-06-25 Worker Bacon: Phase0 evidence に `scroll-input` と `thumbnail-worker` を追加し、正本の search / sort / scroll / Player / watch / thumbnail / skin 確認対象と token 集計を揃えた。実機ログ採取や Phase 完了判定は入れていない。
+- 2026-06-25 Worker Bernoulli: Logタブ preview の冒頭へ最新run summary、contract evidence summary、Phase0 evidence summary を表示するようにした。読み込みは既存どおり背景 helper 側で行い、XAML は変えていない。
 - 2026-06-25 Worker Lagrange: Scheduler admission ログへ `accepted` / `target_index`、take ログへ `has_request` を追加し、enqueue / replace / reject / released の判定結果を同じ行で読めるようにした。admission / queue / take の挙動は変えていない。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
@@ -288,6 +290,14 @@
 - 親検証は focused test 14件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功。Release build は警告0件で完了した。
 - 実機 `debug-runtime.log` の新規採取と `DebugRuntimeLogRunSlicePolicy` / `DebugRuntimeLogPhase0EvidencePolicy` による実ログ確認はまだ行っていないため、Phase 0 は完了扱いにしない。
 
+### 2.20 2026-06-25 PM親レビュー Phase0 Logタブ証跡summary接続小口
+
+- Worker Bacon / Bernoulli は UIシンプル化別スレと競合しないよう、Phase0 evidence policy と Logタブ preview helper / source policy test だけに限定した。
+- 親レビューでは、Worker Bacon は `DebugRuntimeLogPhase0EvidencePolicy` へ `scroll-input=page scroll end:` と `thumbnail-worker=worker_kind=thumbnail-create` を追加する変更として採用した。正本の search / sort / scroll / Player / watch / thumbnail / skin の確認対象と `phase0_log_evidence` の token を揃えたが、実機ログ採取や Phase 完了判定は入れていない。
+- 親レビューでは、Worker Bernoulli は Logタブ preview 冒頭に `log_run_lines=...`、`log_evidence=...`、`phase0_log_evidence=...` を表示する変更として採用した。既存の `Task.Run` 背景読み込み、requestId 後着ガード、巨大ログ末尾読みの方針は維持し、XAML は変えていない。
+- 親検証は focused test 15件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功。Release build は警告0件で完了した。
+- Logタブで採取済みログの抜け漏れは見やすくなったが、同一 Release run の search / sort / scroll / Player / watch / thumbnail / skin 操作ログをまだ採取していないため、Phase 0 は完了扱いにしない。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -298,6 +308,7 @@
 - 済: UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract 識別子は source policy で固定した。これは実機ログ確認の代替ではなく、各 Phase のログ契約を戻さないための土台とする。
 - 済: `DebugRuntimeLogRunSlicePolicy` と `DebugRuntimeLogEvidencePolicy` で、複数起動分が連結された `debug-runtime.log` から最新runを切り出し、必要な evidence token の欠落を確認できる足場を追加した。これは採取後の確認 helper であり、実機ログ採取の代替ではない。
 - 済: 最新runの `log_run_lines=...` 要約と、Phase0 操作evidenceの `phase0_log_evidence=...` 集計を追加した。実機ログ採取後はこの2つを使い、同一run内で startup / search / sort / Player / watch / image / persistence / worker / skin の抜け漏れを確認する。
+- 済: Phase0 操作evidence は scroll / thumbnail も含めた 12 token へ広げ、Logタブ preview で `log_run_lines` / `log_evidence` / `phase0_log_evidence` を先頭表示できるようにした。
 
 ### Phase 1. UI Shell 入力契約
 
