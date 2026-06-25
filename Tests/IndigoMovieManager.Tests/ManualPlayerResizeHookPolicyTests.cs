@@ -734,6 +734,10 @@ public sealed class ManualPlayerResizeHookPolicyTests
             mainWindowPlayerSource,
             "private void SetPlayerPlaybackActive(bool isActive, string reason = \"\")"
         );
+        string transitionMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private static string ResolvePlayerPlaybackTransitionLogValue(bool isActive)"
+        );
 
         Assert.Multiple(() =>
         {
@@ -761,6 +765,11 @@ public sealed class ManualPlayerResizeHookPolicyTests
                 Does.Contain("player_surface_ready={FormatLogBool(IsPlayerPlaybackSurfaceReady())}")
             );
             Assert.That(mainWindowPlayerSource, Does.Contain("active={FormatLogBool(isActive)}"));
+            Assert.That(
+                mainWindowPlayerSource,
+                Does.Contain("player_transition={ResolvePlayerPlaybackTransitionLogValue(isActive)}")
+            );
+            Assert.That(transitionMethod, Does.Contain("return isActive ? \"start\" : \"stop\";"));
             Assert.That(mainWindowPlayerSource, Does.Contain("reason={reason ?? \"\"}"));
             Assert.That(mainWindowPlayerSource, Does.Contain("? \"webview\" : \"mediaelement\""));
             Assert.That(

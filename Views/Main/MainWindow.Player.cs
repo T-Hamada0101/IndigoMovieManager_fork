@@ -675,7 +675,13 @@ namespace IndigoMovieManager
                 + $"player_surface={ResolvePlayerPlaybackSurfaceLogValue()} "
                 + $"player_surface_ready={FormatLogBool(IsPlayerPlaybackSurfaceReady())} "
                 + $"active={FormatLogBool(isActive)} "
+                + $"player_transition={ResolvePlayerPlaybackTransitionLogValue(isActive)} "
                 + $"reason={reason ?? ""}";
+        }
+
+        private static string ResolvePlayerPlaybackTransitionLogValue(bool isActive)
+        {
+            return isActive ? "start" : "stop";
         }
 
         private string ResolvePlayerPlaybackSurfaceLogValue()
