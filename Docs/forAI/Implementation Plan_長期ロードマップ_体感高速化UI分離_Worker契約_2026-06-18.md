@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[########--] 79%`
+> 進捗メータ: `[########--] 80%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-25
 
-全体進捗目安: `[########--] 79%`
+全体進捗目安: `[########--] 80%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -16,10 +16,10 @@
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 51% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない。2026-06-25 Worker E で snapshot 共通ログ fields を追加し、user-priority begin / end でも UI Shell 入力状態を同じ語彙で読めるようにした | UI event handler を snapshot 生成へさらに寄せ、実機ログで search / sort / player の入口状態を確認する |
 | Phase 2. ReadModel Store と Diff-first | 51% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める。2026-06-25 Worker F で watch apply request ログへ source / applied changed paths と `diff_change_set` を追加した | watch 1件追加 / rename が `diff_change_set=single` のまま full fallback へ戻らない実機ログと、大量変更時 fallback の妥当性を確認する |
-| Phase 3. In-process Scheduler | 53% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強した | 実機ログで scheduler admission / released / pending_count が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
+| Phase 3. In-process Scheduler | 55% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強し、Worker Lagrange で admission / take ログへ判定結果 fields を追加した | 実機ログで scheduler admission / released / pending_count / accepted / target_index / has_request が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
 | Phase 4. Image Pipeline 統一 | 54% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。上側タブ、Player右レール、ThumbnailError 一覧 converter は decode result を保持する。2026-06-25 Worker B で ThumbnailError 背景集計に `ImageDecodePlanResult` を追加し、ERROR marker / placeholder / missing 判定を decode 計画語彙でも集約ログへ出せるようにした | 実機ログで stale discard と error tab image aggregate / aggregate-decode-plan を確認する |
 | Phase 5. Persistence Pipeline | 62% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume / playback stats / skin state の成功ログも共通語彙へ寄せ、score / tag / movie_path の成功ログも `PersistenceWriteRequest` helper 経由に揃えた。2026-06-25 Worker C で成功ログにも `dirty=false failed=false retryable=false notify_ui=false` を出し、成功 / 失敗を同じ状態語彙で読めるようにした | 実機ログで `write_succeeded=true/false` と dirty / failed / retryable / notify_ui の組み合わせを確認する |
-| Phase 6. Worker 契約 | 57% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた。2026-06-25 Worker D で queue の failure / skip 系ログへ request / progress / result の代表 fields をまとめて併記し、さらに Worker Meitner で Thumbnail Queue の request / queue 代表ログへ `capability_count` と `diagnostic_context_count` を追加した | 実機ログで Worker DTO fields と `capability_count` / `diagnostic_context_count` が failure / skip 系ログの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
+| Phase 6. Worker 契約 | 58% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた。2026-06-25 Worker D で queue の failure / skip 系ログへ request / progress / result の代表 fields をまとめて併記し、Worker Meitner で Thumbnail Queue の request / queue 代表ログへ `capability_count` と `diagnostic_context_count`、Worker Harvey で watch metadata probe の request / probe 統合ログへ `diagnostic_context_count` を追加した | 実機ログで Worker DTO fields と `capability_count` / `diagnostic_context_count` が failure / skip 系ログと probe 系ログの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 33% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続済み。2026-06-25 Worker G/H で skin / Player の core route を併記し、Worker Kant で Watcher apply request に `core_route=watch-ui-apply` / `watch_apply_kind` / `watch_reason` / `operation_reason` を併記した | 実機ログで skin / Player / Watcher それぞれの core_route、scheduler fields、surface / apply kind を確認し、skin / Player / Watcher の実行入口を段階接続する |
 
 ## 1. Summary
@@ -101,12 +101,14 @@
 - 2026-06-19 Worker J: watch metadata probe の既存 slow / skip / refresh ログへ `worker_job_id`、`worker_kind`、`worker_status`、`worker_stage`、`artifact_kind`、`retryable`、`elapsed_ms` を併記し、probe 実行順や DB 更新は変えていない。
 - 2026-06-25 Worker D: thumbnail queue の既存 failure / skip 系ログへ request / progress / result の代表 fields を1行で併記する `BuildWorkerQueueLogFields(...)` を追加した。rescue worker / watch metadata probe も input_count / capability_count / 診断文脈 / result metrics を既存 helper fields で読めるようにし、IPC方式や外部プロセス構造は変えていない。
 - 2026-06-25 Worker Meitner: Thumbnail Queue の request / queue 代表ログへ `capability_count` と `diagnostic_context_count` を追加し、入力数だけでなく capability と診断文脈の規模を同じ行で読めるようにした。DTO schema、queue 実行順、IPC方式、外部プロセス方式は変えていない。
+- 2026-06-25 Worker Harvey: watch metadata probe の request / probe 統合ログへ `diagnostic_context_count` を追加し、`capability_count` / `input_count` と並べて診断文脈の規模を読めるようにした。DTO schema、probe 実行順、DB 更新順、IPC 方式は変えていない。
 - Watcher change set は `WatchUiApplyRequest` へ畳んでから full fallback / in-memory ReadModel 再計算へ流し、Watcher 側が表示 collection を直接 apply しない禁止線を source policy で固定した。
 - Player surface 操作は、`Properties.Settings.Default.Save()`、DB write、設定保存 queue を直接呼ばない禁止線を source policy で固定した。surface と保存の分離を壊さず、既存の user-priority と保存方針を維持する。
 - 2026-06-19 Worker P: Player 再生状態は `SetPlayerPlaybackActive(...)` に集約し、実際に active が変わった時だけ `operation_reason=player-playback` と reason をログへ出す。Everything poll の遅延理由と Player 操作ログを同じ語彙で突き合わせられる。
 - 2026-06-25 Worker G: 外部 skin host refresh の queue / deferred / rejected / batch flush / begin ログへ `core_route=skin-refresh`、`refresh_reason`、`request_trace`、`definition_mode` を併記した。Header Reload / fallback retry / same-document skip / catalog freshness は変えていない。
 - 2026-06-25 Worker H: `SetPlayerPlaybackActive(...)` の状態遷移ログへ `core_route=player-playback`、`player_surface`、`active`、`operation_reason`、`reason` を helper 経由で併記した。同状態 return、user-priority release、WebView navigation、保存分離は変えていない。
 - 2026-06-25 Worker Kant: Watcher の `watch ui apply request:` ログへ `core_route=watch-ui-apply`、`watch_apply_kind`、`watch_reason`、`operation_reason` を helper 経由で併記した。`WatchUiApplyRequest` の構造、query-only / full fallback 判定、scheduler admission、実行順は変えていない。
+- 2026-06-25 Worker Lagrange: Scheduler admission ログへ `accepted` / `target_index`、take ログへ `has_request` を追加し、enqueue / replace / reject / released の判定結果を同じ行で読めるようにした。admission / queue / take の挙動は変えていない。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
 - 次の段階は、新しい巨大 core を作ることではなく、既存境界の上に小さな契約を積み、実機ログで支配要因を確認しながら差し替えること。
@@ -152,6 +154,14 @@
 - 親検証は focused test 149件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功。Release build の `NETSDK1206` 2件は既存の SQLitePCLRaw RID 警告として扱う。
 - 実機 `debug-runtime.log` で `core_route=watch-ui-apply` / `watch_apply_kind` / `operation_reason` と、Thumbnail Queue の `capability_count` / `diagnostic_context_count` が failure / skip 系ログへ出ることをまだ確認していないため、Phase 6 / 7 は完了扱いにしない。
 
+### 2.6 2026-06-25 PM親レビュー Phase3/6 競合回避小口
+
+- UIシンプル化は別スレの `0febff9` としてコミット済みのため、Worker Harvey / Lagrange は Watcher metadata probe と Scheduler policy のログ契約に限定した。
+- 親レビューでは、Worker Harvey は watch metadata probe の request / probe 統合ログへ `diagnostic_context_count` を追加する変更として採用した。DTO schema、probe 実行順、DB 更新順、IPC 方式は変えていない。
+- 親レビューでは、Worker Lagrange は Scheduler admission / take ログへ `accepted` / `target_index` / `has_request` を追加する変更として採用した。admission / queue / take の挙動は変えていない。
+- 親検証は focused test 49件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功。Release build の `NETSDK1206` 2件は既存の SQLitePCLRaw RID 警告として扱う。
+- 実機 `debug-runtime.log` で Scheduler の `accepted` / `target_index` / `has_request` と watch metadata probe の `diagnostic_context_count` をまだ確認していないため、Phase 3 / 6 は完了扱いにしない。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -183,6 +193,7 @@
 - 最初は watch / poll / thumbnail refresh 予約だけを載せ、全機能を一気に移さない。
 - 現在は実行器本体へ進む前段として、既存予約のログ語彙を `UiWorkRequestPolicy` の helper へ寄せ、さらに `UiWorkSchedulerPolicy` で入場・置換・timeout の純粋判断を固定した段階。`timeout_policy=none` は明示的な timeout drain 未導入を示し、実機ログで必要性が見えた時だけ timeout budget を持たせる。
 - external skin host refresh queue も scheduler 語彙へ接続済み。ただし interval、freshness、Header Reload / fallback retry の意味は変えていない。
+- 済: Scheduler admission / take ログは `accepted` / `target_index` / `has_request` を持ち、入場 / 置換 / 拒否 / 取り出しの判定結果を同じ行で読める。
 
 ### Phase 4. Image Pipeline 統一
 
@@ -208,6 +219,7 @@
 - 済: rescue worker の job/result JSON 経路も既存ログへ Worker DTO fields を併記する。schema変更や IPC 導入は行わない。
 - 済: thumbnail queue の failure / skip 系ログは `BuildWorkerQueueLogFields(...)` で request / progress / result の代表 fields を同じ行へ畳む。通常成功全件ログ化はしない。
 - 済: Thumbnail Queue の request / queue 代表ログは `capability_count` と `diagnostic_context_count` を持ち、入力数以外の契約規模も同じ行で読める。DTO schema と実行順は変えない。
+- 済: watch metadata probe の request / probe 統合ログは `diagnostic_context_count` を持ち、入力数 / capability 数と診断文脈の規模を同じ行で読める。
 - 済: rescue worker / watch metadata probe の helper fields は input_count / capability_count / 診断文脈 / result metrics を含む。実行方式、IPC方式、DB更新順は変えない。
 - sidecar / IPC は、契約が固定され、実機ログで UI 詰まりの支配要因が worker 境界にあると確認できた後だけ導入する。
 
