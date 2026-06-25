@@ -370,6 +370,8 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
         {
             Assert.That(requestFields, Does.Contain("job_id=thumbnail-movie-key-001-queue-77"));
             Assert.That(requestFields, Does.Contain("input_count=1"));
+            Assert.That(requestFields, Does.Contain("capability_count=3"));
+            Assert.That(requestFields, Does.Contain("diagnostic_context_count=11"));
             Assert.That(requestFields, Does.Contain("queue_id=77"));
             Assert.That(progressFields, Does.Contain("worker_stage=completed"));
             Assert.That(progressFields, Does.Contain("progress_total=4"));
@@ -384,6 +386,8 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
             Assert.That(combinedFields, Does.Contain("current_parallelism=2"));
             Assert.That(combinedFields, Does.Contain("configured_parallelism=6"));
             Assert.That(combinedFields, Does.Contain("input_count=1"));
+            Assert.That(combinedFields, Does.Contain("capability_count=3"));
+            Assert.That(combinedFields, Does.Contain("diagnostic_context_count=11"));
             Assert.That(
                 combinedFields,
                 Does.Contain("output_artifact_path=thumbs/movie-key-001.jpg")

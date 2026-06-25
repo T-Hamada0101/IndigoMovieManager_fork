@@ -208,6 +208,8 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("progress_completed="));
         Assert.That(adapterSource, Does.Contain("queue_id="));
         Assert.That(adapterSource, Does.Contain("current_parallelism="));
+        Assert.That(adapterSource, Does.Contain("capability_count="));
+        Assert.That(adapterSource, Does.Contain("diagnostic_context_count="));
         Assert.That(
             batchRunnerSource,
             Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(")
