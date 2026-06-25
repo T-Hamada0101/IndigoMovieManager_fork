@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#########-] 88%`
+> 進捗メータ: `[#########-] 89%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-25
 
-全体進捗目安: `[#########-] 88%`
+全体進捗目安: `[#########-] 89%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -15,8 +15,8 @@
 |---|---:|---|---|
 | Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 52% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない。2026-06-25 Worker E で snapshot 共通ログ fields を追加し、user-priority begin / end でも UI Shell 入力状態を同じ語彙で読めるようにした。Worker Averroes で search / sort 入力入口にも `ui shell input` と snapshot fields を追加した | UI event handler を snapshot 生成へさらに寄せ、実機ログで search / sort / player の入口状態を確認する |
-| Phase 2. ReadModel Store と Diff-first | 53% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める。2026-06-25 Worker F で watch apply request ログへ source / applied changed paths と `diff_change_set`、Worker Curie で diff ログへ `diff_changed_total`、Worker Fermat で watch apply request の change set ログにも `diff_changed_total` を追加した | watch 1件追加 / rename が `diff_change_set=single` と `diff_changed_total=1` のまま full fallback へ戻らない実機ログと、大量変更時 fallback の `diff_changed_total` の妥当性を確認する |
-| Phase 3. In-process Scheduler | 57% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強し、Worker Lagrange で admission / take ログへ判定結果 fields、Worker Zeno で timeout ログへ `timeout_released`、Worker Locke で timeout release ログへ `sequence` / `pending_count_after` を追加した | 実機ログで scheduler admission / released / pending_count / accepted / target_index / has_request / timeout_released / pending_count_after が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
+| Phase 2. ReadModel Store と Diff-first | 54% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める。2026-06-25 Worker F で watch apply request ログへ source / applied changed paths と `diff_change_set`、Worker Curie で diff ログへ `diff_changed_total`、Worker Fermat で watch apply request の change set ログにも `diff_changed_total`、Worker Chandrasekhar で `diff_contract=readmodel-diff-v1` を追加した | watch 1件追加 / rename が `diff_contract=readmodel-diff-v1`、`diff_change_set=single`、`diff_changed_total=1` のまま full fallback へ戻らない実機ログと、大量変更時 fallback の `diff_changed_total` の妥当性を確認する |
+| Phase 3. In-process Scheduler | 58% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強し、Worker Lagrange で admission / take ログへ判定結果 fields、Worker Zeno で timeout ログへ `timeout_released`、Worker Locke で timeout release ログへ `sequence` / `pending_count_after`、Worker Curie(Scheduler) で `scheduler_contract=scheduler-v1` を追加した | 実機ログで `scheduler_contract=scheduler-v1`、scheduler admission / released / pending_count / accepted / target_index / has_request / timeout_released / pending_count_after が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
 | Phase 4. Image Pipeline 統一 | 57% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。上側タブ、Player右レール、ThumbnailError 一覧 converter は decode result を保持する。2026-06-25 Worker B で ThumbnailError 背景集計に `ImageDecodePlanResult`、Worker Orion で decode plan ログへ load 状態 fields、Worker Cicero で image load / decode ログへ `visible_priority` / `image_cache_policy` / `should_decode`、Worker Faraday(Image) で image load / decode / decode plan ログへ `image_key` を追加した | 実機ログで stale discard と error tab image aggregate / aggregate-decode-plan の `image_key` / `image_result_revision` / `resolved` / `placeholder` / `stale` / `failure_reason` / visible request fields を確認する |
 | Phase 5. Persistence Pipeline | 64% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume / playback stats / skin state の成功ログも共通語彙へ寄せ、score / tag / movie_path の成功ログも `PersistenceWriteRequest` helper 経由に揃えた。2026-06-25 Worker C で成功ログにも状態語彙を出し、Worker Noether で結果ログへ `persist_state`、Worker Galileo で共通 write fields へ `persist_contract=persistence-write-v1` を追加した | 実機ログで `persist_contract=persistence-write-v1`、`write_succeeded=true/false`、`persist_state`、dirty / failed / retryable / notify_ui の組み合わせを確認する |
 | Phase 6. Worker 契約 | 61% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた。2026-06-25 Worker D で queue の failure / skip 系ログへ request / progress / result の代表 fields をまとめて併記し、Worker Meitner で Thumbnail Queue の request / queue 代表ログへ `capability_count` と `diagnostic_context_count`、Worker Harvey で watch metadata probe の request / probe 統合ログへ `diagnostic_context_count`、Worker Faraday で rescue worker request ログへ `diagnostic_context_count`、Worker Anscombe で result 系ログへ `metric_count`、Worker Turing で `worker_contract=worker-job-v1` を追加した | 実機ログで `worker_contract=worker-job-v1` と Worker DTO fields、`capability_count` / `diagnostic_context_count` / `metric_count` が failure / skip 系ログ、probe 系ログ、rescue worker result ログの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
@@ -120,6 +120,8 @@
 - 2026-06-25 Worker Banach: Player core route ログへ `player_transition=start|stop` を追加し、`active=true/false` と開始 / 停止の意味を同じ行で読めるようにした。
 - 2026-06-25 Worker Galileo: Persistence write の共通 fields へ `persist_contract=persistence-write-v1` を追加し、settings / bookmark / skin profile などの保存ログを契約単位で grep できるようにした。
 - 2026-06-25 Worker Turing: Thumbnail Queue / Rescue Worker / Watch metadata probe の Worker契約ログへ `worker_contract=worker-job-v1` を追加し、request / progress / result / combined logs を同じ契約識別子で追えるようにした。
+- 2026-06-25 Worker Chandrasekhar: ReadModel / Watch diff apply plan fields へ `diff_contract=readmodel-diff-v1` を追加し、diff apply と full fallback のログを契約単位で追えるようにした。
+- 2026-06-25 Worker Curie(Scheduler): Scheduler admission / take / timeout fields へ `scheduler_contract=scheduler-v1` を追加し、入場、実行引き渡し、timeout release を同じ契約識別子で追えるようにした。
 - 2026-06-25 Worker Lagrange: Scheduler admission ログへ `accepted` / `target_index`、take ログへ `has_request` を追加し、enqueue / replace / reject / released の判定結果を同じ行で読めるようにした。admission / queue / take の挙動は変えていない。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
@@ -238,6 +240,14 @@
 - 親検証は focused test 95件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功、対象11ファイルの UTF-8 BOMなし + LF、ローカル固有情報スキャン一致なしを確認済み。
 - 実機 `debug-runtime.log` で `persist_contract=persistence-write-v1` と `worker_contract=worker-job-v1` が success / failure / skip 系ログを横断して追えるかをまだ確認していないため、Phase 5 / 6 は完了扱いにしない。
 
+### 2.15 2026-06-25 PM親レビュー Phase2/3 contract識別子小口
+
+- Worker Chandrasekhar / Curie(Scheduler) は UIシンプル化別スレと競合しないよう、ReadModel diff helper と Scheduler policy helper / tests だけに限定した。
+- 親レビューでは、Worker Chandrasekhar は `MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(...)` へ `diff_contract=readmodel-diff-v1` を追加する変更として採用した。diff apply 判定、full fallback 理由、collection apply、watch query-only 判定は変えていない。
+- 親レビューでは、Worker Curie(Scheduler) は Scheduler admission / take / timeout fields へ `scheduler_contract=scheduler-v1` を追加する変更として採用した。入場、置換、reject、take、timeout release の判定と queue 操作は変えていない。
+- 親検証は focused test 248件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功、対象4ファイルの UTF-8 BOMなし + LF、ローカル固有情報スキャン一致なしを確認済み。
+- 実機 `debug-runtime.log` で `diff_contract=readmodel-diff-v1` と `scheduler_contract=scheduler-v1` が watch 1件追加 / rename、scheduler admission / take / timeout release を横断して追えるかをまだ確認していないため、Phase 2 / 3 は完了扱いにしない。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -261,6 +271,7 @@
 - query変更、sort key変更、DB切替、大量変更、unsafe dirty だけ full fallback とし、`fallback_reason` をログへ残す。
 - 2026-06-19 時点では、`MovieViewDiffApplyPolicy` による判定語彙固定に加え、同一 stable key update、小さな insert / remove、sort-only stable key Move + Replace の実 apply を局所適用へ進めた。大量変更や unsafe dirty はまだ保守的に扱い、実機ログを見て次段で進める。
 - watch apply request は source / applied の changed path 数と `diff_change_set` を出す。次は watch 1件追加 / rename が `single` のまま diff-apply 候補で流れるかを実機ログで確認する。
+- 済: diff apply plan fields は `diff_contract=readmodel-diff-v1` を持ち、ReadModel apply と Watch UI apply request の差分契約ログを同じ識別子で追える。
 - 済: diff ログは `diff_changed_total` を持ち、added / deleted / updated / moved の合計規模を同じ行で読める。
 - 済: watch apply request の change set ログも `diff_changed_total` を持ち、full fallback 時も source 側の変更総量を同じ行で読める。
 - `MainVM.ReplaceFilteredMovieRecs(...)` は段階的に diff apply へ置き換えるが、互換 fallback と source policy を残す。
@@ -275,6 +286,7 @@
 - 済: Scheduler admission / take ログは `accepted` / `target_index` / `has_request` を持ち、入場 / 置換 / 拒否 / 取り出しの判定結果を同じ行で読める。
 - 済: Scheduler timeout ログは `timeout_released` を持ち、timeout 判定結果が解放へ進んだかを同じ行で読める。
 - 済: Scheduler timeout release ログは `sequence` / `pending_count_after` を持ち、timeout で落ちた pending と残件数を同じ行で読める。
+- 済: Scheduler admission / take / timeout ログは `scheduler_contract=scheduler-v1` を持ち、入場、実行引き渡し、timeout release を同じ契約識別子で追える。
 
 ### Phase 4. Image Pipeline 統一
 
