@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#########-] 86%`
+> 進捗メータ: `[#########-] 87%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-25
 
-全体進捗目安: `[#########-] 86%`
+全体進捗目安: `[#########-] 87%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -20,7 +20,7 @@
 | Phase 4. Image Pipeline 統一 | 57% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。上側タブ、Player右レール、ThumbnailError 一覧 converter は decode result を保持する。2026-06-25 Worker B で ThumbnailError 背景集計に `ImageDecodePlanResult`、Worker Orion で decode plan ログへ load 状態 fields、Worker Cicero で image load / decode ログへ `visible_priority` / `image_cache_policy` / `should_decode`、Worker Faraday(Image) で image load / decode / decode plan ログへ `image_key` を追加した | 実機ログで stale discard と error tab image aggregate / aggregate-decode-plan の `image_key` / `image_result_revision` / `resolved` / `placeholder` / `stale` / `failure_reason` / visible request fields を確認する |
 | Phase 5. Persistence Pipeline | 63% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume / playback stats / skin state の成功ログも共通語彙へ寄せ、score / tag / movie_path の成功ログも `PersistenceWriteRequest` helper 経由に揃えた。2026-06-25 Worker C で成功ログにも状態語彙を出し、Worker Noether で結果ログへ `persist_state` を追加した | 実機ログで `write_succeeded=true/false` と `persist_state`、dirty / failed / retryable / notify_ui の組み合わせを確認する |
 | Phase 6. Worker 契約 | 60% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた。2026-06-25 Worker D で queue の failure / skip 系ログへ request / progress / result の代表 fields をまとめて併記し、Worker Meitner で Thumbnail Queue の request / queue 代表ログへ `capability_count` と `diagnostic_context_count`、Worker Harvey で watch metadata probe の request / probe 統合ログへ `diagnostic_context_count`、Worker Faraday で rescue worker request ログへ `diagnostic_context_count`、Worker Anscombe で result 系ログへ `metric_count` を追加した | 実機ログで Worker DTO fields と `capability_count` / `diagnostic_context_count` / `metric_count` が failure / skip 系ログ、probe 系ログ、rescue worker result ログの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
-| Phase 7. Skin / Player / Watcher の Core 接続 | 34% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続済み。2026-06-25 Worker G/H で skin / Player の core route を併記し、Worker Kant で Watcher apply request に `core_route=watch-ui-apply` / `watch_apply_kind` / `watch_reason` / `operation_reason`、Worker Gibbs で Player core route に `player_surface_ready` を併記した | 実機ログで skin / Player / Watcher それぞれの core_route、scheduler fields、surface / apply kind / surface ready を確認し、skin / Player / Watcher の実行入口を段階接続する |
+| Phase 7. Skin / Player / Watcher の Core 接続 | 36% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続済み。2026-06-25 Worker G/H で skin / Player の core route を併記し、Worker Kant で Watcher apply request に `core_route=watch-ui-apply` / `watch_apply_kind` / `watch_reason` / `operation_reason`、Worker Gibbs で Player core route に `player_surface_ready`、Worker Leibniz / Banach で `operation_reason=skin.host-refresh` と `player_transition=start|stop` を併記した | 実機ログで skin / Player / Watcher それぞれの core_route、scheduler fields、surface / apply kind / surface ready / transition を確認し、skin / Player / Watcher の実行入口を段階接続する |
 
 ## 1. Summary
 
@@ -116,6 +116,8 @@
 - 2026-06-25 Worker G: 外部 skin host refresh の queue / deferred / rejected / batch flush / begin ログへ `core_route=skin-refresh`、`refresh_reason`、`request_trace`、`definition_mode` を併記した。Header Reload / fallback retry / same-document skip / catalog freshness は変えていない。
 - 2026-06-25 Worker H: `SetPlayerPlaybackActive(...)` の状態遷移ログへ `core_route=player-playback`、`player_surface`、`active`、`operation_reason`、`reason` を helper 経由で併記した。同状態 return、user-priority release、WebView navigation、保存分離は変えていない。
 - 2026-06-25 Worker Kant: Watcher の `watch ui apply request:` ログへ `core_route=watch-ui-apply`、`watch_apply_kind`、`watch_reason`、`operation_reason` を helper 経由で併記した。`WatchUiApplyRequest` の構造、query-only / full fallback 判定、scheduler admission、実行順は変えていない。
+- 2026-06-25 Worker Leibniz: 外部 skin refresh の core route helper へ `operation_reason=skin.host-refresh` を追加し、`refresh_reason` / `request_trace` / `definition_mode` と同じ行で skin refresh の実行理由を読めるようにした。
+- 2026-06-25 Worker Banach: Player core route ログへ `player_transition=start|stop` を追加し、`active=true/false` と開始 / 停止の意味を同じ行で読めるようにした。
 - 2026-06-25 Worker Lagrange: Scheduler admission ログへ `accepted` / `target_index`、take ログへ `has_request` を追加し、enqueue / replace / reject / released の判定結果を同じ行で読めるようにした。admission / queue / take の挙動は変えていない。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
@@ -218,6 +220,14 @@
 - 親検証は focused test 219件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功、対象6ファイルの UTF-8 BOMなし + LF、ローカル固有情報スキャン一致なしを確認済み。
 - 実機 `debug-runtime.log` で Scheduler timeout release の `sequence` / `pending_count_after` と、stale discard / aggregate-decode-plan の `image_key` が支配要因確認に足りるかをまだ確認していないため、Phase 3 / 4 は完了扱いにしない。
 
+### 2.13 2026-06-25 PM親レビュー Phase7 Skin/Player core route小口
+
+- Worker Leibniz / Banach は XAML、設定画面、テーマ辞書へ触れず、skin refresh と Player playback の core route ログ補強だけに限定した。
+- 親レビューでは、Worker Leibniz は外部 skin refresh の core route helper へ `operation_reason=skin.host-refresh` を追加する変更として採用した。queue / deferred / rejected / batch / begin の入口、Header Reload、fallback retry、same-document skip、catalog freshness の意味は変えていない。
+- 親レビューでは、Worker Banach は Player 再生状態遷移ログへ `player_transition=start|stop` を追加する変更として採用した。Start / Pause / Stop、WebView navigation、保存分離、user-priority release、surface 切替の意味は変えていない。
+- 親検証は、WPF統合を含む focused test が 201件合格表示後に testhost 終了時クラッシュでコマンド失敗扱い、WPF統合を外したポリシー系 focused test 108件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功、対象5ファイルの UTF-8 BOMなし + LF、ローカル固有情報スキャン一致なしを確認済み。
+- 実機 `debug-runtime.log` で skin refresh の `operation_reason=skin.host-refresh` と Player の `player_transition=start|stop` をまだ確認していないため、Phase 7 は完了扱いにしない。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -296,8 +306,8 @@
 - skin は catalog / persist / navigate / stale を分ける。
 - Player は surface操作と保存を分ける。
 - Watcher は change set 正規化に専念し、UI apply の実行者にしない。
-- 済: 外部 skin refresh ログは queue / deferred / rejected / batch flush / begin で `core_route=skin-refresh`、`refresh_reason`、`request_trace`、`definition_mode` を読める。
-- 済: Player 再生状態ログは状態遷移時だけ `core_route=player-playback`、`player_surface`、`player_surface_ready`、`active`、`operation_reason`、`reason` を読める。
+- 済: 外部 skin refresh ログは queue / deferred / rejected / batch flush / begin で `core_route=skin-refresh`、`operation_reason=skin.host-refresh`、`refresh_reason`、`request_trace`、`definition_mode` を読める。
+- 済: Player 再生状態ログは状態遷移時だけ `core_route=player-playback`、`player_surface`、`player_surface_ready`、`active`、`player_transition=start|stop`、`operation_reason`、`reason` を読める。
 - 済: Watcher apply request ログは `core_route=watch-ui-apply`、`watch_apply_kind`、`watch_reason`、`operation_reason` を持ち、change set から UI apply へ渡る境界を同じ core route 語彙で読める。
 
 ## 4. Key Interfaces
