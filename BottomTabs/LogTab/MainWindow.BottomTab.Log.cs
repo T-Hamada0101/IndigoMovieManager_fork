@@ -362,7 +362,7 @@ namespace IndigoMovieManager
             }
         }
 
-        private static string BuildLogPreviewTextWithSummary(string text)
+        internal static string BuildLogPreviewTextWithSummary(string text)
         {
             string[] lines = text
                 .Split('\n')
