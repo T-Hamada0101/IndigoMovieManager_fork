@@ -13,7 +13,7 @@
 
 | Phase | 進捗目安 | 状態 | 次に閉じること |
 |---|---:|---|---|
-| Phase 0. 現状固定とログ証跡補強 | 66% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。さらに UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract source policy を focused test 159件で確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
+| Phase 0. 現状固定とログ証跡補強 | 67% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。さらに UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract source policy を focused test 159件で確認済み。最新run切り出しと contract evidence 集計の純粋 policy も focused test 8件で確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 53% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない。2026-06-25 Worker E で snapshot 共通ログ fields を追加し、user-priority begin / end でも UI Shell 入力状態を同じ語彙で読めるようにした。Worker Averroes で search / sort 入力入口にも `ui shell input` と snapshot fields、Worker Hilbert で `ui_shell_contract=ui-shell-v1` を追加した | UI event handler を snapshot 生成へさらに寄せ、実機ログで `ui_shell_contract=ui-shell-v1` と search / sort / player の入口状態を確認する |
 | Phase 2. ReadModel Store と Diff-first | 54% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める。2026-06-25 Worker F で watch apply request ログへ source / applied changed paths と `diff_change_set`、Worker Curie で diff ログへ `diff_changed_total`、Worker Fermat で watch apply request の change set ログにも `diff_changed_total`、Worker Chandrasekhar で `diff_contract=readmodel-diff-v1` を追加した | watch 1件追加 / rename が `diff_contract=readmodel-diff-v1`、`diff_change_set=single`、`diff_changed_total=1` のまま full fallback へ戻らない実機ログと、大量変更時 fallback の `diff_changed_total` の妥当性を確認する |
 | Phase 3. In-process Scheduler | 58% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強し、Worker Lagrange で admission / take ログへ判定結果 fields、Worker Zeno で timeout ログへ `timeout_released`、Worker Locke で timeout release ログへ `sequence` / `pending_count_after`、Worker Curie(Scheduler) で `scheduler_contract=scheduler-v1` を追加した | 実機ログで `scheduler_contract=scheduler-v1`、scheduler admission / released / pending_count / accepted / target_index / has_request / timeout_released / pending_count_after が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
@@ -126,6 +126,8 @@
 - 2026-06-25 Worker McClintock: Image load / decode / decode plan ログへ `image_contract=image-pipeline-v1` を追加し、画像 pipeline の各結果ログを契約単位で追えるようにした。
 - 2026-06-25 Worker Parfit: UI Shell / ReadModel Diff / Scheduler / Image の contract 識別子を source policy で固定し、helper 経由と重複なしの線を戻さないようにした。production code は変えていない。
 - 2026-06-25 Worker Hypatia: Persistence / Worker / Skin / Player / Watcher の contract 識別子と core route fields を source policy で固定した。保存順、worker実行順、skin / Player / Watcher の実行入口は変えていない。
+- 2026-06-25 Worker Newton: `DebugRuntimeLogEvidencePolicy` を追加し、採取済み `debug-runtime.log` の UI Shell / Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の evidence token 欠落を安定順で確認できるようにした。ファイルI/Oや実機完了判定は入れていない。
+- 2026-06-25 Worker Volta: `DebugRuntimeLogRunSlicePolicy` を追加し、sequence 巻き戻りから同一ログファイル内の最新起動runだけを切り出せるようにした。ログ出力形式や app runtime の挙動は変えていない。
 - 2026-06-25 Worker Lagrange: Scheduler admission ログへ `accepted` / `target_index`、take ログへ `has_request` を追加し、enqueue / replace / reject / released の判定結果を同じ行で読めるようにした。admission / queue / take の挙動は変えていない。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
@@ -268,6 +270,14 @@
 - 親検証は focused test 159件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功。Release build は警告0件で完了した。
 - 今回は実機 `debug-runtime.log` の新規採取ではなく戻り防止の強化なので、search / sort / scroll / Player / watch / thumbnail / skin を同一 Release run で説明できるまで Phase 0 は完了扱いにしない。
 
+### 2.18 2026-06-25 PM親レビュー Phase0 debug-runtime log証跡policy小口
+
+- Worker Newton / Volta は UIシンプル化別スレと競合しないよう、`Infrastructure` の純粋 policy と対応 tests だけに限定した。
+- 親レビューでは、Worker Newton は `DebugRuntimeLogEvidencePolicy` により、採取済みログ内の `ui_shell_contract`、`diff_contract`、`scheduler_contract`、`image_contract`、`persist_contract`、`worker_contract`、skin / player / watch core route の evidence token を安定順で確認する変更として採用した。ファイルI/O、LogタブUI、実機完了判定は入れていない。
+- 親レビューでは、Worker Volta は `DebugRuntimeLogRunSlicePolicy` により、`#000001` 形式の sequence 巻き戻りから最新起動runだけを切り出す変更として採用した。`DebugRuntimeLog` の出力形式、throttle、書き込み先、runtime 挙動は変えていない。
+- 親検証は focused test 8件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功。Release build は警告0件で完了した。
+- これで実機ログ採取後の抜け漏れ確認は少し機械化できたが、まだ実機 `debug-runtime.log` の新規採取そのものは行っていないため Phase 0 は完了扱いにしない。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -276,6 +286,7 @@
 - 検索、sort、scroll、Player、watch、thumbnail、skin を同じ Release run で操作し、`debug-runtime.log` だけで割り込み、延期、fallback、apply 時間を説明できるようにする。
 - `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` の許容線は増やさない。
 - 済: UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract 識別子は source policy で固定した。これは実機ログ確認の代替ではなく、各 Phase のログ契約を戻さないための土台とする。
+- 済: `DebugRuntimeLogRunSlicePolicy` と `DebugRuntimeLogEvidencePolicy` で、複数起動分が連結された `debug-runtime.log` から最新runを切り出し、必要な evidence token の欠落を確認できる足場を追加した。これは採取後の確認 helper であり、実機ログ採取の代替ではない。
 
 ### Phase 1. UI Shell 入力契約
 
