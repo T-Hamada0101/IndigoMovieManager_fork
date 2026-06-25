@@ -116,8 +116,12 @@ internal sealed class UiWorkSchedulerRuntime
                 continue;
             }
 
-            string logFields =
-                $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(pendingRequest.Request, timeoutDecision.ReleaseReason)} {UiWorkSchedulerPolicy.BuildTimeoutLogFields(timeoutDecision)}";
+            int pendingCountAfter = _pendingRequests.Count - 1;
+            string logFields = UiWorkSchedulerPolicy.BuildTimeoutReleaseLogFields(
+                pendingRequest,
+                timeoutDecision,
+                pendingCountAfter
+            );
             releasedRequests.Add(
                 new UiWorkSchedulerRuntimeTimedOutRelease(
                     pendingRequest,

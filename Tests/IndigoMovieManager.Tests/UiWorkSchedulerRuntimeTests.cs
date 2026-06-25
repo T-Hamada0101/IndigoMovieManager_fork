@@ -290,7 +290,16 @@ public sealed class UiWorkSchedulerRuntimeTests
                 drain.ReleasedRequests[0].LogFields,
                 Does.Contain("timeout_policy=shutdown-drain:50ms")
             );
+            Assert.That(
+                drain.ReleasedRequests[0].LogFields,
+                Does.Contain("timeout_released=true")
+            );
             Assert.That(drain.ReleasedRequests[0].LogFields, Does.Contain("timeout_elapsed_ms=80"));
+            Assert.That(drain.ReleasedRequests[0].LogFields, Does.Contain("sequence=1"));
+            Assert.That(
+                drain.ReleasedRequests[0].LogFields,
+                Does.Contain("pending_count_after=1")
+            );
             Assert.That(runtime.PendingRequests.Single().Request.CoalesceKey, Is.EqualTo("thumb-none"));
         });
     }

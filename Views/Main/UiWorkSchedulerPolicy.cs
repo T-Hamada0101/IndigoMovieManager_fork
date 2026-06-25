@@ -234,6 +234,16 @@ internal static class UiWorkSchedulerPolicy
             $"release_reason={decision.ReleaseReason} timeout_policy={decision.TimeoutPolicy} timeout_released={timeoutReleased} timeout_elapsed_ms={decision.ElapsedMs} timeout_budget_ms={decision.TimeoutMs}";
     }
 
+    internal static string BuildTimeoutReleaseLogFields(
+        UiWorkSchedulerPendingRequest pendingRequest,
+        UiWorkSchedulerTimeoutDecision decision,
+        int pendingCountAfter
+    )
+    {
+        return
+            $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(pendingRequest.Request, decision.ReleaseReason)} {BuildTimeoutLogFields(decision)} sequence={pendingRequest.Sequence} pending_count_after={Math.Max(0, pendingCountAfter)}";
+    }
+
     private static UiWorkSchedulerAdmissionDecision AcceptReplacement(
         UiWorkSchedulerAdmissionAction action,
         UiWorkRequest request,

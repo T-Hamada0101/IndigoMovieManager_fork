@@ -340,6 +340,46 @@ public sealed class UiWorkSchedulerPolicyTests
     }
 
     [Test]
+    public void BuildTimeoutReleaseLogFields_timeout解放のpending状態を共通形式で出す()
+    {
+        UiWorkRequest request = CreateRequest(
+            UiWorkPriority.WatchReload,
+            "watch-timeout",
+            "watch-timeout",
+            timeoutPolicy: "watch-ui:500ms"
+        );
+        UiWorkSchedulerPendingRequest pendingRequest = new(17, request);
+        UiWorkSchedulerTimeoutDecision decision = new(
+            ShouldRelease: true,
+            ReleaseReason: UiWorkRequestPolicy.ReleaseReasonTimeout,
+            TimeoutPolicy: "watch-ui:500ms",
+            ElapsedMs: 750,
+            TimeoutMs: 500
+        );
+
+        string logFields = UiWorkSchedulerPolicy.BuildTimeoutReleaseLogFields(
+            pendingRequest,
+            decision,
+            pendingCountAfter: 4
+        );
+        string clampedLogFields = UiWorkSchedulerPolicy.BuildTimeoutReleaseLogFields(
+            pendingRequest,
+            decision,
+            pendingCountAfter: -2
+        );
+
+        Assert.That(logFields, Does.Contain("log_reason=test.watchreload"));
+        Assert.That(logFields, Does.Contain("release_reason=timeout"));
+        Assert.That(logFields, Does.Contain("work_priority=WatchReload"));
+        Assert.That(logFields, Does.Contain("coalesce_key='watch-timeout'"));
+        Assert.That(logFields, Does.Contain("timeout_policy=watch-ui:500ms"));
+        Assert.That(logFields, Does.Contain("timeout_released=true"));
+        Assert.That(logFields, Does.Contain("sequence=17"));
+        Assert.That(logFields, Does.Contain("pending_count_after=4"));
+        Assert.That(clampedLogFields, Does.Contain("pending_count_after=0"));
+    }
+
+    [Test]
     public void BuildTakeLogFields_pendingから既存実行入口へ渡した証跡を共通形式で出す()
     {
         UiWorkRequest request = CreateRequest(UiWorkPriority.WatchSmallDiff, "watch", "watch");
