@@ -266,6 +266,11 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             TimeSpan.FromMilliseconds(12.34d),
             PersistenceFailureKind.ApplicationSettings
         );
+        PersistenceWriteResult systemFailure = PersistenceWriteResult.FromFailure(
+            request,
+            TimeSpan.FromMilliseconds(5.6d),
+            PersistenceFailureKind.SkinSystem
+        );
         PersistenceWriteResult success = PersistenceWriteResult.FromSuccess(
             request,
             TimeSpan.FromMilliseconds(1.2d)
@@ -288,13 +293,26 @@ public sealed class MainWindowSettingsPersistencePolicyTests
                 failure.LogFields,
                 Does.Contain("write_succeeded=false elapsed_ms=12.3 failure_kind=application-settings")
             );
+            Assert.That(failure.LogFields, Does.Contain("persist_state=dirty-retryable"));
             Assert.That(failure.LogFields, Does.Contain("dirty=true failed=true retryable=true notify_ui=false"));
+            Assert.That(systemFailure.Succeeded, Is.False);
+            Assert.That(systemFailure.FailureKind, Is.EqualTo(PersistenceFailureKind.SkinSystem));
+            Assert.That(
+                systemFailure.LogFields,
+                Does.Contain("write_succeeded=false elapsed_ms=5.6 failure_kind=skin-system")
+            );
+            Assert.That(systemFailure.LogFields, Does.Contain("persist_state=failed-notify"));
+            Assert.That(
+                systemFailure.LogFields,
+                Does.Contain("dirty=false failed=true retryable=false notify_ui=true")
+            );
             Assert.That(success.Succeeded, Is.True);
             Assert.That(success.FailureKind, Is.Null);
             Assert.That(
                 success.LogFields,
                 Does.Contain("write_succeeded=true elapsed_ms=1.2 failure_kind=none")
             );
+            Assert.That(success.LogFields, Does.Contain("persist_state=persisted"));
             Assert.That(
                 success.LogFields,
                 Does.Contain("dirty=false failed=false retryable=false notify_ui=false")

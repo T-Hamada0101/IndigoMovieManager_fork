@@ -78,12 +78,15 @@ namespace IndigoMovieManager
             PersistenceFailureKind failureKind
         )
         {
+            PersistenceFailureNotificationState notificationState =
+                PersistenceFailureNotificationPolicy.BuildFailureState(failureKind);
             string logFields =
                 $"{request.BuildLogFields()} "
                 + $"write_succeeded=false "
                 + $"elapsed_ms={elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture)} "
                 + $"failure_kind={ToLogValue(failureKind)} "
-                + PersistenceFailureNotificationPolicy.BuildLogFields(failureKind);
+                + $"persist_state={ToPersistStateLogValue(notificationState)} "
+                + PersistenceFailureNotificationPolicy.BuildLogFields(notificationState);
 
             return new(false, elapsed, failureKind, logFields);
         }
@@ -93,16 +96,37 @@ namespace IndigoMovieManager
             TimeSpan elapsed
         )
         {
+            PersistenceFailureNotificationState notificationState =
+                PersistenceFailureNotificationPolicy.BuildSuccessState();
             string logFields =
                 $"{request.BuildLogFields()} "
                 + $"write_succeeded=true "
                 + $"elapsed_ms={elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture)} "
                 + "failure_kind=none "
-                + PersistenceFailureNotificationPolicy.BuildLogFields(
-                    PersistenceFailureNotificationPolicy.BuildSuccessState()
-                );
+                + $"persist_state={ToPersistStateLogValue(notificationState)} "
+                + PersistenceFailureNotificationPolicy.BuildLogFields(notificationState);
 
             return new(true, elapsed, null, logFields);
+        }
+
+        private static string ToPersistStateLogValue(PersistenceFailureNotificationState state)
+        {
+            if (!state.Dirty && !state.Failed)
+            {
+                return "persisted";
+            }
+
+            if (state.Dirty && state.Retryable)
+            {
+                return "dirty-retryable";
+            }
+
+            if (state.Failed && state.NotifyUi)
+            {
+                return "failed-notify";
+            }
+
+            return state.Failed ? "failed" : "dirty";
         }
 
         private static string ToLogValue(PersistenceFailureKind kind)
