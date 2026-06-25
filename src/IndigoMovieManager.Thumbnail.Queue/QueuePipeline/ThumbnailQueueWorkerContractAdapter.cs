@@ -44,6 +44,31 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             };
         }
 
+        public static WorkerJobRequestDto ToWorkerJobRequestDto(
+            QueueDbLeaseItem leasedItem,
+            string outputArtifactPath = "",
+            long timeoutMs = 0
+        )
+        {
+            leasedItem ??= new QueueDbLeaseItem();
+            ThumbnailQueuePriority priority = ThumbnailQueuePriorityHelper.Normalize(
+                leasedItem.Priority
+            );
+            string moviePath = leasedItem.MoviePath ?? "";
+
+            return new WorkerJobRequestDto
+            {
+                JobId = BuildJobId(leasedItem),
+                Kind = WorkerKind,
+                InputFiles = string.IsNullOrWhiteSpace(moviePath) ? [] : [moviePath],
+                OutputArtifactPath = outputArtifactPath ?? "",
+                TimeoutMs = Math.Max(0, timeoutMs),
+                Capabilities = [QueueCapability, WorkerKind, priority.ToString()],
+                DiagnosticContext = BuildDiagnosticContext(leasedItem, priority),
+                RequestedAtUtc = DateTime.UtcNow,
+            };
+        }
+
         public static WorkerJobProgressDto ToWorkerJobProgressDto(
             QueueDbLeaseItem leasedItem,
             int completedCount,
@@ -161,6 +186,26 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             };
         }
 
+        public static string BuildWorkerJobRequestLogFields(WorkerJobRequestDto request)
+        {
+            request ??= new WorkerJobRequestDto();
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} queue_id={FormatLogValue(GetDiagnosticValue(request, "queueId"))} movie_path_key={FormatLogValue(GetDiagnosticValue(request, "moviePathKey"))} priority={FormatLogValue(GetDiagnosticValue(request, "priority"))}"
+            );
+        }
+
+        public static string BuildWorkerJobProgressLogFields(WorkerJobProgressDto progress)
+        {
+            progress ??= new WorkerJobProgressDto();
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"job_id={FormatLogValue(progress.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_stage={FormatLogValue(progress.Stage)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)} queue_id={FormatLogValue(GetProgressMetricValue(progress, "queueId"))} movie_path_key={FormatLogValue(GetProgressMetricValue(progress, "moviePathKey"))} priority={FormatLogValue(GetProgressMetricValue(progress, "priority"))} current_parallelism={FormatLogValue(GetProgressMetricValue(progress, "currentParallelism"))} configured_parallelism={FormatLogValue(GetProgressMetricValue(progress, "configuredParallelism"))}"
+            );
+        }
+
         public static string BuildWorkerJobResultLogFields(WorkerJobResultDto result)
         {
             result ??= new WorkerJobResultDto();
@@ -169,7 +214,25 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             // 実行結果ログへ載せる値だけをDTOから絞り、ログの語彙をWorker契約側に寄せる。
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)}"
+                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} queue_id={FormatLogValue(GetMetricValue(result, "queueId"))} movie_path_key={FormatLogValue(GetMetricValue(result, "moviePathKey"))} priority={FormatLogValue(GetMetricValue(result, "priority"))} attempt_count={FormatLogValue(GetMetricValue(result, "attemptCount"))}"
+            );
+        }
+
+        public static string BuildWorkerQueueLogFields(
+            WorkerJobRequestDto request,
+            WorkerJobProgressDto progress,
+            WorkerJobResultDto result
+        )
+        {
+            request ??= new WorkerJobRequestDto();
+            progress ??= new WorkerJobProgressDto();
+            result ??= new WorkerJobResultDto();
+            WorkerJobArtifactDto artifact = result.Artifact ?? new WorkerJobArtifactDto();
+
+            // request / progress / result の代表値を1行へ畳み、実機ログで支配要因を追いやすくする。
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"job_id={FormatLogValue(FirstNonEmpty(result.JobId, progress.JobId, request.JobId))} worker_kind={FormatLogValue(FirstNonEmpty(request.Kind, WorkerKind))} worker_status={FormatLogValue(result.Status)} worker_stage={FormatLogValue(progress.Stage)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)} queue_id={FormatLogValue(FirstNonEmpty(GetMetricValue(result, "queueId"), GetProgressMetricValue(progress, "queueId"), GetDiagnosticValue(request, "queueId")))} movie_path_key={FormatLogValue(FirstNonEmpty(GetMetricValue(result, "moviePathKey"), GetProgressMetricValue(progress, "moviePathKey"), GetDiagnosticValue(request, "moviePathKey")))} priority={FormatLogValue(FirstNonEmpty(GetMetricValue(result, "priority"), GetProgressMetricValue(progress, "priority"), GetDiagnosticValue(request, "priority")))} attempt_count={FormatLogValue(FirstNonEmpty(GetMetricValue(result, "attemptCount"), GetProgressMetricValue(progress, "attemptCount")))} current_parallelism={FormatLogValue(GetProgressMetricValue(progress, "currentParallelism"))} configured_parallelism={FormatLogValue(GetProgressMetricValue(progress, "configuredParallelism"))} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} output_artifact_path={FormatLogValue(FirstNonEmpty(artifact.Path, request.OutputArtifactPath))} timeout_ms={Math.Max(0, request.TimeoutMs)}"
             );
         }
 
@@ -228,6 +291,37 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
                 ["thumbTimePos"] = request.ThumbTimePos?.ToString(CultureInfo.InvariantCulture)
                     ?? "",
                 ["priority"] = priority.ToString(),
+            };
+        }
+
+        private static Dictionary<string, string> BuildDiagnosticContext(
+            QueueDbLeaseItem leasedItem,
+            ThumbnailQueuePriority priority
+        )
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["queueId"] = Math.Max(0, leasedItem.QueueId)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["moviePathKey"] = ResolveMoviePathKey(
+                    leasedItem.MoviePathKey,
+                    leasedItem.MoviePath
+                ),
+                ["tabIndex"] = leasedItem.TabIndex.ToString(CultureInfo.InvariantCulture),
+                ["movieSizeBytes"] = Math.Max(0, leasedItem.MovieSizeBytes)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["thumbPanelPos"] = leasedItem.ThumbPanelPos?.ToString(CultureInfo.InvariantCulture)
+                    ?? "",
+                ["thumbTimePos"] = leasedItem.ThumbTimePos?.ToString(CultureInfo.InvariantCulture)
+                    ?? "",
+                ["priority"] = priority.ToString(),
+                ["attemptCount"] = Math.Max(0, leasedItem.AttemptCount)
+                    .ToString(CultureInfo.InvariantCulture),
+                ["ownerInstanceId"] = NormalizeField(leasedItem.OwnerInstanceId),
+                ["leaseBucketRank"] = leasedItem.LeaseBucketRank.ToString(
+                    CultureInfo.InvariantCulture
+                ),
+                ["leaseOrder"] = leasedItem.LeaseOrder.ToString(CultureInfo.InvariantCulture),
             };
         }
 
@@ -443,6 +537,39 @@ namespace IndigoMovieManager.Thumbnail.QueuePipeline
             }
 
             return result.Metrics.TryGetValue(key, out string value) ? value : "";
+        }
+
+        private static string GetDiagnosticValue(WorkerJobRequestDto request, string key)
+        {
+            if (request?.DiagnosticContext == null || string.IsNullOrWhiteSpace(key))
+            {
+                return "";
+            }
+
+            return request.DiagnosticContext.TryGetValue(key, out string value) ? value : "";
+        }
+
+        private static string GetProgressMetricValue(WorkerJobProgressDto progress, string key)
+        {
+            if (progress?.Metrics == null || string.IsNullOrWhiteSpace(key))
+            {
+                return "";
+            }
+
+            return progress.Metrics.TryGetValue(key, out string value) ? value : "";
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            for (int i = 0; i < (values?.Length ?? 0); i++)
+            {
+                if (!string.IsNullOrWhiteSpace(values[i]))
+                {
+                    return values[i];
+                }
+            }
+
+            return "";
         }
 
         private static string FormatLogValue(string value)

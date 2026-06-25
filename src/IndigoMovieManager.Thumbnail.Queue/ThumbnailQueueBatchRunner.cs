@@ -130,7 +130,19 @@ namespace IndigoMovieManager.Thumbnail
                         if (updated < 1)
                         {
                             string workerResultFields =
-                                ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(
+                                ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(
+                                    ThumbnailQueueWorkerContractAdapter.ToWorkerJobRequestDto(
+                                        leasedItem
+                                    ),
+                                    ThumbnailQueueWorkerContractAdapter.ToWorkerJobProgressDto(
+                                        leasedItem,
+                                        batchState.SessionCompletedCount,
+                                        batchState.SessionTotalCount,
+                                        GetLiveParallelism(),
+                                        resolveLatestConfiguredParallelism(),
+                                        stage: ThumbnailQueueWorkerContractAdapter.ProgressStageCompleted,
+                                        message: "queue done status update skipped"
+                                    ),
                                     ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
                                         leasedItem,
                                         succeeded: true,

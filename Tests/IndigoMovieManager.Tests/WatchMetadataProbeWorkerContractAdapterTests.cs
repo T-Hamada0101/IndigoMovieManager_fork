@@ -296,12 +296,20 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
         {
             Assert.That(requestFields, Does.Contain("worker_job_id="));
             Assert.That(requestFields, Does.Contain("worker_kind=metadata-probe"));
+            Assert.That(requestFields, Does.Contain("input_count=1"));
+            Assert.That(requestFields, Does.Contain("capability_count=4"));
+            Assert.That(requestFields, Does.Contain("source=watch-existing-movie"));
+            Assert.That(requestFields, Does.Contain("has_cheap_dirty_fields=true"));
+            Assert.That(requestFields, Does.Contain("existing_movie_length_seconds=0"));
             Assert.That(progressFields, Does.Contain("worker_stage=completed"));
             Assert.That(progressFields, Does.Contain("progress_completed=1"));
+            Assert.That(progressFields, Does.Contain("current_input_file="));
+            Assert.That(progressFields, Does.Contain("movie_path_key="));
             Assert.That(resultFields, Does.Contain("worker_status=succeeded"));
             Assert.That(resultFields, Does.Contain("artifact_kind=metadata-probe-state"));
             Assert.That(resultFields, Does.Contain("retryable=false"));
             Assert.That(resultFields, Does.Contain("elapsed_ms=12"));
+            Assert.That(resultFields, Does.Contain("movie_length_seconds=120"));
             Assert.That(combinedFields, Does.Contain("worker_job_id="));
             Assert.That(combinedFields, Does.Contain("worker_kind=metadata-probe"));
             Assert.That(combinedFields, Does.Contain("worker_status=succeeded"));
@@ -310,6 +318,12 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
             Assert.That(combinedFields, Does.Contain("retryable=false"));
             Assert.That(combinedFields, Does.Contain("elapsed_ms=12"));
             Assert.That(combinedFields, Does.Contain("progress_total=1"));
+            Assert.That(combinedFields, Does.Contain("input_count=1"));
+            Assert.That(combinedFields, Does.Contain("capability_count=4"));
+            Assert.That(combinedFields, Does.Contain("source=watch-existing-movie"));
+            Assert.That(combinedFields, Does.Contain("has_cheap_dirty_fields=true"));
+            Assert.That(combinedFields, Does.Contain("existing_movie_length_seconds=0"));
+            Assert.That(combinedFields, Does.Contain("movie_length_seconds=120"));
         });
     }
 }

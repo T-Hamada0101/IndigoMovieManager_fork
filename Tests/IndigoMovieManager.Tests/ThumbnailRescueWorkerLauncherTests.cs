@@ -1071,10 +1071,15 @@ public sealed class ThumbnailRescueWorkerLauncherTests
                 ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobRequestLogFields(workerRequest);
             Assert.That(requestLogFields, Does.Contain("job_id=req-001"));
             Assert.That(requestLogFields, Does.Contain("worker_kind=thumbnail-rescue"));
+            Assert.That(requestLogFields, Does.Contain("input_count=1"));
+            Assert.That(requestLogFields, Does.Contain("capability_count=2"));
             Assert.That(
                 requestLogFields,
                 Does.Contain("output_artifact_path=rescue-worker.result.json")
             );
+            Assert.That(requestLogFields, Does.Contain("contract_version=1"));
+            Assert.That(requestLogFields, Does.Contain("mode=rescue-main"));
+            Assert.That(requestLogFields, Does.Contain("requested_failure_id=12"));
         }
         finally
         {
@@ -1156,6 +1161,10 @@ public sealed class ThumbnailRescueWorkerLauncherTests
                 resultLogFields,
                 Does.Contain("output_artifact_path=C:/logs/thumbnail-create-process.csv")
             );
+            Assert.That(resultLogFields, Does.Contain("result_code=OK"));
+            Assert.That(resultLogFields, Does.Contain("engine_version=1.0.0"));
+            Assert.That(resultLogFields, Does.Contain("compatibility_version=2026-03-17.1"));
+            Assert.That(resultLogFields, Does.Contain("log_count=1"));
             Assert.That(
                 ThumbnailRescueWorkerJobJsonClient.BuildResultSummaryLine(result),
                 Does.Contain("request_id=req-002")

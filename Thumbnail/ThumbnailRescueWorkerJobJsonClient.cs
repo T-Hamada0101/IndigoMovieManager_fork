@@ -161,7 +161,7 @@ namespace IndigoMovieManager.Thumbnail
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)}"
+                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} contract_version={FormatLogValue(GetDiagnosticValue(request, "contractVersion"))} mode={FormatLogValue(GetDiagnosticValue(request, "mode"))} requested_failure_id={FormatLogValue(GetDiagnosticValue(request, "requestedFailureId"))}"
             );
         }
 
@@ -172,7 +172,7 @@ namespace IndigoMovieManager.Thumbnail
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)}"
+                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} result_code={FormatLogValue(GetMetricValue(result, "resultCode"))} engine_version={FormatLogValue(GetMetricValue(result, "engineVersion"))} compatibility_version={FormatLogValue(GetMetricValue(result, "compatibilityVersion"))} log_count={Math.Max(0, result.Logs?.Count ?? 0)}"
             );
         }
 
@@ -405,6 +405,26 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return Math.Max(0, (long)(finishedAt - startedAt).TotalMilliseconds);
+        }
+
+        private static string GetDiagnosticValue(WorkerJobRequestDto request, string key)
+        {
+            if (request?.DiagnosticContext == null || string.IsNullOrWhiteSpace(key))
+            {
+                return "";
+            }
+
+            return request.DiagnosticContext.TryGetValue(key, out string value) ? value : "";
+        }
+
+        private static string GetMetricValue(WorkerJobResultDto result, string key)
+        {
+            if (result?.Metrics == null || string.IsNullOrWhiteSpace(key))
+            {
+                return "";
+            }
+
+            return result.Metrics.TryGetValue(key, out string value) ? value : "";
         }
 
         private static string FormatLogValue(string value)

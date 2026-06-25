@@ -46,7 +46,7 @@ namespace IndigoMovieManager.Thumbnail
 
             if (updated < 1)
             {
-                string workerResultFields = BuildFailedWorkerResultLogFields(
+                string workerResultFields = BuildFailedWorkerLogFields(
                     leasedItem,
                     ex,
                     retryable
@@ -59,7 +59,7 @@ namespace IndigoMovieManager.Thumbnail
 
             if (failedTotal <= 20 || failedTotal % 50 == 0)
             {
-                string workerResultFields = BuildFailedWorkerResultLogFields(
+                string workerResultFields = BuildFailedWorkerLogFields(
                     leasedItem,
                     ex,
                     retryable
@@ -173,7 +173,7 @@ namespace IndigoMovieManager.Thumbnail
             );
         }
 
-        private static string BuildFailedWorkerResultLogFields(
+        private static string BuildFailedWorkerLogFields(
             QueueDbLeaseItem leasedItem,
             Exception ex,
             bool retryable
@@ -184,7 +184,15 @@ namespace IndigoMovieManager.Thumbnail
                 leasedItem?.MoviePath ?? ""
             );
 
-            return ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(
+            return ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(
+                ThumbnailQueueWorkerContractAdapter.ToWorkerJobRequestDto(leasedItem),
+                ThumbnailQueueWorkerContractAdapter.ToWorkerJobProgressDto(
+                    leasedItem,
+                    completedCount: 0,
+                    totalCount: 1,
+                    stage: ThumbnailQueueWorkerContractAdapter.ProgressStageCompleted,
+                    message: "queue item failed"
+                ),
                 ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
                     leasedItem,
                     succeeded: false,

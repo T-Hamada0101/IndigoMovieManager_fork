@@ -67,7 +67,7 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
     {
         WorkerJobRequestDto dto =
             ThumbnailQueueWorkerContractAdapter.ToWorkerJobRequestDto(
-                null,
+                (QueueRequest)null!,
                 outputArtifactPath: null,
                 timeoutMs: -1
             );
@@ -85,6 +85,36 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
             Assert.That(dto.DiagnosticContext["mainDbSessionStamp"], Is.EqualTo("0"));
             Assert.That(dto.DiagnosticContext["moviePathKey"], Is.Empty);
             Assert.That(dto.DiagnosticContext["priority"], Is.EqualTo("Normal"));
+        });
+    }
+
+    [Test]
+    public void QueueLeaseItemをWorkerJobRequestDtoへ写せる()
+    {
+        QueueDbLeaseItem leasedItem = CreateLeaseItem();
+
+        WorkerJobRequestDto dto =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobRequestDto(
+                leasedItem,
+                outputArtifactPath: "thumbs/sample.jpg",
+                timeoutMs: 60000
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dto.JobId, Is.EqualTo("thumbnail-movie-key-001-queue-77"));
+            Assert.That(dto.Kind, Is.EqualTo("thumbnail-create"));
+            Assert.That(dto.InputFiles, Is.EqualTo(new[] { "movies/sample.mp4" }));
+            Assert.That(dto.OutputArtifactPath, Is.EqualTo("thumbs/sample.jpg"));
+            Assert.That(dto.TimeoutMs, Is.EqualTo(60000));
+            Assert.That(dto.Capabilities, Does.Contain("thumbnail-queue"));
+            Assert.That(dto.Capabilities, Does.Contain("thumbnail-create"));
+            Assert.That(dto.Capabilities, Does.Contain("Preferred"));
+            Assert.That(dto.DiagnosticContext["queueId"], Is.EqualTo("77"));
+            Assert.That(dto.DiagnosticContext["moviePathKey"], Is.EqualTo("movie-key-001"));
+            Assert.That(dto.DiagnosticContext["priority"], Is.EqualTo("Preferred"));
+            Assert.That(dto.DiagnosticContext["attemptCount"], Is.EqualTo("3"));
+            Assert.That(dto.DiagnosticContext["ownerInstanceId"], Is.EqualTo("worker-a"));
         });
     }
 
@@ -290,6 +320,75 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
             Assert.That(logFields, Does.Contain("elapsed_ms=123"));
             Assert.That(logFields, Does.Contain("failure_kind=Decode"));
             Assert.That(logFields, Does.Contain("failure_reason='decode failed'"));
+            Assert.That(logFields, Does.Contain("output_artifact_path=''"));
+            Assert.That(logFields, Does.Contain("queue_id=77"));
+            Assert.That(logFields, Does.Contain("movie_path_key=movie-key-001"));
+            Assert.That(logFields, Does.Contain("priority=Preferred"));
+            Assert.That(logFields, Does.Contain("attempt_count=3"));
+        });
+    }
+
+    [Test]
+    public void Worker契約FieldsはRequestProgressResultを1行へ畳める()
+    {
+        QueueDbLeaseItem leasedItem = CreateLeaseItem();
+        WorkerJobRequestDto request =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobRequestDto(
+                leasedItem,
+                outputArtifactPath: "thumbs/movie-key-001.jpg",
+                timeoutMs: 60000
+            );
+        WorkerJobProgressDto progress =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobProgressDto(
+                leasedItem,
+                completedCount: 1,
+                totalCount: 4,
+                currentParallelism: 2,
+                configuredParallelism: 6,
+                stage: ThumbnailQueueWorkerContractAdapter.ProgressStageCompleted
+            );
+        WorkerJobResultDto result =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                leasedItem,
+                succeeded: true,
+                artifactPath: "thumbs/movie-key-001.jpg",
+                elapsedMs: 123
+            );
+
+        string requestFields =
+            ThumbnailQueueWorkerContractAdapter.BuildWorkerJobRequestLogFields(request);
+        string progressFields =
+            ThumbnailQueueWorkerContractAdapter.BuildWorkerJobProgressLogFields(progress);
+        string combinedFields =
+            ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(
+                request,
+                progress,
+                result
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(requestFields, Does.Contain("job_id=thumbnail-movie-key-001-queue-77"));
+            Assert.That(requestFields, Does.Contain("input_count=1"));
+            Assert.That(requestFields, Does.Contain("queue_id=77"));
+            Assert.That(progressFields, Does.Contain("worker_stage=completed"));
+            Assert.That(progressFields, Does.Contain("progress_total=4"));
+            Assert.That(progressFields, Does.Contain("current_parallelism=2"));
+            Assert.That(combinedFields, Does.Contain("worker_status=succeeded"));
+            Assert.That(combinedFields, Does.Contain("worker_stage=completed"));
+            Assert.That(combinedFields, Does.Contain("progress_completed=1"));
+            Assert.That(combinedFields, Does.Contain("progress_total=4"));
+            Assert.That(combinedFields, Does.Contain("queue_id=77"));
+            Assert.That(combinedFields, Does.Contain("priority=Preferred"));
+            Assert.That(combinedFields, Does.Contain("attempt_count=3"));
+            Assert.That(combinedFields, Does.Contain("current_parallelism=2"));
+            Assert.That(combinedFields, Does.Contain("configured_parallelism=6"));
+            Assert.That(combinedFields, Does.Contain("input_count=1"));
+            Assert.That(
+                combinedFields,
+                Does.Contain("output_artifact_path=thumbs/movie-key-001.jpg")
+            );
+            Assert.That(combinedFields, Does.Contain("timeout_ms=60000"));
         });
     }
 

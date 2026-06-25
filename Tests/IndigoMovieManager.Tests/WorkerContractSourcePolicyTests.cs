@@ -194,19 +194,27 @@ public sealed class WorkerContractSourcePolicyTests
         );
 
         Assert.That(adapterSource, Does.Contain("BuildWorkerJobResultLogFields("));
+        Assert.That(adapterSource, Does.Contain("BuildWorkerJobRequestLogFields("));
+        Assert.That(adapterSource, Does.Contain("BuildWorkerJobProgressLogFields("));
+        Assert.That(adapterSource, Does.Contain("BuildWorkerQueueLogFields("));
         Assert.That(adapterSource, Does.Contain("job_id="));
         Assert.That(adapterSource, Does.Contain("worker_kind="));
+        Assert.That(adapterSource, Does.Contain("worker_status="));
+        Assert.That(adapterSource, Does.Contain("worker_stage="));
         Assert.That(adapterSource, Does.Contain("artifact_kind="));
         Assert.That(adapterSource, Does.Contain("retryability="));
         Assert.That(adapterSource, Does.Contain("elapsed_ms="));
         Assert.That(adapterSource, Does.Contain("failure_reason="));
+        Assert.That(adapterSource, Does.Contain("progress_completed="));
+        Assert.That(adapterSource, Does.Contain("queue_id="));
+        Assert.That(adapterSource, Does.Contain("current_parallelism="));
         Assert.That(
             batchRunnerSource,
-            Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(")
+            Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(")
         );
         Assert.That(
             failureRecorderSource,
-            Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(")
+            Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(")
         );
     }
 
@@ -225,11 +233,16 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(jobJsonClientSource, Does.Contain("BuildWorkerJobResultLogFields("));
         Assert.That(jobJsonClientSource, Does.Contain("job_id="));
         Assert.That(jobJsonClientSource, Does.Contain("worker_kind="));
+        Assert.That(jobJsonClientSource, Does.Contain("input_count="));
+        Assert.That(jobJsonClientSource, Does.Contain("capability_count="));
         Assert.That(jobJsonClientSource, Does.Contain("artifact_kind="));
         Assert.That(jobJsonClientSource, Does.Contain("retryability="));
         Assert.That(jobJsonClientSource, Does.Contain("elapsed_ms="));
         Assert.That(jobJsonClientSource, Does.Contain("failure_reason="));
         Assert.That(jobJsonClientSource, Does.Contain("output_artifact_path="));
+        Assert.That(jobJsonClientSource, Does.Contain("requested_failure_id="));
+        Assert.That(jobJsonClientSource, Does.Contain("result_code="));
+        Assert.That(jobJsonClientSource, Does.Contain("engine_version="));
         Assert.That(
             launcherSource,
             Does.Contain("ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobRequestLogFields(")
@@ -319,6 +332,12 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("artifact_kind="));
         Assert.That(adapterSource, Does.Contain("retryable="));
         Assert.That(adapterSource, Does.Contain("elapsed_ms="));
+        Assert.That(adapterSource, Does.Contain("input_count="));
+        Assert.That(adapterSource, Does.Contain("capability_count="));
+        Assert.That(adapterSource, Does.Contain("current_input_file="));
+        Assert.That(adapterSource, Does.Contain("movie_path_key="));
+        Assert.That(adapterSource, Does.Contain("has_cheap_dirty_fields="));
+        Assert.That(adapterSource, Does.Contain("movie_length_seconds="));
         Assert.That(
             coordinatorSource,
             Does.Contain("WatchMetadataProbeWorkerContractAdapter.BuildWorkerProbeLogFields(")
