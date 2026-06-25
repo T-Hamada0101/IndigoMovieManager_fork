@@ -318,7 +318,15 @@ internal static class MovieViewDiffApplyPolicy
     internal static string BuildDiffLogFields(MovieViewDiff diff)
     {
         // ReadModel と watch のログ語彙を揃え、次段の diff-first 実装で比較しやすくする。
-        return $"diff_operation={diff.OperationLogValue} {BuildDiffApplyPlanLogFields(diff.ApplyPlan)} diff_stable_key={diff.StableKey} diff_source_revision={diff.SourceRevision} diff_view_revision={diff.ViewRevision} diff_added={diff.AddedCount} diff_deleted={diff.DeletedCount} diff_updated={diff.UpdatedCount} diff_moved={diff.MovedCount} diff_selection={diff.SelectionImpactLogValue} diff_scroll={diff.ScrollImpactLogValue} diff_fallback_reason={diff.FallbackReason}";
+        long changedTotal = Math.Max(
+            0L,
+            (long)diff.AddedCount
+                + diff.DeletedCount
+                + diff.UpdatedCount
+                + diff.MovedCount
+        );
+
+        return $"diff_operation={diff.OperationLogValue} {BuildDiffApplyPlanLogFields(diff.ApplyPlan)} diff_stable_key={diff.StableKey} diff_source_revision={diff.SourceRevision} diff_view_revision={diff.ViewRevision} diff_added={diff.AddedCount} diff_deleted={diff.DeletedCount} diff_updated={diff.UpdatedCount} diff_moved={diff.MovedCount} diff_changed_total={changedTotal} diff_selection={diff.SelectionImpactLogValue} diff_scroll={diff.ScrollImpactLogValue} diff_fallback_reason={diff.FallbackReason}";
     }
 
     private static string ResolveFullFallbackReason(string fallbackReason)
