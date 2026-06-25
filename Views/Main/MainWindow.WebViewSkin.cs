@@ -706,7 +706,7 @@ namespace IndigoMovieManager
             ExternalSkinDefinitionRefreshMode resolvedDefinitionRefreshMode =
                 definitionRefreshMode ?? ResolveExternalSkinDefinitionRefreshMode(normalizedReason);
 
-            return $"core_route=skin-refresh refresh_reason={normalizedReason} request_trace={normalizedRequestTraceId} definition_mode={resolvedDefinitionRefreshMode}";
+            return $"core_route=skin-refresh operation_reason={UiWorkRequestPolicy.ExternalSkinHostRefreshLogReason} refresh_reason={normalizedReason} request_trace={normalizedRequestTraceId} definition_mode={resolvedDefinitionRefreshMode}";
         }
 
         internal static string BuildExternalSkinRefreshCoreLogFieldsForTesting(

@@ -104,10 +104,12 @@ public sealed class MainWindowWebViewSkinIntegrationTests
         Assert.Multiple(() =>
         {
             Assert.That(headerReloadFields, Does.Contain("core_route=skin-refresh"));
+            Assert.That(headerReloadFields, Does.Contain("operation_reason=skin.host-refresh"));
             Assert.That(headerReloadFields, Does.Contain("refresh_reason=header-reload"));
             Assert.That(headerReloadFields, Does.Contain("request_trace=rq-core-1"));
             Assert.That(headerReloadFields, Does.Contain("definition_mode=CatalogRefresh"));
             Assert.That(dbInfoFields, Does.Contain("core_route=skin-refresh"));
+            Assert.That(dbInfoFields, Does.Contain("operation_reason=skin.host-refresh"));
             Assert.That(dbInfoFields, Does.Contain("refresh_reason=dbinfo-Skin"));
             Assert.That(dbInfoFields, Does.Contain("request_trace=rq-core-2"));
             Assert.That(dbInfoFields, Does.Contain("definition_mode=CachedSnapshot"));

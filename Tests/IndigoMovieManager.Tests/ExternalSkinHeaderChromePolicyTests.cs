@@ -128,6 +128,8 @@ public sealed class ExternalSkinHeaderChromePolicyTests
         Assert.Multiple(() =>
         {
             Assert.That(helperMethod, Does.Contain("core_route=skin-refresh"));
+            Assert.That(helperMethod, Does.Contain("operation_reason="));
+            Assert.That(helperMethod, Does.Contain("UiWorkRequestPolicy.ExternalSkinHostRefreshLogReason"));
             Assert.That(helperMethod, Does.Contain("refresh_reason="));
             Assert.That(helperMethod, Does.Contain("request_trace="));
             Assert.That(helperMethod, Does.Contain("definition_mode="));
