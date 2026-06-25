@@ -258,6 +258,8 @@ public sealed class UiWorkSchedulerPolicyTests
         Assert.That(logFields, Does.Contain("release_reason=accepted"));
         Assert.That(logFields, Does.Contain("work_priority=Input"));
         Assert.That(logFields, Does.Contain("admission_action=Enqueue"));
+        Assert.That(logFields, Does.Contain("accepted=True"));
+        Assert.That(logFields, Does.Contain("target_index=-1"));
         Assert.That(logFields, Does.Contain("admission_reason=queued"));
         Assert.That(logFields, Does.Contain("skip_reason=none"));
         Assert.That(logFields, Does.Contain("queue_depth_before=0"));
@@ -265,6 +267,36 @@ public sealed class UiWorkSchedulerPolicyTests
         Assert.That(logFields, Does.Contain("bounded_capacity=1"));
         Assert.That(logFields, Does.Contain("queue_capacity=1"));
         Assert.That(logFields, Does.Contain("replaced_release_reason=none"));
+
+        UiWorkSchedulerAdmissionDecision replaceDecision =
+            UiWorkSchedulerPolicy.EvaluateAdmission(
+                request,
+                [new UiWorkSchedulerPendingRequest(1, request)],
+                boundedCapacity: 1
+            );
+        string replaceLogFields = UiWorkSchedulerPolicy.BuildAdmissionLogFields(
+            request,
+            replaceDecision
+        );
+
+        Assert.That(replaceLogFields, Does.Contain("admission_action=ReplaceLatestOnly"));
+        Assert.That(replaceLogFields, Does.Contain("accepted=True"));
+        Assert.That(replaceLogFields, Does.Contain("target_index=0"));
+
+        UiWorkSchedulerAdmissionDecision rejectDecision =
+            UiWorkSchedulerPolicy.EvaluateAdmission(
+                request,
+                [new UiWorkSchedulerPendingRequest(1, request)],
+                boundedCapacity: 0
+            );
+        string rejectLogFields = UiWorkSchedulerPolicy.BuildAdmissionLogFields(
+            request,
+            rejectDecision
+        );
+
+        Assert.That(rejectLogFields, Does.Contain("admission_action=RejectCapacityDisabled"));
+        Assert.That(rejectLogFields, Does.Contain("accepted=False"));
+        Assert.That(rejectLogFields, Does.Contain("target_index=-1"));
     }
 
     [Test]
@@ -309,6 +341,7 @@ public sealed class UiWorkSchedulerPolicyTests
         Assert.That(logFields, Does.Contain("release_reason=released"));
         Assert.That(logFields, Does.Contain("work_priority=WatchSmallDiff"));
         Assert.That(logFields, Does.Contain("sequence=42"));
+        Assert.That(logFields, Does.Contain("has_request=True"));
         Assert.That(logFields, Does.Contain("next_reason=next-selected"));
         Assert.That(logFields, Does.Contain("selected_index=1"));
         Assert.That(logFields, Does.Contain("pending_count_after=0"));
