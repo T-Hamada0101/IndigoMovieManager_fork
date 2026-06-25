@@ -271,6 +271,10 @@ public sealed class MovieViewDiffTests
         {
             Assert.That(requestPlan.IsDiffApplyCandidate, Is.True);
             Assert.That(
+                MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(requestPlan),
+                Does.Contain("diff_contract=readmodel-diff-v1")
+            );
+            Assert.That(
                 requestPlan.ApplyKindLogValue,
                 Is.EqualTo(readModelDiff.ApplyKindLogValue)
             );
@@ -339,13 +343,15 @@ public sealed class MovieViewDiffTests
         Assert.Multiple(() =>
         {
             Assert.That(fullLog, Does.Contain("diff_operation=update"));
+            Assert.That(fullLog, Does.Contain("diff_contract=readmodel-diff-v1"));
+            Assert.That(fullLog.Split("diff_contract=").Length - 1, Is.EqualTo(1));
             Assert.That(fullLog, Does.Contain("diff_apply_kind=diff-apply"));
             Assert.That(fullLog, Does.Contain("diff_apply_candidate=True"));
             Assert.That(fullLog, Does.Contain("diff_full_fallback_reason=none"));
             Assert.That(fullLog, Does.Contain("diff_stable_key=movie-id-or-path"));
             Assert.That(fullLog, Does.Contain("diff_changed_total=2"));
             Assert.That(fullLog, Does.Contain("diff_selection=refresh"));
-            Assert.That(planLog, Is.EqualTo("diff_apply_kind=diff-apply diff_apply_candidate=True diff_full_fallback_reason=none"));
+            Assert.That(planLog, Is.EqualTo("diff_contract=readmodel-diff-v1 diff_apply_kind=diff-apply diff_apply_candidate=True diff_full_fallback_reason=none"));
         });
     }
 }

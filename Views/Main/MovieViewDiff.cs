@@ -195,6 +195,7 @@ internal static class MovieViewDiffFactory
 
 internal static class MovieViewDiffApplyPolicy
 {
+    internal const string DiffContractReadModelDiffV1 = "readmodel-diff-v1";
     internal const string FallbackReasonNone = "none";
     internal const string FallbackReasonQuery = "query";
     internal const string FallbackReasonSort = "sort";
@@ -312,7 +313,7 @@ internal static class MovieViewDiffApplyPolicy
 
     internal static string BuildDiffApplyPlanLogFields(MovieViewDiffApplyPlan plan)
     {
-        return $"diff_apply_kind={plan.ApplyKindLogValue} diff_apply_candidate={plan.IsDiffApplyCandidate} diff_full_fallback_reason={plan.FullFallbackReason}";
+        return $"diff_contract={DiffContractReadModelDiffV1} diff_apply_kind={plan.ApplyKindLogValue} diff_apply_candidate={plan.IsDiffApplyCandidate} diff_full_fallback_reason={plan.FullFallbackReason}";
     }
 
     internal static string BuildDiffLogFields(MovieViewDiff diff)
