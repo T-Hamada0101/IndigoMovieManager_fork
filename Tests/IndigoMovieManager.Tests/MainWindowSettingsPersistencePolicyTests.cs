@@ -284,11 +284,12 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             Assert.That(
                 request.BuildLogFields(),
                 Is.EqualTo(
-                    "write_kind=application-settings write_reason=main-window-closing queue_key=application-settings retryable_policy=true"
+                    "write_kind=application-settings persist_contract=persistence-write-v1 write_reason=main-window-closing queue_key=application-settings retryable_policy=true"
                 )
             );
             Assert.That(failure.Succeeded, Is.False);
             Assert.That(failure.FailureKind, Is.EqualTo(PersistenceFailureKind.ApplicationSettings));
+            Assert.That(failure.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(
                 failure.LogFields,
                 Does.Contain("write_succeeded=false elapsed_ms=12.3 failure_kind=application-settings")
@@ -308,6 +309,7 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             );
             Assert.That(success.Succeeded, Is.True);
             Assert.That(success.FailureKind, Is.Null);
+            Assert.That(success.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(
                 success.LogFields,
                 Does.Contain("write_succeeded=true elapsed_ms=1.2 failure_kind=none")

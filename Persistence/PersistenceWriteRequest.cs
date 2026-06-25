@@ -34,6 +34,7 @@ namespace IndigoMovieManager
         internal string BuildLogFields()
         {
             return $"write_kind={ToLogValue(Kind)} "
+                + "persist_contract=persistence-write-v1 "
                 + $"write_reason={Reason} "
                 + $"queue_key={QueueKey} "
                 + $"retryable_policy={ToLogBool(Retryable)}";

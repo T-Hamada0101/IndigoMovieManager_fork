@@ -172,6 +172,10 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                             x.Contains("skin state persist succeeded:", StringComparison.Ordinal)
                             && x.Contains("target=System", StringComparison.Ordinal)
                             && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
+                            && x.Contains(
+                                "persist_contract=persistence-write-v1",
+                                StringComparison.Ordinal
+                            )
                             && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
                             && x.Contains("queue_key=skin-system:skin", StringComparison.Ordinal)
                             && x.Contains("write_succeeded=true", StringComparison.Ordinal)
@@ -189,6 +193,10 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                             x.Contains("skin state persist succeeded:", StringComparison.Ordinal)
                             && x.Contains("target=Profile", StringComparison.Ordinal)
                             && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
+                            && x.Contains(
+                                "persist_contract=persistence-write-v1",
+                                StringComparison.Ordinal
+                            )
                             && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
                             && x.Contains(
                                 "queue_key=skin-profile:SampleExternalSkin:LastUpperTab",
@@ -290,6 +298,10 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                     static x =>
                         x.Contains("skin state persist failed:", StringComparison.Ordinal)
                         && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
+                        && x.Contains(
+                            "persist_contract=persistence-write-v1",
+                            StringComparison.Ordinal
+                        )
                         && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
                         && x.Contains(
                             "queue_key=skin-profile:SampleExternalSkin:LastUpperTab",
@@ -350,14 +362,16 @@ public sealed class WhiteBrowserSkinStatePersisterTests
             Assert.That(
                 writeRequest.BuildLogFields(),
                 Is.EqualTo(
-                    "write_kind=background-db-write write_reason=queue-rejected queue_key=skin-profile:SampleSkin:LastUpperTab retryable_policy=true"
+                    "write_kind=background-db-write persist_contract=persistence-write-v1 write_reason=queue-rejected queue_key=skin-profile:SampleSkin:LastUpperTab retryable_policy=true"
                 )
             );
             Assert.That(failureLog, Does.Contain("write_kind=background-db-write"));
+            Assert.That(failureLog, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(failureLog, Does.Contain("write_reason=persister-write"));
             Assert.That(failureLog, Does.Contain("write_succeeded=false"));
             Assert.That(failureLog, Does.Contain("failure_kind=skin-profile"));
             Assert.That(failureLog, Does.Contain("dirty=true failed=true retryable=true notify_ui=false"));
+            Assert.That(successLog, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(successLog, Does.Contain("write_succeeded=true"));
             Assert.That(successLog, Does.Contain("failure_kind=none"));
             Assert.That(
@@ -401,6 +415,7 @@ public sealed class WhiteBrowserSkinStatePersisterTests
         Assert.Multiple(() =>
         {
             Assert.That(failureLog, Does.Contain("write_kind=background-db-write"));
+            Assert.That(failureLog, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(failureLog, Does.Contain("write_reason=queue-closed"));
             Assert.That(failureLog, Does.Contain("queue_key=skin-system:skin"));
             Assert.That(failureLog, Does.Contain("write_succeeded=false"));

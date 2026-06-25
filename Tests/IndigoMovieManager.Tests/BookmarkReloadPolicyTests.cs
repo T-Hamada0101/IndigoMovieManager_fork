@@ -95,6 +95,7 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(log, Does.Contain("bookmark persist failed:"));
             Assert.That(log, Does.Contain("operation='add-db'"));
             Assert.That(log, Does.Contain("write_kind=background-db-write"));
+            Assert.That(log, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(log, Does.Contain("write_reason=bookmark-add"));
             Assert.That(log, Does.Contain("queue_key=bookmark-db"));
             Assert.That(log, Does.Contain("write_succeeded=false"));
@@ -138,6 +139,10 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(
                 addRequest.BuildLogFields(),
                 Does.Contain("write_kind=background-db-write")
+            );
+            Assert.That(
+                addRequest.BuildLogFields(),
+                Does.Contain("persist_contract=persistence-write-v1")
             );
             Assert.That(addRequest.BuildLogFields(), Does.Contain("queue_key=bookmark-db"));
             Assert.That(deleteMethod, Does.Contain("BuildBookmarkPersistenceWriteRequest("));
