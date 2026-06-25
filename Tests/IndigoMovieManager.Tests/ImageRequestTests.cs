@@ -368,6 +368,10 @@ public sealed class ImageRequestTests
             Assert.That(missing.OutcomeLogValue, Is.EqualTo("missing"));
             Assert.That(canceled.OutcomeLogValue, Is.EqualTo("canceled"));
             Assert.That(failed.OutcomeLogValue, Is.EqualTo("failed"));
+            Assert.That(
+                CountOccurrences(readyLog, "image_contract=image-pipeline-v1"),
+                Is.EqualTo(1)
+            );
             Assert.That(readyLog, Does.Contain("image_role=ExtensionDetail"));
             Assert.That(readyLog, Does.Contain("image_key=movie-key"));
             Assert.That(readyLog, Does.Contain("visible_priority=true"));
@@ -449,6 +453,10 @@ public sealed class ImageRequestTests
             Assert.That(decodeResult.Outcome, Is.EqualTo(ImageLoadOutcome.Ready));
             Assert.That(decodeResult.DecodeElapsedMilliseconds, Is.EqualTo(12));
             Assert.That(decodeResult.CacheHit, Is.True);
+            Assert.That(
+                CountOccurrences(logFields, "image_contract=image-pipeline-v1"),
+                Is.EqualTo(1)
+            );
             Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.sync-decode"));
             Assert.That(logFields, Does.Contain("image_key=movie-key"));
             Assert.That(logFields, Does.Contain("visible_priority=true"));
@@ -495,6 +503,10 @@ public sealed class ImageRequestTests
             Assert.That(planResult.DecodeResult.DecodeElapsedMilliseconds, Is.EqualTo(0));
             Assert.That(planResult.DecodeResult.CacheHit, Is.False);
             Assert.That(planResult.DecodeAttempted, Is.False);
+            Assert.That(
+                CountOccurrences(logFields, "image_contract=image-pipeline-v1"),
+                Is.EqualTo(1)
+            );
             Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.aggregate-decode-plan"));
             Assert.That(logFields, Does.Contain("image_key=movie-key"));
             Assert.That(logFields, Does.Contain("visible_priority=true"));
@@ -509,5 +521,19 @@ public sealed class ImageRequestTests
             Assert.That(logFields, Does.Contain("stale=false"));
             Assert.That(logFields, Does.Contain("failure_reason=error-marker"));
         });
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        int index = 0;
+
+        while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 }
