@@ -151,6 +151,7 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         Assert.That(source, Does.Contain("MovieViewDiffApplyPlan DiffApplyPlan"));
         Assert.That(source, Does.Contain("int ChangedMovieCount"));
         Assert.That(source, Does.Contain("applied_changed_paths="));
+        Assert.That(source, Does.Contain("diff_changed_total="));
         Assert.That(source, Does.Contain("diff_change_set="));
         Assert.That(source, Does.Contain("core_route=watch-ui-apply"));
         Assert.That(source, Does.Contain("watch_apply_kind="));

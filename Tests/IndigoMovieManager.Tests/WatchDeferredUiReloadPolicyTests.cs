@@ -659,7 +659,7 @@ public sealed class WatchDeferredUiReloadPolicyTests
                     result.ChangedMovieCount
                 ),
                 Is.EqualTo(
-                    "changed_paths=1 source_changed_paths=1 applied_changed_paths=1 diff_change_set=single"
+                    "changed_paths=1 source_changed_paths=1 applied_changed_paths=1 diff_changed_total=1 diff_change_set=single"
                 )
             );
             Assert.That(result.DiffApplyPlan.IsDiffApplyCandidate, Is.True);
@@ -709,7 +709,7 @@ public sealed class WatchDeferredUiReloadPolicyTests
                     result.ChangedMovieCount
                 ),
                 Is.EqualTo(
-                    "changed_paths=0 source_changed_paths=1 applied_changed_paths=0 diff_change_set=single"
+                    "changed_paths=0 source_changed_paths=1 applied_changed_paths=0 diff_changed_total=1 diff_change_set=single"
                 )
             );
             Assert.That(result.DiffApplyPlan.IsDiffApplyCandidate, Is.False);
@@ -804,6 +804,7 @@ public sealed class WatchDeferredUiReloadPolicyTests
                 result,
                 Does.Contain($"source_changed_paths={sourceChangedMovieCount}")
             );
+            Assert.That(result, Does.Contain($"diff_changed_total={sourceChangedMovieCount}"));
             Assert.That(result, Does.Contain($"diff_change_set={expectedChangeSet}"));
         });
     }

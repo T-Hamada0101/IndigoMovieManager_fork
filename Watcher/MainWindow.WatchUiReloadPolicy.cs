@@ -856,7 +856,7 @@ namespace IndigoMovieManager
         {
             int appliedChangedMovieCount = appliedChangedMovies?.Count ?? 0;
             int safeSourceChangedMovieCount = Math.Max(sourceChangedMovieCount, 0);
-            return $"changed_paths={appliedChangedMovieCount} source_changed_paths={safeSourceChangedMovieCount} applied_changed_paths={appliedChangedMovieCount} diff_change_set={ResolveWatchUiDiffChangeSetLogValue(safeSourceChangedMovieCount)}";
+            return $"changed_paths={appliedChangedMovieCount} source_changed_paths={safeSourceChangedMovieCount} applied_changed_paths={appliedChangedMovieCount} diff_changed_total={safeSourceChangedMovieCount} diff_change_set={ResolveWatchUiDiffChangeSetLogValue(safeSourceChangedMovieCount)}";
         }
 
         private static string ResolveWatchUiDiffChangeSetLogValue(int sourceChangedMovieCount)
