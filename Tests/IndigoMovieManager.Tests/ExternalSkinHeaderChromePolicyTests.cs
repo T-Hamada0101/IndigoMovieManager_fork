@@ -148,6 +148,29 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_refresh_core_route_helperはPhase7契約fieldsを固定する()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string helperMethod = GetMethodBlock(
+            source,
+            "private static string BuildExternalSkinRefreshCoreLogFields("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(helperMethod, Does.Contain("core_route=skin-refresh"));
+            Assert.That(helperMethod, Does.Contain("operation_reason="));
+            Assert.That(
+                helperMethod,
+                Does.Contain("UiWorkRequestPolicy.ExternalSkinHostRefreshLogReason")
+            );
+            Assert.That(helperMethod, Does.Contain("refresh_reason="));
+            Assert.That(helperMethod, Does.Contain("request_trace="));
+            Assert.That(helperMethod, Does.Contain("definition_mode="));
+        });
+    }
+
+    [Test]
     public void 診断用same_document確認refreshは明示フラグとno_persist時だけ動く()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");

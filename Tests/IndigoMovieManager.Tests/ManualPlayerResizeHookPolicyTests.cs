@@ -788,6 +788,34 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayerPlayback_core_route_helperはPhase7契約fieldsを固定する()
+    {
+        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
+        string helperMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private string BuildPlayerPlaybackCoreRouteLogFields("
+        );
+        string stateMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void SetPlayerPlaybackActive(bool isActive, string reason = \"\")"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stateMethod, Does.Contain("BuildPlayerPlaybackCoreRouteLogFields(isActive, reason)"));
+            Assert.That(helperMethod, Does.Contain("core_route=player-playback"));
+            Assert.That(helperMethod, Does.Contain("operation_reason="));
+            Assert.That(
+                helperMethod,
+                Does.Contain("UiOperationPriorityPolicy.OperationReasonPlayerPlayback")
+            );
+            Assert.That(helperMethod, Does.Contain("player_surface_ready="));
+            Assert.That(helperMethod, Does.Contain("player_transition="));
+            Assert.That(helperMethod, Does.Contain("ResolvePlayerPlaybackTransitionLogValue(isActive)"));
+        });
+    }
+
+    [Test]
     public void OpenMovieInPlayerTabAsync_存在確認はuser_priority開始前に背景へ逃がす()
     {
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();

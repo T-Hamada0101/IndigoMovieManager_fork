@@ -224,6 +224,46 @@ public sealed class WorkerContractSourcePolicyTests
     }
 
     [Test]
+    public void Worker契約ログは代表経路でcontract識別子を固定する()
+    {
+        string repoRoot = FindRepoRoot();
+        string queueAdapterSource = File.ReadAllText(
+            ToAbsolutePath(
+                repoRoot,
+                "src/IndigoMovieManager.Thumbnail.Queue/QueuePipeline/ThumbnailQueueWorkerContractAdapter.cs"
+            )
+        );
+        string rescueClientSource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Thumbnail/ThumbnailRescueWorkerJobJsonClient.cs")
+        );
+        string probeAdapterSource = File.ReadAllText(
+            ToAbsolutePath(repoRoot, "Watcher/WatchMetadataProbeWorkerContractAdapter.cs")
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(queueAdapterSource, Does.Contain("private const string WorkerContract = \"worker-job-v1\";"));
+            Assert.That(queueAdapterSource, Does.Contain("worker_contract={FormatLogValue(WorkerContract)}"));
+            Assert.That(queueAdapterSource, Does.Contain("BuildWorkerJobRequestLogFields("));
+            Assert.That(queueAdapterSource, Does.Contain("BuildWorkerJobProgressLogFields("));
+            Assert.That(queueAdapterSource, Does.Contain("BuildWorkerJobResultLogFields("));
+            Assert.That(queueAdapterSource, Does.Contain("BuildWorkerQueueLogFields("));
+
+            Assert.That(rescueClientSource, Does.Contain("private const string WorkerContract = \"worker-job-v1\";"));
+            Assert.That(rescueClientSource, Does.Contain("worker_contract={FormatLogValue(WorkerContract)}"));
+            Assert.That(rescueClientSource, Does.Contain("BuildWorkerJobRequestLogFields("));
+            Assert.That(rescueClientSource, Does.Contain("BuildWorkerJobResultLogFields("));
+
+            Assert.That(probeAdapterSource, Does.Contain("private const string WorkerContract = \"worker-job-v1\";"));
+            Assert.That(probeAdapterSource, Does.Contain("worker_contract={FormatLogValue(WorkerContract)}"));
+            Assert.That(probeAdapterSource, Does.Contain("BuildWorkerJobRequestLogFields("));
+            Assert.That(probeAdapterSource, Does.Contain("BuildWorkerJobProgressLogFields("));
+            Assert.That(probeAdapterSource, Does.Contain("BuildWorkerJobResultLogFields("));
+            Assert.That(probeAdapterSource, Does.Contain("BuildWorkerProbeLogFields("));
+        });
+    }
+
+    [Test]
     public void RescueWorkerJobResultログはWorker契約Fieldsを併記する()
     {
         string repoRoot = FindRepoRoot();

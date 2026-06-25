@@ -324,6 +324,35 @@ public sealed class MainWindowSettingsPersistencePolicyTests
     }
 
     [Test]
+    public void PersistenceWriteRequest_BuildLogFieldsはcontract識別子を固定する()
+    {
+        string source = GetRepoText("Persistence", "PersistenceWriteRequest.cs");
+        string buildLogFieldsMethod = ExtractMethod(
+            source,
+            "internal string BuildLogFields()"
+        );
+        string failureMethod = ExtractMethod(
+            source,
+            "internal static PersistenceWriteResult FromFailure("
+        );
+        string successMethod = ExtractMethod(
+            source,
+            "internal static PersistenceWriteResult FromSuccess("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(buildLogFieldsMethod, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(buildLogFieldsMethod, Does.Contain("write_kind="));
+            Assert.That(buildLogFieldsMethod, Does.Contain("write_reason="));
+            Assert.That(buildLogFieldsMethod, Does.Contain("queue_key="));
+            Assert.That(buildLogFieldsMethod, Does.Contain("retryable_policy="));
+            Assert.That(failureMethod, Does.Contain("request.BuildLogFields()"));
+            Assert.That(successMethod, Does.Contain("request.BuildLogFields()"));
+        });
+    }
+
+    [Test]
     public void PersistenceFailureNotificationPolicy_保存失敗の軽量状態と通知条件を共通化する()
     {
         PersistenceFailureNotificationState retryableState =

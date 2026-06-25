@@ -192,6 +192,27 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
     }
 
     [Test]
+    public void WatchUiReloadPolicy_core_route_helperはPhase7契約fieldsを固定する()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
+        string adapterMethod = GetMethodBlock(source, "private void ApplyWatchUiApplyRequest(");
+        string coreLogMethod = GetMethodBlock(
+            source,
+            "internal static string BuildWatchUiApplyCoreRouteLogFields("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(adapterMethod, Does.Contain("BuildWatchUiApplyCoreRouteLogFields(request)"));
+            Assert.That(coreLogMethod, Does.Contain("core_route=watch-ui-apply"));
+            Assert.That(coreLogMethod, Does.Contain("watch_apply_kind="));
+            Assert.That(coreLogMethod, Does.Contain("watch_reason="));
+            Assert.That(coreLogMethod, Does.Contain("operation_reason="));
+            Assert.That(coreLogMethod, Does.Contain("request.WorkRequest.LogReason"));
+        });
+    }
+
+    [Test]
     public void WatchUiReloadPolicy_reload予約はUiWorkRequest語彙を経由してログへ出す()
     {
         string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
