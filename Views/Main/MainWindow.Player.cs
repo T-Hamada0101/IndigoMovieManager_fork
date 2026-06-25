@@ -673,6 +673,7 @@ namespace IndigoMovieManager
             return $"core_route=player-playback "
                 + $"operation_reason={UiOperationPriorityPolicy.OperationReasonPlayerPlayback} "
                 + $"player_surface={ResolvePlayerPlaybackSurfaceLogValue()} "
+                + $"player_surface_ready={FormatLogBool(IsPlayerPlaybackSurfaceReady())} "
                 + $"active={FormatLogBool(isActive)} "
                 + $"reason={reason ?? ""}";
         }
@@ -680,6 +681,17 @@ namespace IndigoMovieManager
         private string ResolvePlayerPlaybackSurfaceLogValue()
         {
             return _isWebViewPlayerActive ? "webview" : "mediaelement";
+        }
+
+        private bool IsPlayerPlaybackSurfaceReady()
+        {
+            // 選択中の surface だけを見て、再生ログ上の準備状態をそろえる。
+            if (_isWebViewPlayerActive)
+            {
+                return uxWebVideoPlayer?.CoreWebView2 != null;
+            }
+
+            return uxVideoPlayer != null;
         }
 
         private void SetPlayerPlaybackActive(bool isActive, string reason = "")

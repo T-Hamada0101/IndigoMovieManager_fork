@@ -756,9 +756,18 @@ public sealed class ManualPlayerResizeHookPolicyTests
                 mainWindowPlayerSource,
                 Does.Contain("player_surface={ResolvePlayerPlaybackSurfaceLogValue()}")
             );
+            Assert.That(
+                mainWindowPlayerSource,
+                Does.Contain("player_surface_ready={FormatLogBool(IsPlayerPlaybackSurfaceReady())}")
+            );
             Assert.That(mainWindowPlayerSource, Does.Contain("active={FormatLogBool(isActive)}"));
             Assert.That(mainWindowPlayerSource, Does.Contain("reason={reason ?? \"\"}"));
             Assert.That(mainWindowPlayerSource, Does.Contain("? \"webview\" : \"mediaelement\""));
+            Assert.That(
+                mainWindowPlayerSource,
+                Does.Contain("return uxWebVideoPlayer?.CoreWebView2 != null;")
+            );
+            Assert.That(mainWindowPlayerSource, Does.Contain("return uxVideoPlayer != null;"));
             Assert.That(mainWindowPlayerSource, Does.Not.Contain("IsPlaying ="));
             Assert.That(upperTabPlayerSource, Does.Not.Contain("IsPlaying ="));
             Assert.That(fullscreenWindowSource, Does.Not.Contain("IsPlaying ="));
