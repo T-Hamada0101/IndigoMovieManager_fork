@@ -161,9 +161,13 @@ namespace IndigoMovieManager
                         refreshRequest,
                         UiWorkRequestPolicy.ReleaseReasonDeferred
                     );
+                string deferredCoreFields = BuildExternalSkinRefreshCoreLogFields(
+                    normalizedReason,
+                    normalizedRequestTraceId
+                );
                 DebugRuntimeLog.Write(
                     "skin-webview",
-                    $"refresh deferred: batch={_externalSkinHostRefreshBatchTraceId} request={normalizedRequestTraceId} depth={_externalSkinHostRefreshBatchDepth} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {deferredSchedulerFields}"
+                    $"refresh deferred: batch={_externalSkinHostRefreshBatchTraceId} request={normalizedRequestTraceId} depth={_externalSkinHostRefreshBatchDepth} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {deferredCoreFields} {deferredSchedulerFields}"
                 );
                 ExternalSkinRefreshDeferredForTesting?.Invoke(
                     _externalSkinHostRefreshBatchTraceId,
@@ -184,11 +188,15 @@ namespace IndigoMovieManager
                     ? UiWorkRequestPolicy.ReleaseReasonAccepted
                     : UiWorkRequestPolicy.ReleaseReasonRejected
             );
+            string queueCoreFields = BuildExternalSkinRefreshCoreLogFields(
+                normalizedReason,
+                normalizedRequestTraceId
+            );
             DebugRuntimeLog.Write(
                 "skin-webview",
                 accepted
-                    ? $"refresh queued: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {queueSchedulerFields}"
-                    : $"refresh queue rejected: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {queueSchedulerFields}"
+                    ? $"refresh queued: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {queueCoreFields} {queueSchedulerFields}"
+                    : $"refresh queue rejected: request={normalizedRequestTraceId} hasScheduler={hasScheduler} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={normalizedReason} {queueCoreFields} {queueSchedulerFields}"
             );
             return accepted;
         }
@@ -244,9 +252,13 @@ namespace IndigoMovieManager
 
             if (!string.IsNullOrWhiteSpace(flushReason))
             {
+                string flushCoreFields = BuildExternalSkinRefreshCoreLogFields(
+                    flushReason,
+                    requestTraceId
+                );
                 DebugRuntimeLog.Write(
                     "skin-webview",
-                    $"refresh batch flush: batch={batchTraceId} request={requestTraceId} reason={flushReason} preferred={preferredReason} batched={batchedReason} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}'"
+                    $"refresh batch flush: batch={batchTraceId} request={requestTraceId} reason={flushReason} preferred={preferredReason} batched={batchedReason} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' {flushCoreFields}"
                 );
                 ExternalSkinRefreshBatchFlushedForTesting?.Invoke(
                     batchTraceId,
@@ -356,9 +368,14 @@ namespace IndigoMovieManager
             ExternalSkinDefinitionRefreshMode definitionRefreshMode =
                 ResolveExternalSkinDefinitionRefreshMode(reason);
             Stopwatch refreshStopwatch = Stopwatch.StartNew();
+            string beginCoreFields = BuildExternalSkinRefreshCoreLogFields(
+                reason,
+                requestTraceId,
+                definitionRefreshMode
+            );
             DebugRuntimeLog.Write(
                 "skin-webview",
-                $"refresh begin: request={requestTraceId} generation={generation} definition_mode={definitionRefreshMode} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={reason}"
+                $"refresh begin: request={requestTraceId} generation={generation} {beginCoreFields} skinRaw='{MainVM?.DbInfo?.Skin ?? ""}' db='{MainVM?.DbInfo?.DBFullPath ?? ""}' reason={reason}"
             );
             WhiteBrowserSkinDefinition externalSkinDefinition = null;
             bool externalSkinActive = false;
@@ -676,6 +693,28 @@ namespace IndigoMovieManager
         internal static string ResolveExternalSkinDefinitionRefreshModeForTesting(string reason)
         {
             return ResolveExternalSkinDefinitionRefreshMode(reason).ToString();
+        }
+
+        private static string BuildExternalSkinRefreshCoreLogFields(
+            string reason,
+            string requestTraceId,
+            ExternalSkinDefinitionRefreshMode? definitionRefreshMode = null
+        )
+        {
+            string normalizedReason = reason ?? "";
+            string normalizedRequestTraceId = requestTraceId ?? "";
+            ExternalSkinDefinitionRefreshMode resolvedDefinitionRefreshMode =
+                definitionRefreshMode ?? ResolveExternalSkinDefinitionRefreshMode(normalizedReason);
+
+            return $"core_route=skin-refresh refresh_reason={normalizedReason} request_trace={normalizedRequestTraceId} definition_mode={resolvedDefinitionRefreshMode}";
+        }
+
+        internal static string BuildExternalSkinRefreshCoreLogFieldsForTesting(
+            string reason,
+            string requestTraceId
+        )
+        {
+            return BuildExternalSkinRefreshCoreLogFields(reason, requestTraceId);
         }
 
         private void ApplyExternalSkinHostVisibility(

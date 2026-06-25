@@ -71,7 +71,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(syncMethod, Does.Contain("GetCachedAvailableSkinDefinitions()"));
             Assert.That(syncMethod, Does.Not.Contain("GetAvailableSkinDefinitions()"));
             Assert.That(refreshMethod, Does.Contain("ResolveExternalSkinDefinitionRefreshMode(reason)"));
-            Assert.That(refreshMethod, Does.Contain("definition_mode="));
+            Assert.That(refreshSource, Does.Contain("definition_mode="));
             Assert.That(refreshMethod, Does.Contain("WriteExternalSkinRefreshEndLog("));
             Assert.That(menuActionSource, Does.Contain("\"header-reload\""));
             Assert.That(source, Does.Contain("\"minimal-chrome-reload\""));
@@ -102,8 +102,50 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(method, Does.Contain("UiWorkRequestPolicy.ReleaseReasonDeferred"));
             Assert.That(method, Does.Contain("UiWorkRequestPolicy.ReleaseReasonAccepted"));
             Assert.That(method, Does.Contain("UiWorkRequestPolicy.ReleaseReasonRejected"));
+            Assert.That(method, Does.Contain("BuildExternalSkinRefreshCoreLogFields("));
             Assert.That(method, Does.Contain("return accepted;"));
             Assert.That(method, Does.Contain("return true;"));
+        });
+    }
+
+    [Test]
+    public void 外部skin_refresh_core接続ログはqueue_begin_batchで同じfieldsを出す()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string helperMethod = GetMethodBlock(
+            source,
+            "private static string BuildExternalSkinRefreshCoreLogFields("
+        );
+        string queueMethod = GetMethodBlock(
+            source,
+            "private bool QueueExternalSkinHostRefresh("
+        );
+        string batchEndMethod = GetMethodBlock(
+            source,
+            "private void EndExternalSkinHostRefreshBatch("
+        );
+        string refreshMethod = GetMethodBlock(
+            source,
+            "private async Task RefreshExternalSkinHostPresentationAsync("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(helperMethod, Does.Contain("core_route=skin-refresh"));
+            Assert.That(helperMethod, Does.Contain("refresh_reason="));
+            Assert.That(helperMethod, Does.Contain("request_trace="));
+            Assert.That(helperMethod, Does.Contain("definition_mode="));
+            Assert.That(queueMethod, Does.Contain("string deferredCoreFields ="));
+            Assert.That(queueMethod, Does.Contain("string queueCoreFields ="));
+            Assert.That(queueMethod, Does.Contain("refresh deferred:"));
+            Assert.That(queueMethod, Does.Contain("refresh queued:"));
+            Assert.That(queueMethod, Does.Contain("refresh queue rejected:"));
+            Assert.That(batchEndMethod, Does.Contain("string flushCoreFields ="));
+            Assert.That(batchEndMethod, Does.Contain("refresh batch flush:"));
+            Assert.That(refreshMethod, Does.Contain("string beginCoreFields ="));
+            Assert.That(refreshMethod, Does.Contain("refresh begin:"));
+            Assert.That(refreshMethod, Does.Contain("request={requestTraceId}"));
+            Assert.That(refreshMethod, Does.Contain("reason={reason}"));
         });
     }
 

@@ -90,6 +90,31 @@ public sealed class MainWindowWebViewSkinIntegrationTests
     }
 
     [Test]
+    public void BuildExternalSkinRefreshCoreLogFieldsForTesting_理由trace定義モードを同じpayloadで返す()
+    {
+        string headerReloadFields = MainWindow.BuildExternalSkinRefreshCoreLogFieldsForTesting(
+            "header-reload",
+            "rq-core-1"
+        );
+        string dbInfoFields = MainWindow.BuildExternalSkinRefreshCoreLogFieldsForTesting(
+            "dbinfo-Skin",
+            "rq-core-2"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(headerReloadFields, Does.Contain("core_route=skin-refresh"));
+            Assert.That(headerReloadFields, Does.Contain("refresh_reason=header-reload"));
+            Assert.That(headerReloadFields, Does.Contain("request_trace=rq-core-1"));
+            Assert.That(headerReloadFields, Does.Contain("definition_mode=CatalogRefresh"));
+            Assert.That(dbInfoFields, Does.Contain("core_route=skin-refresh"));
+            Assert.That(dbInfoFields, Does.Contain("refresh_reason=dbinfo-Skin"));
+            Assert.That(dbInfoFields, Does.Contain("request_trace=rq-core-2"));
+            Assert.That(dbInfoFields, Does.Contain("definition_mode=CachedSnapshot"));
+        });
+    }
+
+    [Test]
     public async Task QueueExternalSkinHostRefresh_teardown後はfalseを返す()
     {
         bool accepted = await RunOnStaDispatcherAsync(async () =>
