@@ -254,6 +254,7 @@ public sealed class UiWorkSchedulerPolicyTests
 
         string logFields = UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, decision);
 
+        AssertSchedulerContractOnce(logFields);
         Assert.That(logFields, Does.Contain("log_reason=test.input"));
         Assert.That(logFields, Does.Contain("release_reason=accepted"));
         Assert.That(logFields, Does.Contain("work_priority=Input"));
@@ -279,6 +280,7 @@ public sealed class UiWorkSchedulerPolicyTests
             replaceDecision
         );
 
+        AssertSchedulerContractOnce(replaceLogFields);
         Assert.That(replaceLogFields, Does.Contain("admission_action=ReplaceLatestOnly"));
         Assert.That(replaceLogFields, Does.Contain("accepted=True"));
         Assert.That(replaceLogFields, Does.Contain("target_index=0"));
@@ -294,6 +296,7 @@ public sealed class UiWorkSchedulerPolicyTests
             rejectDecision
         );
 
+        AssertSchedulerContractOnce(rejectLogFields);
         Assert.That(rejectLogFields, Does.Contain("admission_action=RejectCapacityDisabled"));
         Assert.That(rejectLogFields, Does.Contain("accepted=False"));
         Assert.That(rejectLogFields, Does.Contain("target_index=-1"));
@@ -312,6 +315,7 @@ public sealed class UiWorkSchedulerPolicyTests
 
         string logFields = UiWorkSchedulerPolicy.BuildTimeoutLogFields(decision);
 
+        AssertSchedulerContractOnce(logFields);
         Assert.That(logFields, Does.Contain("release_reason=timeout"));
         Assert.That(logFields, Does.Contain("timeout_policy=watch-ui:500ms"));
         Assert.That(logFields, Does.Contain("timeout_released=true"));
@@ -332,6 +336,7 @@ public sealed class UiWorkSchedulerPolicyTests
 
         string logFields = UiWorkSchedulerPolicy.BuildTimeoutLogFields(decision);
 
+        AssertSchedulerContractOnce(logFields);
         Assert.That(logFields, Does.Contain("release_reason=none"));
         Assert.That(logFields, Does.Contain("timeout_policy=none"));
         Assert.That(logFields, Does.Contain("timeout_released=false"));
@@ -368,6 +373,8 @@ public sealed class UiWorkSchedulerPolicyTests
             pendingCountAfter: -2
         );
 
+        AssertSchedulerContractOnce(logFields);
+        AssertSchedulerContractOnce(clampedLogFields);
         Assert.That(logFields, Does.Contain("log_reason=test.watchreload"));
         Assert.That(logFields, Does.Contain("release_reason=timeout"));
         Assert.That(logFields, Does.Contain("work_priority=WatchReload"));
@@ -398,6 +405,7 @@ public sealed class UiWorkSchedulerPolicyTests
             UiWorkRequestPolicy.ReleaseReasonReleased
         );
 
+        AssertSchedulerContractOnce(logFields);
         Assert.That(logFields, Does.Contain("log_reason=test.watchsmalldiff"));
         Assert.That(logFields, Does.Contain("release_reason=released"));
         Assert.That(logFields, Does.Contain("work_priority=WatchSmallDiff"));
@@ -423,5 +431,32 @@ public sealed class UiWorkSchedulerPolicyTests
             UiWorkRequestPolicy.BoundedDrainCancellationToken,
             timeoutPolicy
         );
+    }
+
+    private static void AssertSchedulerContractOnce(string logFields)
+    {
+        Assert.That(
+            CountOccurrences(logFields, UiWorkSchedulerPolicy.SchedulerContractLogField),
+            Is.EqualTo(1)
+        );
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        int index = 0;
+        while (index < text.Length)
+        {
+            int foundIndex = text.IndexOf(value, index, StringComparison.Ordinal);
+            if (foundIndex < 0)
+            {
+                break;
+            }
+
+            count++;
+            index = foundIndex + value.Length;
+        }
+
+        return count;
     }
 }

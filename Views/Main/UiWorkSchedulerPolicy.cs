@@ -58,6 +58,7 @@ internal static class UiWorkSchedulerPolicy
     internal const string AdmissionReasonNoPending = "no-pending";
     internal const string RejectReasonCapacityDisabled = "capacity-disabled";
     internal const string RejectReasonCapacityFull = "capacity-full";
+    internal const string SchedulerContractLogField = "scheduler_contract=scheduler-v1";
 
     internal static UiWorkSchedulerAdmissionDecision EvaluateAdmission(
         UiWorkRequest request,
@@ -212,7 +213,7 @@ internal static class UiWorkSchedulerPolicy
     )
     {
         return
-            $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, decision.ReleaseReason)} admission_action={decision.Action} accepted={decision.Accepted} target_index={decision.TargetIndex} admission_reason={decision.AdmissionReason} skip_reason={decision.SkipReason} queue_depth_before={decision.QueueDepthBefore} queue_depth_after={decision.QueueDepthAfter} bounded_capacity={decision.BoundedCapacity} queue_capacity={decision.BoundedCapacity} replaced_release_reason={decision.ReplacedReleaseReason}";
+            $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(request, decision.ReleaseReason)} admission_action={decision.Action} accepted={decision.Accepted} target_index={decision.TargetIndex} admission_reason={decision.AdmissionReason} skip_reason={decision.SkipReason} queue_depth_before={decision.QueueDepthBefore} queue_depth_after={decision.QueueDepthAfter} bounded_capacity={decision.BoundedCapacity} queue_capacity={decision.BoundedCapacity} replaced_release_reason={decision.ReplacedReleaseReason} {SchedulerContractLogField}";
     }
 
     internal static string BuildTakeLogFields(
@@ -223,7 +224,7 @@ internal static class UiWorkSchedulerPolicy
     )
     {
         return
-            $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(pendingRequest.Request, releaseReason)} sequence={pendingRequest.Sequence} has_request={decision.HasRequest} next_reason={decision.Reason} selected_index={decision.Index} pending_count_after={Math.Max(0, pendingCountAfter)}";
+            $"{UiWorkRequestPolicy.BuildRequestSchedulerLogFields(pendingRequest.Request, releaseReason)} sequence={pendingRequest.Sequence} has_request={decision.HasRequest} next_reason={decision.Reason} selected_index={decision.Index} pending_count_after={Math.Max(0, pendingCountAfter)} {SchedulerContractLogField}";
     }
 
     internal static string BuildTimeoutLogFields(UiWorkSchedulerTimeoutDecision decision)
@@ -231,7 +232,7 @@ internal static class UiWorkSchedulerPolicy
         string timeoutReleased = decision.ShouldRelease ? "true" : "false";
 
         return
-            $"release_reason={decision.ReleaseReason} timeout_policy={decision.TimeoutPolicy} timeout_released={timeoutReleased} timeout_elapsed_ms={decision.ElapsedMs} timeout_budget_ms={decision.TimeoutMs}";
+            $"release_reason={decision.ReleaseReason} timeout_policy={decision.TimeoutPolicy} timeout_released={timeoutReleased} timeout_elapsed_ms={decision.ElapsedMs} timeout_budget_ms={decision.TimeoutMs} {SchedulerContractLogField}";
     }
 
     internal static string BuildTimeoutReleaseLogFields(
