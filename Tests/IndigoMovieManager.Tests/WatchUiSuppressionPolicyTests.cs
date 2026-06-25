@@ -103,6 +103,10 @@ public sealed class WatchUiSuppressionPolicyTests
             Does.Contain("UiOperationPriorityPolicy.BuildSnapshotLogFields(snapshot)")
         );
         Assert.That(
+            policySource,
+            Does.Contain("internal static string BuildUiShellInputLogMessage(")
+        );
+        Assert.That(
             runtimeSource,
             Does.Contain("private UiOperationSnapshot CaptureUserPriorityOperationSnapshot(")
         );
@@ -256,6 +260,31 @@ public sealed class WatchUiSuppressionPolicyTests
             message,
             Is.EqualTo(
                 "user priority begin: reason=sort is_user_priority_active=true is_manual_mode=false is_watch_ui_suppressed=false is_recent_viewport_active=true is_player_playback_active=false"
+            )
+        );
+    }
+
+    [Test]
+    public void BuildUiShellInputLogMessage_snapshot項目を入力入口ログへ残す()
+    {
+        UiOperationSnapshot snapshot = new(
+            IsUserPriorityActive: false,
+            IsManualMode: false,
+            IsWatchUiSuppressed: true,
+            IsRecentViewportInteractionActive: true,
+            IsPlayerPlaybackActive: false
+        );
+
+        string message = MainWindow.BuildUiShellInputLogMessage(
+            operationReason: "search",
+            triggerReason: "link-search",
+            snapshot: snapshot
+        );
+
+        Assert.That(
+            message,
+            Is.EqualTo(
+                "ui shell input: operation_reason=search trigger_reason=link-search is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=true is_player_playback_active=false"
             )
         );
     }

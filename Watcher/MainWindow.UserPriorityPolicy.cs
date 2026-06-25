@@ -102,6 +102,16 @@ public partial class MainWindow
             $"user priority begin: reason={reason} {UiOperationPriorityPolicy.BuildSnapshotLogFields(snapshot)}";
     }
 
+    internal static string BuildUiShellInputLogMessage(
+        string operationReason,
+        string triggerReason,
+        UiOperationSnapshot snapshot
+    )
+    {
+        return
+            $"ui shell input: operation_reason={operationReason} trigger_reason={triggerReason} {UiOperationPriorityPolicy.BuildSnapshotLogFields(snapshot)}";
+    }
+
     internal static string BuildUserPriorityReleaseLogMessage(
         string beginReason,
         string endReason,

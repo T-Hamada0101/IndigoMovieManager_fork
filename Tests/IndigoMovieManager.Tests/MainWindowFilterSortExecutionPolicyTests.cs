@@ -84,7 +84,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string bookmarkSource = GetRepoText("UserControls", "Bookmark.xaml.cs");
 
         Assert.That(searchSource, Does.Contain("public async Task ApplySearchKeywordFromLinkAsync("));
-        Assert.That(searchSource, Does.Contain("SearchExecutor.ExecuteAsync(keyword ?? \"\", syncSearchText: true)"));
+        Assert.That(searchSource, Does.Contain("ExecuteSearchKeywordAsync(keyword ?? \"\", true, \"link-search\")"));
         Assert.That(searchSource, Does.Contain("if (SearchBox != null && !SearchBox.IsKeyboardFocusWithin)"));
         Assert.That(searchSource, Does.Contain("catch (Exception ex)"));
         Assert.That(searchSource, Does.Contain("link search failed:"));
@@ -308,6 +308,26 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void ExecuteSearchKeywordAsync_検索入口でUiShell入力snapshotをログへ残す()
+    {
+        string searchSource = GetRepoText("Views", "Main", "MainWindow.Search.cs");
+        string method = GetMethodBlock(
+            searchSource,
+            "private async Task<bool> ExecuteSearchKeywordAsync("
+        );
+
+        Assert.That(method, Does.Contain("string triggerReason = \"search\""));
+        Assert.That(method, Does.Contain("CaptureUserPriorityOperationSnapshot("));
+        Assert.That(method, Does.Contain("IsUserPriorityWorkActive()"));
+        Assert.That(method, Does.Contain("BuildUiShellInputLogMessage(\"search\", triggerReason, snapshot)"));
+        Assert.That(method, Does.Contain("return await SearchExecutor.ExecuteAsync(text, syncSearchBoxText);"));
+        Assert.That(
+            method.IndexOf("BuildUiShellInputLogMessage(\"search\", triggerReason, snapshot)", StringComparison.Ordinal),
+            Is.LessThan(method.IndexOf("SearchExecutor.ExecuteAsync(text, syncSearchBoxText)", StringComparison.Ordinal))
+        );
+    }
+
+    [Test]
     public void RefreshMovieViewFromCurrentSourceAsync_後着キャンセルtokenをin_memory再計算へ通す()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
@@ -507,10 +527,20 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
         Assert.That(sortAsync, Does.Contain("sort end: revision="));
         Assert.That(comboChanged, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
+        Assert.That(comboChanged, Does.Contain("BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"));
         Assert.That(comboChanged, Does.Contain("BeginUserPriorityWork(\"sort\");"));
         Assert.That(comboChanged, Does.Contain("await SortDataAsync(plan.SortId);"));
         Assert.That(comboChanged, Does.Contain("finally"));
         Assert.That(comboChanged, Does.Contain("EndUserPriorityWork(\"sort\");"));
+        Assert.That(
+            comboChanged.IndexOf(
+                "BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(
+                comboChanged.IndexOf("BeginUserPriorityWork(\"sort\");", StringComparison.Ordinal)
+            )
+        );
         Assert.That(
             comboChanged.IndexOf("BeginUserPriorityWork(\"sort\");", StringComparison.Ordinal),
             Is.LessThan(
@@ -675,6 +705,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(inputRoutingSource, Does.Contain("TryHandleUpperTabPageScroll(e)"));
         Assert.That(inputRoutingSource, Does.Contain("TryHandleDeleteShortcut(e)"));
         Assert.That(inputRoutingSource, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
+        Assert.That(inputRoutingSource, Does.Contain("BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"));
         Assert.That(inputRoutingSource, Does.Contain("BeginUserPriorityWork(\"sort\");"));
         Assert.That(inputRoutingSource, Does.Contain("EndUserPriorityWork(\"sort\");"));
         Assert.That(inputRoutingSource, Does.Contain("FilterAndSort(plan.SortId, true);"));

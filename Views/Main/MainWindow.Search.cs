@@ -487,8 +487,21 @@ namespace IndigoMovieManager
         }
 
         // 検索 UI が複数になっても、本体検索の入口は 1 つへ寄せる。
-        private async Task<bool> ExecuteSearchKeywordAsync(string text, bool syncSearchBoxText)
+        private async Task<bool> ExecuteSearchKeywordAsync(
+            string text,
+            bool syncSearchBoxText,
+            string triggerReason = "search"
+        )
         {
+            UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
+                IsUserPriorityWorkActive(),
+                isManualMode: false
+            );
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                BuildUiShellInputLogMessage("search", triggerReason, snapshot)
+            );
+
             return await SearchExecutor.ExecuteAsync(text, syncSearchBoxText);
         }
 
@@ -554,7 +567,7 @@ namespace IndigoMovieManager
             // 通常時のDB再読込を避ける。
             try
             {
-                await SearchExecutor.ExecuteAsync(keyword ?? "", syncSearchText: true);
+                await ExecuteSearchKeywordAsync(keyword ?? "", true, "link-search");
                 // 既に検索欄にフォーカスがある時は再要求しない。
                 if (SearchBox != null && !SearchBox.IsKeyboardFocusWithin)
                 {
