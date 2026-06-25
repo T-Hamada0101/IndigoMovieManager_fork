@@ -14,19 +14,21 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                 "startup input ready",
                 "input ui shell input: operation_reason=search",
                 "input ui shell input: operation_reason=sort",
+                "scroll page scroll end:",
                 "player core_route=player-playback",
                 "watch core_route=watch-ui-apply",
                 "image image_contract=image-pipeline-v1",
                 "save persist_contract=persistence-write-v1",
                 "worker worker_contract=worker-job-v1",
+                "thumbnail worker_kind=thumbnail-create",
                 "skin core_route=skin-refresh",
             ]
         );
 
         Assert.Multiple(() =>
         {
-            Assert.That(summary.TotalRequiredCount, Is.EqualTo(10));
-            Assert.That(summary.ObservedCount, Is.EqualTo(10));
+            Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(summary.ObservedCount, Is.EqualTo(12));
             Assert.That(summary.IsComplete, Is.True);
             Assert.That(summary.MissingKeys, Is.Empty);
             Assert.That(
@@ -37,11 +39,13 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                         "startup-input-ready",
                         "search-input",
                         "sort-input",
+                        "scroll-input",
                         "player-core",
                         "watch-core",
                         "image-pipeline",
                         "persistence",
                         "worker",
+                        "thumbnail-worker",
                         "skin-core",
                     ]
                 )
@@ -71,9 +75,11 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                     [
                         "startup-input-ready",
                         "sort-input",
+                        "scroll-input",
                         "player-core",
                         "image-pipeline",
                         "worker",
+                        "thumbnail-worker",
                         "skin-core",
                     ]
                 )
@@ -114,11 +120,13 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                     "startup input ready",
                     "input ui shell input: operation_reason=search",
                     "input ui shell input: operation_reason=sort",
+                    "scroll page scroll end:",
                     "player core_route=player-playback",
                     "watch core_route=watch-ui-apply",
                     "image image_contract=image-pipeline-v1",
                     "save persist_contract=persistence-write-v1",
                     "worker worker_contract=worker-job-v1",
+                    "thumbnail worker_kind=thumbnail-create",
                     "skin core_route=skin-refresh",
                 ]
             );
@@ -134,12 +142,12 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(
                 completeSummary.BuildSummaryText(),
-                Is.EqualTo("phase0_log_evidence=10/10 missing=none")
+                Is.EqualTo("phase0_log_evidence=12/12 missing=none")
             );
             Assert.That(
                 missingSummary.BuildSummaryText(),
                 Is.EqualTo(
-                    "phase0_log_evidence=2/10 missing=startup-input-ready,search-input,sort-input,player-core,image-pipeline,persistence,worker,skin-core"
+                    "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core"
                 )
             );
         });

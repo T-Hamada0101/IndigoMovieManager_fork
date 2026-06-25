@@ -14,11 +14,13 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         new("startup-input-ready", "input ready"),
         new("search-input", "ui shell input: operation_reason=search"),
         new("sort-input", "ui shell input: operation_reason=sort"),
+        new("scroll-input", "page scroll end:"),
         new("player-core", "core_route=player-playback"),
         new("watch-core", "core_route=watch-ui-apply"),
         new("image-pipeline", "image_contract=image-pipeline-v1"),
         new("persistence", "persist_contract=persistence-write-v1"),
         new("worker", "worker_contract=worker-job-v1"),
+        new("thumbnail-worker", "worker_kind=thumbnail-create"),
         new("skin-core", "core_route=skin-refresh"),
     ];
 
