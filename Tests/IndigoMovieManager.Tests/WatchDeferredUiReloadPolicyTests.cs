@@ -625,7 +625,7 @@ public sealed class WatchDeferredUiReloadPolicyTests
         MainWindow.WatchChangedMovie[] changedMovies =
         [
             new(
-                @"E:\Movies\sample.mp4",
+                "sample.mp4",
                 MainWindow.WatchMovieChangeKind.ViewRepaired,
                 MainWindow.WatchMovieDirtyFields.None
             ),
@@ -653,6 +653,15 @@ public sealed class WatchDeferredUiReloadPolicyTests
             );
             Assert.That(result.ChangedMovies, Is.SameAs(changedMovies));
             Assert.That(result.ChangedMovieCount, Is.EqualTo(1));
+            Assert.That(
+                MainWindow.BuildWatchUiApplyChangeSetLogFields(
+                    result.ChangedMovies,
+                    result.ChangedMovieCount
+                ),
+                Is.EqualTo(
+                    "changed_paths=1 source_changed_paths=1 applied_changed_paths=1 diff_change_set=single"
+                )
+            );
             Assert.That(result.DiffApplyPlan.IsDiffApplyCandidate, Is.True);
             Assert.That(result.DiffApplyPlan.ApplyKindLogValue, Is.EqualTo("diff-apply"));
             Assert.That(
@@ -694,12 +703,55 @@ public sealed class WatchDeferredUiReloadPolicyTests
             );
             Assert.That(result.ChangedMovies, Is.Empty);
             Assert.That(result.ChangedMovieCount, Is.EqualTo(1));
+            Assert.That(
+                MainWindow.BuildWatchUiApplyChangeSetLogFields(
+                    result.ChangedMovies,
+                    result.ChangedMovieCount
+                ),
+                Is.EqualTo(
+                    "changed_paths=0 source_changed_paths=1 applied_changed_paths=0 diff_change_set=single"
+                )
+            );
             Assert.That(result.DiffApplyPlan.IsDiffApplyCandidate, Is.False);
             Assert.That(result.DiffApplyPlan.ApplyKindLogValue, Is.EqualTo("full-fallback"));
             Assert.That(
                 result.DiffApplyPlan.FullFallbackReason,
                 Is.EqualTo(MovieViewDiffFactory.FallbackReasonUnsafe)
             );
+        });
+    }
+
+    [TestCase(0, "none")]
+    [TestCase(1, "single")]
+    [TestCase(2, "multiple")]
+    public void BuildWatchUiApplyChangeSetLogFields_source件数でchangeSet規模を返す(
+        int sourceChangedMovieCount,
+        string expectedChangeSet
+    )
+    {
+        MainWindow.WatchChangedMovie[] appliedChangedMovies =
+        [
+            new(
+                @"E:\Movies\sample.mp4",
+                MainWindow.WatchMovieChangeKind.ViewRepaired,
+                MainWindow.WatchMovieDirtyFields.None
+            ),
+        ];
+
+        string result = MainWindow.BuildWatchUiApplyChangeSetLogFields(
+            sourceChangedMovieCount < 1
+                ? System.Array.Empty<MainWindow.WatchChangedMovie>()
+                : appliedChangedMovies,
+            sourceChangedMovieCount
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                result,
+                Does.Contain($"source_changed_paths={sourceChangedMovieCount}")
+            );
+            Assert.That(result, Does.Contain($"diff_change_set={expectedChangeSet}"));
         });
     }
 

@@ -848,6 +848,27 @@ namespace IndigoMovieManager
             return $"{UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, releaseReason)} operation_reason={request.LogReason}";
         }
 
+        // source と実適用の件数を分け、full fallback でも元の差分規模を読めるようにする。
+        internal static string BuildWatchUiApplyChangeSetLogFields(
+            IReadOnlyList<WatchChangedMovie> appliedChangedMovies,
+            int sourceChangedMovieCount
+        )
+        {
+            int appliedChangedMovieCount = appliedChangedMovies?.Count ?? 0;
+            int safeSourceChangedMovieCount = Math.Max(sourceChangedMovieCount, 0);
+            return $"changed_paths={appliedChangedMovieCount} source_changed_paths={safeSourceChangedMovieCount} applied_changed_paths={appliedChangedMovieCount} diff_change_set={ResolveWatchUiDiffChangeSetLogValue(safeSourceChangedMovieCount)}";
+        }
+
+        private static string ResolveWatchUiDiffChangeSetLogValue(int sourceChangedMovieCount)
+        {
+            if (sourceChangedMovieCount < 1)
+            {
+                return "none";
+            }
+
+            return sourceChangedMovieCount == 1 ? "single" : "multiple";
+        }
+
         // watch の query-only は、DB再読込へ戻さず in-memory 一覧から再計算する。
         private void InvokeWatchUiReload(
             string sort,
@@ -933,7 +954,7 @@ namespace IndigoMovieManager
         {
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"watch ui apply request: kind={request.Kind} sort={request.Sort} reason={request.Reason} changed_paths={request.ChangedMovies?.Count ?? 0} source_changed_paths={request.ChangedMovieCount} {MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(request.DiffApplyPlan)}"
+                $"watch ui apply request: kind={request.Kind} sort={request.Sort} reason={request.Reason} {BuildWatchUiApplyChangeSetLogFields(request.ChangedMovies, request.ChangedMovieCount)} {MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(request.DiffApplyPlan)}"
             );
 
             if (request.Kind == WatchUiApplyRequestKind.FullFallbackReload)

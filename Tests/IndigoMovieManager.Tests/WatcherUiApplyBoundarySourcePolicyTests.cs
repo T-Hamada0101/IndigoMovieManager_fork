@@ -119,6 +119,12 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         Assert.That(adapterMethod, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
         Assert.That(
             adapterMethod,
+            Does.Contain(
+                "BuildWatchUiApplyChangeSetLogFields(request.ChangedMovies, request.ChangedMovieCount)"
+            )
+        );
+        Assert.That(
+            adapterMethod,
             Does.Contain("MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(request.DiffApplyPlan)")
         );
         Assert.That(filterMethod, Does.Contain("FilterAndSort(sort, isGetNew);"));
@@ -140,6 +146,8 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         Assert.That(source, Does.Contain("UiWorkRequest WorkRequest"));
         Assert.That(source, Does.Contain("MovieViewDiffApplyPlan DiffApplyPlan"));
         Assert.That(source, Does.Contain("int ChangedMovieCount"));
+        Assert.That(source, Does.Contain("applied_changed_paths="));
+        Assert.That(source, Does.Contain("diff_change_set="));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.InMemoryReadModelRefresh"));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.FullFallbackReload"));
         Assert.That(
