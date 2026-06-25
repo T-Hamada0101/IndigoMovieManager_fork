@@ -31,24 +31,57 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         }
 
         string[] lines = ReadAllLinesAllowingWriter(logPath);
-        DebugRuntimeLogAuditSummary auditSummary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines);
-
-        if (lines.Length == 0 || lines.All(string.IsNullOrWhiteSpace))
-        {
-            FailWithSummary($"ログファイルが空です: {logPath}", auditSummary);
-        }
-
-        if (!auditSummary.RunWindow.HasTimestamp)
-        {
-            FailWithSummary($"最新runのtimestampを確認できません: {logPath}", auditSummary);
-        }
-
-        if (!auditSummary.Phase0Evidence.IsComplete)
-        {
-            FailWithSummary($"Phase0 evidence がまだ揃っていません: {logPath}", auditSummary);
-        }
+        DebugRuntimeLogAuditSummary auditSummary = AssertLiveAuditIsComplete(logPath, lines);
 
         TestContext.Out.WriteLine(auditSummary.BuildSummaryText());
+    }
+
+    [Test]
+    public void 合成ログでもcontract_evidence不足はsummary付きで失敗する()
+    {
+        string logPath = "%LOCALAPPDATA%\\IndigoMovieManager\\logs\\debug-runtime.log";
+        string[] lines = BuildSequencedLines(
+            [
+                "startup first-page shown",
+                "startup input ready",
+                "ui shell input: operation_reason=search ui_shell_contract=ui-shell-v1",
+                "ui shell input: operation_reason=sort",
+                "page scroll end:",
+                "image image_contract=image-pipeline-v1",
+                "save persist_contract=persistence-write-v1",
+                "worker worker_contract=worker-job-v1",
+                "thumbnail worker_kind=thumbnail-create",
+                "skin core_route=skin-refresh",
+                "player core_route=player-playback",
+                "watch core_route=watch-ui-apply",
+            ]
+        );
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines);
+
+        NUnit.Framework.AssertionException? ex = Assert.Throws<NUnit.Framework.AssertionException>(
+            () => AssertLiveAuditIsComplete(logPath, lines)
+        );
+
+        Assert.That(ex?.Message, Does.Contain("contract evidence"));
+        Assert.That(ex?.Message, Does.Contain(logPath));
+        Assert.That(ex?.Message, Does.Contain(summary.BuildSummaryText()));
+    }
+
+    [Test]
+    public void 合成ログでcontractとPhase0の全tokenが揃う時は失敗しない()
+    {
+        string[] lines = BuildSequencedLines(AllEvidenceMessages());
+
+        DebugRuntimeLogAuditSummary summary = AssertLiveAuditIsComplete(
+            "%LOCALAPPDATA%\\IndigoMovieManager\\logs\\debug-runtime.log",
+            lines
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.ContractEvidence.IsComplete, Is.True);
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
+        });
     }
 
     private static string ResolveLogPath()
@@ -91,6 +124,37 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         return lines.ToArray();
     }
 
+    private static DebugRuntimeLogAuditSummary AssertLiveAuditIsComplete(
+        string logPath,
+        IReadOnlyCollection<string> lines
+    )
+    {
+        DebugRuntimeLogAuditSummary auditSummary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines);
+
+        // live監査の完了条件をここへ集め、opt-in実行と合成ログテストで同じ順に検査する。
+        if (lines.Count == 0 || lines.All(string.IsNullOrWhiteSpace))
+        {
+            FailWithSummary($"ログファイルが空です: {logPath}", auditSummary);
+        }
+
+        if (!auditSummary.RunWindow.HasTimestamp)
+        {
+            FailWithSummary($"最新runのtimestampを確認できません: {logPath}", auditSummary);
+        }
+
+        if (!auditSummary.ContractEvidence.IsComplete)
+        {
+            FailWithSummary($"contract evidence がまだ揃っていません: {logPath}", auditSummary);
+        }
+
+        if (!auditSummary.Phase0Evidence.IsComplete)
+        {
+            FailWithSummary($"Phase0 evidence がまだ揃っていません: {logPath}", auditSummary);
+        }
+
+        return auditSummary;
+    }
+
     private static void FailWithSummary(string reason, DebugRuntimeLogAuditSummary summary)
     {
         Assert.Fail(
@@ -100,6 +164,42 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
                 "実機操作で同一 Release run の search / sort / scroll / Player / watch / thumbnail / skin を採取してから再実行してください。",
                 summary.BuildSummaryText()
             )
+        );
+    }
+
+    private static string[] BuildSequencedLines(IReadOnlyList<string> messages)
+    {
+        return messages.Select((message, index) => BuildLine(index + 1, message)).ToArray();
+    }
+
+    private static string[] AllEvidenceMessages()
+    {
+        return
+        [
+            "startup first-page shown",
+            "startup input ready",
+            "input ui shell input: operation_reason=search ui_shell_contract=ui-shell-v1",
+            "input ui shell input: operation_reason=sort",
+            "scroll page scroll end:",
+            "apply diff_contract=readmodel-diff-v1",
+            "queue scheduler_contract=scheduler-v1",
+            "image image_contract=image-pipeline-v1",
+            "save persist_contract=persistence-write-v1",
+            "worker worker_contract=worker-job-v1",
+            "thumbnail worker_kind=thumbnail-create",
+            "skin core_route=skin-refresh",
+            "player core_route=player-playback",
+            "watch core_route=watch-ui-apply",
+        ];
+    }
+
+    private static string BuildLine(long sequence, string message)
+    {
+        return DebugRuntimeLog.BuildLineForTesting(
+            new DateTime(2026, 6, 25, 10, 0, 0).AddMilliseconds(sequence),
+            "ui-tempo",
+            message,
+            sequence
         );
     }
 }
