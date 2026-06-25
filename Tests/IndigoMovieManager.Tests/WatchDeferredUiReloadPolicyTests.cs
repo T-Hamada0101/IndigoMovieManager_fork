@@ -721,6 +721,59 @@ public sealed class WatchDeferredUiReloadPolicyTests
         });
     }
 
+    [Test]
+    public void BuildWatchUiApplyCoreRouteLogFields_queryOnlyのCore接続語彙を返す()
+    {
+        MainWindow.WatchUiApplyRequest request = MainWindow.BuildWatchUiApplyRequest(
+            "28",
+            useQueryOnlyReload: true,
+            "deferred:watch-test",
+            [
+                new MainWindow.WatchChangedMovie(
+                    "sample.mp4",
+                    MainWindow.WatchMovieChangeKind.ViewRepaired,
+                    MainWindow.WatchMovieDirtyFields.None
+                ),
+            ]
+        );
+
+        string result = MainWindow.BuildWatchUiApplyCoreRouteLogFields(request);
+
+        Assert.That(
+            result,
+            Is.EqualTo(
+                $"core_route=watch-ui-apply watch_apply_kind=in-memory-read-model-refresh watch_reason=deferred:watch-test operation_reason={UiWorkRequestPolicy.WatchUiReloadQueryOnlyLogReason}"
+            )
+        );
+    }
+
+    [Test]
+    public void BuildWatchUiApplyCoreRouteLogFields_fullFallbackのCore接続語彙を返す()
+    {
+        MainWindow.WatchUiApplyRequest request = MainWindow.BuildWatchUiApplyRequest(
+            "12",
+            useQueryOnlyReload: false,
+            "",
+            [
+                new MainWindow.WatchChangedMovie(
+                    @"E:\Movies\sample.mp4",
+                    MainWindow.WatchMovieChangeKind.SourceInserted,
+                    MainWindow.WatchMovieDirtyFields.MovieName
+                ),
+            ],
+            "dirty-fields-unsafe:MovieName"
+        );
+
+        string result = MainWindow.BuildWatchUiApplyCoreRouteLogFields(request);
+
+        Assert.That(
+            result,
+            Is.EqualTo(
+                $"core_route=watch-ui-apply watch_apply_kind=full-fallback-reload watch_reason=watch operation_reason={UiWorkRequestPolicy.WatchUiReloadFullFallbackLogReason}"
+            )
+        );
+    }
+
     [TestCase(0, "none")]
     [TestCase(1, "single")]
     [TestCase(2, "multiple")]

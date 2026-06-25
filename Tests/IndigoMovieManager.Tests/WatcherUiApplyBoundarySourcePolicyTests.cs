@@ -115,6 +115,10 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
             admissionMethod,
             Does.Contain("WorkRequest = takeResult.PendingRequest.Request")
         );
+        Assert.That(
+            adapterMethod,
+            Does.Contain("BuildWatchUiApplyCoreRouteLogFields(request)")
+        );
         Assert.That(adapterMethod, Does.Contain("InvokeFilterAndSortForWatch(request.Sort, true);"));
         Assert.That(adapterMethod, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
         Assert.That(
@@ -148,6 +152,9 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         Assert.That(source, Does.Contain("int ChangedMovieCount"));
         Assert.That(source, Does.Contain("applied_changed_paths="));
         Assert.That(source, Does.Contain("diff_change_set="));
+        Assert.That(source, Does.Contain("core_route=watch-ui-apply"));
+        Assert.That(source, Does.Contain("watch_apply_kind="));
+        Assert.That(source, Does.Contain("watch_reason="));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.InMemoryReadModelRefresh"));
         Assert.That(buildMethod, Does.Contain("WatchUiApplyRequestKind.FullFallbackReload"));
         Assert.That(
@@ -160,6 +167,27 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
             Does.Contain("MovieViewDiffApplyPolicy.ResolveWatchUiApplyCandidate(")
         );
         Assert.That(buildMethod, Does.Contain("useQueryOnlyReload ? (changedMovies ?? []) : []"));
+    }
+
+    [Test]
+    public void WatchUiReloadPolicy_applyログはCore接続語彙を経由する()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
+        string adapterMethod = GetMethodBlock(source, "private void ApplyWatchUiApplyRequest(");
+        string coreLogMethod = GetMethodBlock(
+            source,
+            "internal static string BuildWatchUiApplyCoreRouteLogFields("
+        );
+
+        Assert.That(
+            adapterMethod,
+            Does.Contain("BuildWatchUiApplyCoreRouteLogFields(request)")
+        );
+        Assert.That(coreLogMethod, Does.Contain("core_route=watch-ui-apply"));
+        Assert.That(coreLogMethod, Does.Contain("watch_apply_kind="));
+        Assert.That(coreLogMethod, Does.Contain("watch_reason="));
+        Assert.That(coreLogMethod, Does.Contain("operation_reason="));
+        Assert.That(coreLogMethod, Does.Contain("request.WorkRequest.LogReason"));
     }
 
     [Test]

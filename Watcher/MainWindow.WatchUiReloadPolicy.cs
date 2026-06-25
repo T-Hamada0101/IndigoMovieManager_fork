@@ -869,6 +869,23 @@ namespace IndigoMovieManager
             return sourceChangedMovieCount == 1 ? "single" : "multiple";
         }
 
+        // Watcher 側の apply 入口を Core 接続語彙へ写し、実行経路の切り分けだけをログへ足す。
+        internal static string BuildWatchUiApplyCoreRouteLogFields(WatchUiApplyRequest request)
+        {
+            string watchApplyKind =
+                request.Kind == WatchUiApplyRequestKind.FullFallbackReload
+                    ? "full-fallback-reload"
+                    : "in-memory-read-model-refresh";
+            string watchReason = string.IsNullOrWhiteSpace(request.Reason)
+                ? "watch"
+                : request.Reason;
+            string operationReason = string.IsNullOrWhiteSpace(request.WorkRequest.LogReason)
+                ? "unknown"
+                : request.WorkRequest.LogReason;
+
+            return $"core_route=watch-ui-apply watch_apply_kind={watchApplyKind} watch_reason={watchReason} operation_reason={operationReason}";
+        }
+
         // watch の query-only は、DB再読込へ戻さず in-memory 一覧から再計算する。
         private void InvokeWatchUiReload(
             string sort,
@@ -954,7 +971,7 @@ namespace IndigoMovieManager
         {
             DebugRuntimeLog.Write(
                 "watch-check",
-                $"watch ui apply request: kind={request.Kind} sort={request.Sort} reason={request.Reason} {BuildWatchUiApplyChangeSetLogFields(request.ChangedMovies, request.ChangedMovieCount)} {MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(request.DiffApplyPlan)}"
+                $"watch ui apply request: {BuildWatchUiApplyCoreRouteLogFields(request)} kind={request.Kind} sort={request.Sort} reason={request.Reason} {BuildWatchUiApplyChangeSetLogFields(request.ChangedMovies, request.ChangedMovieCount)} {MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(request.DiffApplyPlan)}"
             );
 
             if (request.Kind == WatchUiApplyRequestKind.FullFallbackReload)
