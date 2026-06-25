@@ -314,6 +314,27 @@ public sealed class UiWorkSchedulerPolicyTests
 
         Assert.That(logFields, Does.Contain("release_reason=timeout"));
         Assert.That(logFields, Does.Contain("timeout_policy=watch-ui:500ms"));
+        Assert.That(logFields, Does.Contain("timeout_released=true"));
+        Assert.That(logFields, Does.Contain("timeout_elapsed_ms=750"));
+        Assert.That(logFields, Does.Contain("timeout_budget_ms=500"));
+    }
+
+    [Test]
+    public void BuildTimeoutLogFields_timeout未解放をfalseで出す()
+    {
+        UiWorkSchedulerTimeoutDecision decision = new(
+            ShouldRelease: false,
+            ReleaseReason: UiWorkRequestPolicy.AcceptReasonNone,
+            TimeoutPolicy: UiWorkRequestPolicy.TimeoutPolicyNone,
+            ElapsedMs: 750,
+            TimeoutMs: 500
+        );
+
+        string logFields = UiWorkSchedulerPolicy.BuildTimeoutLogFields(decision);
+
+        Assert.That(logFields, Does.Contain("release_reason=none"));
+        Assert.That(logFields, Does.Contain("timeout_policy=none"));
+        Assert.That(logFields, Does.Contain("timeout_released=false"));
         Assert.That(logFields, Does.Contain("timeout_elapsed_ms=750"));
         Assert.That(logFields, Does.Contain("timeout_budget_ms=500"));
     }

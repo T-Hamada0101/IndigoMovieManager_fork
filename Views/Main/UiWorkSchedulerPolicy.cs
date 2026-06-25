@@ -228,8 +228,10 @@ internal static class UiWorkSchedulerPolicy
 
     internal static string BuildTimeoutLogFields(UiWorkSchedulerTimeoutDecision decision)
     {
+        string timeoutReleased = decision.ShouldRelease ? "true" : "false";
+
         return
-            $"release_reason={decision.ReleaseReason} timeout_policy={decision.TimeoutPolicy} timeout_elapsed_ms={decision.ElapsedMs} timeout_budget_ms={decision.TimeoutMs}";
+            $"release_reason={decision.ReleaseReason} timeout_policy={decision.TimeoutPolicy} timeout_released={timeoutReleased} timeout_elapsed_ms={decision.ElapsedMs} timeout_budget_ms={decision.TimeoutMs}";
     }
 
     private static UiWorkSchedulerAdmissionDecision AcceptReplacement(
