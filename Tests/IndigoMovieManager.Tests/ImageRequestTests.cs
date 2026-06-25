@@ -369,6 +369,7 @@ public sealed class ImageRequestTests
             Assert.That(canceled.OutcomeLogValue, Is.EqualTo("canceled"));
             Assert.That(failed.OutcomeLogValue, Is.EqualTo("failed"));
             Assert.That(readyLog, Does.Contain("image_role=ExtensionDetail"));
+            Assert.That(readyLog, Does.Contain("image_key=movie-key"));
             Assert.That(readyLog, Does.Contain("visible_priority=true"));
             Assert.That(readyLog, Does.Contain("image_cache_policy=UseConverterCache"));
             Assert.That(readyLog, Does.Contain("should_decode=true"));
@@ -449,6 +450,7 @@ public sealed class ImageRequestTests
             Assert.That(decodeResult.DecodeElapsedMilliseconds, Is.EqualTo(12));
             Assert.That(decodeResult.CacheHit, Is.True);
             Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.sync-decode"));
+            Assert.That(logFields, Does.Contain("image_key=movie-key"));
             Assert.That(logFields, Does.Contain("visible_priority=true"));
             Assert.That(logFields, Does.Contain("image_cache_policy=UseConverterCache"));
             Assert.That(logFields, Does.Contain("should_decode=true"));
@@ -494,6 +496,7 @@ public sealed class ImageRequestTests
             Assert.That(planResult.DecodeResult.CacheHit, Is.False);
             Assert.That(planResult.DecodeAttempted, Is.False);
             Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.aggregate-decode-plan"));
+            Assert.That(logFields, Does.Contain("image_key=movie-key"));
             Assert.That(logFields, Does.Contain("visible_priority=true"));
             Assert.That(logFields, Does.Contain("image_cache_policy=UseConverterCache"));
             Assert.That(logFields, Does.Contain("should_decode=true"));

@@ -353,7 +353,7 @@ namespace IndigoMovieManager.UpperTabs.Common
         internal static string Build(ImageDecodeRequest request, ImageDecodeResult result)
         {
             return
-                $"image_log_reason={request.LogReason ?? ""} image_role={request.ImageRequest.ThumbnailRole} image_request_revision={request.RequestRevision} visible_priority={FormatLogBool(request.ImageRequest.IsVisiblePriority)} image_cache_policy={request.ImageRequest.CachePolicy} should_decode={FormatLogBool(request.ImageRequest.ShouldDecode)} decode_pixel_height={request.DecodePixelHeight} decode_elapsed_ms={result.DecodeElapsedMilliseconds} cache_hit={FormatLogBool(result.CacheHit)} image_outcome={result.ImageLoadResult.OutcomeLogValue}";
+                $"image_log_reason={request.LogReason ?? ""} image_role={request.ImageRequest.ThumbnailRole} image_request_revision={request.RequestRevision} image_key={request.ImageRequest.MoviePathKey ?? ""} visible_priority={FormatLogBool(request.ImageRequest.IsVisiblePriority)} image_cache_policy={request.ImageRequest.CachePolicy} should_decode={FormatLogBool(request.ImageRequest.ShouldDecode)} decode_pixel_height={request.DecodePixelHeight} decode_elapsed_ms={result.DecodeElapsedMilliseconds} cache_hit={FormatLogBool(result.CacheHit)} image_outcome={result.ImageLoadResult.OutcomeLogValue}";
         }
 
         private static string FormatLogBool(bool value)
@@ -381,7 +381,7 @@ namespace IndigoMovieManager.UpperTabs.Common
         internal static string Build(ImageLoadResult result)
         {
             return
-                $"image_role={result.ImageRequest.ThumbnailRole} image_request_revision={result.ImageRequest.RequestRevision} visible_priority={FormatLogBool(result.ImageRequest.IsVisiblePriority)} image_cache_policy={result.ImageRequest.CachePolicy} should_decode={FormatLogBool(result.ImageRequest.ShouldDecode)} {BuildStateSuffixCore(result, includeOutcome: true)}";
+                $"image_role={result.ImageRequest.ThumbnailRole} image_request_revision={result.ImageRequest.RequestRevision} image_key={result.ImageRequest.MoviePathKey ?? ""} visible_priority={FormatLogBool(result.ImageRequest.IsVisiblePriority)} image_cache_policy={result.ImageRequest.CachePolicy} should_decode={FormatLogBool(result.ImageRequest.ShouldDecode)} {BuildStateSuffixCore(result, includeOutcome: true)}";
         }
 
         internal static string BuildStateSuffix(ImageLoadResult result)
