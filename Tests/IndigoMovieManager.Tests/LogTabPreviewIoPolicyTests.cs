@@ -17,6 +17,11 @@ public sealed class LogTabPreviewIoPolicyTests
             source,
             "private static LogPreviewSnapshot LoadLogPreviewSnapshot("
         );
+        string readMethod = ExtractMethod(source, "private static string ReadLogPreview(");
+        string summaryMethod = ExtractMethod(
+            source,
+            "private static string BuildLogPreviewTextWithSummary("
+        );
 
         Assert.That(refreshMethod, Does.Contain("Task.Run("));
         Assert.That(refreshMethod, Does.Contain("LoadLogPreviewSnapshot("));
@@ -24,10 +29,21 @@ public sealed class LogTabPreviewIoPolicyTests
         Assert.That(refreshMethod, Does.Not.Contain("File.Exists("));
         Assert.That(refreshMethod, Does.Not.Contain("File.GetLastWriteTimeUtc("));
         Assert.That(refreshMethod, Does.Not.Contain("ReadLogPreview("));
+        Assert.That(refreshMethod, Does.Not.Contain("DebugRuntimeLogRunSlicePolicy"));
+        Assert.That(refreshMethod, Does.Not.Contain("DebugRuntimeLogEvidencePolicy"));
+        Assert.That(refreshMethod, Does.Not.Contain("DebugRuntimeLogPhase0EvidencePolicy"));
 
         Assert.That(loadMethod, Does.Contain("File.Exists("));
         Assert.That(loadMethod, Does.Contain("File.GetLastWriteTimeUtc("));
         Assert.That(loadMethod, Does.Contain("ReadLogPreview(logPath)"));
+
+        Assert.That(readMethod, Does.Contain("BuildLogPreviewTextWithSummary(text)"));
+        Assert.That(summaryMethod, Does.Contain("DebugRuntimeLogRunSlicePolicy.SliceLatestRun(lines)"));
+        Assert.That(summaryMethod, Does.Contain("DebugRuntimeLogEvidencePolicy.Evaluate(latestRunLines)"));
+        Assert.That(
+            summaryMethod,
+            Does.Contain("DebugRuntimeLogPhase0EvidencePolicy.Evaluate(latestRunLines)")
+        );
     }
 
     private static string GetRepoText(params string[] relativePathParts)

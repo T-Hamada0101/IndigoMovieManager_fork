@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using AvalonDock.Layout;
 using IndigoMovieManager.BottomTabs.Log;
+using IndigoMovieManager.Infrastructure;
 
 namespace IndigoMovieManager
 {
@@ -352,12 +354,33 @@ namespace IndigoMovieManager
 
                 return string.IsNullOrWhiteSpace(text)
                     ? "debug-runtime.log は空です。"
-                    : text;
+                    : BuildLogPreviewTextWithSummary(text);
             }
             catch (Exception ex)
             {
                 return $"debug-runtime.log の読込に失敗しました: {ex.Message}";
             }
+        }
+
+        private static string BuildLogPreviewTextWithSummary(string text)
+        {
+            string[] lines = text
+                .Split('\n')
+                .Select(line => line.TrimEnd('\r'))
+                .ToArray();
+            DebugRuntimeLogRunSliceResult latestRun =
+                DebugRuntimeLogRunSlicePolicy.SliceLatestRun(lines);
+            string[] latestRunLines = latestRun.Lines.ToArray();
+
+            // 採取済み末尾ログだけから、今のrunと証跡の要約を先頭へ薄く添える。
+            string summaryText = string.Join(
+                Environment.NewLine,
+                latestRun.BuildSummaryText(),
+                DebugRuntimeLogEvidencePolicy.Evaluate(latestRunLines).BuildSummaryText(),
+                DebugRuntimeLogPhase0EvidencePolicy.Evaluate(latestRunLines).BuildSummaryText()
+            );
+
+            return string.Join(Environment.NewLine, summaryText, "", text);
         }
     }
 }
