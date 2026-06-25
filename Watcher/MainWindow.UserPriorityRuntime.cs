@@ -32,7 +32,14 @@ namespace IndigoMovieManager
 
             if (activated)
             {
-                DebugRuntimeLog.Write("ui-priority", $"user priority begin: reason={reason}");
+                UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
+                    isUserPriorityActive: true,
+                    isManualMode: false
+                );
+                DebugRuntimeLog.Write(
+                    "ui-priority",
+                    BuildUserPriorityBeginLogMessage(reason, snapshot)
+                );
             }
         }
 
@@ -84,6 +91,10 @@ namespace IndigoMovieManager
                     endedUtc,
                     ResolveUserPriorityTimeout()
                 );
+                UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
+                    isUserPriorityActive: false,
+                    isManualMode: false
+                );
                 DebugRuntimeLog.Write(
                     "ui-priority",
                     BuildUserPriorityReleaseLogMessage(
@@ -91,7 +102,8 @@ namespace IndigoMovieManager
                         reason,
                         elapsedMilliseconds,
                         releaseReason,
-                        hasDeferredWatchWork
+                        hasDeferredWatchWork,
+                        snapshot
                     )
                 );
             }
@@ -117,6 +129,21 @@ namespace IndigoMovieManager
             {
                 return _userPriorityWorkCount > 0;
             }
+        }
+
+        // ログ用の軽い状態を snapshot に畳み、user-priority 入口の語彙を UI Shell 側へ寄せる。
+        private UiOperationSnapshot CaptureUserPriorityOperationSnapshot(
+            bool isUserPriorityActive,
+            bool isManualMode
+        )
+        {
+            return CreateUserPriorityOperationSnapshot(
+                isUserPriorityActive,
+                isManualMode,
+                isWatchUiSuppressed: _watchUiSuppressionSync != null && IsWatchSuppressedByUi(),
+                isRecentViewportInteractionActive: IsRecentViewportInteractionActive(),
+                isPlayerPlaybackActive: IsPlayerPlaybackActive()
+            );
         }
 
         // user-priority の解除と defer 記録を同じロック順に寄せ、解除境界の catch-up 取りこぼしを防ぐ。
@@ -175,9 +202,11 @@ namespace IndigoMovieManager
         // 現在の mode で背後処理を後ろへ逃がすべきかを、runtime 状態込みでまとめる。
         private bool ShouldDeferCurrentBackgroundWork(CheckMode mode)
         {
-            return ShouldDeferBackgroundWorkForUserPriority(
-                IsUserPriorityWorkActive(),
-                mode == CheckMode.Manual
+            return UiOperationPriorityPolicy.ShouldDeferBackgroundWork(
+                CaptureUserPriorityOperationSnapshot(
+                    IsUserPriorityWorkActive(),
+                    mode == CheckMode.Manual
+                )
             );
         }
     }

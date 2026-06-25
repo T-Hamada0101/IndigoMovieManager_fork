@@ -29,6 +29,27 @@ public sealed class UiOperationPriorityPolicyTests
     }
 
     [Test]
+    public void BuildSnapshotLogFields_UI入力状態を共通ログ語彙で返す()
+    {
+        UiOperationSnapshot snapshot = new(
+            IsUserPriorityActive: true,
+            IsManualMode: false,
+            IsWatchUiSuppressed: true,
+            IsRecentViewportInteractionActive: false,
+            IsPlayerPlaybackActive: true
+        );
+
+        string fields = UiOperationPriorityPolicy.BuildSnapshotLogFields(snapshot);
+
+        Assert.That(
+            fields,
+            Is.EqualTo(
+                "is_user_priority_active=true is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=false is_player_playback_active=true"
+            )
+        );
+    }
+
+    [Test]
     public void ResolveEverythingPollDeferReason_UI抑止をuser_priorityより優先する()
     {
         UiOperationSnapshot snapshot = new(

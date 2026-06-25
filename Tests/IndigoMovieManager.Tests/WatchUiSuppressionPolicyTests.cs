@@ -90,14 +90,26 @@ public sealed class WatchUiSuppressionPolicyTests
     [Test]
     public void ShouldDeferBackgroundWorkForUserPriority_共通UiOperationSnapshotを使う()
     {
-        string source = GetRepoText("Watcher", "MainWindow.UserPriorityPolicy.cs");
+        string policySource = GetRepoText("Watcher", "MainWindow.UserPriorityPolicy.cs");
+        string runtimeSource = GetRepoText("Watcher", "MainWindow.UserPriorityRuntime.cs");
 
         Assert.That(
-            source,
+            policySource,
             Does.Contain("private static UiOperationSnapshot CreateUserPriorityOperationSnapshot(")
         );
-        Assert.That(source, Does.Contain("return new UiOperationSnapshot("));
-        Assert.That(source, Does.Not.Contain("UiOperationPrioritySnapshot"));
+        Assert.That(policySource, Does.Contain("return new UiOperationSnapshot("));
+        Assert.That(
+            policySource,
+            Does.Contain("UiOperationPriorityPolicy.BuildSnapshotLogFields(snapshot)")
+        );
+        Assert.That(
+            runtimeSource,
+            Does.Contain("private UiOperationSnapshot CaptureUserPriorityOperationSnapshot(")
+        );
+        Assert.That(runtimeSource, Does.Contain("BuildUserPriorityBeginLogMessage(reason, snapshot)"));
+        Assert.That(runtimeSource, Does.Contain("BuildUserPriorityReleaseLogMessage("));
+        Assert.That(policySource, Does.Not.Contain("UiOperationPrioritySnapshot"));
+        Assert.That(runtimeSource, Does.Not.Contain("UiOperationPrioritySnapshot"));
     }
 
     [Test]
@@ -199,18 +211,51 @@ public sealed class WatchUiSuppressionPolicyTests
     [Test]
     public void BuildUserPriorityReleaseLogMessage_release契約の項目を残す()
     {
+        UiOperationSnapshot snapshot = new(
+            IsUserPriorityActive: false,
+            IsManualMode: false,
+            IsWatchUiSuppressed: true,
+            IsRecentViewportInteractionActive: false,
+            IsPlayerPlaybackActive: true
+        );
+
         string message = MainWindow.BuildUserPriorityReleaseLogMessage(
             beginReason: "search",
             endReason: "search-end",
             elapsedMilliseconds: 123,
             releaseReason: MainWindow.UserPriorityReleaseReasonNormal,
-            hasDeferredWatchWork: true
+            hasDeferredWatchWork: true,
+            snapshot: snapshot
         );
 
         Assert.That(
             message,
             Is.EqualTo(
-                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=123 release_reason=normal deferred_watch=true"
+                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=123 release_reason=normal deferred_watch=true is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=false is_player_playback_active=true"
+            )
+        );
+    }
+
+    [Test]
+    public void BuildUserPriorityBeginLogMessage_snapshot項目を残す()
+    {
+        UiOperationSnapshot snapshot = new(
+            IsUserPriorityActive: true,
+            IsManualMode: false,
+            IsWatchUiSuppressed: false,
+            IsRecentViewportInteractionActive: true,
+            IsPlayerPlaybackActive: false
+        );
+
+        string message = MainWindow.BuildUserPriorityBeginLogMessage(
+            reason: "sort",
+            snapshot: snapshot
+        );
+
+        Assert.That(
+            message,
+            Is.EqualTo(
+                "user priority begin: reason=sort is_user_priority_active=true is_manual_mode=false is_watch_ui_suppressed=false is_recent_viewport_active=true is_player_playback_active=false"
             )
         );
     }
@@ -218,18 +263,27 @@ public sealed class WatchUiSuppressionPolicyTests
     [Test]
     public void BuildUserPriorityReleaseLogMessage_timeout時もdeferred_watchを残す()
     {
+        UiOperationSnapshot snapshot = new(
+            IsUserPriorityActive: false,
+            IsManualMode: false,
+            IsWatchUiSuppressed: false,
+            IsRecentViewportInteractionActive: false,
+            IsPlayerPlaybackActive: false
+        );
+
         string message = MainWindow.BuildUserPriorityReleaseLogMessage(
             beginReason: "search",
             endReason: "search-end",
             elapsedMilliseconds: 30000,
             releaseReason: MainWindow.UserPriorityReleaseReasonTimeout,
-            hasDeferredWatchWork: true
+            hasDeferredWatchWork: true,
+            snapshot: snapshot
         );
 
         Assert.That(
             message,
             Is.EqualTo(
-                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=30000 release_reason=timeout deferred_watch=true"
+                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=30000 release_reason=timeout deferred_watch=true is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=false is_recent_viewport_active=false is_player_playback_active=false"
             )
         );
     }

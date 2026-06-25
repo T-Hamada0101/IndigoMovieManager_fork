@@ -93,16 +93,26 @@ public partial class MainWindow
         return (long)(endedUtc - startedUtc.Value).TotalMilliseconds;
     }
 
+    internal static string BuildUserPriorityBeginLogMessage(
+        string reason,
+        UiOperationSnapshot snapshot
+    )
+    {
+        return
+            $"user priority begin: reason={reason} {UiOperationPriorityPolicy.BuildSnapshotLogFields(snapshot)}";
+    }
+
     internal static string BuildUserPriorityReleaseLogMessage(
         string beginReason,
         string endReason,
         long elapsedMilliseconds,
         string releaseReason,
-        bool hasDeferredWatchWork
+        bool hasDeferredWatchWork,
+        UiOperationSnapshot snapshot
     )
     {
         return
-            $"user priority end: begin_reason={beginReason} end_reason={endReason} elapsed_ms={elapsedMilliseconds} release_reason={releaseReason} deferred_watch={FormatLogBool(hasDeferredWatchWork)}";
+            $"user priority end: begin_reason={beginReason} end_reason={endReason} elapsed_ms={elapsedMilliseconds} release_reason={releaseReason} deferred_watch={FormatLogBool(hasDeferredWatchWork)} {UiOperationPriorityPolicy.BuildSnapshotLogFields(snapshot)}";
     }
 
     private static string FormatLogBool(bool value)
