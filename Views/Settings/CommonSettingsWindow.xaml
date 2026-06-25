@@ -24,13 +24,19 @@
     </Window.Foreground>
 
     <Window.Resources>
-        <Style x:Key="SettingsCategoryTabStyle" TargetType="TabItem">
+        <Style x:Key="SettingsCategoryTabStyle" BasedOn="{StaticResource AppTabItemStyle}" TargetType="TabItem">
             <Setter Property="Width" Value="156" />
             <Setter Property="MinHeight" Value="34" />
             <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="{DynamicResource AppSurfaceAltBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource SettingsForegroundBrush}" />
+        </Style>
+
+        <Style TargetType="ScrollViewer">
+            <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
         </Style>
 
         <Style x:Key="SettingsRowLabelStyle" TargetType="Label">
@@ -60,6 +66,9 @@
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource AppSurfaceAltBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
         </Style>
     </Window.Resources>
 
@@ -76,6 +85,9 @@
 
         <TabControl
             x:Name="SettingsCategoryTabs"
+            Background="{DynamicResource MaterialDesignPaper}"
+            BorderBrush="{DynamicResource AppBorderBrush}"
+            Foreground="{DynamicResource SettingsForegroundBrush}"
             TabStripPlacement="Left"
             ItemContainerStyle="{StaticResource SettingsCategoryTabStyle}">
 

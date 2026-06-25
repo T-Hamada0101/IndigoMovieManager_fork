@@ -18,6 +18,17 @@
   <Window.Foreground>
     <DynamicResource ResourceKey="SettingsForegroundBrush" />
   </Window.Foreground>
+  <Window.Resources>
+    <Style TargetType="ScrollViewer">
+      <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
+    </Style>
+    <Style TargetType="Label">
+      <Setter Property="Foreground" Value="{DynamicResource SettingsForegroundBrush}" />
+    </Style>
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource SettingsForegroundBrush}" />
+    </Style>
+  </Window.Resources>
   <Grid>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel Margin="10" Orientation="Vertical">
@@ -29,6 +40,7 @@
           Click="BtnReturn_Click"
           Content="戻る(_R)"
           FontWeight="Normal"
+          Style="{StaticResource AppHeaderButtonStyle}"
         />
 
         <StackPanel Orientation="Horizontal">
@@ -40,6 +52,7 @@
             materialDesign:TextFieldAssist.HasClearButton="True"
             FontSize="14"
             IsReadOnly="True"
+            Style="{StaticResource AppTextBoxStyle}"
             Text="{Binding ThumbFolder}"
             ToolTip="{Binding ThumbFolder}"
           />
@@ -62,6 +75,7 @@
             materialDesign:TextFieldAssist.HasClearButton="True"
             FontSize="14"
             IsReadOnly="True"
+            Style="{StaticResource AppTextBoxStyle}"
             Text="{Binding BookmarkFolder}"
             ToolTip="{Binding BookmarkFolder}"
           />
@@ -84,6 +98,7 @@
             materialDesign:TextFieldAssist.HasClearButton="True"
             FontSize="14"
             IsReadOnly="True"
+            Style="{StaticResource AppTextBoxStyle}"
             Text="{Binding PlayerPrg}"
             ToolTip="{Binding PlayerPrg}"
           />
@@ -112,6 +127,7 @@
             materialDesign:TextFieldAssist.HasClearButton="True"
             FontSize="14"
             IsEditable="True"
+            Style="{StaticResource AppCompactComboBoxStyle}"
             Text="{Binding PlayerParam}"
             ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応"
           />

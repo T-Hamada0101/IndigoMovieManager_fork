@@ -166,12 +166,55 @@ public sealed class ThemeModeTests
         Assert.Multiple(() =>
         {
             Assert.That(settingsXaml, Does.Contain("TabStripPlacement=\"Left\""));
+            Assert.That(
+                settingsXaml,
+                Does.Contain("BasedOn=\"{StaticResource AppTabItemStyle}\"")
+            );
+            Assert.That(
+                settingsXaml,
+                Does.Contain("Background=\"{DynamicResource MaterialDesignPaper}\"")
+            );
             Assert.That(settingsXaml, Does.Contain("Header=\"現在DB\""));
             Assert.That(settingsXaml, Does.Contain("Header=\"ツール\""));
             Assert.That(settingsXaml, Does.Contain("x:Name=\"CurrentDbSettingsPanel\""));
             Assert.That(settingsXaml, Does.Contain("x:Name=\"ThumbFolder\""));
             Assert.That(settingsSource, Does.Contain("InitializeCurrentDbSettings();"));
             Assert.That(settingsSource, Does.Contain("PersistCurrentDbSettingsValuesIfNeeded();"));
+        });
+    }
+
+    [Test]
+    public void Simpleテーマ_標準WPF色と軽量テンプレートを明示する()
+    {
+        string simpleLight = GetRepoText("Themes", "Colors", "SimpleLight.xaml");
+        string simpleDark = GetRepoText("Themes", "Colors", "SimpleDark.xaml");
+        string indigo = GetRepoText("Themes", "Colors", "Indigo.xaml");
+        string lightweight = GetRepoText("Themes", "Controls", "Lightweight.xaml");
+
+        string[] systemColorKeys =
+        [
+            "SystemColors.WindowBrushKey",
+            "SystemColors.WindowTextBrushKey",
+            "SystemColors.ControlBrushKey",
+            "SystemColors.ControlTextBrushKey",
+            "SystemColors.HighlightBrushKey",
+            "SystemColors.HighlightTextBrushKey",
+        ];
+
+        foreach (string source in new[] { simpleLight, simpleDark, indigo })
+        {
+            foreach (string key in systemColorKeys)
+            {
+                Assert.That(source, Does.Contain(key), $"{key} がテーマ色辞書から落ちています。");
+            }
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(lightweight, Does.Contain("ControlTemplate TargetType=\"{x:Type Button}\""));
+            Assert.That(lightweight, Does.Contain("ControlTemplate TargetType=\"{x:Type TabItem}\""));
+            Assert.That(lightweight, Does.Contain("TextElement.Foreground"));
+            Assert.That(lightweight, Does.Not.Contain("BasedOn=\"{StaticResource {x:Type TabItem}}\""));
         });
     }
 

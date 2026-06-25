@@ -15,6 +15,19 @@
     <SolidColorBrush x:Key="AppAccentBrush" Color="#FF8AB4F8" />
     <SolidColorBrush x:Key="AppAccentForegroundBrush" Color="#FF111318" />
 
+    <!-- WPF標準部品が既定テンプレートを使っても、背景と文字が同系統で揃うようにする。 -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FF202020" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#FFF1F1F1" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FF333333" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#FFF1F1F1" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="#FF3A3A3A" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightLightBrushKey}" Color="#FF3A3A3A" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkBrushKey}" Color="#FF4A4A4A" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkDarkBrushKey}" Color="#FF5A5A5A" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#FF9A9A9A" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FF8AB4F8" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FF111318" />
+
     <SolidColorBrush x:Key="MaterialDesignPaper" Color="#FF202020" />
     <SolidColorBrush x:Key="MaterialDesignCardBackground" Color="#FF2B2B2B" />
     <SolidColorBrush x:Key="MaterialDesignDivider" Color="#FF4A4A4A" />

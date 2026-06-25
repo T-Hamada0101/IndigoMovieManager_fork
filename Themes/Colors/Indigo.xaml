@@ -15,6 +15,19 @@
     <SolidColorBrush x:Key="AppAccentBrush" Color="#FF303F9F" />
     <SolidColorBrush x:Key="AppAccentForegroundBrush" Color="#FFFFFFFF" />
 
+    <!-- 既定テンプレートの白背景/白文字を避けるため、WPF標準色も明示する。 -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FFF3F3F3" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightLightBrushKey}" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkBrushKey}" Color="#FFD6D6D6" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlDarkDarkBrushKey}" Color="#FFB8B8B8" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#FF777777" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FF303F9F" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFFFF" />
+
     <!-- MaterialDesign を外しても既存参照が解決できるよう、主要 Brush key は自前でも持つ。 -->
     <SolidColorBrush x:Key="MaterialDesignPaper" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="MaterialDesignCardBackground" Color="#FFFFFFFF" />
@@ -27,11 +40,11 @@
 
     <!-- 旧キーは既存 XAML の互換層として維持し、App 独自キーへ段階移行できる形にする。 -->
     <SolidColorBrush x:Key="TagBorderBackground" Color="LightGreen" />
-    <SolidColorBrush x:Key="UpperTabBackground" Color="DarkBlue" />
-    <SolidColorBrush x:Key="UpperTabBackgroundBrush" Color="DarkBlue" />
+    <SolidColorBrush x:Key="UpperTabBackground" Color="#FFF3F3F3" />
+    <SolidColorBrush x:Key="UpperTabBackgroundBrush" Color="#FFF3F3F3" />
     <SolidColorBrush x:Key="ThumbImageBackground" Color="Black" />
     <SolidColorBrush x:Key="ThumbImageBackgroundBrush" Color="Black" />
-    <SolidColorBrush x:Key="HeaderForeground" Color="White" />
+    <SolidColorBrush x:Key="HeaderForeground" Color="#FF1F1F1F" />
     <SolidColorBrush x:Key="SearchBoxBackground" Color="White" />
     <SolidColorBrush x:Key="SearchBoxForeground" Color="Black" />
     <SolidColorBrush x:Key="SortComboBackground" Color="White" />
@@ -48,7 +61,7 @@
     <SolidColorBrush x:Key="NavigationDrawerForegroundBrush" Color="#FF303F9F" />
     <SolidColorBrush x:Key="LeftDrawerForegroundBrush" Color="#FF303F9F" />
     <SolidColorBrush x:Key="UpperTabPanelForegroundBrush" Color="#FF000000" />
-    <SolidColorBrush x:Key="GridTabTitleForegroundBrush" Color="DarkGray" />
+    <SolidColorBrush x:Key="GridTabTitleForegroundBrush" Color="#FF1F1F1F" />
     <SolidColorBrush x:Key="SettingsForegroundBrush" Color="#FF000000" />
 
     <SolidColorBrush x:Key="PlayerControllerBackground" Color="Black" />

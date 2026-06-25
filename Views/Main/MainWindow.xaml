@@ -1753,6 +1753,7 @@
                 SelectiveScrollingGrid.SelectiveScrollingOrientation="None"
                 Style="{StaticResource AppSearchComboBoxStyle}"
                 Text="{Binding DbInfo.SearchKeyword, UpdateSourceTrigger=PropertyChanged}"
+                TextElement.Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
                 TextBoxBase.TextChanged="SearchBox_TextChanged"
               >
                 <ComboBox.ItemContainerStyle>
@@ -1815,6 +1816,7 @@
                 SelectedValuePath="Id"
                 SelectionChanged="ComboSort_SelectionChanged"
                 Style="{StaticResource AppCompactComboBoxStyle}"
+                TextElement.Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
               />
               <Label
                 Grid.Column="5"
@@ -1837,6 +1839,7 @@
                   SelectedValuePath="Name"
                   SelectionChanged="ExternalSkinMinimalSkinSelector_SelectionChanged"
                   Style="{StaticResource AppCompactComboBoxStyle}"
+                  TextElement.Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
                   TextSearch.TextPath="Name"
                 />
                 <TextBlock
