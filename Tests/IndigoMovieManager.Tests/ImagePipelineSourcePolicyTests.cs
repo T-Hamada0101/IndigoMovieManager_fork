@@ -224,7 +224,9 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(source, Does.Contain("internal readonly record struct ImageRequest("));
         Assert.That(source, Does.Contain("internal readonly record struct ImageDecodeRequest("));
         Assert.That(source, Does.Contain("internal readonly record struct ImageDecodeResult("));
+        Assert.That(source, Does.Contain("internal readonly record struct ImageDecodePlanResult("));
         Assert.That(source, Does.Contain("ImageDecodeRequest ForSynchronousDecode("));
+        Assert.That(source, Does.Contain("ImageDecodePlanResult FromBackgroundProbe("));
         Assert.That(source, Does.Contain("ImageLoadResult ImageLoadResult"));
     }
 

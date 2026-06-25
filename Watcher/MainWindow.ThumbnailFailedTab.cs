@@ -56,6 +56,7 @@ namespace IndigoMovieManager
         );
 
         private const int ThumbnailErrorTabIndex = 5;
+        private const int ThumbnailErrorListDecodePixelHeight = 18;
         private static readonly int[] ThumbnailErrorTargetTabIndices = [0, 1, 2, 3, 4, 99];
         private int _thumbnailErrorRecordsDirty = 1;
         private int _thumbnailErrorRefreshRunning;
@@ -387,7 +388,9 @@ namespace IndigoMovieManager
             int failedCount = 0;
             int canceledCount = 0;
             int markerCount = 0;
+            int decodePlanCount = 0;
             string sampleLoadFields = "";
+            string sampleDecodeFields = "";
             Dictionary<string, bool> imageExistsByPath = new(StringComparer.OrdinalIgnoreCase);
 
             foreach (ThumbnailErrorRecordViewModel item in items ?? [])
@@ -400,10 +403,12 @@ namespace IndigoMovieManager
                 totalCount++;
                 markerCount += Math.Max(0, item.MarkerCount);
 
-                ImageLoadResult loadResult = BuildThumbnailErrorListImageLoadResult(
+                ImageDecodePlanResult decodePlan = BuildThumbnailErrorListImageDecodePlan(
                     item,
                     imageExistsByPath
                 );
+                ImageLoadResult loadResult = decodePlan.ImageLoadResult;
+                decodePlanCount++;
                 if (loadResult.UsesPlaceholder)
                 {
                     placeholderCount++;
@@ -429,6 +434,11 @@ namespace IndigoMovieManager
                 {
                     sampleLoadFields = ImageLoadLogFields.Build(loadResult);
                 }
+
+                if (string.IsNullOrWhiteSpace(sampleDecodeFields))
+                {
+                    sampleDecodeFields = ImageDecodePlanLogFields.Build(decodePlan);
+                }
             }
 
             return new ThumbnailErrorImageLoadSummary
@@ -441,11 +451,13 @@ namespace IndigoMovieManager
                 CanceledCount = canceledCount,
                 MarkerCount = markerCount,
                 StaleSkipCount = 0,
+                DecodePlanCount = decodePlanCount,
                 SampleLoadFields = sampleLoadFields,
+                SampleDecodeFields = sampleDecodeFields,
             };
         }
 
-        private static ImageLoadResult BuildThumbnailErrorListImageLoadResult(
+        private static ImageDecodePlanResult BuildThumbnailErrorListImageDecodePlan(
             ThumbnailErrorRecordViewModel item,
             IDictionary<string, bool> imageExistsByPath
         )
@@ -455,6 +467,25 @@ namespace IndigoMovieManager
                 ThumbnailFailureDbPathResolver.CreateMoviePathKey(item?.MoviePath ?? ""),
                 item?.ThumbnailImageRequestRevision ?? 0
             );
+            ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+                request,
+                ThumbnailErrorListDecodePixelHeight,
+                "image.thumbnail-error-list.aggregate-decode-plan"
+            );
+            ImageLoadResult loadResult = BuildThumbnailErrorListImageLoadResult(
+                request,
+                item,
+                imageExistsByPath
+            );
+            return ImageDecodePlanResult.FromBackgroundProbe(decodeRequest, loadResult);
+        }
+
+        private static ImageLoadResult BuildThumbnailErrorListImageLoadResult(
+            ImageRequest request,
+            ThumbnailErrorRecordViewModel item,
+            IDictionary<string, bool> imageExistsByPath
+        )
+        {
             if (string.IsNullOrWhiteSpace(request.ThumbnailPath))
             {
                 return ImageLoadResult.Missing(request, request.RequestRevision);
@@ -919,12 +950,16 @@ namespace IndigoMovieManager
 
             public int StaleSkipCount { get; init; }
 
+            public int DecodePlanCount { get; init; }
+
             public string SampleLoadFields { get; init; } = "";
+
+            public string SampleDecodeFields { get; init; } = "";
 
             public string ToLogFields()
             {
                 return
-                    $"total={TotalCount} ready={ReadyCount} placeholder={PlaceholderCount} missing={MissingCount} failed={FailedCount} canceled={CanceledCount} marker={MarkerCount} stale_skip={StaleSkipCount} image_log_reason=image.thumbnail-error-list.aggregate sample=\"{SampleLoadFields}\"";
+                    $"total={TotalCount} ready={ReadyCount} placeholder={PlaceholderCount} missing={MissingCount} failed={FailedCount} canceled={CanceledCount} marker={MarkerCount} stale_skip={StaleSkipCount} decode_plan={DecodePlanCount} image_log_reason=image.thumbnail-error-list.aggregate sample=\"{SampleLoadFields}\" sample_decode=\"{SampleDecodeFields}\"";
             }
         }
 

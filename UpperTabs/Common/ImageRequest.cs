@@ -322,12 +322,52 @@ namespace IndigoMovieManager.UpperTabs.Common
         internal ImageLoadOutcome Outcome => ImageLoadResult.Outcome;
     }
 
+    internal readonly record struct ImageDecodePlanResult(
+        ImageDecodeRequest DecodeRequest,
+        ImageDecodeResult DecodeResult,
+        bool DecodeAttempted
+    )
+    {
+        internal ImageLoadResult ImageLoadResult => DecodeResult.ImageLoadResult;
+
+        internal static ImageDecodePlanResult FromBackgroundProbe(
+            ImageDecodeRequest decodeRequest,
+            ImageLoadResult loadResult
+        )
+        {
+            // 背景 probe では表示互換を変えず、decode 予定と判定結果だけを同じ語彙へ畳む。
+            return new ImageDecodePlanResult(
+                decodeRequest,
+                new ImageDecodeResult(
+                    loadResult,
+                    DecodeElapsedMilliseconds: 0,
+                    CacheHit: false
+                ),
+                DecodeAttempted: false
+            );
+        }
+    }
+
     internal static class ImageDecodeLogFields
     {
         internal static string Build(ImageDecodeRequest request, ImageDecodeResult result)
         {
             return
                 $"image_log_reason={request.LogReason ?? ""} image_role={request.ImageRequest.ThumbnailRole} image_request_revision={request.RequestRevision} decode_pixel_height={request.DecodePixelHeight} decode_elapsed_ms={result.DecodeElapsedMilliseconds} cache_hit={FormatLogBool(result.CacheHit)} image_outcome={result.ImageLoadResult.OutcomeLogValue}";
+        }
+
+        private static string FormatLogBool(bool value)
+        {
+            return value ? "true" : "false";
+        }
+    }
+
+    internal static class ImageDecodePlanLogFields
+    {
+        internal static string Build(ImageDecodePlanResult result)
+        {
+            return
+                $"{ImageDecodeLogFields.Build(result.DecodeRequest, result.DecodeResult)} decode_attempted={FormatLogBool(result.DecodeAttempted)}";
         }
 
         private static string FormatLogBool(bool value)

@@ -436,4 +436,46 @@ public sealed class ImageRequestTests
             Assert.That(logFields, Does.Contain("cache_hit=true"));
         });
     }
+
+    [Test]
+    public void ImageDecodePlanResultは背景probeの判定をdecode語彙へ畳める()
+    {
+        ImageRequest imageRequest = ImageRequest.ForThumbnailErrorList(
+            Path.Combine("thumb", "error.#ERROR.jpg"),
+            "movie-key",
+            requestRevision: 81
+        );
+        ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+            imageRequest,
+            decodePixelHeight: 18,
+            logReason: "image.thumbnail-error-list.aggregate-decode-plan"
+        );
+        ImageLoadResult loadResult = ImageLoadResult.Failed(
+            imageRequest,
+            resultRevision: 81,
+            failureReason: "error-marker",
+            usesPlaceholder: false,
+            hasResolvedImage: true
+        );
+
+        ImageDecodePlanResult planResult = ImageDecodePlanResult.FromBackgroundProbe(
+            decodeRequest,
+            loadResult
+        );
+        string logFields = ImageDecodePlanLogFields.Build(planResult);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(planResult.DecodeRequest, Is.EqualTo(decodeRequest));
+            Assert.That(planResult.ImageLoadResult, Is.EqualTo(loadResult));
+            Assert.That(planResult.DecodeResult.Outcome, Is.EqualTo(ImageLoadOutcome.Failed));
+            Assert.That(planResult.DecodeResult.DecodeElapsedMilliseconds, Is.EqualTo(0));
+            Assert.That(planResult.DecodeResult.CacheHit, Is.False);
+            Assert.That(planResult.DecodeAttempted, Is.False);
+            Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.aggregate-decode-plan"));
+            Assert.That(logFields, Does.Contain("decode_pixel_height=18"));
+            Assert.That(logFields, Does.Contain("image_outcome=failed"));
+            Assert.That(logFields, Does.Contain("decode_attempted=false"));
+        });
+    }
 }

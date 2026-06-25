@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -162,6 +164,10 @@ public sealed class ThumbnailErrorSourceTests
             source,
             "private static ThumbnailErrorImageLoadSummary BuildThumbnailErrorImageLoadSummary("
         );
+        string decodePlanMethod = ExtractMethod(
+            source,
+            "private static ImageDecodePlanResult BuildThumbnailErrorListImageDecodePlan("
+        );
         string resultMethod = ExtractMethod(
             source,
             "private static ImageLoadResult BuildThumbnailErrorListImageLoadResult("
@@ -182,8 +188,9 @@ public sealed class ThumbnailErrorSourceTests
 
         Assert.That(buildMethod, Does.Contain("BuildThumbnailErrorImageLoadSummary(items)"));
         Assert.That(buildMethod, Does.Contain("error tab image aggregate"));
-        Assert.That(summaryMethod, Does.Contain("BuildThumbnailErrorListImageLoadResult("));
+        Assert.That(summaryMethod, Does.Contain("BuildThumbnailErrorListImageDecodePlan("));
         Assert.That(summaryMethod, Does.Contain("ImageLoadLogFields.Build(loadResult)"));
+        Assert.That(summaryMethod, Does.Contain("ImageDecodePlanLogFields.Build(decodePlan)"));
         Assert.That(logFieldsMethod, Does.Contain("total="));
         Assert.That(logFieldsMethod, Does.Contain("ready="));
         Assert.That(logFieldsMethod, Does.Contain("placeholder="));
@@ -192,8 +199,13 @@ public sealed class ThumbnailErrorSourceTests
         Assert.That(logFieldsMethod, Does.Contain("canceled="));
         Assert.That(logFieldsMethod, Does.Contain("marker="));
         Assert.That(logFieldsMethod, Does.Contain("stale_skip="));
+        Assert.That(logFieldsMethod, Does.Contain("decode_plan="));
+        Assert.That(logFieldsMethod, Does.Contain("sample_decode="));
         Assert.That(logFieldsMethod, Does.Contain("image.thumbnail-error-list.aggregate"));
-        Assert.That(resultMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
+        Assert.That(decodePlanMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
+        Assert.That(decodePlanMethod, Does.Contain("ImageDecodeRequest.ForSynchronousDecode("));
+        Assert.That(decodePlanMethod, Does.Contain("\"image.thumbnail-error-list.aggregate-decode-plan\""));
+        Assert.That(decodePlanMethod, Does.Contain("ImageDecodePlanResult.FromBackgroundProbe("));
         Assert.That(resultMethod, Does.Contain("HasThumbnailErrorListImage("));
         Assert.That(resultMethod, Does.Contain("ImageLoadResult.Missing("));
         Assert.That(resultMethod, Does.Contain("ImageLoadResult.Ready("));
@@ -450,20 +462,38 @@ public sealed class ThumbnailErrorSourceTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        foreach (string searchRootPath in EnumerateRepoSearchRootPaths())
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            if (string.IsNullOrWhiteSpace(searchRootPath))
             {
-                return File.ReadAllText(candidate);
+                continue;
             }
 
-            current = current.Parent;
+            DirectoryInfo? current = new(searchRootPath);
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static IEnumerable<string> EnumerateRepoSearchRootPaths(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        yield return Path.GetDirectoryName(callerFilePath) ?? "";
+        yield return TestContext.CurrentContext.TestDirectory;
+        yield return TestContext.CurrentContext.WorkDirectory;
+        yield return Directory.GetCurrentDirectory();
     }
 
     private static string ExtractMethod(string source, string signature)

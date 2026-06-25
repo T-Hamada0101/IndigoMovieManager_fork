@@ -5,7 +5,7 @@
 
 ## 0. 進捗メータ
 
-更新日: 2026-06-19
+更新日: 2026-06-25
 
 全体進捗目安: `[#######---] 74%`
 
@@ -17,7 +17,7 @@
 | Phase 1. UI Shell 入力契約 | 49% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない | UI event handler を snapshot 生成へさらに寄せる |
 | Phase 2. ReadModel Store と Diff-first | 49% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める | watch 1件追加 / rename が full fallback へ戻らない実機ログと、大量変更時 fallback の妥当性を確認する |
 | Phase 3. In-process Scheduler | 52% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める | 実機ログで scheduler admission が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
-| Phase 4. Image Pipeline 統一 | 53% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。上側タブ、Player右レール、ThumbnailError 一覧 converter は decode result を保持する | decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard と error tab image aggregate を確認する |
+| Phase 4. Image Pipeline 統一 | 53% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。上側タブ、Player右レール、ThumbnailError 一覧 converter は decode result を保持する。2026-06-25 Worker B で ThumbnailError 背景集計に `ImageDecodePlanResult` を追加し、ERROR marker / placeholder / missing 判定を decode 計画語彙でも集約ログへ出せるようにした | 実機ログで stale discard と error tab image aggregate / aggregate-decode-plan を確認する |
 | Phase 5. Persistence Pipeline | 59% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume / playback stats / skin state の成功ログも共通語彙へ寄せ、score / tag / movie_path の成功ログも `PersistenceWriteRequest` helper 経由に揃えた | 実機ログで保存成功 / 失敗時の dirty / failed / retryable と UI 通知候補を確認する |
 | Phase 6. Worker 契約 | 52% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた | 実機ログで Worker DTO fields が UI 詰まりの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 27% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続し、Player 再生状態変更は `operation_reason=player-playback` と reason を状態変化時だけログへ出す | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
@@ -51,6 +51,7 @@
 - 2026-06-18 Worker-O: watch reload apply 入口も `WatchUiApplyRequest.WorkRequest` を使って `UiWorkSchedulerRuntime` admission へ接続した。`InvokeFilterAndSortForWatch(...)` / `RefreshMovieViewFromCurrentSourceAsync(...)` の既存分岐は維持する。
 - 2026-06-19 Worker N: kana backfill の ReadModel refresh 予約は、実行順を変える runtime 接続までは入れず、`UiWorkRequestPolicy.CreateKanaBackfillMovieViewRefreshRequest()` と既存 fallback ログの scheduler fields で説明できるようにした。
 - 2026-06-19 PM S: MainWindow closing 時に `UiWorkSchedulerRuntime` の pending request が残っていれば lifecycle ログへ `release_reason=canceled` 語彙で出す。終了処理を延ばさず、実行順や queue 解放条件は変えない。
+- 2026-06-25 Worker A: kana backfill の ReadModel refresh 予約は実行順を変えず、受理成功時も `admission` / `released` / `pending_count` をログで読めるようにした。`BuildTakeLogFields(...)` で pending から既存 refresh 入口へ渡した証跡を共通語彙へ寄せた。
 - `MovieViewDiffApplyPolicy` を追加し、query / sort / db-switch / unsafe / massive だけを full fallback 理由として判定する。`changed-path`、thumbnail 成功、単発更新のような小変更札は `none` へ畳み、既存 `ReplaceFilteredMovieRecs(...)` 互換のまま `diff_apply_kind` / `diff_apply_candidate` / `diff_full_fallback_reason` を apply log で読める入口にした。
 - ReadModel / watch の diff apply ログ fields は `MovieViewDiffApplyPolicy` の helper へ寄せた。ログ語彙を1箇所にし、次段の diff-first 実適用と実機ログ比較を崩れにくくする。
 - `ReplaceFilteredMovieRecs(...)` の同一 `Movie_Path` 別インスタンス更新は、remove / insert ではなく in-place replace 通知へ寄せた。単件更新のスクロール / 選択揺れを減らす diff-first の最初の実経路。
@@ -74,6 +75,7 @@
 - 詳細サムネの UI apply 直前で stale image request を捨てる時も、`ImageLoadResult.Canceled(..., "stale-image-request")` と `ImageLoadLogFields` で実機ログへ残す。
 - ThumbnailError / ERROR 一覧の背景集計後に、`ImageLoadResult` / `ImageLoadLogFields` 語彙の画像状態集約ログを1回だけ出す。個別行ごとの decode ログは増やさない。
 - 2026-06-19 Worker B: ERROR 一覧の画像状態集約は、パスあり即 ready ではなく、背景側の存在確認、placeholder、ERROR marker、missing、failed を反映する形へ寄せた。converter の同期 decode 挙動は変えない。
+- 2026-06-25 Worker B: ThumbnailError / ERROR 一覧の背景集計は `ImageDecodePlanResult` を作り、`decode_attempted=false` のまま `sample_decode` を aggregate ログへ併記する。ERROR marker / placeholder / missing 判定は UI 外の集計結果として説明できるが、converter の同期 decode と個別行ログ量は変えない。
 - 保存 hot path は、UI操作中に同期 `Save()` や score / tag の直接DB更新へ戻らないことを source policy で固定した。
 - view_count と movie_path は UI 表示値を先に反映し、DB 保存を背景へ送ることを source policy で固定した。
 - skin profile write は UI hot path を enqueue のみに保ったまま、queue / persister / fallback 失敗時だけ cache と `skin-db` ログへ `dirty=true failed=true retryable=true` を出す入口を追加した。
@@ -136,7 +138,7 @@
 - 上側タブ、下側 ERROR / 進捗、詳細、Player右レールの画像要求を visible-first に寄せる。
 - 画像存在確認、stamp取得、decode、ERROR marker判定は UI スレッドから外す。
 - cache miss は placeholder で先に返し、成功 / missing / canceled / failed を revision 付きで戻す。
-- 現在は下側 ThumbnailError 一覧の preview fallback と画像状態集約を `ImageRequest` / `ImageLoadResult` 語彙へ寄せた段階。次は decode と ERROR marker 判定をさらに UI 外へ揃え、実機ログで stale discard と aggregate を確認する。
+- 現在は下側 ThumbnailError 一覧の preview fallback と画像状態集約を `ImageRequest` / `ImageLoadResult` / `ImageDecodePlanResult` 語彙へ寄せた段階。次は実機ログで stale discard と aggregate / aggregate-decode-plan を確認する。
 - Player右レールは同期decodeのまま、`ImageDecodeResult` と stale canceled 語彙を保持する。次は実機ログで stale discard の発生有無を確認する。
 
 ### Phase 5. Persistence Pipeline
