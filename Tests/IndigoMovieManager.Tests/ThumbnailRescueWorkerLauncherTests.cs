@@ -1075,6 +1075,12 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(requestLogFields, Does.Contain("capability_count=2"));
             Assert.That(
                 requestLogFields,
+                Does.Contain(
+                    $"diagnostic_context_count={workerRequest.DiagnosticContext.Count}"
+                )
+            );
+            Assert.That(
+                requestLogFields,
                 Does.Contain("output_artifact_path=rescue-worker.result.json")
             );
             Assert.That(requestLogFields, Does.Contain("contract_version=1"));

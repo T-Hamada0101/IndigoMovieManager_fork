@@ -237,6 +237,7 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(jobJsonClientSource, Does.Contain("worker_kind="));
         Assert.That(jobJsonClientSource, Does.Contain("input_count="));
         Assert.That(jobJsonClientSource, Does.Contain("capability_count="));
+        Assert.That(jobJsonClientSource, Does.Contain("diagnostic_context_count="));
         Assert.That(jobJsonClientSource, Does.Contain("artifact_kind="));
         Assert.That(jobJsonClientSource, Does.Contain("retryability="));
         Assert.That(jobJsonClientSource, Does.Contain("elapsed_ms="));

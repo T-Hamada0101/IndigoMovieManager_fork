@@ -161,7 +161,7 @@ namespace IndigoMovieManager.Thumbnail
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} contract_version={FormatLogValue(GetDiagnosticValue(request, "contractVersion"))} mode={FormatLogValue(GetDiagnosticValue(request, "mode"))} requested_failure_id={FormatLogValue(GetDiagnosticValue(request, "requestedFailureId"))}"
+                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} diagnostic_context_count={Math.Max(0, request.DiagnosticContext?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} contract_version={FormatLogValue(GetDiagnosticValue(request, "contractVersion"))} mode={FormatLogValue(GetDiagnosticValue(request, "mode"))} requested_failure_id={FormatLogValue(GetDiagnosticValue(request, "requestedFailureId"))}"
             );
         }
 
