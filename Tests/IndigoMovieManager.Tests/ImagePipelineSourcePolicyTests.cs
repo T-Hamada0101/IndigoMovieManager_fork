@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.CompilerServices;
+using IndigoMovieManager.UpperTabs.Common;
 
 namespace IndigoMovieManager.Tests;
 
@@ -231,6 +232,94 @@ public sealed class ImagePipelineSourcePolicyTests
     }
 
     [Test]
+    public void ImagePipelineログcontractはdecode_load系builderで一度だけ出す()
+    {
+        ImageRequest imageRequest = ImageRequest.ForUpperTab(
+            "thumb.jpg",
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 9
+        );
+        ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+            imageRequest,
+            decodePixelHeight: 48,
+            logReason: "image.test.decode"
+        );
+        ImageLoadResult loadResult = ImageLoadResult.Ready(
+            imageRequest,
+            usesPlaceholder: false,
+            resultRevision: 10
+        );
+        ImageDecodeResult decodeResult = new(
+            loadResult,
+            DecodeElapsedMilliseconds: 3,
+            CacheHit: true
+        );
+        ImageDecodePlanResult planResult = new(
+            decodeRequest,
+            decodeResult,
+            DecodeAttempted: true
+        );
+
+        string decodeLog = ImageDecodeLogFields.Build(decodeRequest, decodeResult);
+        string loadLog = ImageLoadLogFields.Build(loadResult);
+        string planLog = ImageDecodePlanLogFields.Build(planResult);
+        string suffixLog = ImageLoadLogFields.BuildStateSuffix(loadResult);
+
+        Assert.Multiple(() =>
+        {
+            AssertImageContractOnce(decodeLog);
+            AssertImageContractOnce(loadLog);
+            AssertImageContractOnce(planLog);
+            Assert.That(suffixLog, Does.Not.Contain("image_contract="));
+            Assert.That(planLog, Does.Contain("decode_attempted=true"));
+            Assert.That(planLog, Does.Contain("image_result_revision=10"));
+        });
+    }
+
+    [Test]
+    public void SourcePolicy_ImagePipelineログcontractを重複させない()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "ImageRequest.cs");
+        string decodeBuildMethod = ExtractMethod(
+            source,
+            "internal static string Build(ImageDecodeRequest request, ImageDecodeResult result)"
+        );
+        string decodePlanBuildMethod = ExtractMethod(
+            source,
+            "internal static string Build(ImageDecodePlanResult result)"
+        );
+        string loadBuildMethod = ExtractMethod(
+            source,
+            "internal static string Build(ImageLoadResult result)"
+        );
+        string stateSuffixMethod = ExtractMethod(
+            source,
+            "private static string BuildStateSuffixCore(ImageLoadResult result, bool includeOutcome)"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(decodeBuildMethod, Does.Contain("image_contract=image-pipeline-v1"));
+            Assert.That(loadBuildMethod, Does.Contain("image_contract=image-pipeline-v1"));
+            Assert.That(
+                decodePlanBuildMethod,
+                Does.Contain("ImageDecodeLogFields.Build(result.DecodeRequest, result.DecodeResult)")
+            );
+            Assert.That(
+                decodePlanBuildMethod,
+                Does.Contain("ImageLoadLogFields.BuildStateSuffix(result.ImageLoadResult)")
+            );
+            Assert.That(decodePlanBuildMethod, Does.Not.Contain("image_contract="));
+            Assert.That(stateSuffixMethod, Does.Not.Contain("image_contract="));
+            Assert.That(
+                CountOccurrences(source, "image_contract=image-pipeline-v1"),
+                Is.EqualTo(2)
+            );
+        });
+    }
+
+    [Test]
     public void サムネ進捗preview_converterはImageRequestを作ってからfallback_decodeへ進む()
     {
         string converterSource = GetRepoText(
@@ -359,6 +448,33 @@ public sealed class ImagePipelineSourcePolicyTests
                 $"{methodName} に画像I/Oまたはdecodeを戻さないでください: {fragment}"
             );
         }
+    }
+
+    private static void AssertImageContractOnce(string logFields)
+    {
+        Assert.That(
+            CountOccurrences(logFields, "image_contract=image-pipeline-v1"),
+            Is.EqualTo(1)
+        );
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        int index = 0;
+        while (index < text.Length)
+        {
+            int foundIndex = text.IndexOf(value, index, StringComparison.Ordinal);
+            if (foundIndex < 0)
+            {
+                break;
+            }
+
+            count++;
+            index = foundIndex + value.Length;
+        }
+
+        return count;
     }
 
     private static string GetRepoText(params string[] relativePathParts)

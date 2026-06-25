@@ -1,3 +1,5 @@
+using System.IO;
+using System.Runtime.CompilerServices;
 using IndigoMovieManager;
 
 namespace IndigoMovieManager.Tests;
@@ -416,6 +418,44 @@ public sealed class UiWorkSchedulerPolicyTests
         Assert.That(logFields, Does.Contain("pending_count_after=0"));
     }
 
+    [Test]
+    public void SourcePolicy_主要ログbuilderはscheduler_contractを共通fieldから一度だけ出す()
+    {
+        string source = GetRepoText("Views", "Main", "UiWorkSchedulerPolicy.cs");
+        string admissionMethod = ExtractMethod(
+            source,
+            "internal static string BuildAdmissionLogFields("
+        );
+        string takeMethod = ExtractMethod(source, "internal static string BuildTakeLogFields(");
+        string timeoutMethod = ExtractMethod(
+            source,
+            "internal static string BuildTimeoutLogFields(UiWorkSchedulerTimeoutDecision decision)"
+        );
+        string timeoutReleaseMethod = ExtractMethod(
+            source,
+            "internal static string BuildTimeoutReleaseLogFields("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                source,
+                Does.Contain(
+                    "internal const string SchedulerContractLogField = \"scheduler_contract=scheduler-v1\";"
+                )
+            );
+            Assert.That(admissionMethod, Does.Contain("{SchedulerContractLogField}"));
+            Assert.That(takeMethod, Does.Contain("{SchedulerContractLogField}"));
+            Assert.That(timeoutMethod, Does.Contain("{SchedulerContractLogField}"));
+            Assert.That(timeoutReleaseMethod, Does.Contain("BuildTimeoutLogFields(decision)"));
+            Assert.That(timeoutReleaseMethod, Does.Not.Contain("SchedulerContractLogField"));
+            Assert.That(timeoutReleaseMethod, Does.Not.Contain("scheduler_contract="));
+            Assert.That(CountOccurrences(admissionMethod, "SchedulerContractLogField"), Is.EqualTo(1));
+            Assert.That(CountOccurrences(takeMethod, "SchedulerContractLogField"), Is.EqualTo(1));
+            Assert.That(CountOccurrences(timeoutMethod, "SchedulerContractLogField"), Is.EqualTo(1));
+        });
+    }
+
     private static UiWorkRequest CreateRequest(
         UiWorkPriority priority,
         string coalesceKey = "test:coalesce",
@@ -458,5 +498,70 @@ public sealed class UiWorkSchedulerPolicyTests
         }
 
         return count;
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
+        {
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return "";
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int i = bodyStart; i < source.Length; i++)
+        {
+            if (source[i] == '{')
+            {
+                depth++;
+            }
+            else if (source[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, i - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終端が見つかりません。");
+        return "";
     }
 }

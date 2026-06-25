@@ -1,3 +1,5 @@
+using System.IO;
+using System.Runtime.CompilerServices;
 using IndigoMovieManager.ViewModels;
 
 namespace IndigoMovieManager.Tests;
@@ -353,5 +355,98 @@ public sealed class MovieViewDiffTests
             Assert.That(fullLog, Does.Contain("diff_selection=refresh"));
             Assert.That(planLog, Is.EqualTo("diff_contract=readmodel-diff-v1 diff_apply_kind=diff-apply diff_apply_candidate=True diff_full_fallback_reason=none"));
         });
+    }
+
+    [Test]
+    public void SourcePolicy_DiffApplyPlanログcontractをbuilderから戻さない()
+    {
+        string source = GetRepoText("Views", "Main", "MovieViewDiff.cs");
+        string buildPlanMethod = ExtractMethod(
+            source,
+            "internal static string BuildDiffApplyPlanLogFields(MovieViewDiffApplyPlan plan)"
+        );
+        string buildDiffMethod = ExtractMethod(
+            source,
+            "internal static string BuildDiffLogFields(MovieViewDiff diff)"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                source,
+                Does.Contain(
+                    "internal const string DiffContractReadModelDiffV1 = \"readmodel-diff-v1\";"
+                )
+            );
+            Assert.That(buildPlanMethod, Does.Contain("diff_contract={DiffContractReadModelDiffV1}"));
+            Assert.That(buildPlanMethod, Does.Not.Contain("readmodel-diff-v1"));
+            Assert.That(buildDiffMethod, Does.Contain("BuildDiffApplyPlanLogFields(diff.ApplyPlan)"));
+            Assert.That(buildDiffMethod, Does.Not.Contain("diff_contract="));
+        });
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
+        {
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return "";
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int i = bodyStart; i < source.Length; i++)
+        {
+            if (source[i] == '{')
+            {
+                depth++;
+            }
+            else if (source[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, i - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終端が見つかりません。");
+        return "";
     }
 }

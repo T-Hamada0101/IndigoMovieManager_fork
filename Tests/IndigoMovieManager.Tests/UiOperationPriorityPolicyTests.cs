@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.IO;
+using System.Runtime.CompilerServices;
 using IndigoMovieManager;
 
 namespace IndigoMovieManager.Tests;
@@ -57,6 +59,23 @@ public sealed class UiOperationPriorityPolicyTests
         );
         Assert.That(firstContractIndex, Is.GreaterThanOrEqualTo(0));
         Assert.That(lastContractIndex, Is.EqualTo(firstContractIndex));
+    }
+
+    [Test]
+    public void SourcePolicy_UI入力ログcontractをhelperから戻さない()
+    {
+        string source = GetRepoText("Views", "Main", "UiOperationPriorityPolicy.cs");
+        string buildMethod = ExtractMethod(
+            source,
+            "internal static string BuildSnapshotLogFields(UiOperationSnapshot snapshot)"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("internal const string UiShellContract = \"ui-shell-v1\";"));
+            Assert.That(buildMethod, Does.Contain("ui_shell_contract={UiShellContract}"));
+            Assert.That(buildMethod, Does.Not.Contain("ui-shell-v1"));
+        });
     }
 
     [Test]
@@ -312,5 +331,70 @@ public sealed class UiOperationPriorityPolicyTests
         ).SetName(
             $"UiOperationSnapshot_各UI操作を共通snapshotで優先判定する_{operationName}"
         );
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        foreach (DirectoryInfo searchRoot in EnumerateRepoSearchRoots())
+        {
+            DirectoryInfo? current = searchRoot;
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return "";
+    }
+
+    private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        string? callerDirectory = Path.GetDirectoryName(callerFilePath);
+        if (!string.IsNullOrWhiteSpace(callerDirectory))
+        {
+            yield return new DirectoryInfo(callerDirectory);
+        }
+
+        yield return new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        yield return new DirectoryInfo(TestContext.CurrentContext.WorkDirectory);
+        yield return new DirectoryInfo(Directory.GetCurrentDirectory());
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int bodyStart = source.IndexOf('{', start);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+
+        int depth = 0;
+        for (int i = bodyStart; i < source.Length; i++)
+        {
+            if (source[i] == '{')
+            {
+                depth++;
+            }
+            else if (source[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return source.Substring(start, i - start + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"{signature} の本文終端が見つかりません。");
+        return "";
     }
 }
