@@ -396,13 +396,12 @@ namespace IndigoMovieManager
                 resolvedTheme.IsIndigo
                     ? app.TryFindResource(SystemColors.ControlTextBrushKey) as Brush
                         ?? SystemColors.ControlTextBrush
-                    : useDarkTheme
-                        ? new SolidColorBrush(Colors.DarkGray)
-                        : app.TryFindResource("MaterialDesignBody") as Brush
-                            ?? new SolidColorBrush(Colors.DimGray);
+                    : app.TryFindResource("MaterialDesignBody") as Brush
+                        ?? new SolidColorBrush(useDarkTheme ? Colors.White : Colors.Black);
             app.Resources["UpperTabPanelForegroundBrush"] = upperTabPanelForegroundBrush;
             app.Resources["GridTabTitleForegroundBrush"] =
-                new SolidColorBrush(Colors.DarkGray);
+                app.TryFindResource("MaterialDesignBodyLight") as Brush
+                    ?? new SolidColorBrush(Colors.DimGray);
 
             // 開いている全ウィンドウのタイトルバーも、テーマ変更に追従させる。
             foreach (Window window in app.Windows)

@@ -135,6 +135,47 @@ public sealed class ThemeModeTests
     }
 
     [Test]
+    public void ThemeMode_新規既定値はOS自動にする()
+    {
+        string settingsSource = GetRepoText("Properties", "Settings.settings");
+        string designerSource = GetRepoText("Properties", "Settings.Designer.cs");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                settingsSource,
+                Does.Contain("<Setting Name=\"ThemeMode\" Type=\"System.String\" Scope=\"User\">")
+            );
+            Assert.That(
+                settingsSource,
+                Does.Contain("<Value Profile=\"(Default)\">SystemAuto</Value>")
+            );
+            Assert.That(
+                designerSource,
+                Does.Contain("DefaultSettingValueAttribute(\"SystemAuto\")")
+            );
+        });
+    }
+
+    [Test]
+    public void CommonSettingsWindow_カテゴリ左ペインと現在DB設定を持つ()
+    {
+        string settingsXaml = GetRepoText("Views", "Settings", "CommonSettingsWindow.xaml");
+        string settingsSource = GetRepoText("Views", "Settings", "CommonSettingsWindow.xaml.cs");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(settingsXaml, Does.Contain("TabStripPlacement=\"Left\""));
+            Assert.That(settingsXaml, Does.Contain("Header=\"現在DB\""));
+            Assert.That(settingsXaml, Does.Contain("Header=\"ツール\""));
+            Assert.That(settingsXaml, Does.Contain("x:Name=\"CurrentDbSettingsPanel\""));
+            Assert.That(settingsXaml, Does.Contain("x:Name=\"ThumbFolder\""));
+            Assert.That(settingsSource, Does.Contain("InitializeCurrentDbSettings();"));
+            Assert.That(settingsSource, Does.Contain("PersistCurrentDbSettingsValuesIfNeeded();"));
+        });
+    }
+
+    [Test]
     public void MaterialDesignなし_アプリ起動辞書とcsprojが本体パッケージを読まない()
     {
         string appXaml = GetRepoText("App.xaml");
@@ -275,7 +316,7 @@ public sealed class ThemeModeTests
             Assert.That(actual, Is.InstanceOf<SolidColorBrush>());
             Assert.That(
                 ((SolidColorBrush)actual).Color,
-                Is.EqualTo(Color.FromRgb(0x18, 0x1A, 0x20))
+                Is.EqualTo(Color.FromRgb(0x20, 0x20, 0x20))
             );
         }
         finally

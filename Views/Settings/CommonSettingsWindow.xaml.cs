@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using IndigoMovieManager.Converter;
+using IndigoMovieManager.DB;
 using IndigoMovieManager.Skin;
 using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.Watcher;
@@ -25,6 +27,12 @@ namespace IndigoMovieManager
         private bool _isSkinSelectorInitializing;
         private bool _isThemeSelectorInitializing;
         private int _skinSelectorRefreshRevision;
+        private string _currentDbSettingsPath = "";
+        private string _currentDbOriginalThumbFolder = "";
+        private string _currentDbOriginalBookmarkFolder = "";
+        private string _currentDbOriginalKeepHistory = "";
+        private string _currentDbOriginalPlayerPrg = "";
+        private string _currentDbOriginalPlayerParam = "";
 
         // 共通設定画面の初期化。
         // 閉じるイベントで設定保存するため、ここでイベントを接続する。
@@ -49,6 +57,7 @@ namespace IndigoMovieManager
             FileIndexProviderSelector.SelectedValue = normalizedProvider;
             SyncUpperTabImageCacheMaxEntriesSliderFromSettings();
             InitializeSkinSelector();
+            InitializeCurrentDbSettings();
 
             InitializeThemeSelector();
         }
@@ -113,6 +122,7 @@ namespace IndigoMovieManager
             {
                 Properties.Settings.Default.Save();
             }
+            PersistCurrentDbSettingsValuesIfNeeded();
             ThumbnailEnvConfig.ApplyFfmpegOnePassExecutionHintsForCurrentSettings();
         }
 
@@ -230,6 +240,110 @@ namespace IndigoMovieManager
             }
         }
 
+        private void InitializeCurrentDbSettings()
+        {
+            // 現在DBの設定だけを右ペインへ流し込み、DB未選択時は編集不能にする。
+            MainWindow mainWindow = GetOwnerMainWindow();
+            _currentDbSettingsPath = mainWindow?.MainVM?.DbInfo?.DBFullPath ?? "";
+            bool hasCurrentDb = !string.IsNullOrWhiteSpace(_currentDbSettingsPath);
+
+            CurrentDbSettingsEmptyMessage.Visibility = hasCurrentDb
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            CurrentDbSettingsPanel.IsEnabled = hasCurrentDb;
+            if (!hasCurrentDb)
+            {
+                CurrentDbSettingsPanel.DataContext = null;
+                _currentDbOriginalThumbFolder = "";
+                _currentDbOriginalBookmarkFolder = "";
+                _currentDbOriginalKeepHistory = "";
+                _currentDbOriginalPlayerPrg = "";
+                _currentDbOriginalPlayerParam = "";
+                return;
+            }
+
+            DbSettings currentDbSettings = new(_currentDbSettingsPath);
+            CurrentDbSettingsPanel.DataContext = currentDbSettings;
+            _currentDbOriginalThumbFolder = currentDbSettings.ThumbFolder ?? "";
+            _currentDbOriginalBookmarkFolder = currentDbSettings.BookmarkFolder ?? "";
+            _currentDbOriginalKeepHistory = currentDbSettings.KeepHistory.ToString();
+            _currentDbOriginalPlayerPrg = currentDbSettings.PlayerPrg ?? "";
+            _currentDbOriginalPlayerParam = currentDbSettings.PlayerParam ?? "";
+        }
+
+        private void PersistCurrentDbSettingsValuesIfNeeded()
+        {
+            if (string.IsNullOrWhiteSpace(_currentDbSettingsPath))
+            {
+                return;
+            }
+
+            MainWindow mainWindow = GetOwnerMainWindow();
+            if (mainWindow == null)
+            {
+                return;
+            }
+
+            if (
+                !MainWindow.AreSameMainDbPath(
+                    _currentDbSettingsPath,
+                    mainWindow.MainVM?.DbInfo?.DBFullPath ?? ""
+                )
+            )
+            {
+                DebugRuntimeLog.Write(
+                    "skin-db",
+                    $"settings persist skipped: reason=db-changed db='{_currentDbSettingsPath}'"
+                );
+                return;
+            }
+
+            string thumbFolder = ThumbFolder.Text ?? "";
+            string bookmarkFolder = BookmarkFolder.Text ?? "";
+            string keepHistory = KeepHistory.Text ?? "";
+            string playerPrg = PlayerPrg.Text ?? "";
+            string playerParam = PlayerParam.Text?.ToString() ?? "";
+            if (
+                string.Equals(thumbFolder, _currentDbOriginalThumbFolder, StringComparison.Ordinal)
+                && string.Equals(
+                    bookmarkFolder,
+                    _currentDbOriginalBookmarkFolder,
+                    StringComparison.Ordinal
+                )
+                && string.Equals(keepHistory, _currentDbOriginalKeepHistory, StringComparison.Ordinal)
+                && string.Equals(playerPrg, _currentDbOriginalPlayerPrg, StringComparison.Ordinal)
+                && string.Equals(
+                    playerParam,
+                    _currentDbOriginalPlayerParam,
+                    StringComparison.Ordinal
+                )
+            )
+            {
+                return;
+            }
+
+            int persistedSettingsCount = mainWindow.PersistCurrentDbSettingsValuesFromSettingsWindow(
+                _currentDbSettingsPath,
+                thumbFolder,
+                bookmarkFolder,
+                keepHistory,
+                playerPrg,
+                playerParam
+            );
+            if (persistedSettingsCount != 5)
+            {
+                DebugRuntimeLog.Write(
+                    "skin-db",
+                    $"settings persist partial: success={persistedSettingsCount}/5 db='{_currentDbSettingsPath}'"
+                );
+            }
+        }
+
+        private MainWindow GetOwnerMainWindow()
+        {
+            return Owner as MainWindow ?? Application.Current?.MainWindow as MainWindow;
+        }
+
         private async Task RefreshSkinSelectorAsync()
         {
             int revision = Interlocked.Increment(ref _skinSelectorRefreshRevision);
@@ -336,6 +450,77 @@ namespace IndigoMovieManager
             {
                 DefaultPlayerPath.Text = ofd.FileName;
             }
+        }
+
+        private void OpenCurrentDbFolderDialog_Click(object sender, RoutedEventArgs e)
+        {
+            // 現在DBのフォルダ系設定を、押されたボタンに対応する入力欄へ反映する。
+            if (sender is not Button item)
+            {
+                return;
+            }
+
+            if (item.Name is not ("OpenThumbFolder" or "OpenBookmarkFolder"))
+            {
+                return;
+            }
+
+            var dlg = new OpenFolderDialog
+            {
+                Title = item.Name == "OpenThumbFolder" ? "サムネイルの保存先" : "ブックマークの保存先",
+                Multiselect = false,
+                AddToRecent = true,
+            };
+
+            if (dlg.ShowDialog() != true)
+            {
+                return;
+            }
+
+            TextBox textBox = item.Name == "OpenThumbFolder" ? ThumbFolder : BookmarkFolder;
+            textBox.Text = dlg.FolderName;
+        }
+
+        private void OpenCurrentDbPlayer_Click(object sender, RoutedEventArgs e)
+        {
+            // 現在DB専用の再生プレイヤー実行ファイルを選択する。
+            var ofd = new OpenFileDialog
+            {
+                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                RestoreDirectory = true,
+                Filter = "実行ファイル(*.exe)|*.exe|すべてのファイル(*.*)|*.*",
+                FilterIndex = 1,
+                Title = "既定のプレイヤー選択",
+            };
+
+            if (ofd.ShowDialog() == true)
+            {
+                PlayerPrg.Text = ofd.FileName;
+            }
+        }
+
+        private void OpenWatchFolderEditorFromSettings_Click(object sender, RoutedEventArgs e)
+        {
+            // 設定フォームを閉じ、メイン側の既存入口から監視フォルダ編集を開く。
+            MainWindow mainWindow = GetOwnerMainWindow();
+            Close();
+            mainWindow?.OpenWatchFolderEditorFromSettingsWindow();
+        }
+
+        private void ManualWatchCheckFromSettings_Click(object sender, RoutedEventArgs e)
+        {
+            // 手動チェックは既存のキュー入口へ渡し、設定フォーム自体は先に閉じる。
+            MainWindow mainWindow = GetOwnerMainWindow();
+            Close();
+            mainWindow?.QueueManualWatchCheckFromSettingsWindow();
+        }
+
+        private void RecreateAllThumbnailsFromSettings_Click(object sender, RoutedEventArgs e)
+        {
+            // サムネイル再作成も既存のメイン画面処理へ集約する。
+            MainWindow mainWindow = GetOwnerMainWindow();
+            Close();
+            mainWindow?.QueueRecreateAllThumbnailsFromSettingsWindow();
         }
 
         private void ThemeComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

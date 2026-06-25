@@ -10,6 +10,25 @@ namespace IndigoMovieManager.Tests;
 public sealed class MainWindowMenuActionsPolicyTests
 {
     [Test]
+    public void 左ドロワーは設定ツリーとツールツリーを設定フォームへ寄せる()
+    {
+        string xaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string menuSource = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(xaml, Does.Contain("x:Name=\"BtnSettings\""));
+            Assert.That(xaml, Does.Contain("Tag=\"設定\""));
+            Assert.That(xaml, Does.Not.Contain("x:Name=\"MenuConfig\""));
+            Assert.That(xaml, Does.Not.Contain("x:Name=\"MenuTool\""));
+            Assert.That(menuSource, Does.Contain("OpenCommonSettingsWindowFromMainMenu();"));
+            Assert.That(menuSource, Does.Contain("OpenWatchFolderEditorFromSettingsWindow"));
+            Assert.That(menuSource, Does.Contain("QueueManualWatchCheckFromSettingsWindow"));
+            Assert.That(menuSource, Does.Contain("QueueRecreateAllThumbnailsFromSettingsWindow"));
+        });
+    }
+
+    [Test]
     public void MenuScore_Click_DB更新は背景へ逃がす()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");

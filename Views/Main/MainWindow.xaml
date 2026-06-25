@@ -1753,61 +1753,13 @@
 
               <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
 
-              <TreeView
-                x:Name="MenuConfig"
-                ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
-                ItemsSource="{Binding ConfigTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-                Style="{StaticResource AppTreeViewStyle}"
-              >
-                <TreeView.ItemTemplate>
-                  <HierarchicalDataTemplate
-                    DataType="{x:Type local:TreeSource}"
-                    ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
-                    ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
-                  >
-                    <Button
-                      Click="MenuBtnSettings_Click"
-                      Style="{StaticResource LeftDrawerButtonStyle}"
-                      Tag="{Binding Text}"
-                    >
-                      <TextBlock
-                        Style="{StaticResource LeftDrawerTextStyle}"
-                        Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="{Binding Text}"
-                      />
-                    </Button>
-                  </HierarchicalDataTemplate>
-                </TreeView.ItemTemplate>
-              </TreeView>
-
-              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
-
-              <TreeView
-                x:Name="MenuTool"
-                ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
-                ItemsSource="{Binding ToolTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-                Style="{StaticResource AppTreeViewStyle}"
-              >
-                <TreeView.ItemTemplate>
-                  <HierarchicalDataTemplate
-                    DataType="{x:Type local:TreeSource}"
-                    ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
-                    ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
-                  >
-                    <Button
-                      Click="MenuBtnTool_Click"
-                      Style="{StaticResource LeftDrawerButtonStyle}"
-                      Tag="{Binding Text}"
-                    >
-                      <TextBlock
-                        Style="{StaticResource LeftDrawerTextStyle}"
-                        Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="{Binding Text}"
-                      />
-                    </Button>
-                  </HierarchicalDataTemplate>
-                </TreeView.ItemTemplate>
-              </TreeView>
+              <Button
+                x:Name="BtnSettings"
+                Click="MenuBtnSettings_Click"
+                Content="設定"
+                Style="{StaticResource LeftDrawerButtonStyle}"
+                Tag="設定"
+              />
 
               <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
 

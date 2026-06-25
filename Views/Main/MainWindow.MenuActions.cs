@@ -2905,16 +2905,56 @@ namespace IndigoMovieManager
                     }
                     else
                     {
-                        if (MenuConfig.Items.Count > 0)
-                        {
-                            if (MenuConfig.Items[0] is TreeSource topNode)
-                            {
-                                topNode.IsExpanded = !topNode.IsExpanded;
-                            }
-                        }
+                        OpenCommonSettingsWindowFromMainMenu();
                     }
                 }
             }
+        }
+
+        private void OpenCommonSettingsWindowFromMainMenu()
+        {
+            MenuToggleButton.IsChecked = false;
+            var commonSettingsWindow = new CommonSettingsWindow
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            };
+            commonSettingsWindow.ShowDialog();
+            ApplyThumbnailGpuDecodeSetting();
+        }
+
+        internal int PersistCurrentDbSettingsValuesFromSettingsWindow(
+            string dbFullPath,
+            string thumbFolder,
+            string bookmarkFolder,
+            string keepHistory,
+            string playerPrg,
+            string playerParam
+        )
+        {
+            return PersistDbSettingsValues(
+                dbFullPath,
+                thumbFolder,
+                bookmarkFolder,
+                keepHistory,
+                playerPrg,
+                playerParam
+            );
+        }
+
+        internal void OpenWatchFolderEditorFromSettingsWindow()
+        {
+            OpenWatchFolderEditorDialog();
+        }
+
+        internal void QueueManualWatchCheckFromSettingsWindow()
+        {
+            _ = QueueCheckFolderAsync(CheckMode.Manual, "Settings.Tools.ManualWatchCheck");
+        }
+
+        internal void QueueRecreateAllThumbnailsFromSettingsWindow()
+        {
+            _ = QueueRecreateAllThumbnailsFromCurrentTab(closeMenu: false);
         }
 
         private int PersistDbSettingsValues(
@@ -2987,13 +3027,7 @@ namespace IndigoMovieManager
                     }
                     else
                     {
-                        if (MenuTool.Items.Count > 0)
-                        {
-                            if (MenuTool.Items[0] is TreeSource topNode)
-                            {
-                                topNode.IsExpanded = !topNode.IsExpanded;
-                            }
-                        }
+                        OpenCommonSettingsWindowFromMainMenu();
                     }
                 }
             }

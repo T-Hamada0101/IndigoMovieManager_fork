@@ -508,7 +508,7 @@ namespace IndigoMovieManager.Properties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("Indigo")]
+        [global::System.Configuration.DefaultSettingValueAttribute("SystemAuto")]
         public string ThemeMode {
             get {
                 return ((string)(this["ThemeMode"]));

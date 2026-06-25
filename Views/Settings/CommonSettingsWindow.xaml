@@ -6,10 +6,12 @@
     xmlns:materialDesign="clr-namespace:MaterialDesignThemes.Wpf"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:prop="clr-namespace:IndigoMovieManager.Properties"
-    Title="共通設定"
-    Width="800"
+    Title="設定"
+    Width="900"
     Height="720"
-    ResizeMode="NoResize"
+    MinWidth="780"
+    MinHeight="560"
+    ResizeMode="CanResize"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
 
@@ -20,310 +22,486 @@
         <DynamicResource ResourceKey="SettingsForegroundBrush" />
     </Window.Foreground>
 
-    <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="10" Orientation="Vertical">
-                <Button
-                    x:Name="BtnReturn"
-                    Margin="10,6,0,6"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Top"
-                    Click="BtnReturn_Click"
-                    Content="戻る(_R)"
-                    FontWeight="Normal" />
+    <Window.Resources>
+        <Style x:Key="SettingsCategoryTabStyle" TargetType="TabItem">
+            <Setter Property="Width" Value="156" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource AppTextBrush}" />
+        </Style>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="起動時、最後に開いた管理ファイルを開く"
-                        FontSize="14" />
-                    <CheckBox
-                        x:Name="AutoOpen"
-                        Width="Auto"
-                        FontSize="14"
-                        IsChecked="{Binding AutoOpen, Source={x:Static prop:Settings.Default}}" />
-                </StackPanel>
+        <Style x:Key="SettingsRowLabelStyle" TargetType="Label">
+            <Setter Property="Width" Value="240" />
+            <Setter Property="Margin" Value="0,6,12,6" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{DynamicResource SettingsForegroundBrush}" />
+        </Style>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="テーマ設定"
-                        FontSize="14" />
-                    <ComboBox
-                        x:Name="ThemeComboBox"
-                        Width="220"
-                        FontSize="14"
-                        ToolTip="Indigoは従来互換、Simple系は軽量テーマとして段階的に育てます。"
-                        SelectionChanged="ThemeComboBox_SelectionChanged">
-                        <ComboBoxItem Content="Indigo" Tag="Indigo" ToolTip="従来互換の見た目を保つテーマです。" />
-                        <ComboBoxItem Content="Simple Light" Tag="SimpleLight" ToolTip="軽量なライトテーマです。" />
-                        <ComboBoxItem Content="Simple Dark" Tag="SimpleDark" ToolTip="軽量なダークテーマです。" />
-                        <ComboBoxItem Content="OS 自動" Tag="SystemAuto" ToolTip="OSのライト/ダーク設定に追従します。" />
-                    </ComboBox>
-                </StackPanel>
+        <Style x:Key="SettingsRowPanelStyle" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="一覧スキン（現在DB）"
-                        FontSize="14" />
-                    <ComboBox
-                        x:Name="SkinComboBox"
-                        Width="220"
-                        FontSize="14"
-                        DisplayMemberPath="DisplayName"
-                        SelectedValuePath="Name"
-                        SelectionChanged="SkinComboBox_SelectionChanged" />
-                </StackPanel>
+        <Style x:Key="SettingsSectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource SettingsForegroundBrush}" />
+        </Style>
+    </Window.Resources>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="270"
-                        Margin="30,5,0,5"
-                        Content="最後の管理ファイル"
-                        FontSize="14"
-                        Foreground="Gray" />
-                    <Label
-                        Margin="10,5,5,5"
-                        Content="{Binding LastDoc, Source={x:Static prop:Settings.Default}}"
-                        FontSize="14"
-                        Foreground="Gray" />
-                </StackPanel>
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button
+                x:Name="BtnReturn"
+                MinWidth="96"
+                Margin="0,10,0,0"
+                Click="BtnReturn_Click"
+                Content="閉じる(_R)"
+                FontWeight="Normal" />
+        </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="既定の再生プレイヤー"
-                        FontSize="14" />
-                    <TextBox
-                        x:Name="DefaultPlayerPath"
-                        Width="400"
-                        Margin="5"
-                        materialDesign:TextFieldAssist.HasClearButton="True"
-                        FontSize="14"
-                        IsReadOnly="True"
-                        Text="{Binding DefaultPlayerPath, Source={x:Static prop:Settings.Default}}"
-                        ToolTip="{Binding DefaultPlayerPath}" />
-                    <Button
-                        x:Name="OpenDialogPlayer"
-                        Width="30"
-                        Height="30"
-                        Click="OpenDialogPlayer_Click"
-                        Content="{materialDesign:PackIcon Kind=FolderOpen}"
-                        Style="{StaticResource AppIconButtonStyle}" />
+        <TabControl
+            x:Name="SettingsCategoryTabs"
+            TabStripPlacement="Left"
+            ItemContainerStyle="{StaticResource SettingsCategoryTabStyle}">
 
-                </StackPanel>
+            <TabItem Header="起動と見た目">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="起動と見た目" />
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="再生プレイヤーパラメータ"
-                        FontSize="14"
-                        ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応" />
-                    <ComboBox
-                        x:Name="DefaultPlayerParam"
-                        Width="400"
-                        Margin="5"
-                        materialDesign:TextFieldAssist.HasClearButton="True"
-                        FontSize="14"
-                        IsEditable="True"
-                        Text="{Binding DefaultPlayerParam, Source={x:Static prop:Settings.Default}}"
-                        ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応" />
-                </StackPanel>
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label
+                                Content="起動時、最後に開いた管理ファイルを開く"
+                                Style="{StaticResource SettingsRowLabelStyle}" />
+                            <CheckBox
+                                x:Name="AutoOpen"
+                                Width="Auto"
+                                FontSize="14"
+                                IsChecked="{Binding AutoOpen, Source={x:Static prop:Settings.Default}}" />
+                        </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="終了時の確認"
-                        FontSize="14" />
-                    <CheckBox
-                        x:Name="ConfirmExit"
-                        Width="Auto"
-                        FontSize="14"
-                        IsChecked="{Binding ConfirmExit, Source={x:Static prop:Settings.Default}}" />
-                </StackPanel>
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="テーマ設定" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <ComboBox
+                                x:Name="ThemeComboBox"
+                                Width="220"
+                                FontSize="14"
+                                ToolTip="Indigoは従来互換、Simple系は軽量テーマとして段階的に育てます。"
+                                SelectionChanged="ThemeComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Indigo" Tag="Indigo" ToolTip="従来互換の見た目を保つテーマです。" />
+                                <ComboBoxItem Content="Simple Light" Tag="SimpleLight" ToolTip="軽量なライトテーマです。" />
+                                <ComboBoxItem Content="Simple Dark" Tag="SimpleDark" ToolTip="軽量なダークテーマです。" />
+                                <ComboBoxItem Content="OS 自動" Tag="SystemAuto" ToolTip="OSのライト/ダーク設定に追従します。" />
+                            </ComboBox>
+                        </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="Delキー押下時の処理"
-                        FontSize="14" />
-                    <ComboBox
-                        x:Name="DeleteKeyActionMode"
-                        Width="260"
-                        FontSize="14"
-                        SelectedIndex="{Binding DeleteKeyActionMode, Source={x:Static prop:Settings.Default}}">
-                        <ComboBoxItem Content="登録解除" />
-                        <ComboBoxItem Content="動画削除（ゴミ箱）" />
-                        <ComboBoxItem Content="サムネイル削除" />
-                        <ComboBoxItem Content="削除" />
-                    </ComboBox>
-                </StackPanel>
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="一覧スキン（現在DB）" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <ComboBox
+                                x:Name="SkinComboBox"
+                                Width="220"
+                                FontSize="14"
+                                DisplayMemberPath="DisplayName"
+                                SelectedValuePath="Name"
+                                SelectionChanged="SkinComboBox_SelectionChanged" />
+                        </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="Shift+Delキー押下時の処理"
-                        FontSize="14" />
-                    <ComboBox
-                        x:Name="ShiftDeleteKeyActionMode"
-                        Width="260"
-                        FontSize="14"
-                        SelectedIndex="{Binding ShiftDeleteKeyActionMode, Source={x:Static prop:Settings.Default}}">
-                        <ComboBoxItem Content="登録解除" />
-                        <ComboBoxItem Content="動画削除（ゴミ箱）" />
-                        <ComboBoxItem Content="サムネイル削除" />
-                        <ComboBoxItem Content="削除" />
-                    </ComboBox>
-                </StackPanel>
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label
+                                Width="220"
+                                Margin="20,6,12,6"
+                                Content="最後の管理ファイル"
+                                FontSize="14"
+                                Foreground="{DynamicResource AppTextSubtleBrush}" />
+                            <Label
+                                Margin="0,6,0,6"
+                                Content="{Binding LastDoc, Source={x:Static prop:Settings.Default}}"
+                                FontSize="14"
+                                Foreground="{DynamicResource AppTextSubtleBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="Ctrl+Delキー押下時の処理"
-                        FontSize="14" />
-                    <ComboBox
-                        x:Name="CtrlDeleteKeyActionMode"
-                        Width="260"
-                        FontSize="14"
-                        SelectedIndex="{Binding CtrlDeleteKeyActionMode, Source={x:Static prop:Settings.Default}}">
-                        <ComboBoxItem Content="登録解除" />
-                        <ComboBoxItem Content="動画削除（ゴミ箱）" />
-                        <ComboBoxItem Content="サムネイル削除" />
-                        <ComboBoxItem Content="削除" />
-                    </ComboBox>
-                </StackPanel>
+            <TabItem Header="プレイヤー">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="プレイヤー" />
 
-                <StackPanel Orientation="Horizontal" Visibility="Collapsed">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="サムネイルを縮小する"
-                        FontSize="14"
-                        ToolTip="※縮小する＝WBのサムネサイズに準拠。縮小しない＝1枚辺り上限320x240です。" />
-                    <CheckBox
-                        x:Name="IsResizeThumb"
-                        Width="Auto"
-                        FontSize="14"
-                        IsChecked="{Binding IsResizeThumb, Source={x:Static prop:Settings.Default}}"
-                        ToolTip="※縮小する＝WBのサムネサイズに準拠。縮小しない＝1枚辺り上限320x240です。" />
-                </StackPanel>
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="既定の再生プレイヤー" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <TextBox
+                                x:Name="DefaultPlayerPath"
+                                Width="400"
+                                Margin="0,6,6,6"
+                                materialDesign:TextFieldAssist.HasClearButton="True"
+                                FontSize="14"
+                                IsReadOnly="True"
+                                Text="{Binding DefaultPlayerPath, Source={x:Static prop:Settings.Default}}"
+                                ToolTip="{Binding DefaultPlayerPath}" />
+                            <Button
+                                x:Name="OpenDialogPlayer"
+                                Width="30"
+                                Height="30"
+                                Margin="0,6,0,6"
+                                Click="OpenDialogPlayer_Click"
+                                Content="{materialDesign:PackIcon Kind=FolderOpen}"
+                                Style="{StaticResource AppIconButtonStyle}" />
+                        </StackPanel>
 
-                <StackPanel Orientation="Horizontal" Visibility="Collapsed">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="サムネイルGPUデコードを使う"
-                        FontSize="14"
-                        ToolTip="速度差は小さい場合がありますが、CPU負荷を下げたいときに有効です。" />
-                    <CheckBox
-                        x:Name="ThumbnailGpuDecodeEnabled"
-                        Width="Auto"
-                        FontSize="14"
-                        IsChecked="{Binding ThumbnailGpuDecodeEnabled, Source={x:Static prop:Settings.Default}}"
-                        ToolTip="速度差は小さい場合がありますが、CPU負荷を下げたいときに有効です。" />
-                </StackPanel>
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label
+                                Content="再生プレイヤーパラメータ"
+                                Style="{StaticResource SettingsRowLabelStyle}"
+                                ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応" />
+                            <ComboBox
+                                x:Name="DefaultPlayerParam"
+                                Width="400"
+                                Margin="0,6,0,6"
+                                materialDesign:TextFieldAssist.HasClearButton="True"
+                                FontSize="14"
+                                IsEditable="True"
+                                Text="{Binding DefaultPlayerParam, Source={x:Static prop:Settings.Default}}"
+                                ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="Everything連携モード"
-                        FontSize="14"
-                        ToolTip="OFF:無効 / AUTO:検知できる時だけ利用 / ON:常に利用を試行（失敗時は通常監視へフォールバック）" />
-                    <ComboBox
-                        x:Name="EverythingIntegrationMode"
-                        Width="180"
-                        FontSize="14"
-                        SelectedIndex="{Binding EverythingIntegrationMode, Source={x:Static prop:Settings.Default}}"
-                        ToolTip="OFF:無効 / AUTO:検知できる時だけ利用 / ON:常に利用を試行（失敗時は通常監視へフォールバック）">
-                        <ComboBoxItem Content="OFF（使わない）" />
-                        <ComboBoxItem Content="AUTO（推奨）" />
-                        <ComboBoxItem Content="ON（常に試行）" />
-                    </ComboBox>
-                </StackPanel>
+            <TabItem Header="現在DB">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="現在DB" />
+                        <TextBlock
+                            x:Name="CurrentDbSettingsEmptyMessage"
+                            Margin="0,0,0,12"
+                            FontSize="14"
+                            Foreground="{DynamicResource AppTextSubtleBrush}"
+                            Text="管理ファイルを開くと編集できます。"
+                            Visibility="Collapsed" />
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="検索プロバイダ（再起動後に反映）"
-                        FontSize="14"
-                        ToolTip="everything: 既存Everything IPC / everythinglite: EverythingLite実装。変更を有効化するにはアプリ再起動が必要です。" />
-                    <ComboBox
-                        x:Name="FileIndexProviderSelector"
-                        Width="220"
-                        FontSize="14"
-                        SelectedValuePath="Tag"
-                        ToolTip="この設定は起動時に読み込まれます。切替後はアプリを再起動してください。">
-                        <ComboBoxItem Tag="everything" Content="everything（既存）" />
-                        <ComboBoxItem Tag="everythinglite" Content="everythinglite（新実装）" />
-                    </ComboBox>
-                </StackPanel>
+                        <StackPanel x:Name="CurrentDbSettingsPanel" Orientation="Vertical">
+                            <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                                <Label Content="サムネイルフォルダー" Style="{StaticResource SettingsRowLabelStyle}" />
+                                <TextBox
+                                    x:Name="ThumbFolder"
+                                    Width="400"
+                                    Margin="0,6,6,6"
+                                    materialDesign:TextFieldAssist.HasClearButton="True"
+                                    FontSize="14"
+                                    IsReadOnly="True"
+                                    Text="{Binding ThumbFolder}"
+                                    ToolTip="{Binding ThumbFolder}" />
+                                <Button
+                                    x:Name="OpenThumbFolder"
+                                    Width="30"
+                                    Height="30"
+                                    Margin="0,6,0,6"
+                                    Click="OpenCurrentDbFolderDialog_Click"
+                                    Content="{materialDesign:PackIcon Kind=FolderOpen}"
+                                    Style="{StaticResource AppIconButtonStyle}" />
+                            </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="最近開いた管理ファイルに表示する数"
-                        FontSize="14" />
-                    <TextBlock
-                        x:Name="RecentFiles"
-                        Width="50"
-                        Margin="5"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Center"
-                        FontSize="14"
-                        Text="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
-                    <Slider
-                        x:Name="slider"
-                        Width="100"
-                        Margin="16,0,0,0"
-                        VerticalAlignment="Center"
-                        Maximum="30"
-                        Minimum="1"
-                        Style="{StaticResource AppDiscreteSliderStyle}"
-                        TickFrequency="1"
-                        Value="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
-                </StackPanel>
+                            <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                                <Label Content="ブックマークフォルダー" Style="{StaticResource SettingsRowLabelStyle}" />
+                                <TextBox
+                                    x:Name="BookmarkFolder"
+                                    Width="400"
+                                    Margin="0,6,6,6"
+                                    materialDesign:TextFieldAssist.HasClearButton="True"
+                                    FontSize="14"
+                                    IsReadOnly="True"
+                                    Text="{Binding BookmarkFolder}"
+                                    ToolTip="{Binding BookmarkFolder}" />
+                                <Button
+                                    x:Name="OpenBookmarkFolder"
+                                    Width="30"
+                                    Height="30"
+                                    Margin="0,6,0,6"
+                                    Click="OpenCurrentDbFolderDialog_Click"
+                                    Content="{materialDesign:PackIcon Kind=FolderOpen}"
+                                    Style="{StaticResource AppIconButtonStyle}" />
+                            </StackPanel>
 
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
-                        Content="一覧画像キャッシュ最大件数"
-                        FontSize="14"
-                        ToolTip="PageUp / PageDown の往復で再利用する画像件数です。大きいほど引っかかりにくくなりますが、メモリ使用量は増えます。" />
-                    <TextBlock
-                        x:Name="UpperTabImageCacheMaxEntriesText"
-                        Width="70"
-                        Margin="5"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Center"
-                        FontSize="14"
-                        Text="{Binding UpperTabImageCacheMaxEntries, Source={x:Static prop:Settings.Default}}" />
-                    <Slider
-                        x:Name="sliderUpperTabImageCacheMaxEntries"
-                        Width="180"
-                        Margin="16,0,0,0"
-                        VerticalAlignment="Center"
-                        Maximum="4096"
-                        Minimum="256"
-                        Style="{StaticResource AppDiscreteSliderStyle}"
-                        TickFrequency="256"
-                        ToolTip="256 から 4096 の範囲で調整できます。" />
-                </StackPanel>
+                            <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                                <Label Content="再生プレイヤー" Style="{StaticResource SettingsRowLabelStyle}" />
+                                <TextBox
+                                    x:Name="PlayerPrg"
+                                    Width="400"
+                                    Margin="0,6,6,6"
+                                    materialDesign:TextFieldAssist.HasClearButton="True"
+                                    FontSize="14"
+                                    IsReadOnly="True"
+                                    Text="{Binding PlayerPrg}"
+                                    ToolTip="{Binding PlayerPrg}" />
+                                <Button
+                                    x:Name="OpenCurrentDbPlayer"
+                                    Width="30"
+                                    Height="30"
+                                    Margin="0,6,0,6"
+                                    Click="OpenCurrentDbPlayer_Click"
+                                    Content="{materialDesign:PackIcon Kind=FolderOpen}"
+                                    Style="{StaticResource AppIconButtonStyle}" />
+                            </StackPanel>
 
-            </StackPanel>
-        </ScrollViewer>
-    </Grid>
+                            <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                                <Label
+                                    Content="再生プレイヤーパラメータ"
+                                    Style="{StaticResource SettingsRowLabelStyle}"
+                                    ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応" />
+                                <ComboBox
+                                    x:Name="PlayerParam"
+                                    Width="400"
+                                    Margin="0,6,0,6"
+                                    materialDesign:TextFieldAssist.HasClearButton="True"
+                                    FontSize="14"
+                                    IsEditable="True"
+                                    Text="{Binding PlayerParam}"
+                                    ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応" />
+                            </StackPanel>
+
+                            <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                                <Label Content="検索履歴の保持数" Style="{StaticResource SettingsRowLabelStyle}" />
+                                <TextBlock
+                                    x:Name="KeepHistory"
+                                    Width="50"
+                                    Margin="0,6,0,6"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    Text="{Binding KeepHistory}" />
+                                <Slider
+                                    x:Name="CurrentDbKeepHistorySlider"
+                                    Width="260"
+                                    Margin="16,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Maximum="100"
+                                    Minimum="1"
+                                    Style="{StaticResource AppDiscreteSliderStyle}"
+                                    TickFrequency="1"
+                                    Value="{Binding KeepHistory}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="操作">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="操作" />
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="終了時の確認" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <CheckBox
+                                x:Name="ConfirmExit"
+                                Width="Auto"
+                                FontSize="14"
+                                IsChecked="{Binding ConfirmExit, Source={x:Static prop:Settings.Default}}" />
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="Delキー押下時の処理" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <ComboBox
+                                x:Name="DeleteKeyActionMode"
+                                Width="260"
+                                FontSize="14"
+                                SelectedIndex="{Binding DeleteKeyActionMode, Source={x:Static prop:Settings.Default}}">
+                                <ComboBoxItem Content="登録解除" />
+                                <ComboBoxItem Content="動画削除（ゴミ箱）" />
+                                <ComboBoxItem Content="サムネイル削除" />
+                                <ComboBoxItem Content="削除" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="Shift+Delキー押下時の処理" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <ComboBox
+                                x:Name="ShiftDeleteKeyActionMode"
+                                Width="260"
+                                FontSize="14"
+                                SelectedIndex="{Binding ShiftDeleteKeyActionMode, Source={x:Static prop:Settings.Default}}">
+                                <ComboBoxItem Content="登録解除" />
+                                <ComboBoxItem Content="動画削除（ゴミ箱）" />
+                                <ComboBoxItem Content="サムネイル削除" />
+                                <ComboBoxItem Content="削除" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="Ctrl+Delキー押下時の処理" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <ComboBox
+                                x:Name="CtrlDeleteKeyActionMode"
+                                Width="260"
+                                FontSize="14"
+                                SelectedIndex="{Binding CtrlDeleteKeyActionMode, Source={x:Static prop:Settings.Default}}">
+                                <ComboBoxItem Content="登録解除" />
+                                <ComboBoxItem Content="動画削除（ゴミ箱）" />
+                                <ComboBoxItem Content="サムネイル削除" />
+                                <ComboBoxItem Content="削除" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="検索と監視">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="検索と監視" />
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label
+                                Content="Everything連携モード"
+                                Style="{StaticResource SettingsRowLabelStyle}"
+                                ToolTip="OFF:無効 / AUTO:検知できる時だけ利用 / ON:常に利用を試行（失敗時は通常監視へフォールバック）" />
+                            <ComboBox
+                                x:Name="EverythingIntegrationMode"
+                                Width="180"
+                                FontSize="14"
+                                SelectedIndex="{Binding EverythingIntegrationMode, Source={x:Static prop:Settings.Default}}"
+                                ToolTip="OFF:無効 / AUTO:検知できる時だけ利用 / ON:常に利用を試行（失敗時は通常監視へフォールバック）">
+                                <ComboBoxItem Content="OFF（使わない）" />
+                                <ComboBoxItem Content="AUTO（推奨）" />
+                                <ComboBoxItem Content="ON（常に試行）" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label
+                                Content="検索プロバイダ（再起動後に反映）"
+                                Style="{StaticResource SettingsRowLabelStyle}"
+                                ToolTip="everything: 既存Everything IPC / everythinglite: EverythingLite実装。変更を有効化するにはアプリ再起動が必要です。" />
+                            <ComboBox
+                                x:Name="FileIndexProviderSelector"
+                                Width="220"
+                                FontSize="14"
+                                SelectedValuePath="Tag"
+                                ToolTip="この設定は起動時に読み込まれます。切替後はアプリを再起動してください。">
+                                <ComboBoxItem Tag="everything" Content="everything（既存）" />
+                                <ComboBoxItem Tag="everythinglite" Content="everythinglite（新実装）" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="最近開いた管理ファイルに表示する数" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <TextBlock
+                                x:Name="RecentFiles"
+                                Width="50"
+                                Margin="0,6,0,6"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center"
+                                FontSize="14"
+                                Text="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
+                            <Slider
+                                x:Name="slider"
+                                Width="160"
+                                Margin="16,0,0,0"
+                                VerticalAlignment="Center"
+                                Maximum="30"
+                                Minimum="1"
+                                Style="{StaticResource AppDiscreteSliderStyle}"
+                                TickFrequency="1"
+                                Value="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="表示と画像">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="表示と画像" />
+
+                        <StackPanel Orientation="Horizontal" Visibility="Collapsed">
+                            <Label
+                                Content="サムネイルを縮小する"
+                                Style="{StaticResource SettingsRowLabelStyle}"
+                                ToolTip="※縮小する＝WBのサムネサイズに準拠。縮小しない＝1枚辺り上限320x240です。" />
+                            <CheckBox
+                                x:Name="IsResizeThumb"
+                                Width="Auto"
+                                FontSize="14"
+                                IsChecked="{Binding IsResizeThumb, Source={x:Static prop:Settings.Default}}"
+                                ToolTip="※縮小する＝WBのサムネサイズに準拠。縮小しない＝1枚辺り上限320x240です。" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Visibility="Collapsed">
+                            <Label
+                                Content="サムネイルGPUデコードを使う"
+                                Style="{StaticResource SettingsRowLabelStyle}"
+                                ToolTip="速度差は小さい場合がありますが、CPU負荷を下げたいときに有効です。" />
+                            <CheckBox
+                                x:Name="ThumbnailGpuDecodeEnabled"
+                                Width="Auto"
+                                FontSize="14"
+                                IsChecked="{Binding ThumbnailGpuDecodeEnabled, Source={x:Static prop:Settings.Default}}"
+                                ToolTip="速度差は小さい場合がありますが、CPU負荷を下げたいときに有効です。" />
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label
+                                Content="一覧画像キャッシュ最大件数"
+                                Style="{StaticResource SettingsRowLabelStyle}"
+                                ToolTip="PageUp / PageDown の往復で再利用する画像件数です。大きいほど引っかかりにくくなりますが、メモリ使用量は増えます。" />
+                            <TextBlock
+                                x:Name="UpperTabImageCacheMaxEntriesText"
+                                Width="70"
+                                Margin="0,6,0,6"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center"
+                                FontSize="14"
+                                Text="{Binding UpperTabImageCacheMaxEntries, Source={x:Static prop:Settings.Default}}" />
+                            <Slider
+                                x:Name="sliderUpperTabImageCacheMaxEntries"
+                                Width="200"
+                                Margin="16,0,0,0"
+                                VerticalAlignment="Center"
+                                Maximum="4096"
+                                Minimum="256"
+                                Style="{StaticResource AppDiscreteSliderStyle}"
+                                TickFrequency="256"
+                                ToolTip="256 から 4096 の範囲で調整できます。" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="ツール">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="ツール" />
+
+                        <Button
+                            x:Name="OpenWatchFolderEditorButton"
+                            Width="240"
+                            Margin="0,0,0,8"
+                            HorizontalAlignment="Left"
+                            Click="OpenWatchFolderEditorFromSettings_Click"
+                            Content="監視フォルダ編集" />
+
+                        <Button
+                            x:Name="ManualWatchCheckButton"
+                            Width="240"
+                            Margin="0,0,0,8"
+                            HorizontalAlignment="Left"
+                            Click="ManualWatchCheckFromSettings_Click"
+                            Content="監視フォルダ更新チェック" />
+
+                        <Button
+                            x:Name="RecreateAllThumbnailsButton"
+                            Width="240"
+                            HorizontalAlignment="Left"
+                            Click="RecreateAllThumbnailsFromSettings_Click"
+                            Content="全ファイルサムネイル再作成" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
 </Window>

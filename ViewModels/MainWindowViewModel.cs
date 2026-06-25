@@ -37,10 +37,8 @@ namespace IndigoMovieManager.ViewModels
         // アプリ全体の設定情報（DBパスやスキンなど）を持つプロパティ
         public DBInfo DbInfo { get; set; }
 
-        // 画面左側のTreeViewに表示する各項目のルートコレクション群
+        // 画面左側のTreeViewに表示する最近使ったファイルのルートコレクション
         public ObservableCollection<TreeSource> RecentTreeRoot { get; set; }
-        public ObservableCollection<TreeSource> ConfigTreeRoot { get; set; }
-        public ObservableCollection<TreeSource> ToolTreeRoot { get; set; }
 
         // メインの一覧画面に表示する動画レコードの管理用コレクション
         public ResettableObservableCollection<MovieRecords> MovieRecs { get; set; }
@@ -74,52 +72,6 @@ namespace IndigoMovieManager.ViewModels
         {
             DbInfo = new DBInfo();
             RecentTreeRoot = [];
-
-            // 設定メニューのツリー構造を定義
-            ConfigTreeRoot =
-            [
-                new TreeSource
-                {
-                    Text = "設定",
-                    IsExpanded = false,
-                    Children =
-                    [
-                        new TreeSource
-                        {
-                            Text = "共通設定",
-                        },
-                        new TreeSource
-                        {
-                            Text = "個別設定",
-                        },
-                    ],
-                },
-            ];
-
-            // ツールメニューのツリー構造を定義
-            ToolTreeRoot =
-            [
-                new TreeSource
-                {
-                    Text = "ツール",
-                    IsExpanded = false,
-                    Children =
-                    [
-                        new TreeSource
-                        {
-                            Text = "監視フォルダ編集",
-                        },
-                        new TreeSource
-                        {
-                            Text = "監視フォルダ更新チェック",
-                        },
-                        new TreeSource
-                        {
-                            Text = "全ファイルサムネイル再作成",
-                        },
-                    ],
-                },
-            ];
 
             MovieRecs = [];
             FilteredMovieRecs = [];
