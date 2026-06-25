@@ -315,16 +315,31 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             searchSource,
             "private async Task<bool> ExecuteSearchKeywordAsync("
         );
+        int snapshotIndex = method.IndexOf(
+            "UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(",
+            StringComparison.Ordinal
+        );
+        int logIndex = method.IndexOf("DebugRuntimeLog.Write(", StringComparison.Ordinal);
+        int inputLogIndex = method.IndexOf(
+            "BuildUiShellInputLogMessage(\"search\", triggerReason, snapshot)",
+            StringComparison.Ordinal
+        );
+        int executeIndex = method.IndexOf(
+            "SearchExecutor.ExecuteAsync(text, syncSearchBoxText)",
+            StringComparison.Ordinal
+        );
 
         Assert.That(method, Does.Contain("string triggerReason = \"search\""));
         Assert.That(method, Does.Contain("CaptureUserPriorityOperationSnapshot("));
         Assert.That(method, Does.Contain("IsUserPriorityWorkActive()"));
+        Assert.That(method, Does.Contain("DebugRuntimeLog.Write("));
         Assert.That(method, Does.Contain("BuildUiShellInputLogMessage(\"search\", triggerReason, snapshot)"));
         Assert.That(method, Does.Contain("return await SearchExecutor.ExecuteAsync(text, syncSearchBoxText);"));
-        Assert.That(
-            method.IndexOf("BuildUiShellInputLogMessage(\"search\", triggerReason, snapshot)", StringComparison.Ordinal),
-            Is.LessThan(method.IndexOf("SearchExecutor.ExecuteAsync(text, syncSearchBoxText)", StringComparison.Ordinal))
-        );
+        Assert.That(snapshotIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(logIndex, Is.GreaterThan(snapshotIndex));
+        Assert.That(inputLogIndex, Is.GreaterThan(logIndex));
+        // 検索本体へ渡す前に ui shell input と snapshot fields を必ず吐く。
+        Assert.That(inputLogIndex, Is.LessThan(executeIndex));
     }
 
     [Test]
@@ -512,6 +527,22 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             inputRoutingSource,
             "private async void ComboSort_SelectionChanged("
         );
+        int sortSnapshotIndex = comboChanged.IndexOf(
+            "UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(",
+            StringComparison.Ordinal
+        );
+        int sortLogIndex = comboChanged.IndexOf(
+            "DebugRuntimeLog.Write(",
+            StringComparison.Ordinal
+        );
+        int sortInputLogIndex = comboChanged.IndexOf(
+            "BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)",
+            StringComparison.Ordinal
+        );
+        int sortBeginIndex = comboChanged.IndexOf(
+            "BeginUserPriorityWork(\"sort\");",
+            StringComparison.Ordinal
+        );
 
         Assert.That(legacyWrapper, Does.Contain("SortDataFromLegacyCallerAsync(id);"));
         Assert.That(legacyAsyncWrapper, Does.Contain("await SortDataAsync(id);"));
@@ -527,22 +558,24 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
         Assert.That(sortAsync, Does.Contain("sort end: revision="));
         Assert.That(comboChanged, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
+        Assert.That(comboChanged, Does.Contain("CaptureUserPriorityOperationSnapshot("));
+        Assert.That(comboChanged, Does.Contain("IsUserPriorityWorkActive()"));
+        Assert.That(comboChanged, Does.Contain("DebugRuntimeLog.Write("));
         Assert.That(comboChanged, Does.Contain("BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"));
         Assert.That(comboChanged, Does.Contain("BeginUserPriorityWork(\"sort\");"));
         Assert.That(comboChanged, Does.Contain("await SortDataAsync(plan.SortId);"));
         Assert.That(comboChanged, Does.Contain("finally"));
         Assert.That(comboChanged, Does.Contain("EndUserPriorityWork(\"sort\");"));
+        Assert.That(sortSnapshotIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(sortLogIndex, Is.GreaterThan(sortSnapshotIndex));
+        Assert.That(sortInputLogIndex, Is.GreaterThan(sortLogIndex));
+        // sort の user-priority を張る前に、入力入口の状態を runtime log へ閉じ込める。
         Assert.That(
-            comboChanged.IndexOf(
-                "BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)",
-                StringComparison.Ordinal
-            ),
-            Is.LessThan(
-                comboChanged.IndexOf("BeginUserPriorityWork(\"sort\");", StringComparison.Ordinal)
-            )
+            sortInputLogIndex,
+            Is.LessThan(sortBeginIndex)
         );
         Assert.That(
-            comboChanged.IndexOf("BeginUserPriorityWork(\"sort\");", StringComparison.Ordinal),
+            sortBeginIndex,
             Is.LessThan(
                 comboChanged.IndexOf("await SortDataAsync(plan.SortId);", StringComparison.Ordinal)
             )
