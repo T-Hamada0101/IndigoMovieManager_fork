@@ -10,7 +10,24 @@ namespace IndigoMovieManager.Infrastructure
         long? EndSequence,
         int DetectedResetCount,
         int SourceLineCount
-    );
+    )
+    {
+        public string BuildSummaryText()
+        {
+            string sequenceText =
+                HasSequence && StartSequence.HasValue && EndSequence.HasValue
+                    ? $"{StartSequence.Value}-{EndSequence.Value}"
+                    : "none";
+
+            return string.Join(
+                " ",
+                $"log_run_lines={Lines.Count}/{SourceLineCount}",
+                $"has_sequence={(HasSequence ? "true" : "false")}",
+                $"sequence={sequenceText}",
+                $"resets={DetectedResetCount}"
+            );
+        }
+    }
 
     public static class DebugRuntimeLogRunSlicePolicy
     {

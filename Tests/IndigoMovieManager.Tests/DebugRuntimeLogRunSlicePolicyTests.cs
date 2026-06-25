@@ -79,6 +79,37 @@ public sealed class DebugRuntimeLogRunSlicePolicyTests
         Assert.That(result.SourceLineCount, Is.EqualTo(3));
     }
 
+    [Test]
+    public void BuildSummaryText_sequenceありならgrepしやすい要約を返す()
+    {
+        string oldLast = BuildLine(3, "old input ready");
+        string newFirst = BuildLine(1, "new startup");
+        string helper = "diagnostic helper line without sequence";
+        string newLast = BuildLine(3, "new input ready");
+
+        DebugRuntimeLogRunSliceResult result = DebugRuntimeLogRunSlicePolicy.SliceLatestRun(
+            new[] { oldLast, newFirst, helper, newLast }
+        );
+
+        Assert.That(
+            result.BuildSummaryText(),
+            Is.EqualTo("log_run_lines=3/4 has_sequence=true sequence=1-3 resets=1")
+        );
+    }
+
+    [Test]
+    public void BuildSummaryText_sequenceなしならsequence_noneを返す()
+    {
+        DebugRuntimeLogRunSliceResult result = DebugRuntimeLogRunSlicePolicy.SliceLatestRun(
+            new[] { "diagnostic helper line", "another helper line" }
+        );
+
+        Assert.That(
+            result.BuildSummaryText(),
+            Is.EqualTo("log_run_lines=2/2 has_sequence=false sequence=none resets=0")
+        );
+    }
+
     private static string BuildLine(long sequence, string message)
     {
         return DebugRuntimeLog.BuildLineForTesting(
