@@ -298,6 +298,7 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
             Assert.That(requestFields, Does.Contain("worker_kind=metadata-probe"));
             Assert.That(requestFields, Does.Contain("input_count=1"));
             Assert.That(requestFields, Does.Contain("capability_count=4"));
+            Assert.That(requestFields, Does.Contain("diagnostic_context_count=7"));
             Assert.That(requestFields, Does.Contain("source=watch-existing-movie"));
             Assert.That(requestFields, Does.Contain("has_cheap_dirty_fields=true"));
             Assert.That(requestFields, Does.Contain("existing_movie_length_seconds=0"));
@@ -320,6 +321,7 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
             Assert.That(combinedFields, Does.Contain("progress_total=1"));
             Assert.That(combinedFields, Does.Contain("input_count=1"));
             Assert.That(combinedFields, Does.Contain("capability_count=4"));
+            Assert.That(combinedFields, Does.Contain("diagnostic_context_count=7"));
             Assert.That(combinedFields, Does.Contain("source=watch-existing-movie"));
             Assert.That(combinedFields, Does.Contain("has_cheap_dirty_fields=true"));
             Assert.That(combinedFields, Does.Contain("existing_movie_length_seconds=0"));

@@ -336,6 +336,7 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("elapsed_ms="));
         Assert.That(adapterSource, Does.Contain("input_count="));
         Assert.That(adapterSource, Does.Contain("capability_count="));
+        Assert.That(adapterSource, Does.Contain("diagnostic_context_count="));
         Assert.That(adapterSource, Does.Contain("current_input_file="));
         Assert.That(adapterSource, Does.Contain("movie_path_key="));
         Assert.That(adapterSource, Does.Contain("has_cheap_dirty_fields="));
