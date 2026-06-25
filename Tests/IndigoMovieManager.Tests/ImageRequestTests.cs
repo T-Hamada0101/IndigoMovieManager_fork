@@ -476,6 +476,11 @@ public sealed class ImageRequestTests
             Assert.That(logFields, Does.Contain("decode_pixel_height=18"));
             Assert.That(logFields, Does.Contain("image_outcome=failed"));
             Assert.That(logFields, Does.Contain("decode_attempted=false"));
+            Assert.That(logFields, Does.Contain("image_result_revision=81"));
+            Assert.That(logFields, Does.Contain("resolved=true"));
+            Assert.That(logFields, Does.Contain("placeholder=false"));
+            Assert.That(logFields, Does.Contain("stale=false"));
+            Assert.That(logFields, Does.Contain("failure_reason=error-marker"));
         });
     }
 }

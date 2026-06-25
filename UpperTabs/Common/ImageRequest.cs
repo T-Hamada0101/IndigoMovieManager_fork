@@ -367,7 +367,7 @@ namespace IndigoMovieManager.UpperTabs.Common
         internal static string Build(ImageDecodePlanResult result)
         {
             return
-                $"{ImageDecodeLogFields.Build(result.DecodeRequest, result.DecodeResult)} decode_attempted={FormatLogBool(result.DecodeAttempted)}";
+                $"{ImageDecodeLogFields.Build(result.DecodeRequest, result.DecodeResult)} decode_attempted={FormatLogBool(result.DecodeAttempted)} {ImageLoadLogFields.BuildStateSuffix(result.ImageLoadResult)}";
         }
 
         private static string FormatLogBool(bool value)
@@ -381,7 +381,19 @@ namespace IndigoMovieManager.UpperTabs.Common
         internal static string Build(ImageLoadResult result)
         {
             return
-                $"image_role={result.ImageRequest.ThumbnailRole} image_request_revision={result.ImageRequest.RequestRevision} image_result_revision={result.ResultRevision} image_outcome={result.OutcomeLogValue} resolved={FormatLogBool(result.HasResolvedImage)} placeholder={FormatLogBool(result.UsesPlaceholder)} stale={FormatLogBool(result.IsStale)} failure_reason={result.FailureReason ?? ""}";
+                $"image_role={result.ImageRequest.ThumbnailRole} image_request_revision={result.ImageRequest.RequestRevision} {BuildStateSuffixCore(result, includeOutcome: true)}";
+        }
+
+        internal static string BuildStateSuffix(ImageLoadResult result)
+        {
+            return BuildStateSuffixCore(result, includeOutcome: false);
+        }
+
+        private static string BuildStateSuffixCore(ImageLoadResult result, bool includeOutcome)
+        {
+            string outcomeField = includeOutcome ? $" image_outcome={result.OutcomeLogValue}" : "";
+            return
+                $"image_result_revision={result.ResultRevision}{outcomeField} resolved={FormatLogBool(result.HasResolvedImage)} placeholder={FormatLogBool(result.UsesPlaceholder)} stale={FormatLogBool(result.IsStale)} failure_reason={result.FailureReason ?? ""}";
         }
 
         private static string FormatLogBool(bool value)
