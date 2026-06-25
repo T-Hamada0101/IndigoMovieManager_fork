@@ -1,13 +1,13 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#######---] 75%`
+> 進捗メータ: `[########--] 76%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-25
 
-全体進捗目安: `[#######---] 75%`
+全体進捗目安: `[########--] 76%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
@@ -18,8 +18,8 @@
 | Phase 2. ReadModel Store と Diff-first | 49% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める | watch 1件追加 / rename が full fallback へ戻らない実機ログと、大量変更時 fallback の妥当性を確認する |
 | Phase 3. In-process Scheduler | 53% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強した | 実機ログで scheduler admission / released / pending_count が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
 | Phase 4. Image Pipeline 統一 | 54% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。上側タブ、Player右レール、ThumbnailError 一覧 converter は decode result を保持する。2026-06-25 Worker B で ThumbnailError 背景集計に `ImageDecodePlanResult` を追加し、ERROR marker / placeholder / missing 判定を decode 計画語彙でも集約ログへ出せるようにした | 実機ログで stale discard と error tab image aggregate / aggregate-decode-plan を確認する |
-| Phase 5. Persistence Pipeline | 59% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume / playback stats / skin state の成功ログも共通語彙へ寄せ、score / tag / movie_path の成功ログも `PersistenceWriteRequest` helper 経由に揃えた | 実機ログで保存成功 / 失敗時の dirty / failed / retryable と UI 通知候補を確認する |
-| Phase 6. Worker 契約 | 52% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた | 実機ログで Worker DTO fields が UI 詰まりの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
+| Phase 5. Persistence Pipeline | 62% | no-persist 診断、設定保存 background queue、view_count / movie_path hot path の背景保存入口を source policy で固定済み。`PersistenceFailureNotificationPolicy` と `PersistenceWriteRequest` / `PersistenceWriteResult` により、settings / player volume / playback stats / bookmark add-delete / score / tag / movie_path / skin profile の保存ログを共通 fields で読める入口になった。application settings / player volume / playback stats / skin state の成功ログも共通語彙へ寄せ、score / tag / movie_path の成功ログも `PersistenceWriteRequest` helper 経由に揃えた。2026-06-25 Worker C で成功ログにも `dirty=false failed=false retryable=false notify_ui=false` を出し、成功 / 失敗を同じ状態語彙で読めるようにした | 実機ログで `write_succeeded=true/false` と dirty / failed / retryable / notify_ui の組み合わせを確認する |
+| Phase 6. Worker 契約 | 55% | `ThumbnailIpcDtos` に `WorkerJobRequestDto` / `WorkerJobResultDto` / `WorkerJobProgressDto` / `WorkerJobArtifactDto` を追加し、rescue worker job JSON、thumbnail queue `QueueRequest` / 実行結果 / 進捗、watch metadata probe 入出力 / 進捗から Worker DTO へ写す adapter と focused test を追加済み。thumbnail queue、rescue worker、watch metadata probe の既存結果ログへ Worker DTO fields を併記し始めた。2026-06-25 Worker D で queue の failure / skip 系ログへ request / progress / result の代表 fields をまとめて併記し、rescue worker / watch metadata probe も input_count / capability_count / 診断文脈 / result metrics を読めるようにした | 実機ログで Worker DTO fields が UI 詰まりの支配要因確認に足りるかを見て、必要最小限で接続範囲を広げる |
 | Phase 7. Skin / Player / Watcher の Core 接続 | 27% | skin / Player / Watcher それぞれに分離済み判断とログがあり、Watcher change set を `WatchUiApplyRequest` へ畳んで UI apply 境界を1箇所に寄せた。Player surface 操作へ保存処理を戻さない source policy も追加済み。skin host refresh queue は挙動を変えず scheduler 語彙へ接続し、Player 再生状態変更は `operation_reason=player-playback` と reason を状態変化時だけログへ出す | skin / Player / Watcher の実行入口を Scheduler / ReadModel / Persistence 経由へ段階移行する |
 
 ## 1. Summary
@@ -86,6 +86,7 @@
 - 2026-06-19 Worker I: playback stats 保存成功時も `PersistenceWriteResult.FromSuccess(...)` の共通 fields を1行だけ出し、DB更新順、`Task.Run`、例外処理、Player surface の hot path は変えていない。
 - 2026-06-19 Worker L: skin state persister の system / profile 成功時も `BuildWriteSuccessResultLogFields(...)` の共通 fields を出し、batch、dedupe、DB書き込み順、cache persisted / fault の意味は変えていない。
 - 2026-06-19 Worker R: score / tag / movie_path の背景保存成功ログも `PersistenceWriteRequest.BuildWriteSuccessResultLogFields(...)` 経由へ寄せた。DB write 順、`Task.Run`、失敗ログ、retryable dirty の意味は変えていない。
+- 2026-06-25 Worker C: `PersistenceWriteResult.FromSuccess(...)` も `dirty=false failed=false retryable=false notify_ui=false` を出すようにし、保存成功 / 失敗を `write_succeeded` と同じ状態語彙で読めるようにした。保存順、UI hot path、失敗時 dirty の意味は変えていない。
 - Worker DTO は request / result / progress / artifact の語彙を `ThumbnailIpcDtos` に追加し、JSON roundtrip と null なし既定値を focused test で固定した。
 - rescue worker job JSON は `WorkerJobRequestDto` / `WorkerJobResultDto` へ写す adapter を持ち、既存 worker 実行を壊さず契約語彙へ寄せる入口ができた。
 - 2026-06-19 Worker G: rescue worker の launch / result / missing result ログにも `WorkerJobRequestDto` / `WorkerJobResultDto` 由来の job id、kind、artifact、retryability、elapsed、output artifact fields を併記した。JSON schema、process launch、failfast は変えない。
@@ -96,6 +97,7 @@
 - watch の metadata probe は `WatchMetadataProbeWorkerContractAdapter` で `WorkerJobRequestDto` / `WorkerJobResultDto` へ写せるようになり、既存 probe 実行順や DB 更新を変えずに request / result / artifact / metrics 語彙へ寄せる入口ができた。
 - watch の metadata probe 進捗も `WorkerJobProgressDto` へ写せる入口を追加し、job id / stage / current input / metrics を UI 非依存の契約語彙で保持できるようにした。
 - 2026-06-19 Worker J: watch metadata probe の既存 slow / skip / refresh ログへ `worker_job_id`、`worker_kind`、`worker_status`、`worker_stage`、`artifact_kind`、`retryable`、`elapsed_ms` を併記し、probe 実行順や DB 更新は変えていない。
+- 2026-06-25 Worker D: thumbnail queue の既存 failure / skip 系ログへ request / progress / result の代表 fields を1行で併記する `BuildWorkerQueueLogFields(...)` を追加した。rescue worker / watch metadata probe も input_count / capability_count / 診断文脈 / result metrics を既存 helper fields で読めるようにし、IPC方式や外部プロセス構造は変えていない。
 - Watcher change set は `WatchUiApplyRequest` へ畳んでから full fallback / in-memory ReadModel 再計算へ流し、Watcher 側が表示 collection を直接 apply しない禁止線を source policy で固定した。
 - Player surface 操作は、`Properties.Settings.Default.Save()`、DB write、設定保存 queue を直接呼ばない禁止線を source policy で固定した。surface と保存の分離を壊さず、既存の user-priority と保存方針を維持する。
 - 2026-06-19 Worker P: Player 再生状態は `SetPlayerPlaybackActive(...)` に集約し、実際に active が変わった時だけ `operation_reason=player-playback` と reason をログへ出す。Everything poll の遅延理由と Player 操作ログを同じ語彙で突き合わせられる。
@@ -111,6 +113,14 @@
 - baseline で赤かった `ThumbnailErrorSourceTests` / `TagKanaLocalRefreshSourceTests` は、実装赤ではなく `%TEMP%` 出力時に repo root を解決できない source policy helper drift だったため、`CallerFilePath` / current directory を探索候補へ足す最小補正として扱った。
 - 親検証は focused test 127件成功、Release x64 build 成功、`git diff --check` 成功。Release build の `NETSDK1206` 2件は既存の SQLitePCLRaw RID 警告として扱う。
 - 実機 `debug-runtime.log` で `kana backfill scheduler released`、`pending_count`、`error tab image aggregate`、`aggregate-decode-plan` をまだ確認していないため、Phase 3 / 4 は完了扱いにしない。
+
+### 2.2 2026-06-25 PM親レビュー Phase5/6
+
+- Worker C / D の2本を並走し、Phase 5 Persistence Pipeline と Phase 6 Worker 契約を小口で進めた。
+- 親レビューでは、Worker C は保存成功ログにも `dirty=false failed=false retryable=false notify_ui=false` を載せ、失敗ログと同じ状態語彙で読める変更として採用した。保存順、UI hot path、retryable dirty の意味は変えていない。
+- 親レビューでは、Worker D は thumbnail queue の failure / skip 系ログへ request / progress / result の代表 fields を1行併記し、rescue worker / watch metadata probe の helper fields も input_count / capability_count / 診断文脈 / result metrics まで読める変更として採用した。IPC sidecar や外部プロセス構造変更は入れていない。
+- 親検証は focused test 148件成功、Release x64 build 成功、`git diff --check` 成功。Release build の `NETSDK1206` 2件は既存の SQLitePCLRaw RID 警告として扱う。
+- 実機 `debug-runtime.log` で `write_succeeded=true/false` と dirty / failed / retryable / notify_ui、Worker DTO fields が同一操作中の支配要因説明に足りるかをまだ確認していないため、Phase 5 / 6 は完了扱いにしない。
 
 ## 3. Roadmap
 
@@ -155,7 +165,7 @@
 - 設定保存、score、view_count、tag、bookmark、skin profile、movie_path 更新を同じ背景保存方針へ寄せる。
 - UI は表示値を先に反映し、保存は直列 background queue へ送る。
 - 失敗時だけ dirty / failed / retryable をログと最小UI通知で扱う。
-- application settings / player volume は保存成功時も共通 `PersistenceWriteResult` 語彙で完了を読める。実機ログで成功ログ量が多すぎる場合だけ、理由別に絞る。
+- application settings / player volume は保存成功時も共通 `PersistenceWriteResult` 語彙で完了を読める。さらに保存成功ログにも `dirty=false failed=false retryable=false notify_ui=false` を出すため、実機ログでは `write_succeeded=true/false` と状態語彙を同じ行で見る。成功ログ量が多すぎる場合だけ、理由別に絞る。
 
 ### Phase 6. Worker 契約
 
@@ -164,6 +174,8 @@
 - 済: watch metadata probe は `WatchMetadataProbeWorkerContractAdapter` で request / result / artifact / metrics へ写せる入口を追加した。runtime 挙動変更や IPC 接続はまだ行わない。
 - 済: thumbnail queue の結果ログは一部 `WorkerJobResultDto` fields を併記する。成功全件ログ化はせず、既存の結果系ログだけに留める。
 - 済: rescue worker の job/result JSON 経路も既存ログへ Worker DTO fields を併記する。schema変更や IPC 導入は行わない。
+- 済: thumbnail queue の failure / skip 系ログは `BuildWorkerQueueLogFields(...)` で request / progress / result の代表 fields を同じ行へ畳む。通常成功全件ログ化はしない。
+- 済: rescue worker / watch metadata probe の helper fields は input_count / capability_count / 診断文脈 / result metrics を含む。実行方式、IPC方式、DB更新順は変えない。
 - sidecar / IPC は、契約が固定され、実機ログで UI 詰まりの支配要因が worker 境界にあると確認できた後だけ導入する。
 
 ### Phase 7. Skin / Player / Watcher の Core 接続
