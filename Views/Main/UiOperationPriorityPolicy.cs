@@ -43,6 +43,7 @@ internal static class UiOperationPriorityPolicy
     internal const string DeferReasonRecentViewport = "recent-viewport";
     internal const string OperationReasonNormal = "normal";
     internal const string OperationReasonPlayerPlayback = "player-playback";
+    internal const string UiShellContract = "ui-shell-v1";
 
     // 実機ログで UI Shell の入力状態を同じ語彙で追えるよう、snapshot fields をここに集約する。
     internal static string BuildSnapshotLogFields(UiOperationSnapshot snapshot)
@@ -52,7 +53,8 @@ internal static class UiOperationPriorityPolicy
             + $"is_manual_mode={FormatLogBool(snapshot.IsManualMode)} "
             + $"is_watch_ui_suppressed={FormatLogBool(snapshot.IsWatchUiSuppressed)} "
             + $"is_recent_viewport_active={FormatLogBool(snapshot.IsRecentViewportInteractionActive)} "
-            + $"is_player_playback_active={FormatLogBool(snapshot.IsPlayerPlaybackActive)}";
+            + $"is_player_playback_active={FormatLogBool(snapshot.IsPlayerPlaybackActive)} "
+            + $"ui_shell_contract={UiShellContract}";
     }
 
     // 明示操作中は、手動要求以外の背後処理を後ろへ逃がす。

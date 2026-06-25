@@ -235,7 +235,7 @@ public sealed class WatchUiSuppressionPolicyTests
         Assert.That(
             message,
             Is.EqualTo(
-                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=123 release_reason=normal deferred_watch=true is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=false is_player_playback_active=true"
+                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=123 release_reason=normal deferred_watch=true is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=false is_player_playback_active=true ui_shell_contract=ui-shell-v1"
             )
         );
     }
@@ -259,7 +259,7 @@ public sealed class WatchUiSuppressionPolicyTests
         Assert.That(
             message,
             Is.EqualTo(
-                "user priority begin: reason=sort is_user_priority_active=true is_manual_mode=false is_watch_ui_suppressed=false is_recent_viewport_active=true is_player_playback_active=false"
+                "user priority begin: reason=sort is_user_priority_active=true is_manual_mode=false is_watch_ui_suppressed=false is_recent_viewport_active=true is_player_playback_active=false ui_shell_contract=ui-shell-v1"
             )
         );
     }
@@ -284,7 +284,7 @@ public sealed class WatchUiSuppressionPolicyTests
         Assert.That(
             message,
             Is.EqualTo(
-                "ui shell input: operation_reason=search trigger_reason=link-search is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=true is_player_playback_active=false"
+                "ui shell input: operation_reason=search trigger_reason=link-search is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=true is_player_playback_active=false ui_shell_contract=ui-shell-v1"
             )
         );
     }
@@ -312,7 +312,7 @@ public sealed class WatchUiSuppressionPolicyTests
         Assert.That(
             message,
             Is.EqualTo(
-                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=30000 release_reason=timeout deferred_watch=true is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=false is_recent_viewport_active=false is_player_playback_active=false"
+                "user priority end: begin_reason=search end_reason=search-end elapsed_ms=30000 release_reason=timeout deferred_watch=true is_user_priority_active=false is_manual_mode=false is_watch_ui_suppressed=false is_recent_viewport_active=false is_player_playback_active=false ui_shell_contract=ui-shell-v1"
             )
         );
     }

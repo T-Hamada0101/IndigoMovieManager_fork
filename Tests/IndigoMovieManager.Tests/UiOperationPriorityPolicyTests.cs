@@ -44,9 +44,19 @@ public sealed class UiOperationPriorityPolicyTests
         Assert.That(
             fields,
             Is.EqualTo(
-                "is_user_priority_active=true is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=false is_player_playback_active=true"
+                "is_user_priority_active=true is_manual_mode=false is_watch_ui_suppressed=true is_recent_viewport_active=false is_player_playback_active=true ui_shell_contract=ui-shell-v1"
             )
         );
+        int firstContractIndex = fields.IndexOf(
+            "ui_shell_contract=",
+            StringComparison.Ordinal
+        );
+        int lastContractIndex = fields.LastIndexOf(
+            "ui_shell_contract=",
+            StringComparison.Ordinal
+        );
+        Assert.That(firstContractIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(lastContractIndex, Is.EqualTo(firstContractIndex));
     }
 
     [Test]
