@@ -1,4 +1,3 @@
-using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -6,20 +5,6 @@ namespace IndigoMovieManager
 {
     public partial class MainWindow
     {
-        // 左ドロワー表示中だけ、watch の新規流入を抑えて操作テンポを守る。
-        private void MenuToggleButton_Checked(object sender, RoutedEventArgs e)
-        {
-            BeginWatchUiSuppression("left-drawer");
-            SetWebViewPlayerHiddenForLeftDrawer(hidden: true);
-        }
-
-        // 左ドロワーを閉じた時だけ、保留があれば watch を1回 catch-up させる。
-        private void MenuToggleButton_Unchecked(object sender, RoutedEventArgs e)
-        {
-            SetWebViewPlayerHiddenForLeftDrawer(hidden: false);
-            EndWatchUiSuppression("left-drawer");
-        }
-
         // IME確定時に検索入力フラグを通常状態へ戻す。
         private void OnPreviewTextInput(object sender, TextCompositionEventArgs e)
         {

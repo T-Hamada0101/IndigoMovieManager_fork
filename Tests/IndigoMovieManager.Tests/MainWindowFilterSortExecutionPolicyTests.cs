@@ -659,8 +659,6 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         string[] inputRoutingSignatures =
         [
-            "private void MenuToggleButton_Checked(",
-            "private void MenuToggleButton_Unchecked(",
             "private void OnPreviewTextInput(",
             "private void OnPreviewTextInputStart(",
             "private void OnPreviewTextInputUpdate(",
@@ -702,8 +700,11 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(mainWindowSource, Does.Contain("OnPreviewTextInputUpdate"));
         Assert.That(mainWindowXaml, Does.Contain("PreviewKeyDown=\"Tab_PreviewKeyDown\""));
         Assert.That(mainWindowXaml, Does.Contain("SelectionChanged=\"ComboSort_SelectionChanged\""));
-        Assert.That(mainWindowXaml, Does.Contain("Checked=\"MenuToggleButton_Checked\""));
-        Assert.That(mainWindowXaml, Does.Contain("Unchecked=\"MenuToggleButton_Unchecked\""));
+        Assert.That(inputRoutingSource, Does.Not.Contain("MenuToggleButton_Checked"));
+        Assert.That(inputRoutingSource, Does.Not.Contain("MenuToggleButton_Unchecked"));
+        Assert.That(mainWindowXaml, Does.Not.Contain("x:Name=\"MenuToggleButton\""));
+        Assert.That(mainWindowXaml, Does.Not.Contain("Checked=\"MenuToggleButton_Checked\""));
+        Assert.That(mainWindowXaml, Does.Not.Contain("Unchecked=\"MenuToggleButton_Unchecked\""));
     }
 
     [Test]

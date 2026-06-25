@@ -186,11 +186,6 @@ namespace IndigoMovieManager
             MainDbSwitchSideEffectPlan sideEffectPlan
         )
         {
-            if (sideEffectPlan.ShouldCloseMainMenu)
-            {
-                MenuToggleButton.IsChecked = false;
-            }
-
             // 切替中は旧DB由来の投入を止め、成功後にだけ新セッションを再開する。
             SetThumbnailQueueInputEnabled(false);
             TryPersistCurrentDbViewStateBeforeSwitch(context, sideEffectPlan);

@@ -30,13 +30,13 @@ public sealed class WatchCheckFolderQueueRuntimeTests
         string result = InvokePrivateStaticString(
             "BuildWatchCheckFolderQueueTraceSummary",
             "EverythingPoll",
-            "ui-resume:left-drawer",
+            "ui-resume:settings-form",
             1
         );
 
         Assert.That(
             result,
-            Is.EqualTo("compressed=1 first=EverythingPoll last=ui-resume value='left-drawer'")
+            Is.EqualTo("compressed=1 first=EverythingPoll last=ui-resume value='settings-form'")
         );
     }
 

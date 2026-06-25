@@ -380,7 +380,6 @@ namespace IndigoMovieManager
 
         private void ExternalSkinMinimalSettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            MenuToggleButton.IsChecked = false;
             CommonSettingsWindow commonSettingsWindow = new()
             {
                 Owner = this,

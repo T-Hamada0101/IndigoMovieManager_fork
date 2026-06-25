@@ -542,7 +542,7 @@ public sealed class WatchUiSuppressionPolicyTests
 
         Assert.That(InvokeBool(window, "IsManualReloadUiSuppressionActive"), Is.False);
 
-        InvokeVoid(window, "BeginWatchUiSuppression", "left-drawer");
+        InvokeVoid(window, "BeginWatchUiSuppression", "settings-form");
         Assert.That(InvokeBool(window, "IsManualReloadUiSuppressionActive"), Is.False);
 
         InvokeVoid(window, "BeginWatchUiSuppression", "manual-reload");
@@ -551,7 +551,7 @@ public sealed class WatchUiSuppressionPolicyTests
         InvokeVoid(window, "EndWatchUiSuppression", "manual-reload");
         Assert.That(InvokeBool(window, "IsManualReloadUiSuppressionActive"), Is.False);
 
-        InvokeVoid(window, "EndWatchUiSuppression", "left-drawer");
+        InvokeVoid(window, "EndWatchUiSuppression", "settings-form");
     }
 
     [Test]

@@ -58,39 +58,6 @@
     >
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
-    <Style
-      x:Key="LeftDrawerButtonStyle"
-      BasedOn="{StaticResource AppDrawerButtonStyle}"
-      TargetType="Button"
-    >
-      <Setter Property="Height" Value="30" />
-      <Setter Property="MinHeight" Value="30" />
-      <Setter Property="Margin" Value="0,1" />
-      <Setter Property="Padding" Value="8,0" />
-      <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="FontSize" Value="13" />
-      <Setter Property="FontWeight" Value="Normal" />
-      <Setter Property="Foreground" Value="{DynamicResource LeftDrawerForegroundBrush}" />
-    </Style>
-    <Style x:Key="LeftDrawerTreeItemStyle" TargetType="TreeViewItem">
-      <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-      <Setter Property="Margin" Value="0" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-    <Style x:Key="LeftDrawerTextStyle" TargetType="TextBlock">
-      <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-    </Style>
-    <Style x:Key="LeftDrawerSeparatorStyle" TargetType="Border">
-      <Setter Property="Height" Value="1" />
-      <Setter Property="Margin" Value="0,8" />
-      <Setter Property="Background" Value="{DynamicResource AppBorderBrush}" />
-      <Setter Property="Opacity" Value="0.7" />
-    </Style>
     <!--  BoolToVisibilityConverter を追加  -->
     <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
@@ -1686,95 +1653,7 @@
       </avalonDock:LayoutRoot>
     </avalonDock:DockingManager>
 
-    <materialDesign:DrawerHost
-      x:Name="MainDrawerHost"
-      IsLeftDrawerOpen="{Binding IsChecked, ElementName=MenuToggleButton}"
-    >
-      <materialDesign:DrawerHost.LeftDrawerContent>
-        <DockPanel
-          Width="208"
-          Background="{DynamicResource NavigationDrawerBackgroundBrush}"
-        >
-          <ToggleButton
-            Margin="12,10"
-            HorizontalAlignment="Right"
-            DockPanel.Dock="Top"
-            IsChecked="{Binding IsChecked, ElementName=MenuToggleButton, Mode=TwoWay}"
-            Style="{StaticResource AppHamburgerToggleButtonStyle}"
-          />
-
-          <ScrollViewer
-            HorizontalScrollBarVisibility="Disabled"
-            VerticalScrollBarVisibility="Auto"
-          >
-            <StackPanel Margin="12,0,12,12">
-              <Button
-                x:Name="BtnNew"
-                Click="BtnNew_Click"
-                Content="新規作成"
-                Style="{StaticResource LeftDrawerButtonStyle}"
-              />
-
-              <Button
-                x:Name="BtnOpen"
-                Click="BtnOpen_Click"
-                Content="ファイルを開く"
-                Style="{StaticResource LeftDrawerButtonStyle}"
-              />
-
-              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
-
-              <TreeView
-                x:Name="MenuRecent"
-                ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
-                ItemsSource="{Binding RecentTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-                Style="{StaticResource AppTreeViewStyle}"
-              >
-                <TreeView.ItemTemplate>
-                  <HierarchicalDataTemplate
-                    DataType="{x:Type local:TreeSource}"
-                    ItemContainerStyle="{StaticResource LeftDrawerTreeItemStyle}"
-                    ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}"
-                  >
-                    <Button
-                      Click="MenuRecentTree_Click"
-                      Style="{StaticResource LeftDrawerButtonStyle}"
-                      Tag="{Binding Text}"
-                    >
-                      <TextBlock
-                        Style="{StaticResource LeftDrawerTextStyle}"
-                        Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="{Binding Text}"
-                      />
-                    </Button>
-                  </HierarchicalDataTemplate>
-                </TreeView.ItemTemplate>
-              </TreeView>
-
-              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
-
-              <Button
-                x:Name="BtnSettings"
-                Click="MenuBtnSettings_Click"
-                Content="設定"
-                Style="{StaticResource LeftDrawerButtonStyle}"
-                Tag="設定"
-              />
-
-              <Border Style="{StaticResource LeftDrawerSeparatorStyle}" />
-
-              <Button
-                x:Name="BtnExit"
-                Click="BtnExit_Click"
-                Content="終了"
-                Style="{StaticResource LeftDrawerButtonStyle}"
-              />
-            </StackPanel>
-          </ScrollViewer>
-        </DockPanel>
-      </materialDesign:DrawerHost.LeftDrawerContent>
-
-      <Grid>
+    <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height="48" />
           <RowDefinition Height="*" />
@@ -1795,18 +1674,34 @@
             <ColumnDefinition Width="*" />
           </Grid.ColumnDefinitions>
 
-          <ToggleButton
-            x:Name="MenuToggleButton"
+          <StackPanel
             Grid.Column="0"
-            AutomationProperties.Name="HamburgerToggleButton"
-            Width="32"
-            Height="32"
-            Margin="0,2,12,2"
-            Checked="MenuToggleButton_Checked"
-            Unchecked="MenuToggleButton_Unchecked"
+            Margin="0,0,12,0"
+            Orientation="Horizontal"
             VerticalAlignment="Center"
-            Style="{DynamicResource AppHamburgerToggleButtonStyle}"
-          />
+          >
+            <Button
+              x:Name="BtnNew"
+              Margin="0,0,8,0"
+              Click="BtnNew_Click"
+              Content="新規作成"
+              Style="{StaticResource AppHeaderButtonStyle}"
+            />
+            <Button
+              x:Name="BtnOpen"
+              Margin="0,0,8,0"
+              Click="BtnOpen_Click"
+              Content="ファイルを開く"
+              Style="{StaticResource AppHeaderButtonStyle}"
+            />
+            <Button
+              x:Name="BtnSettings"
+              Click="MenuBtnSettings_Click"
+              Content="設定"
+              Style="{StaticResource AppHeaderButtonStyle}"
+              Tag="設定"
+            />
+          </StackPanel>
 
           <Grid Grid.Column="1" VerticalAlignment="Center">
             <Grid
@@ -2112,8 +2007,7 @@
           </Grid>
         </Grid>
         </materialDesign:ColorZone>
-      </Grid>
-    </materialDesign:DrawerHost>
+    </Grid>
 
     <notifications:NotificationArea
       x:Name="ProgressArea"

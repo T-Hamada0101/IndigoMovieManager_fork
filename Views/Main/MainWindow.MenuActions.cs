@@ -1910,11 +1910,6 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            if (closeMenu)
-            {
-                MenuToggleButton.IsChecked = false;
-            }
-
             foreach (var item in MainVM.MovieRecs)
             {
                 int currentTabIndex = GetCurrentThumbnailActionTabIndex();
@@ -2853,7 +2848,6 @@ namespace IndigoMovieManager
                         switch (tag)
                         {
                             case "共通設定":
-                                MenuToggleButton.IsChecked = false;
                                 var commonSettingsWindow = new CommonSettingsWindow
                                 {
                                     Owner = this,
@@ -2874,7 +2868,6 @@ namespace IndigoMovieManager
                                     return;
                                 }
 
-                                MenuToggleButton.IsChecked = false;
                                 var sysData = new DbSettings(MainVM.DbInfo.DBFullPath);
                                 var settingsWindow = new SettingsWindow
                                 {
@@ -2913,7 +2906,6 @@ namespace IndigoMovieManager
 
         private void OpenCommonSettingsWindowFromMainMenu()
         {
-            MenuToggleButton.IsChecked = false;
             var commonSettingsWindow = new CommonSettingsWindow
             {
                 Owner = this,
@@ -2945,6 +2937,16 @@ namespace IndigoMovieManager
         internal void OpenWatchFolderEditorFromSettingsWindow()
         {
             OpenWatchFolderEditorDialog();
+        }
+
+        internal async Task<bool> OpenRecentMainDbFromSettingsWindowAsync(string dbFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return false;
+            }
+
+            return await TrySwitchMainDb(dbFullPath, MainDbSwitchSource.RecentMenu);
         }
 
         internal void QueueManualWatchCheckFromSettingsWindow()
@@ -3003,8 +3005,6 @@ namespace IndigoMovieManager
                             return;
                         }
 
-                        MenuToggleButton.IsChecked = false;
-
                         switch (tag)
                         {
                             case "監視フォルダ編集":
@@ -3033,29 +3033,5 @@ namespace IndigoMovieManager
             }
         }
 
-        private async void MenuRecentTree_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button item)
-            {
-                if (!string.IsNullOrEmpty(item.Tag.ToString()))
-                {
-                    var tag = item.Tag.ToString();
-                    if (tag != RECENT_OPEN_FILE_LABEL)
-                    {
-                        await TrySwitchMainDb(tag, MainDbSwitchSource.RecentMenu);
-                    }
-                    else
-                    {
-                        if (MenuRecent.Items.Count > 0)
-                        {
-                            if (MenuRecent.Items[0] is TreeSource topNode)
-                            {
-                                topNode.IsExpanded = !topNode.IsExpanded;
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }

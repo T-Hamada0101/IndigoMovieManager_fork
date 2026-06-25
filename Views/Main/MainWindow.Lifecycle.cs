@@ -225,7 +225,6 @@ namespace IndigoMovieManager
                 if (result != MessageBoxResult.OK)
                 {
                     e.Cancel = true;
-                    MenuToggleButton.IsChecked = false;
                     return;
                 }
             }

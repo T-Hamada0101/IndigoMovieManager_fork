@@ -40,6 +40,7 @@ namespace IndigoMovieManager
         {
             InitializeComponent();
             SourceInitialized += (_, _) => App.ApplyWindowTitleBarTheme(this);
+            Loaded += CommonSettingsWindow_Loaded;
             Closing += OnClosing;
             Closed += CommonSettingsWindow_Closed;
             Activated += async (_, _) => await RefreshSkinSelectorAsync();
@@ -133,7 +134,32 @@ namespace IndigoMovieManager
             sliderUpperTabImageCacheMaxEntries.ValueChanged -=
                 SliderUpperTabImageCacheMaxEntries_ValueChanged;
             Properties.Settings.Default.PropertyChanged -= SettingsDefault_PropertyChanged;
+            Loaded -= CommonSettingsWindow_Loaded;
             Closed -= CommonSettingsWindow_Closed;
+        }
+
+        // Owner が確定してから、メイン画面の最近使った管理ファイルを設定フォームへ流す。
+        private void CommonSettingsWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            SyncRecentMainDbListFromOwner();
+        }
+
+        // 設定フォームは履歴を持たず、MainWindow 側の最新リストだけを表示する。
+        private void SyncRecentMainDbListFromOwner()
+        {
+            MainWindow mainWindow = GetOwnerMainWindow();
+            var recentRoot = mainWindow?.MainVM?.RecentTreeRoot;
+            var recentItems =
+                recentRoot != null && recentRoot.Count > 0 ? recentRoot[0].Children : null;
+            bool hasRecentItems = recentItems != null && recentItems.Count > 0;
+
+            SettingsRecentFilesList.ItemsSource = recentItems;
+            SettingsRecentFilesList.Visibility = hasRecentItems
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            SettingsRecentFilesEmptyMessage.Visibility = hasRecentItems
+                ? Visibility.Collapsed
+                : Visibility.Visible;
         }
 
         // 他経路（ショートカット等）で設定値が変わった時、スライダーを即時追従させる。
@@ -505,6 +531,28 @@ namespace IndigoMovieManager
             MainWindow mainWindow = GetOwnerMainWindow();
             Close();
             mainWindow?.OpenWatchFolderEditorFromSettingsWindow();
+        }
+
+        private async void OpenRecentMainDbFromSettings_Click(object sender, RoutedEventArgs e)
+        {
+            // 最近使った管理ファイルは既存のDB切替フローへ戻し、履歴の再構築も一箇所へ寄せる。
+            if (sender is not Button item)
+            {
+                return;
+            }
+
+            string dbFullPath = item.Tag?.ToString() ?? "";
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return;
+            }
+
+            MainWindow mainWindow = GetOwnerMainWindow();
+            Close();
+            if (mainWindow != null)
+            {
+                await mainWindow.OpenRecentMainDbFromSettingsWindowAsync(dbFullPath);
+            }
         }
 
         private void ManualWatchCheckFromSettings_Click(object sender, RoutedEventArgs e)

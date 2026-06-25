@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:IndigoMovieManager"
     xmlns:materialDesign="clr-namespace:MaterialDesignThemes.Wpf"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:prop="clr-namespace:IndigoMovieManager.Properties"
@@ -51,6 +52,15 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource SettingsForegroundBrush}" />
         </Style>
+
+        <Style x:Key="SettingsRecentFileButtonStyle" TargetType="Button">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
     </Window.Resources>
 
     <DockPanel Margin="12">
@@ -68,6 +78,73 @@
             x:Name="SettingsCategoryTabs"
             TabStripPlacement="Left"
             ItemContainerStyle="{StaticResource SettingsCategoryTabStyle}">
+
+            <TabItem Header="管理ファイル">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22,8,10,8" Orientation="Vertical">
+                        <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="管理ファイル" />
+
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="最近開いた管理ファイルに表示する数" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <TextBlock
+                                x:Name="RecentFiles"
+                                Width="50"
+                                Margin="0,6,0,6"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center"
+                                FontSize="14"
+                                Text="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
+                            <Slider
+                                x:Name="slider"
+                                Width="160"
+                                Margin="16,0,0,0"
+                                VerticalAlignment="Center"
+                                Maximum="30"
+                                Minimum="1"
+                                Style="{StaticResource AppDiscreteSliderStyle}"
+                                TickFrequency="1"
+                                Value="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
+                        </StackPanel>
+
+                        <TextBlock
+                            Margin="0,14,0,8"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource SettingsForegroundBrush}"
+                            Text="最近使った管理ファイル" />
+
+                        <TextBlock
+                            x:Name="SettingsRecentFilesEmptyMessage"
+                            Margin="0,4,0,0"
+                            FontSize="14"
+                            Foreground="{DynamicResource AppTextSubtleBrush}"
+                            Text="履歴はまだありません。"
+                            Visibility="Collapsed" />
+
+                        <ListBox
+                            x:Name="SettingsRecentFilesList"
+                            MaxHeight="300"
+                            BorderThickness="0"
+                            HorizontalContentAlignment="Stretch"
+                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:TreeSource}">
+                                    <Button
+                                        Click="OpenRecentMainDbFromSettings_Click"
+                                        Style="{StaticResource SettingsRecentFileButtonStyle}"
+                                        Tag="{Binding Text}">
+                                        <TextBlock
+                                            Text="{Binding Text}"
+                                            TextTrimming="CharacterEllipsis"
+                                            ToolTip="{Binding Text}" />
+                                    </Button>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
             <TabItem Header="起動と見た目">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -388,27 +465,6 @@
                             </ComboBox>
                         </StackPanel>
 
-                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
-                            <Label Content="最近開いた管理ファイルに表示する数" Style="{StaticResource SettingsRowLabelStyle}" />
-                            <TextBlock
-                                x:Name="RecentFiles"
-                                Width="50"
-                                Margin="0,6,0,6"
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Center"
-                                FontSize="14"
-                                Text="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
-                            <Slider
-                                x:Name="slider"
-                                Width="160"
-                                Margin="16,0,0,0"
-                                VerticalAlignment="Center"
-                                Maximum="30"
-                                Minimum="1"
-                                Style="{StaticResource AppDiscreteSliderStyle}"
-                                TickFrequency="1"
-                                Value="{Binding RecentFilesCount, Source={x:Static prop:Settings.Default}}" />
-                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

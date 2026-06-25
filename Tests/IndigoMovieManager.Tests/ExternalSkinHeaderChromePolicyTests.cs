@@ -25,13 +25,7 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             refreshSource,
             "private async Task RefreshExternalSkinHostPresentationAsync("
         );
-        string drawerHost = GetXmlElementBlock(
-            xaml,
-            "<materialDesign:DrawerHost",
-            "</materialDesign:DrawerHost>",
-            "x:Name=\"MainDrawerHost\""
-        );
-        string mainHeaderBarTag = GetXmlStartTag(drawerHost, "x:Name=\"MainHeaderBar\"");
+        string mainHeaderBarTag = GetXmlStartTag(xaml, "x:Name=\"MainHeaderBar\"");
         string dockingManagerTag = GetXmlStartTag(xaml, "x:Name=\"uxDockingManager\"");
 
         Assert.Multiple(() =>
@@ -57,8 +51,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
                 Does.Not.Contain("ExternalSkinMinimalChromePanel.Visibility = Visibility.Visible;")
             );
             Assert.That(xaml, Does.Contain("x:Name=\"MainHeaderStandardChromePanel\""));
-            Assert.That(drawerHost, Does.Contain("<RowDefinition Height=\"48\" />"));
-            Assert.That(drawerHost, Does.Contain("x:Name=\"MainHeaderBar\""));
+            Assert.That(xaml, Does.Not.Contain("<materialDesign:DrawerHost"));
+            Assert.That(xaml, Does.Not.Contain("x:Name=\"MainDrawerHost\""));
+            Assert.That(xaml, Does.Contain("<RowDefinition Height=\"48\" />"));
+            Assert.That(xaml, Does.Contain("x:Name=\"MainHeaderBar\""));
             Assert.That(mainHeaderBarTag, Does.Contain("Grid.Row=\"0\""));
             Assert.That(mainHeaderBarTag, Does.Contain("VerticalAlignment=\"Top\""));
             Assert.That(dockingManagerTag, Does.Contain("Margin=\"0,48,0,0\""));

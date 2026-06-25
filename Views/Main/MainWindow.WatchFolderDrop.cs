@@ -118,7 +118,6 @@ namespace IndigoMovieManager
                 return;
             }
 
-            MenuToggleButton.IsChecked = false;
             var watchWindow = new WatchWindow(MainVM.DbInfo.DBFullPath, initialDroppedPaths)
             {
                 Owner = this,

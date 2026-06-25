@@ -10,18 +10,37 @@ namespace IndigoMovieManager.Tests;
 public sealed class MainWindowMenuActionsPolicyTests
 {
     [Test]
-    public void 左ドロワーは設定ツリーとツールツリーを設定フォームへ寄せる()
+    public void 左ドロワーは廃止しメイン上は三ボタンだけ残す()
     {
         string xaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         string menuSource = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string settingsXaml = GetRepoText("Views", "Settings", "CommonSettingsWindow.xaml");
+        string settingsSource = GetRepoText("Views", "Settings", "CommonSettingsWindow.xaml.cs");
 
         Assert.Multiple(() =>
         {
+            Assert.That(xaml, Does.Not.Contain("<materialDesign:DrawerHost"));
+            Assert.That(xaml, Does.Not.Contain("x:Name=\"MainDrawerHost\""));
+            Assert.That(xaml, Does.Not.Contain("x:Name=\"MenuToggleButton\""));
+            Assert.That(xaml, Does.Not.Contain("DrawerHost.LeftDrawerContent"));
+            Assert.That(xaml, Does.Not.Contain("x:Name=\"MenuRecent\""));
+            Assert.That(xaml, Does.Not.Contain("x:Name=\"BtnExit\""));
+            Assert.That(xaml, Does.Contain("x:Name=\"BtnNew\""));
+            Assert.That(xaml, Does.Contain("Content=\"新規作成\""));
+            Assert.That(xaml, Does.Contain("x:Name=\"BtnOpen\""));
+            Assert.That(xaml, Does.Contain("Content=\"ファイルを開く\""));
             Assert.That(xaml, Does.Contain("x:Name=\"BtnSettings\""));
+            Assert.That(xaml, Does.Contain("Content=\"設定\""));
             Assert.That(xaml, Does.Contain("Tag=\"設定\""));
             Assert.That(xaml, Does.Not.Contain("x:Name=\"MenuConfig\""));
             Assert.That(xaml, Does.Not.Contain("x:Name=\"MenuTool\""));
             Assert.That(menuSource, Does.Contain("OpenCommonSettingsWindowFromMainMenu();"));
+            Assert.That(menuSource, Does.Contain("OpenRecentMainDbFromSettingsWindowAsync"));
+            Assert.That(settingsXaml, Does.Contain("<TabItem Header=\"管理ファイル\">"));
+            Assert.That(settingsXaml, Does.Contain("x:Name=\"SettingsRecentFilesList\""));
+            Assert.That(settingsXaml, Does.Contain("OpenRecentMainDbFromSettings_Click"));
+            Assert.That(settingsSource, Does.Contain("SyncRecentMainDbListFromOwner"));
+            Assert.That(settingsSource, Does.Contain("OpenRecentMainDbFromSettings_Click"));
             Assert.That(menuSource, Does.Contain("OpenWatchFolderEditorFromSettingsWindow"));
             Assert.That(menuSource, Does.Contain("QueueManualWatchCheckFromSettingsWindow"));
             Assert.That(menuSource, Does.Contain("QueueRecreateAllThumbnailsFromSettingsWindow"));
