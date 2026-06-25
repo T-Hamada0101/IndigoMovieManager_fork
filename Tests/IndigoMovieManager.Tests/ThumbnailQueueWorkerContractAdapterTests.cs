@@ -314,6 +314,7 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
         {
             Assert.That(logFields, Does.Contain("job_id=thumbnail-movie-key-001-queue-77"));
             Assert.That(logFields, Does.Contain("worker_kind=thumbnail-create"));
+            Assert.That(logFields, Does.Contain("worker_contract=worker-job-v1"));
             Assert.That(logFields, Does.Contain("status=failed"));
             Assert.That(logFields, Does.Contain("artifact_kind=''"));
             Assert.That(logFields, Does.Contain("retryability=retryable"));
@@ -382,14 +383,17 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
         Assert.Multiple(() =>
         {
             Assert.That(requestFields, Does.Contain("job_id=thumbnail-movie-key-001-queue-77"));
+            Assert.That(requestFields, Does.Contain("worker_contract=worker-job-v1"));
             Assert.That(requestFields, Does.Contain("input_count=1"));
             Assert.That(requestFields, Does.Contain("capability_count=3"));
             Assert.That(requestFields, Does.Contain("diagnostic_context_count=11"));
             Assert.That(requestFields, Does.Contain("queue_id=77"));
             Assert.That(progressFields, Does.Contain("worker_stage=completed"));
+            Assert.That(progressFields, Does.Contain("worker_contract=worker-job-v1"));
             Assert.That(progressFields, Does.Contain("progress_total=4"));
             Assert.That(progressFields, Does.Contain("current_parallelism=2"));
             Assert.That(combinedFields, Does.Contain("worker_status=succeeded"));
+            Assert.That(combinedFields, Does.Contain("worker_contract=worker-job-v1"));
             Assert.That(combinedFields, Does.Contain("worker_stage=completed"));
             Assert.That(combinedFields, Does.Contain($"metric_count={result.Metrics.Count}"));
             Assert.That(combinedFields, Does.Contain("progress_completed=1"));

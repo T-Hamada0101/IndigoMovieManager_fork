@@ -17,6 +17,7 @@ namespace IndigoMovieManager.Thumbnail
         internal const string ContractVersion = "1";
         internal const string Mode = "rescue-main";
         internal const string WorkerKind = "thumbnail-rescue";
+        private const string WorkerContract = "worker-job-v1";
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -161,7 +162,7 @@ namespace IndigoMovieManager.Thumbnail
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} diagnostic_context_count={Math.Max(0, request.DiagnosticContext?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} contract_version={FormatLogValue(GetDiagnosticValue(request, "contractVersion"))} mode={FormatLogValue(GetDiagnosticValue(request, "mode"))} requested_failure_id={FormatLogValue(GetDiagnosticValue(request, "requestedFailureId"))}"
+                $"job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} worker_contract={FormatLogValue(WorkerContract)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} diagnostic_context_count={Math.Max(0, request.DiagnosticContext?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} contract_version={FormatLogValue(GetDiagnosticValue(request, "contractVersion"))} mode={FormatLogValue(GetDiagnosticValue(request, "mode"))} requested_failure_id={FormatLogValue(GetDiagnosticValue(request, "requestedFailureId"))}"
             );
         }
 
@@ -172,7 +173,7 @@ namespace IndigoMovieManager.Thumbnail
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} result_code={FormatLogValue(GetMetricValue(result, "resultCode"))} engine_version={FormatLogValue(GetMetricValue(result, "engineVersion"))} compatibility_version={FormatLogValue(GetMetricValue(result, "compatibilityVersion"))} log_count={Math.Max(0, result.Logs?.Count ?? 0)}"
+                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_contract={FormatLogValue(WorkerContract)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} result_code={FormatLogValue(GetMetricValue(result, "resultCode"))} engine_version={FormatLogValue(GetMetricValue(result, "engineVersion"))} compatibility_version={FormatLogValue(GetMetricValue(result, "compatibilityVersion"))} log_count={Math.Max(0, result.Logs?.Count ?? 0)}"
             );
         }
 

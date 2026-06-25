@@ -123,6 +123,7 @@ namespace IndigoMovieManager.Watcher
         public const string ProgressStageQueued = "queued";
         public const string ProgressStageRunning = "running";
         public const string ProgressStageCompleted = "completed";
+        private const string WorkerContract = "worker-job-v1";
         private const string ResultArtifactContentType = "application/x.indigo.metadata-probe";
 
         public static WorkerJobRequestDto ToWorkerJobRequestDto(
@@ -225,7 +226,7 @@ namespace IndigoMovieManager.Watcher
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"worker_job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} diagnostic_context_count={Math.Max(0, request.DiagnosticContext?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} source={FormatLogValue(GetDiagnosticValue(request, "source"))} has_cheap_dirty_fields={FormatLogValue(GetDiagnosticValue(request, "hasCheapDirtyFields"))} existing_movie_length_seconds={FormatLogValue(GetDiagnosticValue(request, "existingMovieLengthSeconds"))}"
+                $"worker_job_id={FormatLogValue(request.JobId)} worker_kind={FormatLogValue(request.Kind)} worker_contract={FormatLogValue(WorkerContract)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} diagnostic_context_count={Math.Max(0, request.DiagnosticContext?.Count ?? 0)} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)} source={FormatLogValue(GetDiagnosticValue(request, "source"))} has_cheap_dirty_fields={FormatLogValue(GetDiagnosticValue(request, "hasCheapDirtyFields"))} existing_movie_length_seconds={FormatLogValue(GetDiagnosticValue(request, "existingMovieLengthSeconds"))}"
             );
         }
 
@@ -235,7 +236,7 @@ namespace IndigoMovieManager.Watcher
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"worker_job_id={FormatLogValue(progress.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_stage={FormatLogValue(progress.Stage)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)} current_input_file={FormatLogValue(progress.CurrentInputFile)} movie_path_key={FormatLogValue(GetProgressMetricValue(progress, "moviePathKey"))}"
+                $"worker_job_id={FormatLogValue(progress.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_contract={FormatLogValue(WorkerContract)} worker_stage={FormatLogValue(progress.Stage)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)} current_input_file={FormatLogValue(progress.CurrentInputFile)} movie_path_key={FormatLogValue(GetProgressMetricValue(progress, "moviePathKey"))}"
             );
         }
 
@@ -246,7 +247,7 @@ namespace IndigoMovieManager.Watcher
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"worker_job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} movie_length_seconds={FormatLogValue(GetMetricValue(result, "movieLengthSeconds"))}"
+                $"worker_job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_contract={FormatLogValue(WorkerContract)} worker_status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} movie_length_seconds={FormatLogValue(GetMetricValue(result, "movieLengthSeconds"))}"
             );
         }
 
@@ -264,7 +265,7 @@ namespace IndigoMovieManager.Watcher
             // 既存ログへ併記する値だけをDTOから拾い、probe本体の挙動へ影響させない。
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"worker_job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(request.Kind)} worker_status={FormatLogValue(result.Status)} worker_stage={FormatLogValue(progress.Stage)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} diagnostic_context_count={Math.Max(0, request.DiagnosticContext?.Count ?? 0)} current_input_file={FormatLogValue(progress.CurrentInputFile)} movie_path_key={FormatLogValue(FirstNonEmpty(GetMetricValue(result, "moviePathKey"), GetProgressMetricValue(progress, "moviePathKey"), GetDiagnosticValue(request, "moviePathKey")))} source={FormatLogValue(GetDiagnosticValue(request, "source"))} has_cheap_dirty_fields={FormatLogValue(GetDiagnosticValue(request, "hasCheapDirtyFields"))} existing_movie_length_seconds={FormatLogValue(GetDiagnosticValue(request, "existingMovieLengthSeconds"))} movie_length_seconds={FormatLogValue(GetMetricValue(result, "movieLengthSeconds"))} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)}"
+                $"worker_job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(request.Kind)} worker_contract={FormatLogValue(WorkerContract)} worker_status={FormatLogValue(result.Status)} worker_stage={FormatLogValue(progress.Stage)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} progress_completed={Math.Max(0, progress.CompletedCount)} progress_total={Math.Max(0, progress.TotalCount)} input_count={Math.Max(0, request.InputFiles?.Count ?? 0)} capability_count={Math.Max(0, request.Capabilities?.Count ?? 0)} diagnostic_context_count={Math.Max(0, request.DiagnosticContext?.Count ?? 0)} current_input_file={FormatLogValue(progress.CurrentInputFile)} movie_path_key={FormatLogValue(FirstNonEmpty(GetMetricValue(result, "moviePathKey"), GetProgressMetricValue(progress, "moviePathKey"), GetDiagnosticValue(request, "moviePathKey")))} source={FormatLogValue(GetDiagnosticValue(request, "source"))} has_cheap_dirty_fields={FormatLogValue(GetDiagnosticValue(request, "hasCheapDirtyFields"))} existing_movie_length_seconds={FormatLogValue(GetDiagnosticValue(request, "existingMovieLengthSeconds"))} movie_length_seconds={FormatLogValue(GetMetricValue(result, "movieLengthSeconds"))} output_artifact_path={FormatLogValue(request.OutputArtifactPath)} timeout_ms={Math.Max(0, request.TimeoutMs)}"
             );
         }
 

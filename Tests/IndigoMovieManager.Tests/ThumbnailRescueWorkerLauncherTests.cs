@@ -1071,6 +1071,7 @@ public sealed class ThumbnailRescueWorkerLauncherTests
                 ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobRequestLogFields(workerRequest);
             Assert.That(requestLogFields, Does.Contain("job_id=req-001"));
             Assert.That(requestLogFields, Does.Contain("worker_kind=thumbnail-rescue"));
+            Assert.That(requestLogFields, Does.Contain("worker_contract=worker-job-v1"));
             Assert.That(requestLogFields, Does.Contain("input_count=1"));
             Assert.That(requestLogFields, Does.Contain("capability_count=2"));
             Assert.That(
@@ -1158,6 +1159,7 @@ public sealed class ThumbnailRescueWorkerLauncherTests
                 ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(workerResult);
             Assert.That(resultLogFields, Does.Contain("job_id=req-002"));
             Assert.That(resultLogFields, Does.Contain("worker_kind=thumbnail-rescue"));
+            Assert.That(resultLogFields, Does.Contain("worker_contract=worker-job-v1"));
             Assert.That(resultLogFields, Does.Contain("status=success"));
             Assert.That(resultLogFields, Does.Contain("artifact_kind=process-log"));
             Assert.That(resultLogFields, Does.Contain("retryability=not-retryable"));

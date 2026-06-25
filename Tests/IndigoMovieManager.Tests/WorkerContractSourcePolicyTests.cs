@@ -199,6 +199,8 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("BuildWorkerQueueLogFields("));
         Assert.That(adapterSource, Does.Contain("job_id="));
         Assert.That(adapterSource, Does.Contain("worker_kind="));
+        Assert.That(adapterSource, Does.Contain("worker_contract="));
+        Assert.That(adapterSource, Does.Contain("worker-job-v1"));
         Assert.That(adapterSource, Does.Contain("worker_status="));
         Assert.That(adapterSource, Does.Contain("worker_stage="));
         Assert.That(adapterSource, Does.Contain("artifact_kind="));
@@ -236,6 +238,8 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(jobJsonClientSource, Does.Contain("BuildWorkerJobResultLogFields("));
         Assert.That(jobJsonClientSource, Does.Contain("job_id="));
         Assert.That(jobJsonClientSource, Does.Contain("worker_kind="));
+        Assert.That(jobJsonClientSource, Does.Contain("worker_contract="));
+        Assert.That(jobJsonClientSource, Does.Contain("worker-job-v1"));
         Assert.That(jobJsonClientSource, Does.Contain("input_count="));
         Assert.That(jobJsonClientSource, Does.Contain("capability_count="));
         Assert.That(jobJsonClientSource, Does.Contain("diagnostic_context_count="));
@@ -332,6 +336,8 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("BuildWorkerProbeLogFields("));
         Assert.That(adapterSource, Does.Contain("worker_job_id="));
         Assert.That(adapterSource, Does.Contain("worker_kind="));
+        Assert.That(adapterSource, Does.Contain("worker_contract="));
+        Assert.That(adapterSource, Does.Contain("worker-job-v1"));
         Assert.That(adapterSource, Does.Contain("worker_status="));
         Assert.That(adapterSource, Does.Contain("worker_stage="));
         Assert.That(adapterSource, Does.Contain("artifact_kind="));
