@@ -742,13 +742,23 @@ public sealed class ManualPlayerResizeHookPolicyTests
             Assert.That(stateMethod, Does.Contain("if (previousValue == nextValue)"));
             Assert.That(
                 stateMethod,
-                Does.Contain("player playback state changed: active={FormatLogBool(isActive)}")
+                Does.Contain(
+                    "player playback state changed: {BuildPlayerPlaybackCoreRouteLogFields(isActive, reason)}"
+                )
             );
+            Assert.That(mainWindowPlayerSource, Does.Contain("BuildPlayerPlaybackCoreRouteLogFields("));
+            Assert.That(mainWindowPlayerSource, Does.Contain("core_route=player-playback"));
             Assert.That(
-                stateMethod,
+                mainWindowPlayerSource,
                 Does.Contain("operation_reason={UiOperationPriorityPolicy.OperationReasonPlayerPlayback}")
             );
-            Assert.That(stateMethod, Does.Contain("reason={reason}"));
+            Assert.That(
+                mainWindowPlayerSource,
+                Does.Contain("player_surface={ResolvePlayerPlaybackSurfaceLogValue()}")
+            );
+            Assert.That(mainWindowPlayerSource, Does.Contain("active={FormatLogBool(isActive)}"));
+            Assert.That(mainWindowPlayerSource, Does.Contain("reason={reason ?? \"\"}"));
+            Assert.That(mainWindowPlayerSource, Does.Contain("? \"webview\" : \"mediaelement\""));
             Assert.That(mainWindowPlayerSource, Does.Not.Contain("IsPlaying ="));
             Assert.That(upperTabPlayerSource, Does.Not.Contain("IsPlaying ="));
             Assert.That(fullscreenWindowSource, Does.Not.Contain("IsPlaying ="));

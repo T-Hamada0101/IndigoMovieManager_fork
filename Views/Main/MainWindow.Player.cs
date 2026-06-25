@@ -668,6 +668,20 @@ namespace IndigoMovieManager
             return Volatile.Read(ref _isPlayerPlaybackActiveFlag) != 0;
         }
 
+        private string BuildPlayerPlaybackCoreRouteLogFields(bool isActive, string reason)
+        {
+            return $"core_route=player-playback "
+                + $"operation_reason={UiOperationPriorityPolicy.OperationReasonPlayerPlayback} "
+                + $"player_surface={ResolvePlayerPlaybackSurfaceLogValue()} "
+                + $"active={FormatLogBool(isActive)} "
+                + $"reason={reason ?? ""}";
+        }
+
+        private string ResolvePlayerPlaybackSurfaceLogValue()
+        {
+            return _isWebViewPlayerActive ? "webview" : "mediaelement";
+        }
+
         private void SetPlayerPlaybackActive(bool isActive, string reason = "")
         {
             int nextValue = isActive ? 1 : 0;
@@ -683,7 +697,7 @@ namespace IndigoMovieManager
             // 実際の遷移だけをログ化し、Everything poll の延期理由と Player 操作を同じ語彙で結ぶ。
             DebugRuntimeLog.Write(
                 "player",
-                $"player playback state changed: active={FormatLogBool(isActive)} operation_reason={UiOperationPriorityPolicy.OperationReasonPlayerPlayback} reason={reason}"
+                $"player playback state changed: {BuildPlayerPlaybackCoreRouteLogFields(isActive, reason)}"
             );
         }
 
