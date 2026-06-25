@@ -277,7 +277,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"kana backfill scheduler rejected: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)}"
+                    $"kana backfill scheduler rejected: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)} pending_count={queueResult.PendingCount}"
                 );
                 return false;
             }
@@ -286,10 +286,19 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"kana backfill scheduler empty: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonRejected)} next_reason={takeResult.Decision.Reason}"
+                    $"kana backfill scheduler empty: {UiWorkRequestPolicy.BuildRequestAdmissionLogFields(request, UiWorkRequestPolicy.ReleaseReasonRejected)} next_reason={takeResult.Decision.Reason} pending_count={takeResult.PendingCount}"
                 );
                 return false;
             }
+
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"kana backfill scheduler admitted: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)} pending_count={queueResult.PendingCount}"
+            );
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"kana backfill scheduler released: {UiWorkSchedulerPolicy.BuildTakeLogFields(takeResult.PendingRequest, takeResult.Decision, takeResult.PendingCount, UiWorkRequestPolicy.ReleaseReasonReleased)}"
+            );
 
             admittedRequest = takeResult.PendingRequest.Request;
             return true;

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -77,23 +78,49 @@ public sealed class TagKanaLocalRefreshSourceTests
             Assert.That(source, Does.Contain("_uiWorkSchedulerRuntime.TryTakeNext()"));
             Assert.That(source, Does.Contain("kana backfill scheduler rejected:"));
             Assert.That(source, Does.Contain("kana backfill scheduler empty:"));
+            Assert.That(source, Does.Contain("kana backfill scheduler admitted:"));
+            Assert.That(source, Does.Contain("kana backfill scheduler released:"));
             Assert.That(source, Does.Contain("UiWorkSchedulerPolicy.BuildAdmissionLogFields("));
+            Assert.That(source, Does.Contain("UiWorkSchedulerPolicy.BuildTakeLogFields("));
             Assert.That(source, Does.Contain("UiWorkRequestPolicy.BuildRequestAdmissionLogFields("));
+            Assert.That(source, Does.Contain("UiWorkRequestPolicy.ReleaseReasonReleased"));
+            Assert.That(source, Does.Contain("pending_count="));
             Assert.That(source, Does.Contain("RefreshMovieViewFromCurrentSourceAsync("));
             Assert.That(source, Does.Contain("kana backfill local refresh fallback:"));
             Assert.That(source, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, true)"));
         });
     }
 
-    private static string ReadRepoText(params string[] parts)
+    private static string ReadRepoText(
+        string firstPart,
+        string secondPart = "",
+        string thirdPart = "",
+        [CallerFilePath] string callerFilePath = ""
+    )
     {
-        DirectoryInfo? directory = new(TestContext.CurrentContext.TestDirectory);
+        DirectoryInfo? directory = FindRepoRoot(new DirectoryInfo(TestContext.CurrentContext.TestDirectory));
+        directory ??= FindRepoRoot(new DirectoryInfo(Directory.GetCurrentDirectory()));
+        if (!string.IsNullOrWhiteSpace(callerFilePath))
+        {
+            directory ??= FindRepoRoot(new FileInfo(callerFilePath).Directory);
+        }
+
+        Assert.That(directory, Is.Not.Null, "repo root が見つかりません。");
+        string[] parts = string.IsNullOrEmpty(thirdPart)
+            ? string.IsNullOrEmpty(secondPart)
+                ? [firstPart]
+                : [firstPart, secondPart]
+            : [firstPart, secondPart, thirdPart];
+        return File.ReadAllText(Path.Combine([directory!.FullName, .. parts]));
+    }
+
+    private static DirectoryInfo? FindRepoRoot(DirectoryInfo? directory)
+    {
         while (directory != null && !File.Exists(Path.Combine(directory.FullName, "IndigoMovieManager.sln")))
         {
             directory = directory.Parent;
         }
 
-        Assert.That(directory, Is.Not.Null, "repo root が見つかりません。");
-        return File.ReadAllText(Path.Combine([directory!.FullName, .. parts]));
+        return directory;
     }
 }

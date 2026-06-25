@@ -286,6 +286,34 @@ public sealed class UiWorkSchedulerPolicyTests
         Assert.That(logFields, Does.Contain("timeout_budget_ms=500"));
     }
 
+    [Test]
+    public void BuildTakeLogFields_pendingから既存実行入口へ渡した証跡を共通形式で出す()
+    {
+        UiWorkRequest request = CreateRequest(UiWorkPriority.WatchSmallDiff, "watch", "watch");
+        UiWorkSchedulerPendingRequest pendingRequest = new(42, request);
+        UiWorkSchedulerNextRequestDecision decision = new(
+            HasRequest: true,
+            Index: 1,
+            Request: request,
+            Reason: UiWorkSchedulerPolicy.AdmissionReasonNextSelected
+        );
+
+        string logFields = UiWorkSchedulerPolicy.BuildTakeLogFields(
+            pendingRequest,
+            decision,
+            pendingCountAfter: 0,
+            UiWorkRequestPolicy.ReleaseReasonReleased
+        );
+
+        Assert.That(logFields, Does.Contain("log_reason=test.watchsmalldiff"));
+        Assert.That(logFields, Does.Contain("release_reason=released"));
+        Assert.That(logFields, Does.Contain("work_priority=WatchSmallDiff"));
+        Assert.That(logFields, Does.Contain("sequence=42"));
+        Assert.That(logFields, Does.Contain("next_reason=next-selected"));
+        Assert.That(logFields, Does.Contain("selected_index=1"));
+        Assert.That(logFields, Does.Contain("pending_count_after=0"));
+    }
+
     private static UiWorkRequest CreateRequest(
         UiWorkPriority priority,
         string coalesceKey = "test:coalesce",
