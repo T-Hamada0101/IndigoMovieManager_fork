@@ -310,7 +310,20 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
             Assert.That(resultFields, Does.Contain("artifact_kind=metadata-probe-state"));
             Assert.That(resultFields, Does.Contain("retryable=false"));
             Assert.That(resultFields, Does.Contain("elapsed_ms=12"));
+            Assert.That(resultFields, Does.Contain($"metric_count={resultDto.Metrics.Count}"));
             Assert.That(resultFields, Does.Contain("movie_length_seconds=120"));
+            Assert.That(
+                WatchMetadataProbeWorkerContractAdapter.BuildWorkerJobResultLogFields(
+                    new WorkerJobResultDto()
+                ),
+                Does.Contain("metric_count=0")
+            );
+            Assert.That(
+                WatchMetadataProbeWorkerContractAdapter.BuildWorkerJobResultLogFields(
+                    new WorkerJobResultDto { Metrics = null! }
+                ),
+                Does.Contain("metric_count=0")
+            );
             Assert.That(combinedFields, Does.Contain("worker_job_id="));
             Assert.That(combinedFields, Does.Contain("worker_kind=metadata-probe"));
             Assert.That(combinedFields, Does.Contain("worker_status=succeeded"));
@@ -318,6 +331,7 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
             Assert.That(combinedFields, Does.Contain("artifact_kind=metadata-probe-state"));
             Assert.That(combinedFields, Does.Contain("retryable=false"));
             Assert.That(combinedFields, Does.Contain("elapsed_ms=12"));
+            Assert.That(combinedFields, Does.Contain($"metric_count={resultDto.Metrics.Count}"));
             Assert.That(combinedFields, Does.Contain("progress_total=1"));
             Assert.That(combinedFields, Does.Contain("input_count=1"));
             Assert.That(combinedFields, Does.Contain("capability_count=4"));

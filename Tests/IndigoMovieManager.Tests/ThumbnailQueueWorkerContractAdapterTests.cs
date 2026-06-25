@@ -318,6 +318,7 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
             Assert.That(logFields, Does.Contain("artifact_kind=''"));
             Assert.That(logFields, Does.Contain("retryability=retryable"));
             Assert.That(logFields, Does.Contain("elapsed_ms=123"));
+            Assert.That(logFields, Does.Contain($"metric_count={dto.Metrics.Count}"));
             Assert.That(logFields, Does.Contain("failure_kind=Decode"));
             Assert.That(logFields, Does.Contain("failure_reason='decode failed'"));
             Assert.That(logFields, Does.Contain("output_artifact_path=''"));
@@ -325,6 +326,18 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
             Assert.That(logFields, Does.Contain("movie_path_key=movie-key-001"));
             Assert.That(logFields, Does.Contain("priority=Preferred"));
             Assert.That(logFields, Does.Contain("attempt_count=3"));
+            Assert.That(
+                ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(
+                    new WorkerJobResultDto()
+                ),
+                Does.Contain("metric_count=0")
+            );
+            Assert.That(
+                ThumbnailQueueWorkerContractAdapter.BuildWorkerJobResultLogFields(
+                    new WorkerJobResultDto { Metrics = null! }
+                ),
+                Does.Contain("metric_count=0")
+            );
         });
     }
 
@@ -378,6 +391,7 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
             Assert.That(progressFields, Does.Contain("current_parallelism=2"));
             Assert.That(combinedFields, Does.Contain("worker_status=succeeded"));
             Assert.That(combinedFields, Does.Contain("worker_stage=completed"));
+            Assert.That(combinedFields, Does.Contain($"metric_count={result.Metrics.Count}"));
             Assert.That(combinedFields, Does.Contain("progress_completed=1"));
             Assert.That(combinedFields, Does.Contain("progress_total=4"));
             Assert.That(combinedFields, Does.Contain("queue_id=77"));

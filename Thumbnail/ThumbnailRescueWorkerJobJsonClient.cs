@@ -172,7 +172,7 @@ namespace IndigoMovieManager.Thumbnail
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} result_code={FormatLogValue(GetMetricValue(result, "resultCode"))} engine_version={FormatLogValue(GetMetricValue(result, "engineVersion"))} compatibility_version={FormatLogValue(GetMetricValue(result, "compatibilityVersion"))} log_count={Math.Max(0, result.Logs?.Count ?? 0)}"
+                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} result_code={FormatLogValue(GetMetricValue(result, "resultCode"))} engine_version={FormatLogValue(GetMetricValue(result, "engineVersion"))} compatibility_version={FormatLogValue(GetMetricValue(result, "compatibilityVersion"))} log_count={Math.Max(0, result.Logs?.Count ?? 0)}"
             );
         }
 

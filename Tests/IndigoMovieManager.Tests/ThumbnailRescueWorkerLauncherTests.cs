@@ -1162,6 +1162,7 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(resultLogFields, Does.Contain("artifact_kind=process-log"));
             Assert.That(resultLogFields, Does.Contain("retryability=not-retryable"));
             Assert.That(resultLogFields, Does.Contain("elapsed_ms=62000"));
+            Assert.That(resultLogFields, Does.Contain("metric_count=3"));
             Assert.That(resultLogFields, Does.Contain("failure_reason=''"));
             Assert.That(
                 resultLogFields,
@@ -1171,6 +1172,18 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(resultLogFields, Does.Contain("engine_version=1.0.0"));
             Assert.That(resultLogFields, Does.Contain("compatibility_version=2026-03-17.1"));
             Assert.That(resultLogFields, Does.Contain("log_count=1"));
+            Assert.That(
+                ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(
+                    new WorkerJobResultDto()
+                ),
+                Does.Contain("metric_count=0")
+            );
+            Assert.That(
+                ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(
+                    new WorkerJobResultDto { Metrics = null! }
+                ),
+                Does.Contain("metric_count=0")
+            );
             Assert.That(
                 ThumbnailRescueWorkerJobJsonClient.BuildResultSummaryLine(result),
                 Does.Contain("request_id=req-002")
