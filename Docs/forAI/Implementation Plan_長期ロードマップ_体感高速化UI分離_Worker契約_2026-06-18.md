@@ -1,19 +1,19 @@
 # Implementation Plan 長期ロードマップ 体感高速化UI分離 Worker契約 2026-06-18
 
-> 進捗メータ: `[#########-] 90%`
+> 進捗メータ: `[#########-] 91%`
 > 実機ログで閉じていないものは完了扱いにしない。
 
 ## 0. 進捗メータ
 
 更新日: 2026-06-25
 
-全体進捗目安: `[#########-] 90%`
+全体進捗目安: `[#########-] 91%`
 
 このメータは実装量だけではなく、focused test、Release x64 build、実機ログで説明できる度合いを含めて見る。実機ログで閉じていないものは、コードが入っていても完了扱いにしない。
 
 | Phase | 進捗目安 | 状態 | 次に閉じること |
 |---|---:|---|---|
-| Phase 0. 現状固定とログ証跡補強 | 65% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。focused test 123件で Phase 0 / 1 / 6 の入口を確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
+| Phase 0. 現状固定とログ証跡補強 | 66% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。さらに UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract source policy を focused test 159件で確認済み | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
 | Phase 1. UI Shell 入力契約 | 53% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない。2026-06-25 Worker E で snapshot 共通ログ fields を追加し、user-priority begin / end でも UI Shell 入力状態を同じ語彙で読めるようにした。Worker Averroes で search / sort 入力入口にも `ui shell input` と snapshot fields、Worker Hilbert で `ui_shell_contract=ui-shell-v1` を追加した | UI event handler を snapshot 生成へさらに寄せ、実機ログで `ui_shell_contract=ui-shell-v1` と search / sort / player の入口状態を確認する |
 | Phase 2. ReadModel Store と Diff-first | 54% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める。2026-06-25 Worker F で watch apply request ログへ source / applied changed paths と `diff_change_set`、Worker Curie で diff ログへ `diff_changed_total`、Worker Fermat で watch apply request の change set ログにも `diff_changed_total`、Worker Chandrasekhar で `diff_contract=readmodel-diff-v1` を追加した | watch 1件追加 / rename が `diff_contract=readmodel-diff-v1`、`diff_change_set=single`、`diff_changed_total=1` のまま full fallback へ戻らない実機ログと、大量変更時 fallback の `diff_changed_total` の妥当性を確認する |
 | Phase 3. In-process Scheduler | 58% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強し、Worker Lagrange で admission / take ログへ判定結果 fields、Worker Zeno で timeout ログへ `timeout_released`、Worker Locke で timeout release ログへ `sequence` / `pending_count_after`、Worker Curie(Scheduler) で `scheduler_contract=scheduler-v1` を追加した | 実機ログで `scheduler_contract=scheduler-v1`、scheduler admission / released / pending_count / accepted / target_index / has_request / timeout_released / pending_count_after が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
@@ -124,6 +124,8 @@
 - 2026-06-25 Worker Curie(Scheduler): Scheduler admission / take / timeout fields へ `scheduler_contract=scheduler-v1` を追加し、入場、実行引き渡し、timeout release を同じ契約識別子で追えるようにした。
 - 2026-06-25 Worker Hilbert: UI Shell snapshot fields へ `ui_shell_contract=ui-shell-v1` を追加し、user-priority begin / end と search / sort 入力入口を契約単位で追えるようにした。
 - 2026-06-25 Worker McClintock: Image load / decode / decode plan ログへ `image_contract=image-pipeline-v1` を追加し、画像 pipeline の各結果ログを契約単位で追えるようにした。
+- 2026-06-25 Worker Parfit: UI Shell / ReadModel Diff / Scheduler / Image の contract 識別子を source policy で固定し、helper 経由と重複なしの線を戻さないようにした。production code は変えていない。
+- 2026-06-25 Worker Hypatia: Persistence / Worker / Skin / Player / Watcher の contract 識別子と core route fields を source policy で固定した。保存順、worker実行順、skin / Player / Watcher の実行入口は変えていない。
 - 2026-06-25 Worker Lagrange: Scheduler admission ログへ `accepted` / `target_index`、take ログへ `has_request` を追加し、enqueue / replace / reject / released の判定結果を同じ行で読めるようにした。admission / queue / take の挙動は変えていない。
 - ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / lifecycle、入力 routing は partial / helper 分離済み。
 - `FilterAndSort(..., true)` は起動 fallback と段階ロード中 sort の2箇所、直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけに固定されている。
@@ -258,6 +260,14 @@
 - 親検証は focused test 138件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功、対象5ファイルの UTF-8 BOMなし + LF、ローカル固有情報スキャン一致なしを確認済み。
 - 実機 `debug-runtime.log` で `ui_shell_contract=ui-shell-v1` と `image_contract=image-pipeline-v1` が search / sort / player 入口、stale discard、aggregate-decode-plan を横断して追えるかをまだ確認していないため、Phase 1 / 4 は完了扱いにしない。
 
+### 2.17 2026-06-25 PM親レビュー Phase0 contract source policy固定
+
+- Worker Parfit / Hypatia は UIシンプル化別スレと競合しないよう、production code へ触れずテストだけに限定した。
+- 親レビューでは、Worker Parfit は UI Shell / ReadModel Diff / Scheduler / Image の contract 識別子を source policy で固定する変更として採用した。`UiShellContract`、`DiffContractReadModelDiffV1`、`SchedulerContractLogField`、Image decode / load builder の contract 出力を戻さない線にした。
+- 親レビューでは、Worker Hypatia は Persistence / Worker / Skin / Player / Watcher の contract 識別子と core route fields を source policy で固定する変更として採用した。保存順、worker実行順、skin refresh、Player playback、Watcher apply の実行入口は変えていない。
+- 親検証は focused test 159件成功、Release x64 build 成功、対象コミット範囲の `git diff --check` 成功。Release build は警告0件で完了した。
+- 今回は実機 `debug-runtime.log` の新規採取ではなく戻り防止の強化なので、search / sort / scroll / Player / watch / thumbnail / skin を同一 Release run で説明できるまで Phase 0 は完了扱いにしない。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -265,6 +275,7 @@
 - 既存の `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy を正本として固定する。
 - 検索、sort、scroll、Player、watch、thumbnail、skin を同じ Release run で操作し、`debug-runtime.log` だけで割り込み、延期、fallback、apply 時間を説明できるようにする。
 - `Refresh()` / `Items.Refresh()` / `FilterAndSort(..., true)` の許容線は増やさない。
+- 済: UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract 識別子は source policy で固定した。これは実機ログ確認の代替ではなく、各 Phase のログ契約を戻さないための土台とする。
 
 ### Phase 1. UI Shell 入力契約
 
