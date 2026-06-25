@@ -97,7 +97,10 @@ namespace IndigoMovieManager
                 $"{request.BuildLogFields()} "
                 + $"write_succeeded=true "
                 + $"elapsed_ms={elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture)} "
-                + "failure_kind=none";
+                + "failure_kind=none "
+                + PersistenceFailureNotificationPolicy.BuildLogFields(
+                    PersistenceFailureNotificationPolicy.BuildSuccessState()
+                );
 
             return new(true, elapsed, null, logFields);
         }

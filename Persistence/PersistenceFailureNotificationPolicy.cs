@@ -42,6 +42,11 @@ namespace IndigoMovieManager
             };
         }
 
+        internal static PersistenceFailureNotificationState BuildSuccessState()
+        {
+            return new(Dirty: false, Failed: false, Retryable: false, NotifyUi: false);
+        }
+
         internal static string BuildLogFields(PersistenceFailureKind kind)
         {
             return BuildLogFields(BuildFailureState(kind));

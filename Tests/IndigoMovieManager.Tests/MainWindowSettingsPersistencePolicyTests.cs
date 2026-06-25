@@ -295,6 +295,10 @@ public sealed class MainWindowSettingsPersistencePolicyTests
                 success.LogFields,
                 Does.Contain("write_succeeded=true elapsed_ms=1.2 failure_kind=none")
             );
+            Assert.That(
+                success.LogFields,
+                Does.Contain("dirty=false failed=false retryable=false notify_ui=false")
+            );
             Assert.That(successLogFields, Is.EqualTo(success.LogFields));
         });
     }
@@ -310,6 +314,8 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             PersistenceFailureNotificationPolicy.BuildFailureState(
                 PersistenceFailureKind.SkinSystem
             );
+        PersistenceFailureNotificationState successState =
+            PersistenceFailureNotificationPolicy.BuildSuccessState();
 
         Assert.Multiple(() =>
         {
@@ -329,6 +335,15 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             Assert.That(
                 PersistenceFailureNotificationPolicy.BuildLogFields(systemState),
                 Is.EqualTo("dirty=false failed=true retryable=false notify_ui=true")
+            );
+
+            Assert.That(successState.Dirty, Is.False);
+            Assert.That(successState.Failed, Is.False);
+            Assert.That(successState.Retryable, Is.False);
+            Assert.That(successState.NotifyUi, Is.False);
+            Assert.That(
+                PersistenceFailureNotificationPolicy.BuildLogFields(successState),
+                Is.EqualTo("dirty=false failed=false retryable=false notify_ui=false")
             );
         });
     }

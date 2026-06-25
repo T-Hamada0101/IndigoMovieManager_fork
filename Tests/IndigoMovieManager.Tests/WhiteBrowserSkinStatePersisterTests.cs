@@ -176,6 +176,10 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                             && x.Contains("queue_key=skin-system:skin", StringComparison.Ordinal)
                             && x.Contains("write_succeeded=true", StringComparison.Ordinal)
                             && x.Contains("failure_kind=none", StringComparison.Ordinal)
+                            && x.Contains(
+                                "dirty=false failed=false retryable=false notify_ui=false",
+                                StringComparison.Ordinal
+                            )
                     ),
                     Is.True
                 );
@@ -192,6 +196,10 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                             )
                             && x.Contains("write_succeeded=true", StringComparison.Ordinal)
                             && x.Contains("failure_kind=none", StringComparison.Ordinal)
+                            && x.Contains(
+                                "dirty=false failed=false retryable=false notify_ui=false",
+                                StringComparison.Ordinal
+                            )
                     ),
                     Is.True
                 );
@@ -352,6 +360,10 @@ public sealed class WhiteBrowserSkinStatePersisterTests
             Assert.That(failureLog, Does.Contain("dirty=true failed=true retryable=true notify_ui=false"));
             Assert.That(successLog, Does.Contain("write_succeeded=true"));
             Assert.That(successLog, Does.Contain("failure_kind=none"));
+            Assert.That(
+                successLog,
+                Does.Contain("dirty=false failed=false retryable=false notify_ui=false")
+            );
         });
     }
 
