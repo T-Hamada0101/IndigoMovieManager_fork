@@ -21,6 +21,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
         {
             Assert.That(summary.RunSlice.Lines, Is.EqualTo([newFirst, newSecond]));
             Assert.That(summary.RunSlice.DetectedResetCount, Is.EqualTo(1));
+            Assert.That(summary.RunWindow.TimestampLineCount, Is.EqualTo(2));
             Assert.That(summary.ContractEvidence.ObservedKeys, Is.EqualTo(["watch-core"]));
             Assert.That(
                 summary.ContractEvidence.MissingKeys,
@@ -29,6 +30,22 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(
                 summary.Phase0Evidence.ObservedKeys,
                 Is.EqualTo(["startup-first-page", "watch-core"])
+            );
+            Assert.That(
+                summary.Phase0NextActions.ActionKeys,
+                Is.EqualTo(
+                    [
+                        "startup",
+                        "search",
+                        "sort",
+                        "scroll",
+                        "player",
+                        "image",
+                        "persistence",
+                        "thumbnail",
+                        "skin",
+                    ]
+                )
             );
         });
     }
@@ -44,6 +61,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
         {
             Assert.That(summary.ContractEvidence.IsComplete, Is.True);
             Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
+            Assert.That(summary.Phase0NextActions.IsComplete, Is.True);
             Assert.That(summary.ContractEvidence.BuildSummaryText(), Is.EqualTo("log_evidence=9/9 missing=none"));
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
@@ -70,8 +88,10 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 string.Join(
                     Environment.NewLine,
                     "log_run_lines=2/2 has_sequence=true sequence=1-2 resets=0",
+                    "log_run_window=2026-06-25T10:00:00.001..2026-06-25T10:00:00.002 elapsed_ms=1 timestamp_lines=2/2",
                     "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core",
-                    "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core"
+                    "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
+                    "phase0_next_actions=startup,search,sort,scroll,player,image,persistence,thumbnail,skin"
                 )
             )
         );
@@ -100,13 +120,20 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 Is.EqualTo(expectedPhase0Evidence.BuildSummaryText())
             );
             Assert.That(
+                summary.RunWindow.BuildSummaryText(),
+                Is.EqualTo("log_run_window=none elapsed_ms=none timestamp_lines=0/0")
+            );
+            Assert.That(summary.Phase0NextActions.IsComplete, Is.False);
+            Assert.That(
                 summary.BuildSummaryText(),
                 Is.EqualTo(
                     string.Join(
                         Environment.NewLine,
                         "log_run_lines=0/0 has_sequence=false sequence=none resets=0",
+                        "log_run_window=none elapsed_ms=none timestamp_lines=0/0",
                         "log_evidence=0/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core,watch-core",
-                        "phase0_log_evidence=0/12 missing=startup-first-page,startup-input-ready,search-input,sort-input,scroll-input,player-core,watch-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core"
+                        "phase0_log_evidence=0/12 missing=startup-first-page,startup-input-ready,search-input,sort-input,scroll-input,player-core,watch-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
+                        "phase0_next_actions=startup,search,sort,scroll,player,watch,image,persistence,thumbnail,skin"
                     )
                 )
             );

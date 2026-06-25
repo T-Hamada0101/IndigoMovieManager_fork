@@ -79,17 +79,29 @@ public sealed class LogTabPreviewIoPolicyTests
             Assert.That(
                 resultLines[1],
                 Is.EqualTo(
-                    "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core"
+                    "log_run_window=2026-06-25T10:00:00.001..2026-06-25T10:00:00.003 elapsed_ms=2 timestamp_lines=3/3"
                 )
             );
             Assert.That(
                 resultLines[2],
                 Is.EqualTo(
+                    "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core"
+                )
+            );
+            Assert.That(
+                resultLines[3],
+                Is.EqualTo(
                     "phase0_log_evidence=3/12 missing=search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core"
                 )
             );
-            Assert.That(resultLines[3], Is.Empty);
-            Assert.That(resultLines.Skip(4), Is.EqualTo(previewLines));
+            Assert.That(
+                resultLines[4],
+                Is.EqualTo(
+                    "phase0_next_actions=search,sort,scroll,player,image,persistence,thumbnail,skin"
+                )
+            );
+            Assert.That(resultLines[5], Is.Empty);
+            Assert.That(resultLines.Skip(6), Is.EqualTo(previewLines));
         });
     }
 
