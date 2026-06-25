@@ -343,11 +343,24 @@ public sealed class ImageRequestTests
             usesPlaceholder: false,
             hasResolvedImage: true
         );
+        ImageRequest hiddenRequest = ImageRequest.ForExtensionDetail(
+            Path.Combine("thumb", "hidden-detail.jpg"),
+            "hidden-movie-key",
+            isVisiblePriority: false,
+            requestRevision: 53
+        );
+        ImageLoadResult hiddenCanceled = ImageLoadResult.Canceled(
+            hiddenRequest,
+            resultRevision: 54,
+            failureReason: "stale-image-request",
+            isStale: true
+        );
 
         string readyLog = ImageLoadLogFields.Build(ready);
         string missingLog = ImageLoadLogFields.Build(missing);
         string canceledLog = ImageLoadLogFields.Build(canceled);
         string failedLog = ImageLoadLogFields.Build(failed);
+        string hiddenCanceledLog = ImageLoadLogFields.Build(hiddenCanceled);
 
         Assert.Multiple(() =>
         {
@@ -356,6 +369,9 @@ public sealed class ImageRequestTests
             Assert.That(canceled.OutcomeLogValue, Is.EqualTo("canceled"));
             Assert.That(failed.OutcomeLogValue, Is.EqualTo("failed"));
             Assert.That(readyLog, Does.Contain("image_role=ExtensionDetail"));
+            Assert.That(readyLog, Does.Contain("visible_priority=true"));
+            Assert.That(readyLog, Does.Contain("image_cache_policy=UseConverterCache"));
+            Assert.That(readyLog, Does.Contain("should_decode=true"));
             Assert.That(readyLog, Does.Contain("image_outcome=ready"));
             Assert.That(readyLog, Does.Contain("resolved=true"));
             Assert.That(missingLog, Does.Contain("image_outcome=missing"));
@@ -370,6 +386,8 @@ public sealed class ImageRequestTests
             Assert.That(markerFailed.HasResolvedImage, Is.True);
             Assert.That(markerFailed.UsesPlaceholder, Is.False);
             Assert.That(ImageLoadLogFields.Build(markerFailed), Does.Contain("resolved=true"));
+            Assert.That(hiddenCanceledLog, Does.Contain("visible_priority=false"));
+            Assert.That(hiddenCanceledLog, Does.Contain("should_decode=false"));
         });
     }
 
@@ -431,6 +449,9 @@ public sealed class ImageRequestTests
             Assert.That(decodeResult.DecodeElapsedMilliseconds, Is.EqualTo(12));
             Assert.That(decodeResult.CacheHit, Is.True);
             Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.sync-decode"));
+            Assert.That(logFields, Does.Contain("visible_priority=true"));
+            Assert.That(logFields, Does.Contain("image_cache_policy=UseConverterCache"));
+            Assert.That(logFields, Does.Contain("should_decode=true"));
             Assert.That(logFields, Does.Contain("decode_pixel_height=18"));
             Assert.That(logFields, Does.Contain("decode_elapsed_ms=12"));
             Assert.That(logFields, Does.Contain("cache_hit=true"));
@@ -473,6 +494,9 @@ public sealed class ImageRequestTests
             Assert.That(planResult.DecodeResult.CacheHit, Is.False);
             Assert.That(planResult.DecodeAttempted, Is.False);
             Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.aggregate-decode-plan"));
+            Assert.That(logFields, Does.Contain("visible_priority=true"));
+            Assert.That(logFields, Does.Contain("image_cache_policy=UseConverterCache"));
+            Assert.That(logFields, Does.Contain("should_decode=true"));
             Assert.That(logFields, Does.Contain("decode_pixel_height=18"));
             Assert.That(logFields, Does.Contain("image_outcome=failed"));
             Assert.That(logFields, Does.Contain("decode_attempted=false"));
