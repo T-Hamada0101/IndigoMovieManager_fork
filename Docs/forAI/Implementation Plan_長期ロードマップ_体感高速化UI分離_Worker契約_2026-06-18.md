@@ -62,6 +62,8 @@
 - 2026-06-27 Worker Halley: Phase7 core route detail の `skin-operation-reason` / `skin-definition-mode` / `player-surface-ready` / `player-transition` / `watch-apply-kind` / `watch-reason` を Phase0 optional evidence へ追加した。`core_route` と同じ行にある時だけ採用し、Phase0 必須12件は増やしていない。
 - 2026-06-27 Worker Franklin: Phase0 summary で optional が1件以上ある時だけ `optional_evidence=x/28` を併記するようにした。採取後に補助 evidence の量を見落としにくくする表示補強であり、必須12件、optional 28件、完了条件は変えていない。
 - 2026-06-27 Worker Feynman: `DebugRuntimeLog.Write(...)` / `TaskStart(...)` / `TaskEnd(...)` の source 入口近傍が `Conditional(DEBUG)` や `#if DEBUG` 前提へ戻らないことをテストで固定した。production code は変えていない。
+- 2026-06-27 Worker Kepler: Logタブ preview の合成テストで latest run に Phase7 optional evidence を含め、先頭summaryに `optional_evidence=x/28 optional=...` が出ることを固定した。production code は変えていない。
+- 2026-06-27 Worker Kuhn: live audit 失敗時の採取案内を、現行の Phase0 採取対象である `startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin` へ揃えた。実機ログ採取や完了判定は変えていない。
 - Worker契約候補は `WorkerContractSourcePolicyTests` で WPF / Dispatcher / ViewModel / WebView2 / MainWindow を参照しない source policy を追加した。
 - thumbnail 進捗 refresh 予約は、coalesce / latest-only / shutdown guard を source policy で固定し、Scheduler 化の最初の足場にした。
 - `UiWorkRequest` を thumbnail 進捗 refresh 予約へ接続し、priority / coalesce / latest-only / log reason / shutdown受理可否を既存経路のまま説明できるようにした。
@@ -445,6 +447,14 @@
 - 親検証は focused test 39件成功、Release x64 build 成功、警告0件で完了した。
 - 今回も実機同一runの新規採取ではない。次の実機採取では Phase0 summary の `optional_evidence=x/28` が補助 evidence の量を示すことと、Release 実機ログ入口が source policy で守られていることを前提に、引き続き search / sort / scroll / Player / watch / image / thumbnail / skin の同一run不足を閉じる。
 
+### 2.35 2026-06-27 PM親レビュー live audit案内とLogタブpreview補助summary固定
+
+- Worker Kepler / Kuhn は UI簡素化別スレと競合しないよう、Logタブ preview tests と live audit tests / source policy tests に限定した。production code、XAML、Themes、Settings、Views/Main UI 本体は触っていない。
+- 親レビューでは、Worker Kepler の Logタブ preview 補助summary固定を採用した。latest run に optional evidence がある時、Logタブ preview の先頭 `phase0_log_evidence=...` 行にも `optional_evidence=x/28 optional=...` が出ることをテストで固定した。Logタブは引き続き `DebugRuntimeLogAuditSummaryPolicy` 経由で summary を作る。
+- 親レビューでは、Worker Kuhn の live audit 採取案内補強を採用した。失敗メッセージと source policy は `startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin` を案内し、Phase0 の現行必須/次アクション語彙とズレないようにする。live audit の opt-in、ログ読み取り、完了判定は変えていない。
+- 親検証は focused test 9件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
+- 今回も実機同一runの新規採取ではない。次の実機採取では live audit の失敗案内に従って startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin を同一 Release run で揃え、Logタブ preview の `optional_evidence=x/28` と `phase0_audit_complete=true|false` を確認する。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -468,7 +478,9 @@
 - 済: `Items.Refresh()` は WPF本体C# production code 全体で戻さない。直書き `Refresh();` と `FilterAndSort(..., true)` は既存の許容2箇所だけを source policy で固定し、通常経路の全面再評価逆流を検出する。
 - 済: optional evidence がある Phase0 summary は `optional_evidence=x/28 optional=...` を出す。補助 evidence の採取量を読みやすくするだけで、必須12件と完了条件は変えない。
 - 済: `DebugRuntimeLog.Write(...)` / `TaskStart(...)` / `TaskEnd(...)` は Release 実機ログ入口として `Conditional(DEBUG)` / `#if DEBUG` へ戻さない。呼び出し除去ではなく設定と絞り込みで制御する契約を source policy で守る。
-- 未: 2026-06-27 の実ログ audit は `log_evidence=2/9`、`phase0_log_evidence=1/12` で不足を示した。次は同一 Release run で startup / search / sort / scroll / Player / watch / image / thumbnail / skin を操作し、summary 欠落が消えることを確認する。
+- 済: Logタブ preview でも `DebugRuntimeLogAuditSummaryPolicy` 経由の `optional_evidence=x/28 optional=...` が先頭summaryに出ることをテストで固定した。
+- 済: live audit 失敗時の採取案内は `startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin` を示し、現行の Phase0 採取対象とズレないようにした。
+- 未: 2026-06-27 の実ログ audit は `log_evidence=2/9`、`phase0_log_evidence=1/12` で不足を示した。次は同一 Release run で startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin を操作し、summary 欠落が消えることを確認する。
 
 ### Phase 1. UI Shell 入力契約
 
