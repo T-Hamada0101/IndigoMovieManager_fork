@@ -299,6 +299,45 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
         Assert.That(source, Does.Contain("had_pending={FormatLogBool(hadPendingRequest)}"));
     }
 
+    [Test]
+    public void WatchUiReloadPolicy_scheduler成功ログはcore_routeとadmission_release語彙を同じ行に載せる()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
+        string admissionMethod = GetMethodBlock(
+            source,
+            "private bool TryAdmitWatchUiApplyRequest("
+        );
+        string admittedLogLine = GetLineContaining(
+            admissionMethod,
+            "watch ui apply scheduler admitted:"
+        );
+        string releasedLogLine = GetLineContaining(
+            admissionMethod,
+            "watch ui apply scheduler released:"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                admittedLogLine,
+                Does.Contain("BuildWatchUiApplyCoreRouteLogFields(request)")
+            );
+            Assert.That(
+                admittedLogLine,
+                Does.Contain("UiWorkSchedulerPolicy.BuildAdmissionLogFields(workRequest, queueResult.Decision)")
+            );
+            Assert.That(admittedLogLine, Does.Contain("pending_count={queueResult.PendingCount}"));
+            Assert.That(
+                releasedLogLine,
+                Does.Contain("BuildWatchUiApplyCoreRouteLogFields(admittedRequest)")
+            );
+            Assert.That(
+                releasedLogLine,
+                Does.Contain("UiWorkSchedulerPolicy.BuildTakeLogFields(takeResult.PendingRequest, takeResult.Decision, takeResult.PendingCount, UiWorkRequestPolicy.ReleaseReasonReleased)")
+            );
+        });
+    }
+
     private static IEnumerable<string> EnumerateWatcherBoundaryCallLines(string needle)
     {
         return EnumerateWatcherBoundaryLines()

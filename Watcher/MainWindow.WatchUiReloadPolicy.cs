@@ -959,10 +959,18 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            DebugRuntimeLog.Write(
+                "watch-check",
+                $"watch ui apply scheduler admitted: {BuildWatchUiApplyCoreRouteLogFields(request)} {UiWorkSchedulerPolicy.BuildAdmissionLogFields(workRequest, queueResult.Decision)} pending_count={queueResult.PendingCount}"
+            );
             admittedRequest = request with
             {
                 WorkRequest = takeResult.PendingRequest.Request,
             };
+            DebugRuntimeLog.Write(
+                "watch-check",
+                $"watch ui apply scheduler released: {BuildWatchUiApplyCoreRouteLogFields(admittedRequest)} {UiWorkSchedulerPolicy.BuildTakeLogFields(takeResult.PendingRequest, takeResult.Decision, takeResult.PendingCount, UiWorkRequestPolicy.ReleaseReasonReleased)}"
+            );
             return true;
         }
 
