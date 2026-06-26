@@ -61,7 +61,10 @@ public sealed class LogTabPreviewIoPolicyTests
             ),
             BuildLine(1, "new first-page shown"),
             BuildLine(2, "new input ready"),
-            BuildLine(3, "new core_route=watch-ui-apply"),
+            BuildLine(
+                3,
+                "new core_route=watch-ui-apply watch_apply_kind=query-only watch_reason=watch-query-only"
+            ),
         ];
         string previewText = string.Join(Environment.NewLine, previewLines);
 
@@ -91,7 +94,7 @@ public sealed class LogTabPreviewIoPolicyTests
             Assert.That(
                 resultLines[3],
                 Is.EqualTo(
-                    "phase0_log_evidence=3/12 missing=search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core"
+                    "phase0_log_evidence=3/12 missing=search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core optional_evidence=2/28 optional=watch-apply-kind,watch-reason"
                 )
             );
             Assert.That(
