@@ -110,10 +110,19 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
             "persistence-notify-ui",
             ["persist_contract=persistence-write-v1", "notify_ui="]
         ),
-        // Worker DTO detail は Phase6 補助 evidence として扱い、Phase0 必須12件は増やさない。
-        new("worker-diagnostic-context", "diagnostic_context_count="),
-        new("worker-capability-count", "capability_count="),
-        new("worker-metric-count", "metric_count="),
+        // Worker DTO detail は契約名と同じ行にある時だけ拾い、汎用 field の誤検出を避ける。
+        RequiredPhase0EvidenceToken.All(
+            "worker-diagnostic-context",
+            ["worker_contract=worker-job-v1", "diagnostic_context_count="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "worker-capability-count",
+            ["worker_contract=worker-job-v1", "capability_count="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "worker-metric-count",
+            ["worker_contract=worker-job-v1", "metric_count="]
+        ),
         // Phase7 core route 詳細は同じ行の route と組み合わせて拾い、単独 field の誤検出を避ける。
         RequiredPhase0EvidenceToken.All(
             "skin-operation-reason",

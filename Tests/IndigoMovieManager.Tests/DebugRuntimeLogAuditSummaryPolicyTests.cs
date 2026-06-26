@@ -399,8 +399,8 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             BuildSequencedLines(
                 [
                     "worker worker_contract=worker-job-v1 diagnostic_context_count=7",
-                    "worker capability_count=3",
-                    "worker result metric_count=2",
+                    "worker worker_contract=worker-job-v1 capability_count=3",
+                    "worker worker_contract=worker-job-v1 metric_count=2",
                 ]
             )
         );
@@ -426,6 +426,29 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 )
             );
             Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("thumbnail"));
+        });
+    }
+
+    [Test]
+    public void worker_DTO_detail候補だけの行はsummaryに残さない()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "worker diagnostic_context_count=7 capability_count=3 metric_count=2",
+                    "worker worker_contract=worker-job-v1",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedKeys, Is.EqualTo(["worker"]));
+            Assert.That(summary.Phase0Evidence.OptionalObservedKeys, Is.Empty);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.Not.Contain("optional=")
+            );
         });
     }
 

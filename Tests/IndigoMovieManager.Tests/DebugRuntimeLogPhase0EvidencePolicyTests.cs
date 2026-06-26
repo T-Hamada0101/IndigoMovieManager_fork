@@ -276,8 +276,8 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
             [
                 "worker worker_contract=worker-job-v1 diagnostic_context_count=7",
-                "worker capability_count=3",
-                "worker result metric_count=2",
+                "worker worker_contract=worker-job-v1 capability_count=3",
+                "worker worker_contract=worker-job-v1 metric_count=2",
             ]
         );
 
@@ -303,6 +303,24 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                     "optional=worker-diagnostic-context,worker-capability-count,worker-metric-count"
                 )
             );
+        });
+    }
+
+    [Test]
+    public void worker_DTO_detail候補だけの行はoptionalとして認識しない()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "worker diagnostic_context_count=7 capability_count=3 metric_count=2",
+                "worker worker_contract=worker-job-v1",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.ObservedKeys, Is.EqualTo(["worker"]));
+            Assert.That(summary.OptionalObservedKeys, Is.Empty);
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
         });
     }
 
