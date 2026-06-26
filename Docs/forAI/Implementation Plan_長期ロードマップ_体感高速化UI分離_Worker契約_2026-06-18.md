@@ -13,8 +13,8 @@
 
 | Phase | 進捗目安 | 状態 | 次に閉じること |
 |---|---:|---|---|
-| Phase 0. 現状固定とログ証跡補強 | 74% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。さらに UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract source policy を focused test 159件で確認済み。最新run切り出し、run時間窓、run要約、contract / Phase0 evidence 集計、次アクション、監査summary合成 policy、Logタブ preview summary 実出力も focused test 30件で確認済み。search / sort 入力入口の `ui shell input` 出力固定と opt-in live audit test も追加済み。2026-06-27 は contract 完了条件と live audit source policy を固定し、実ログ audit で `log_evidence=2/9`、`phase0_log_evidence=1/12` の不足を確認済み。audit summary は `phase0_audit_complete=true|false` を出す | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
-| Phase 1. UI Shell 入力契約 | 54% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない。2026-06-25 Worker E で snapshot 共通ログ fields を追加し、user-priority begin / end でも UI Shell 入力状態を同じ語彙で読めるようにした。Worker Averroes で search / sort 入力入口にも `ui shell input` と snapshot fields、Worker Hilbert で `ui_shell_contract=ui-shell-v1` を追加した。2026-06-27 は Player 再生状態の実遷移にも `ui shell input` snapshot を追加した | UI event handler を snapshot 生成へさらに寄せ、実機ログで `ui_shell_contract=ui-shell-v1` と search / sort / player の入口状態を確認する |
+| Phase 0. 現状固定とログ証跡補強 | 75% | `UiOperationPriorityPolicy`、ReadModel builder、partial分離、source policy は土台あり。さらに UI Shell / ReadModel Diff / Scheduler / Image / Persistence / Worker / Skin / Player / Watcher の contract source policy を focused test 159件で確認済み。最新run切り出し、run時間窓、run要約、contract / Phase0 evidence 集計、次アクション、監査summary合成 policy、Logタブ preview summary 実出力も focused test 30件で確認済み。search / sort 入力入口の `ui shell input` 出力固定と opt-in live audit test も追加済み。2026-06-27 は contract 完了条件と live audit source policy を固定し、実ログ audit で `log_evidence=2/9`、`phase0_log_evidence=1/12` の不足を確認済み。audit summary は `phase0_audit_complete=true|false` を出し、scroll evidence は新旧ログを同じ key として扱う | 同一 Release run で search / sort / scroll / Player / watch / thumbnail / skin のログを揃える |
+| Phase 1. UI Shell 入力契約 | 55% | `UiOperationSnapshot` を追加し、Everything watch / poll と user-priority 判定入口を共通 snapshot 正本へ寄せた。旧 `UiOperationPrioritySnapshot` は互換入口として残すが、MainWindow runtime 側の判定口では使わない。2026-06-25 Worker E で snapshot 共通ログ fields を追加し、user-priority begin / end でも UI Shell 入力状態を同じ語彙で読めるようにした。Worker Averroes で search / sort 入力入口にも `ui shell input` と snapshot fields、Worker Hilbert で `ui_shell_contract=ui-shell-v1` を追加した。2026-06-27 は Player 再生状態の実遷移と PageUp / PageDown 成功時にも `ui shell input` snapshot を追加した | UI event handler を snapshot 生成へさらに寄せ、実機ログで `ui_shell_contract=ui-shell-v1` と search / sort / scroll / player の入口状態を確認する |
 | Phase 2. ReadModel Store と Diff-first | 54% | ReadModel 計算と apply 境界は分離済み。`MovieViewDiffApplyPolicy` で query / sort / db-switch / unsafe / massive だけを full fallback 理由として固定し、ReadModel / watch の diff apply ログ fields を共通 helper へ寄せた。同一 stable key の更新、同一 key 更新に続く小さな単一連続 insert / remove、sort-only の stable key Move + Replace まで局所適用へ入った。さらに DB 登録済み行は `Movie_Id` を stable key の優先候補にし、path rename / movie_path 更新でも同一動画なら Replace update へ進める。2026-06-25 Worker F で watch apply request ログへ source / applied changed paths と `diff_change_set`、Worker Curie で diff ログへ `diff_changed_total`、Worker Fermat で watch apply request の change set ログにも `diff_changed_total`、Worker Chandrasekhar で `diff_contract=readmodel-diff-v1` を追加した | watch 1件追加 / rename が `diff_contract=readmodel-diff-v1`、`diff_change_set=single`、`diff_changed_total=1` のまま full fallback へ戻らない実機ログと、大量変更時 fallback の `diff_changed_total` の妥当性を確認する |
 | Phase 3. In-process Scheduler | 58% | `UiWorkRequest` / `UiWorkRequestPolicy` に加え、`UiWorkSchedulerPolicy` で bounded capacity、coalesce、latest-only、priority preempt、timeout 判定、入場ログ語彙を純粋判断として固定済み。最小 `UiWorkSchedulerRuntime` を thumbnail 進捗 snapshot refresh、Everything poll、watch reload apply 入口へ接続し、external skin host refresh queue と kana backfill ReadModel refresh も scheduler 語彙で読めるようにした。終了時に pending が残った場合も lifecycle ログで読める。2026-06-25 Worker A で kana backfill の受理成功と既存 refresh 入口への release 証跡を補強し、Worker Lagrange で admission / take ログへ判定結果 fields、Worker Zeno で timeout ログへ `timeout_released`、Worker Locke で timeout release ログへ `sequence` / `pending_count_after`、Worker Curie(Scheduler) で `scheduler_contract=scheduler-v1` を追加した | 実機ログで `scheduler_contract=scheduler-v1`、scheduler admission / released / pending_count / accepted / target_index / has_request / timeout_released / pending_count_after が操作中の割り込み抑制に効いているか確認し、必要な時だけ timeout / drain を広げる |
 | Phase 4. Image Pipeline 統一 | 58% | visible range refresh と局所サムネ反映の土台に加え、上側タブ converter、詳細サムネ snapshot、Player右レール converter、サムネ進捗 preview fallback、下側 ThumbnailError 一覧 converter が `ImageRequest` を作る。`ImageLoadResult` と `ImageDecodeRequest` / `ImageDecodeResult` で、ready / missing / canceled / failed と decode 入力を同じ語彙で読める入口になり、詳細サムネの stale image request discard と ERROR一覧画像状態集約もログへ出る。上側タブ、Player右レール、ThumbnailError 一覧 converter は decode result を保持する。2026-06-25 Worker B で ThumbnailError 背景集計に `ImageDecodePlanResult`、Worker Orion で decode plan ログへ load 状態 fields、Worker Cicero で image load / decode ログへ `visible_priority` / `image_cache_policy` / `should_decode`、Worker Faraday(Image) で image load / decode / decode plan ログへ `image_key`、Worker McClintock で `image_contract=image-pipeline-v1` を追加した | 実機ログで stale discard と error tab image aggregate / aggregate-decode-plan の `image_contract=image-pipeline-v1`、`image_key` / `image_result_revision` / `resolved` / `placeholder` / `stale` / `failure_reason` / visible request fields を確認する |
@@ -41,6 +41,8 @@
 - 2026-06-27 Worker Confucius: UI簡素化後の MainWindow 標準ヘッダーは、10列高密度配置、検索欄 / DBパス / fallback notice、ヘッダーボタン、ComboBox style を source policy で固定した。テーマの見た目確認を支えるテストであり、入力挙動は変えていない。
 - 2026-06-27 Worker Arendt: audit summary は contract evidence と Phase0 evidence の両方を見た `phase0_audit_complete=true|false` を出すようにした。Logタブ preview と live audit 失敗メッセージで、完了扱いにしてよいかを1行で読める。
 - 2026-06-27 Worker Dirac: Player 再生状態の実遷移時だけ `ui-priority` へ `ui shell input` snapshot を出し、同じ遷移で既存の `player core_route=player-playback` ログも維持した。同状態通知ではログを増やさない。
+- 2026-06-27 Worker Mill: Phase0 の scroll evidence は新語彙 `ui shell input: operation_reason=scroll` を優先しつつ、既存採取済みログの `page scroll end:` も同じ `scroll-input` として認識する。required count は 12 のまま増やさない。
+- 2026-06-27 Worker Godel: PageUp / PageDown の実スクロール成功後だけ `ui-priority` へ `ui shell input` snapshot を出す。scroll は user-priority にせず recent viewport のまま扱い、`BeginUserPriorityWork` は追加していない。
 - Worker契約候補は `WorkerContractSourcePolicyTests` で WPF / Dispatcher / ViewModel / WebView2 / MainWindow を参照しない source policy を追加した。
 - thumbnail 進捗 refresh 予約は、coalesce / latest-only / shutdown guard を source policy で固定し、Scheduler 化の最初の足場にした。
 - `UiWorkRequest` を thumbnail 進捗 refresh 予約へ接続し、priority / coalesce / latest-only / log reason / shutdown受理可否を既存経路のまま説明できるようにした。
@@ -349,6 +351,15 @@
 - 親検証は focused test 77件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
 - 今回も実機同一runの新規採取ではない。次の実機採取では Logタブ preview 先頭の `phase0_audit_complete=false` が、startup / search / sort / scroll / Player / watch / image / thumbnail / skin 操作後に `true` へ変わるかを確認する。
 
+### 2.26 2026-06-27 PM親レビュー scroll入力snapshotとPhase0 scroll evidence移行
+
+- Worker Mill / Godel は UI簡素化別スレと競合しないよう、Phase0 evidence policy と UpperTabs page scroll partial / source policy tests だけに限定した。XAML、Themes、Settings 画面には触れていない。
+- 親レビューでは、Worker Mill の scroll evidence 新旧対応を採用した。`scroll-input` は `ui shell input: operation_reason=scroll` を優先し、既存採取済みログの `page scroll end:` も同じ key として読み続ける。required count は 12 のまま維持する。
+- 親レビューでは、Worker Godel の PageUp / PageDown 入力 snapshot ログを採用した。`UpperTabScrollNavigator.TryScrollPage(...)` 成功後だけ `BuildUiShellInputLogMessage("scroll", triggerReason, snapshot)` を `ui-priority` へ出し、既存の `page scroll begin/end/skipped` ログは維持する。
+- scroll は user-priority ではなく recent viewport のまま扱う。`BeginUserPriorityWork` は追加せず、Everything poll の catch-up 方針も変えていない。
+- 親検証は focused test 75件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
+- 今回も実機同一runの新規採取ではない。次の実機採取では PageUp / PageDown 操作で `ui shell input: operation_reason=scroll trigger_reason=page-up|page-down` と `phase0_log_evidence` の `scroll-input` が揃うかを見る。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -364,6 +375,7 @@
 - 済: search / sort 入力入口が `BuildUiShellInputLogMessage(...)` 経由で `ui shell input` を出すことを source policy で固定し、`IMM_PHASE0_LOG_AUDIT_LIVE=1` の live audit test で採取済み `debug-runtime.log` を同じ summary で検証できるようにした。これは実機採取の代替ではなく、採取後の不足key確認導線とする。
 - 済: live audit は contract evidence と Phase0 操作evidence の両方を完了条件にし、opt-in / 任意ログパス / `LOCALAPPDATA` 既定 / 共有読み取り / 失敗summaryを source policy で固定した。
 - 済: audit summary は `phase0_audit_complete=true|false` を出す。判定は contract evidence と Phase0 操作evidence の両方が揃った時だけ true とし、次アクションが none でも contract 欠落がある時は false のままにする。
+- 済: scroll evidence は `ui shell input: operation_reason=scroll` と旧 `page scroll end:` の両方を `scroll-input` として認識する。新旧語彙の過渡互換であり、required count は増やさない。
 - 未: 2026-06-27 の実ログ audit は `log_evidence=2/9`、`phase0_log_evidence=1/12` で不足を示した。次は同一 Release run で startup / search / sort / scroll / Player / watch / image / thumbnail / skin を操作し、summary 欠落が消えることを確認する。
 
 ### Phase 1. UI Shell 入力契約
@@ -374,6 +386,7 @@
 - 済: search / sort 入力入口ログは `ui shell input` と `operation_reason` / `trigger_reason` / `UiOperationSnapshot` fields を持ち、user-priority begin 前の入口状態を同じ語彙で読める。
 - 済: UI Shell snapshot fields は `ui_shell_contract=ui-shell-v1` を持ち、user-priority begin / end、search / sort 入力入口を同じ契約識別子で追える。
 - 済: Player 再生状態の実遷移時も `ui shell input` と `operation_reason=player-playback` / `trigger_reason` / `UiOperationSnapshot` fields を `ui-priority` へ出す。同状態通知では出さず、Player 操作ログ量を増やしすぎない。
+- 済: PageUp / PageDown の実スクロール成功時も `ui shell input` と `operation_reason=scroll` / `trigger_reason=page-up|page-down` / `UiOperationSnapshot` fields を `ui-priority` へ出す。scroll は user-priority にせず recent viewport のまま扱う。
 - Scheduler本体はまだ作らず、既存の user-priority / watch suppression / Everything poll delay の判断口を揃える。
 
 ### Phase 2. ReadModel Store と Diff-first
