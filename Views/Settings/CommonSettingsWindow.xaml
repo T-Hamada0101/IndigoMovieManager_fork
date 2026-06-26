@@ -28,7 +28,6 @@
             <Setter Property="Width" Value="156" />
             <Setter Property="MinHeight" Value="34" />
             <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Background" Value="{DynamicResource AppSurfaceAltBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Center" />

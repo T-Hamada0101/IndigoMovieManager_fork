@@ -368,7 +368,7 @@
   </Window.Background>
 
   <Grid x:Name="MainWindowRoot">
-    <avalonDock:DockingManager x:Name="uxDockingManager" Margin="0,48,0,0">
+    <avalonDock:DockingManager x:Name="uxDockingManager" Margin="0,32,0,0">
       <avalonDock:DockingManager.Theme>
         <DynamicResource ResourceKey="AvalonDockTheme" />
       </avalonDock:DockingManager.Theme>
@@ -390,16 +390,35 @@
                   <TabControl
                     x:Name="Tabs"
                     Margin="0,0,0,0"
+                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                    BorderBrush="{DynamicResource AppBorderBrush}"
+                    Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                     PreviewKeyDown="Tab_PreviewKeyDown"
                     SelectionChanged="Tabs_SelectionChangedAsync"
                   >
                     <TabControl.Resources>
                       <Style TargetType="TabItem" BasedOn="{StaticResource AppTabItemStyle}">
-                        <Setter Property="Height" Value="36" />
-                        <Setter Property="Padding" Value="16,6,16,6" />
+                        <Setter Property="Height" Value="24" />
+                        <Setter Property="MinHeight" Value="24" />
+                        <Setter Property="FontSize" Value="11" />
+                        <Setter Property="Padding" Value="10,2,10,2" />
+                      </Style>
+                      <Style TargetType="ListView">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+                      </Style>
+                      <Style TargetType="DataGrid">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+                        <Setter Property="CellStyle" Value="{StaticResource HighDensityBottomTabDataGridCellStyle}" />
+                        <Setter Property="ColumnHeaderStyle" Value="{StaticResource HighDensityBottomTabDataGridColumnHeaderStyle}" />
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+                        <Setter Property="RowBackground" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+                        <Setter Property="RowStyle" Value="{StaticResource AppDataGridRowStyle}" />
                       </Style>
                     </TabControl.Resources>
-                    <TabItem x:Name="TabSmall" Background="{DynamicResource UpperTabBackground}" Header="Small" Tag="120x90x3x1">
+                    <TabItem x:Name="TabSmall" Header="Small" Tag="120x90x3x1">
                     <ListView
                       x:Name="SmallList"
                       Height="Auto"
@@ -511,7 +530,7 @@
                     </ListView>
                   </TabItem>
 
-                  <TabItem x:Name="TabBig" Background="{DynamicResource UpperTabBackground}" Header="Big" Tag="200x150x3x1">
+                  <TabItem x:Name="TabBig" Header="Big" Tag="200x150x3x1">
                     <ListView
                       x:Name="BigList"
                       ItemsSource="{Binding FilteredMovieRecs, UpdateSourceTrigger=PropertyChanged}"
@@ -600,7 +619,7 @@
                     </ListView>
                   </TabItem>
 
-                  <TabItem x:Name="TabGrid" Background="{DynamicResource UpperTabBackground}" Header="Grid" Tag="160x120x1x1">
+                  <TabItem x:Name="TabGrid" Header="Grid" Tag="160x120x1x1">
                     <ListView
                       x:Name="GridList"
                       ItemsSource="{Binding FilteredMovieRecs, UpdateSourceTrigger=PropertyChanged}"
@@ -1078,7 +1097,7 @@
                       VirtualizingPanel.VirtualizationMode="Recycling"
                     >
                       <DataGrid.RowStyle>
-                        <Style BasedOn="{StaticResource {x:Type DataGridRow}}" TargetType="DataGridRow">
+                        <Style BasedOn="{StaticResource AppDataGridRowStyle}" TargetType="DataGridRow">
                           <Setter Property="ContextMenu" Value="{StaticResource menuContext}" />
                         </Style>
                       </DataGrid.RowStyle>
@@ -1315,7 +1334,7 @@
                     </DataGrid>
                   </TabItem>
 
-                  <TabItem x:Name="TabBig10" Background="{DynamicResource UpperTabBackground}" Header="5x2" Tag="120x90x5x2">
+                  <TabItem x:Name="TabBig10" Header="5x2" Tag="120x90x5x2">
                     <ListView
                       x:Name="BigList10"
                       ItemsSource="{Binding FilteredMovieRecs, UpdateSourceTrigger=PropertyChanged}"
@@ -1655,14 +1674,14 @@
 
     <Grid>
         <Grid.RowDefinitions>
-          <RowDefinition Height="48" />
+          <RowDefinition Height="32" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <materialDesign:ColorZone
           x:Name="MainHeaderBar"
           Grid.Row="0"
-          Padding="10,6"
+          Padding="6,3"
           Mode="Custom"
           Background="{DynamicResource MainHeaderBackground}"
           Foreground="{DynamicResource MainHeaderForegroundBrush}"
@@ -1676,20 +1695,20 @@
 
           <StackPanel
             Grid.Column="0"
-            Margin="0,0,12,0"
+            Margin="0,0,6,0"
             Orientation="Horizontal"
             VerticalAlignment="Center"
           >
             <Button
               x:Name="BtnNew"
-              Margin="0,0,8,0"
+              Margin="0,0,4,0"
               Click="BtnNew_Click"
               Content="新規作成"
               Style="{StaticResource AppHeaderButtonStyle}"
             />
             <Button
               x:Name="BtnOpen"
-              Margin="0,0,8,0"
+              Margin="0,0,4,0"
               Click="BtnOpen_Click"
               Content="ファイルを開く"
               Style="{StaticResource AppHeaderButtonStyle}"
@@ -1706,11 +1725,11 @@
           <Grid Grid.Column="1" VerticalAlignment="Center">
             <Grid
               x:Name="MainHeaderStandardChromePanel"
-              Height="36"
+              Height="26"
               VerticalAlignment="Center"
             >
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*" MinWidth="180" MaxWidth="326" />
+                <ColumnDefinition Width="2*" MinWidth="150" MaxWidth="260" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -1724,8 +1743,8 @@
               <ComboBox
                 x:Name="SearchBox"
                 Grid.Column="0"
-                Margin="0,0,10,0"
-                Padding="4,3,0,3"
+                Margin="0,0,6,0"
+                Padding="4,1,0,1"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 VerticalAlignment="Center"
@@ -1741,7 +1760,7 @@
                 DisplayMemberPath="Find_Text"
                 DockPanel.Dock="Top"
                 DropDownClosed="SearchBox_DropDownClosed"
-                FontSize="13"
+                FontSize="11"
                 Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
                 IsEditable="True"
                 ItemsSource="{Binding HistoryRecs}"
@@ -1777,7 +1796,7 @@
               <Button
                 x:Name="BulkTagAssignButton"
                 Grid.Column="1"
-                Margin="0,0,10,0"
+                Margin="0,0,4,0"
                 Click="BulkTagAssignButton_Click"
                 Content="タグ付..."
                 Style="{StaticResource AppHeaderButtonStyle}"
@@ -1789,26 +1808,27 @@
                 Click="ReloadButton_Click"
                 Content="再読込"
                 IsDefault="True"
+                Margin="0,0,4,0"
                 Style="{StaticResource AppHeaderButtonStyle}"
                 ToolTip="一覧再読込と監視フォルダ更新チェックを実行します"
               />
               <Label
                 Grid.Column="3"
-                Margin="18,0,0,0"
+                Margin="6,0,0,0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Content="ソート順："
-                FontSize="13"
+                FontSize="11"
                 Foreground="{DynamicResource MainHeaderForegroundBrush}"
               />
               <ComboBox
                 x:Name="ComboSort"
                 Grid.Column="4"
-                Width="160"
-                Margin="4,2,4,2"
+                Width="126"
+                Margin="3,1,3,1"
                 VerticalAlignment="Center"
                 Background="{DynamicResource MainHeaderSortComboBackground}"
-                FontSize="13"
+                FontSize="11"
                 DisplayMemberPath="Name"
                 Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
                 ItemsSource="{Binding SortLists}"
@@ -1820,21 +1840,22 @@
               />
               <Label
                 Grid.Column="5"
-                Margin="14,0,0,0"
+                Margin="6,0,0,0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Content="スキン："
-                FontSize="13"
+                FontSize="11"
                 Foreground="{DynamicResource MainHeaderForegroundBrush}"
               />
               <Grid Grid.Column="6" VerticalAlignment="Center">
                 <!-- ヘッダーは差し替えず、スキン切替だけを共通ヘッダー上で完結させる。 -->
                 <ComboBox
                   x:Name="ExternalSkinMinimalSkinSelector"
-                  Width="170"
+                  Width="132"
                   VerticalAlignment="Center"
                   Background="{DynamicResource MainHeaderSortComboBackground}"
                   DisplayMemberPath="Name"
+                  FontSize="11"
                   Foreground="{DynamicResource MainHeaderInputForegroundBrush}"
                   SelectedValuePath="Name"
                   SelectionChanged="ExternalSkinMinimalSkinSelector_SelectionChanged"
@@ -1845,7 +1866,7 @@
                 <TextBlock
                   x:Name="ExternalSkinMinimalSkinNameText"
                   VerticalAlignment="Center"
-                  FontSize="13"
+                  FontSize="11"
                   Foreground="{DynamicResource MainHeaderForegroundBrush}"
                   TextTrimming="CharacterEllipsis"
                   Visibility="Collapsed"
@@ -1853,9 +1874,9 @@
               </Grid>
               <TextBlock
                 Grid.Column="7"
-                Margin="18,0,0,0"
+                Margin="6,0,0,0"
                 VerticalAlignment="Center"
-                FontSize="13"
+                FontSize="11"
                 Foreground="{DynamicResource MainHeaderForegroundBrush}">
                 <Run Text="表示 / 登録  ：  " />
                 <Run Text="{Binding DbInfo.SearchCount, Mode=OneWay}" />
@@ -1867,10 +1888,10 @@
               <TextBlock
                 x:Name="lbDbFullPath"
                 Grid.Column="8"
-                Margin="14,0,0,0"
+                Margin="8,0,0,0"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Center"
-                FontSize="13"
+                FontSize="11"
                 Foreground="{DynamicResource MainHeaderForegroundBrush}"
                 Text="{Binding DbInfo.DBFullPath, UpdateSourceTrigger=PropertyChanged}"
                 TextTrimming="CharacterEllipsis"
@@ -1878,9 +1899,9 @@
               <Border
                 x:Name="ExternalSkinFallbackNoticeBorder"
                 Grid.Column="9"
-                Margin="14,0,0,0"
-                MaxWidth="420"
-                Padding="10,4"
+                Margin="8,0,0,0"
+                MaxWidth="320"
+                Padding="6,2"
                 VerticalAlignment="Center"
                 Background="#26FFB300"
                 BorderBrush="#66FFB300"
@@ -1898,25 +1919,25 @@
                   </Grid.ColumnDefinitions>
                   <materialDesign:PackIcon
                     Grid.Column="0"
-                    Width="16"
-                    Height="16"
+                    Width="14"
+                    Height="14"
                     VerticalAlignment="Center"
                     Kind="AlertOutline"
                   />
                   <TextBlock
                     x:Name="ExternalSkinFallbackNoticeText"
                     Grid.Column="1"
-                    Margin="8,0,0,0"
+                    Margin="6,0,0,0"
                     VerticalAlignment="Center"
-                    FontSize="12"
+                    FontSize="11"
                     Foreground="{DynamicResource MainHeaderForegroundBrush}"
                     TextTrimming="CharacterEllipsis"
                   />
                   <Button
                     x:Name="ExternalSkinFallbackRetryButton"
                     Grid.Column="2"
-                    Margin="10,0,0,0"
-                    Padding="8,2"
+                    Margin="6,0,0,0"
+                    Padding="6,0"
                     Click="ExternalSkinFallbackRetryButton_Click"
                     Content="再試行"
                     Style="{StaticResource AppHeaderButtonStyle}"
@@ -1924,8 +1945,8 @@
                   <Button
                     x:Name="ExternalSkinFallbackOpenRuntimeDownloadButton"
                     Grid.Column="3"
-                    Margin="8,0,0,0"
-                    Padding="8,2"
+                    Margin="4,0,0,0"
+                    Padding="6,0"
                     Click="ExternalSkinFallbackOpenRuntimeDownloadButton_Click"
                     Content="Runtimeを入手"
                     Style="{StaticResource AppHeaderButtonStyle}"
@@ -1934,8 +1955,8 @@
                   <Button
                     x:Name="ExternalSkinFallbackOpenLogButton"
                     Grid.Column="4"
-                    Margin="8,0,0,0"
-                    Padding="8,2"
+                    Margin="4,0,0,0"
+                    Padding="6,0"
                     Click="ExternalSkinFallbackOpenLogButton_Click"
                     Content="ログを開く"
                     Style="{StaticResource AppHeaderButtonStyle}"
@@ -1987,7 +2008,7 @@
                 <TextBlock
                   Margin="8,0,0,0"
                   VerticalAlignment="Center"
-                  FontSize="13"
+                  FontSize="11"
                   Foreground="{DynamicResource MainHeaderForegroundBrush}"
                   Text="外部スキン"
                 />

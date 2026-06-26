@@ -282,7 +282,8 @@
                         Padding="6,0"
                         FontSize="10"
                         Content="未作成走査"
-                        Click="ThumbnailProgressMissingScanButton_Click" />
+                        Click="ThumbnailProgressMissingScanButton_Click"
+                        Style="{StaticResource HighDensityBottomTabButtonStyle}" />
 
                     <TextBlock
                         Style="{StaticResource HeaderInlineLabelStyle}"

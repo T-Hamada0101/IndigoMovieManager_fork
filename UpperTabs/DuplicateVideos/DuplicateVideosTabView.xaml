@@ -5,14 +5,29 @@
     xmlns:c="clr-namespace:IndigoMovieManager.Converter"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Style="{StaticResource BottomTabRootUserControlStyle}"
     mc:Ignorable="d">
 
     <UserControl.Resources>
         <!-- サムネは既存の軽量読み込み経路をそのまま使う。 -->
         <c:NoLockImageConverter x:Key="noLockImageConverter" />
+        <Style BasedOn="{StaticResource AppBottomTabButtonStyle}" TargetType="Button" />
+        <Style BasedOn="{StaticResource AppCompactComboBoxStyle}" TargetType="ComboBox" />
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+        </Style>
+        <Style BasedOn="{StaticResource AppDataGridColumnHeaderStyle}" TargetType="DataGridColumnHeader" />
+        <Style BasedOn="{StaticResource AppDataGridCellStyle}" TargetType="DataGridCell" />
+        <Style BasedOn="{StaticResource AppDataGridRowStyle}" TargetType="DataGridRow" />
     </UserControl.Resources>
 
-    <Grid Margin="6">
+    <Grid Margin="6" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -22,6 +37,7 @@
             Grid.Row="0"
             Margin="0,0,0,6"
             Padding="8,6"
+            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
             BorderBrush="{DynamicResource MaterialDesignDivider}"
             BorderThickness="1">
             <StackPanel Orientation="Horizontal">
@@ -81,6 +97,7 @@
             <ListBox
                 x:Name="DuplicateGroupListBox"
                 Grid.Column="0"
+                Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                 ContextMenu="{DynamicResource menuContext}"
                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -90,6 +107,8 @@
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Padding" Value="0" />
                         <Setter Property="Margin" Value="0,0,0,4" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     </Style>
                 </ListBox.ItemContainerStyle>
@@ -98,7 +117,7 @@
                         <!-- Smallタブ風の横並びを1枚サムネ版へ詰め、左一覧を軽く保つ。 -->
                         <Border
                             Padding="4"
-                            Background="{DynamicResource MaterialDesignPaper}"
+                            Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                             BorderBrush="{DynamicResource MaterialDesignDivider}"
                             BorderThickness="1">
                             <Grid>
@@ -164,6 +183,7 @@
                 <ListBox
                     x:Name="DuplicatePreviewListBox"
                     Grid.Row="0"
+                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                     BorderThickness="0"
                     ContextMenu="{DynamicResource menuContext}"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -174,6 +194,8 @@
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="0" />
                             <Setter Property="Margin" Value="0" />
+                            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="VerticalContentAlignment" Value="Stretch" />
                             <Setter Property="ContextMenu" Value="{DynamicResource menuContext}" />
@@ -219,9 +241,15 @@
                     CanUserReorderColumns="False"
                     CanUserResizeRows="False"
                     CellEditEnding="DuplicateDetailDataGrid_CellEditEnding"
+                    CellStyle="{StaticResource AppDataGridCellStyle}"
+                    ColumnHeaderStyle="{StaticResource AppDataGridColumnHeaderStyle}"
                     ContextMenu="{DynamicResource menuContext}"
+                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                    Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                     IsReadOnly="True"
                     MouseDoubleClick="DuplicateDetailDataGrid_MouseDoubleClick"
+                    RowBackground="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                    RowStyle="{StaticResource AppDataGridRowStyle}"
                     SelectionChanged="DuplicateDetailDataGrid_SelectionChanged"
                     SelectionMode="Extended">
                     <DataGrid.Columns>

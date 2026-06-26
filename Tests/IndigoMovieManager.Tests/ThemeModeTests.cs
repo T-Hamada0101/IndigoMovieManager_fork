@@ -67,6 +67,7 @@ public sealed class ThemeModeTests
         "AppBottomTabButtonStyle",
         "AppTabItemStyle",
         "AppComboBoxItemStyle",
+        "AppScrollBarStyle",
         "AppHamburgerToggleButtonStyle",
         "AppDiscreteSliderStyle",
     ];
@@ -212,9 +213,213 @@ public sealed class ThemeModeTests
         Assert.Multiple(() =>
         {
             Assert.That(lightweight, Does.Contain("ControlTemplate TargetType=\"{x:Type Button}\""));
+            Assert.That(lightweight, Does.Contain("ControlTemplate TargetType=\"{x:Type ComboBox}\""));
+            Assert.That(lightweight, Does.Contain("ControlTemplate TargetType=\"{x:Type ComboBoxItem}\""));
             Assert.That(lightweight, Does.Contain("ControlTemplate TargetType=\"{x:Type TabItem}\""));
+            Assert.That(lightweight, Does.Contain("ControlTemplate TargetType=\"{x:Type ScrollBar}\""));
+            Assert.That(lightweight, Does.Contain("x:Name=\"PART_EditableTextBox\""));
+            Assert.That(lightweight, Does.Contain("x:Name=\"PART_Popup\""));
+            Assert.That(lightweight, Does.Contain("x:Name=\"PART_Track\""));
+            Assert.That(lightweight, Does.Contain("SystemColors.ControlBrushKey"));
+            Assert.That(lightweight, Does.Contain("SystemColors.WindowBrushKey"));
+            Assert.That(lightweight, Does.Contain("SystemColors.WindowTextBrushKey"));
+            Assert.That(
+                lightweight,
+                Does.Contain("Style BasedOn=\"{StaticResource LightweightComboBoxItemStyle}\" TargetType=\"ComboBoxItem\"")
+            );
+            Assert.That(
+                lightweight,
+                Does.Contain("Style BasedOn=\"{StaticResource LightweightBaseButtonStyle}\" TargetType=\"Button\"")
+            );
+            Assert.That(
+                lightweight,
+                Does.Contain("Style BasedOn=\"{StaticResource LightweightComboBoxStyle}\" TargetType=\"ComboBox\"")
+            );
+            Assert.That(
+                lightweight,
+                Does.Contain("Style BasedOn=\"{StaticResource LightweightScrollBarStyle}\" TargetType=\"{x:Type ScrollBar}\"")
+            );
+            Assert.That(lightweight, Does.Contain("<Style x:Key=\"AppHeaderButtonStyle\""));
+            Assert.That(lightweight, Does.Contain("<Setter Property=\"Height\" Value=\"24\" />"));
+            Assert.That(lightweight, Does.Contain("<Style x:Key=\"AppSearchComboBoxStyle\""));
+            Assert.That(lightweight, Does.Contain("<Setter Property=\"Height\" Value=\"26\" />"));
+            Assert.That(lightweight, Does.Contain("<Style x:Key=\"AppCompactComboBoxStyle\""));
             Assert.That(lightweight, Does.Contain("TextElement.Foreground"));
             Assert.That(lightweight, Does.Not.Contain("BasedOn=\"{StaticResource {x:Type TabItem}}\""));
+        });
+    }
+
+    [Test]
+    public void MainWindow_上部タブ背景は個別指定せず標準タブ色へ任せる()
+    {
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mainWindowXaml, Does.Contain("BasedOn=\"{StaticResource AppTabItemStyle}\""));
+            Assert.That(
+                mainWindowXaml,
+                Does.Contain("Background=\"{DynamicResource {x:Static SystemColors.WindowBrushKey}}\"")
+            );
+            Assert.That(mainWindowXaml, Does.Contain("<Style TargetType=\"ListView\">"));
+            Assert.That(mainWindowXaml, Does.Contain("<Style TargetType=\"DataGrid\">"));
+            Assert.That(
+                mainWindowXaml,
+                Does.Contain("ColumnHeaderStyle\" Value=\"{StaticResource HighDensityBottomTabDataGridColumnHeaderStyle}\"")
+            );
+            Assert.That(
+                mainWindowXaml,
+                Does.Contain("CellStyle\" Value=\"{StaticResource HighDensityBottomTabDataGridCellStyle}\"")
+            );
+            Assert.That(
+                mainWindowXaml,
+                Does.Contain("BasedOn=\"{StaticResource AppDataGridRowStyle}\" TargetType=\"DataGridRow\"")
+            );
+            Assert.That(
+                mainWindowXaml,
+                Does.Not.Contain("Background=\"{DynamicResource UpperTabBackground}\"")
+            );
+            Assert.That(mainWindowXaml, Does.Contain("<TabItem x:Name=\"TabSmall\" Header=\"Small\""));
+            Assert.That(mainWindowXaml, Does.Contain("<TabItem x:Name=\"TabBig\" Header=\"Big\""));
+            Assert.That(mainWindowXaml, Does.Contain("<TabItem x:Name=\"TabGrid\" Header=\"Grid\""));
+            Assert.That(mainWindowXaml, Does.Contain("<TabItem x:Name=\"TabBig10\" Header=\"5x2\""));
+        });
+    }
+
+    [Test]
+    public void MainWindow_ヘッダーとメインタブは高密度にしてサムネ領域を確保する()
+    {
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mainWindowXaml, Does.Contain("Margin=\"0,32,0,0\""));
+            Assert.That(mainWindowXaml, Does.Contain("<RowDefinition Height=\"32\" />"));
+            Assert.That(mainWindowXaml, Does.Contain("Padding=\"6,3\""));
+            Assert.That(mainWindowXaml, Does.Contain("x:Name=\"MainHeaderStandardChromePanel\""));
+            Assert.That(mainWindowXaml, Does.Contain("Height=\"26\""));
+            Assert.That(mainWindowXaml, Does.Contain("<Setter Property=\"Height\" Value=\"24\" />"));
+            Assert.That(mainWindowXaml, Does.Contain("<Setter Property=\"FontSize\" Value=\"11\" />"));
+            Assert.That(mainWindowXaml, Does.Contain("<Setter Property=\"Padding\" Value=\"10,2,10,2\" />"));
+            Assert.That(mainWindowXaml, Does.Contain("Width=\"126\""));
+            Assert.That(mainWindowXaml, Does.Contain("Width=\"132\""));
+            Assert.That(mainWindowXaml, Does.Not.Contain("Margin=\"0,48,0,0\""));
+            Assert.That(mainWindowXaml, Does.Not.Contain("<RowDefinition Height=\"48\" />"));
+            Assert.That(mainWindowXaml, Does.Not.Contain("Padding=\"10,6\""));
+            Assert.That(mainWindowXaml, Does.Not.Contain("Padding=\"16,6,16,6\""));
+        });
+    }
+
+    [Test]
+    public void RescueTab_対象タブComboBoxは共通ComboBox色へ寄せる()
+    {
+        string rescueTabXaml = GetRepoText("UpperTabs", "Rescue", "RescueTabView.xaml");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(rescueTabXaml, Does.Contain("x:Name=\"TargetTabComboBox\""));
+            Assert.That(
+                rescueTabXaml,
+                Does.Contain("Style=\"{StaticResource AppCompactComboBoxStyle}\"")
+            );
+            Assert.That(
+                rescueTabXaml,
+                Does.Contain("ItemContainerStyle=\"{StaticResource AppComboBoxItemStyle}\"")
+            );
+        });
+    }
+
+    [Test]
+    public void ThumbnailProgressTab_未作成走査ボタンは共通ボタン色へ寄せる()
+    {
+        string thumbnailProgressXaml = GetRepoText(
+            "BottomTabs",
+            "ThumbnailProgress",
+            "ThumbnailProgressTabView.xaml"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                thumbnailProgressXaml,
+                Does.Contain("x:Name=\"ThumbnailProgressMissingScanButton\"")
+            );
+            Assert.That(
+                thumbnailProgressXaml,
+                Does.Contain("Style=\"{StaticResource HighDensityBottomTabButtonStyle}\"")
+            );
+        });
+    }
+
+    [Test]
+    public void DuplicateVideosTab_一覧UIパーツ背景はテーマ標準色へ寄せる()
+    {
+        string duplicateVideosXaml = GetRepoText(
+            "UpperTabs",
+            "DuplicateVideos",
+            "DuplicateVideosTabView.xaml"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                duplicateVideosXaml,
+                Does.Contain("Style=\"{StaticResource BottomTabRootUserControlStyle}\"")
+            );
+            Assert.That(
+                duplicateVideosXaml,
+                Does.Contain("BasedOn=\"{StaticResource AppBottomTabButtonStyle}\"")
+            );
+            Assert.That(
+                duplicateVideosXaml,
+                Does.Contain("BasedOn=\"{StaticResource AppCompactComboBoxStyle}\"")
+            );
+            Assert.That(
+                duplicateVideosXaml,
+                Does.Contain("Background=\"{DynamicResource {x:Static SystemColors.WindowBrushKey}}\"")
+            );
+            Assert.That(
+                duplicateVideosXaml,
+                Does.Contain("Foreground=\"{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}\"")
+            );
+            Assert.That(duplicateVideosXaml, Does.Contain("CellStyle=\"{StaticResource AppDataGridCellStyle}\""));
+            Assert.That(
+                duplicateVideosXaml,
+                Does.Contain("ColumnHeaderStyle=\"{StaticResource AppDataGridColumnHeaderStyle}\"")
+            );
+            Assert.That(
+                duplicateVideosXaml,
+                Does.Contain("RowStyle=\"{StaticResource AppDataGridRowStyle}\"")
+            );
+        });
+    }
+
+    [Test]
+    public void ExtDetail_ドロップダウンとスクロールバーはテーマ標準色へ寄せる()
+    {
+        string extDetailXaml = GetRepoText("UserControls", "ExtDetail.xaml");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                extDetailXaml,
+                Does.Contain("BasedOn=\"{StaticResource AppCompactComboBoxStyle}\"")
+            );
+            Assert.That(
+                extDetailXaml,
+                Does.Contain("ItemContainerStyle\" Value=\"{StaticResource AppComboBoxItemStyle}\"")
+            );
+            Assert.That(
+                extDetailXaml,
+                Does.Contain("Background=\"{DynamicResource {x:Static SystemColors.WindowBrushKey}}\"")
+            );
+            Assert.That(
+                extDetailXaml,
+                Does.Contain("TextElement.Foreground=\"{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}\"")
+            );
+            Assert.That(extDetailXaml, Does.Not.Contain("MaterialDesignOutlinedComboBox"));
+            Assert.That(extDetailXaml, Does.Not.Contain("TextFieldAssist"));
+            Assert.That(extDetailXaml, Does.Not.Contain("HintAssist"));
         });
     }
 

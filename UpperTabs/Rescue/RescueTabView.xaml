@@ -39,7 +39,9 @@
                     x:Name="TargetTabComboBox"
                     Width="96"
                     Height="22"
-                    DisplayMemberPath="DisplayName" />
+                    DisplayMemberPath="DisplayName"
+                    ItemContainerStyle="{StaticResource AppComboBoxItemStyle}"
+                    Style="{StaticResource AppCompactComboBoxStyle}" />
                 <Button
                     Click="RefreshButton_Click"
                     Content="更新"

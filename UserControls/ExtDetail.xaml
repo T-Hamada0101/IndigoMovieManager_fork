@@ -6,7 +6,6 @@
     xmlns:c="clr-namespace:IndigoMovieManager.Converter"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:indigomoviemanager="clr-namespace:IndigoMovieManager"
-    xmlns:materialDesign="clr-namespace:MaterialDesignThemes.Wpf"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:view="clr-namespace:IndigoMovieManager.UserControls"
     d:DataContext="{d:DesignInstance Type=indigomoviemanager:MovieRecords}"
@@ -19,15 +18,13 @@
         <c:NoLockImageConverter x:Key="noLockImageConverter" />
         <Style
             x:Key="DetailThumbnailModeComboBoxStyle"
-            BasedOn="{StaticResource MaterialDesignOutlinedComboBox}"
+            BasedOn="{StaticResource AppCompactComboBoxStyle}"
             TargetType="ComboBox">
-            <Setter Property="Padding" Value="4,2,24,2" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="materialDesign:TextFieldAssist.DecorationVisibility" Value="Hidden" />
-            <Setter Property="materialDesign:TextFieldAssist.HasOutlinedTextField" Value="False" />
-            <Setter Property="materialDesign:HintAssist.Hint" Value="{x:Null}" />
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource AppComboBoxItemStyle}" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
         </Style>
     </UserControl.Resources>
 
@@ -40,8 +37,10 @@
         <ScrollViewer
             Grid.Row="0"
             Margin="0,0,0,6"
+            Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
             HorizontalScrollBarVisibility="Auto"
             VerticalScrollBarVisibility="Disabled"
+            TextElement.Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
             CanContentScroll="False">
             <StackPanel
                 Orientation="Horizontal"
@@ -52,8 +51,11 @@
                     Margin="0,0,10,0"
                     HorizontalAlignment="Left"
                     HorizontalContentAlignment="Left"
+                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                    Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                     SelectionChanged="DetailThumbnailModeComboBox_SelectionChanged"
-                    Style="{StaticResource DetailThumbnailModeComboBoxStyle}">
+                    Style="{StaticResource DetailThumbnailModeComboBoxStyle}"
+                    TextElement.Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}">
                     <ComboBoxItem
                         Tag="Grid"
                         Content="Grid" />
