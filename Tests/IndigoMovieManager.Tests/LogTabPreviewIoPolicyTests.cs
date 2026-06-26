@@ -100,8 +100,9 @@ public sealed class LogTabPreviewIoPolicyTests
                     "phase0_next_actions=search,sort,scroll,player,image,persistence,thumbnail,skin"
                 )
             );
-            Assert.That(resultLines[5], Is.Empty);
-            Assert.That(resultLines.Skip(6), Is.EqualTo(previewLines));
+            Assert.That(resultLines[5], Is.EqualTo("phase0_audit_complete=false"));
+            Assert.That(resultLines[6], Is.Empty);
+            Assert.That(resultLines.Skip(7), Is.EqualTo(previewLines));
         });
     }
 

@@ -65,6 +65,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         Assert.That(ex?.Message, Does.Contain("contract evidence"));
         Assert.That(ex?.Message, Does.Contain(logPath));
         Assert.That(ex?.Message, Does.Contain(summary.BuildSummaryText()));
+        Assert.That(ex?.Message, Does.Contain("phase0_audit_complete=false"));
     }
 
     [Test]
@@ -81,6 +82,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         {
             Assert.That(summary.ContractEvidence.IsComplete, Is.True);
             Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
+            Assert.That(summary.IsComplete, Is.True);
         });
     }
 

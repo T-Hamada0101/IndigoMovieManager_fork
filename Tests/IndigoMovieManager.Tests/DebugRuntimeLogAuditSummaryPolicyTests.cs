@@ -62,16 +62,47 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.ContractEvidence.IsComplete, Is.True);
             Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
             Assert.That(summary.Phase0NextActions.IsComplete, Is.True);
+            Assert.That(summary.IsComplete, Is.True);
             Assert.That(summary.ContractEvidence.BuildSummaryText(), Is.EqualTo("log_evidence=9/9 missing=none"));
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
                 Is.EqualTo("phase0_log_evidence=12/12 missing=none")
             );
+            Assert.That(
+                summary.BuildSummaryText().Split(Environment.NewLine).Last(),
+                Is.EqualTo("phase0_audit_complete=true")
+            );
         });
     }
 
     [Test]
-    public void 欠けがある時も3行の順序と文言が安定する()
+    public void Phase0_next_actionsがnoneでもcontract不足ならcompleteにしない()
+    {
+        string[] messages = AllEvidenceMessages()
+            .Where(message =>
+                !message.Contains("diff_contract", StringComparison.Ordinal)
+                && !message.Contains("scheduler_contract", StringComparison.Ordinal)
+            )
+            .ToArray();
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(messages)
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.ContractEvidence.IsComplete, Is.False);
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
+            Assert.That(summary.Phase0NextActions.IsComplete, Is.True);
+            Assert.That(summary.IsComplete, Is.False);
+            Assert.That(
+                summary.BuildSummaryText().Split(Environment.NewLine).Last(),
+                Is.EqualTo("phase0_audit_complete=false")
+            );
+        });
+    }
+
+    [Test]
+    public void 欠けがある時も既存summaryの順序と文言が安定する()
     {
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
             BuildSequencedLines(
@@ -91,7 +122,8 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                     "log_run_window=2026-06-25T10:00:00.001..2026-06-25T10:00:00.002 elapsed_ms=1 timestamp_lines=2/2",
                     "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core",
                     "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
-                    "phase0_next_actions=startup,search,sort,scroll,player,image,persistence,thumbnail,skin"
+                    "phase0_next_actions=startup,search,sort,scroll,player,image,persistence,thumbnail,skin",
+                    "phase0_audit_complete=false"
                 )
             )
         );
@@ -133,7 +165,8 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                         "log_run_window=none elapsed_ms=none timestamp_lines=0/0",
                         "log_evidence=0/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core,watch-core",
                         "phase0_log_evidence=0/12 missing=startup-first-page,startup-input-ready,search-input,sort-input,scroll-input,player-core,watch-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
-                        "phase0_next_actions=startup,search,sort,scroll,player,watch,image,persistence,thumbnail,skin"
+                        "phase0_next_actions=startup,search,sort,scroll,player,watch,image,persistence,thumbnail,skin",
+                        "phase0_audit_complete=false"
                     )
                 )
             );
