@@ -273,6 +273,15 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            DebugRuntimeLog.Write(
+                "thumbnail-progress",
+                $"snapshot refresh scheduler admitted: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)} pending_count={queueResult.PendingCount}"
+            );
+            DebugRuntimeLog.Write(
+                "thumbnail-progress",
+                $"snapshot refresh scheduler released: {UiWorkSchedulerPolicy.BuildTakeLogFields(takeResult.PendingRequest, takeResult.Decision, takeResult.PendingCount, UiWorkRequestPolicy.ReleaseReasonReleased)}"
+            );
+
             queuedRequest = takeResult.PendingRequest.Request;
             return true;
         }

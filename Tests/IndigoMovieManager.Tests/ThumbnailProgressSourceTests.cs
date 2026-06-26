@@ -310,6 +310,18 @@ public sealed class ThumbnailProgressSourceTests
             schedulerMethod,
             Does.Contain("UiWorkSchedulerPolicy.BuildAdmissionLogFields(")
         );
+        Assert.That(
+            schedulerMethod,
+            Does.Contain(
+                "snapshot refresh scheduler admitted: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)} pending_count={queueResult.PendingCount}"
+            )
+        );
+        Assert.That(
+            schedulerMethod,
+            Does.Contain(
+                "snapshot refresh scheduler released: {UiWorkSchedulerPolicy.BuildTakeLogFields(takeResult.PendingRequest, takeResult.Decision, takeResult.PendingCount, UiWorkRequestPolicy.ReleaseReasonReleased)}"
+            )
+        );
 
         Assert.That(
             processMethod,
