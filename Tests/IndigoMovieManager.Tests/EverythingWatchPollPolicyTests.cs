@@ -639,6 +639,14 @@ public sealed class EverythingWatchPollPolicyTests
             source,
             Does.Contain("UiWorkSchedulerPolicy.BuildAdmissionLogFields(")
         );
+        Assert.That(
+            source,
+            Does.Contain("everything poll scheduler admitted: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)} pending_count={queueResult.PendingCount}")
+        );
+        Assert.That(
+            source,
+            Does.Contain("everything poll scheduler released: {UiWorkSchedulerPolicy.BuildTakeLogFields(takeResult.PendingRequest, takeResult.Decision, takeResult.PendingCount, UiWorkRequestPolicy.ReleaseReasonReleased)}")
+        );
     }
 
     private static MainWindow CreateWindow()

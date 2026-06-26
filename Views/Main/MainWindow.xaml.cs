@@ -497,6 +497,15 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            DebugRuntimeLog.Write(
+                "watch-check",
+                $"everything poll scheduler admitted: {UiWorkSchedulerPolicy.BuildAdmissionLogFields(request, queueResult.Decision)} pending_count={queueResult.PendingCount}"
+            );
+            DebugRuntimeLog.Write(
+                "watch-check",
+                $"everything poll scheduler released: {UiWorkSchedulerPolicy.BuildTakeLogFields(takeResult.PendingRequest, takeResult.Decision, takeResult.PendingCount, UiWorkRequestPolicy.ReleaseReasonReleased)}"
+            );
+
             queuedRequest = takeResult.PendingRequest.Request;
             return true;
         }
