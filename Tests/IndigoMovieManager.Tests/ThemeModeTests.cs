@@ -167,6 +167,8 @@ public sealed class ThemeModeTests
         Assert.Multiple(() =>
         {
             Assert.That(settingsXaml, Does.Contain("TabStripPlacement=\"Left\""));
+            Assert.That(settingsXaml, Does.Contain("Width=\"920\""));
+            Assert.That(settingsXaml, Does.Contain("MinWidth=\"920\""));
             Assert.That(
                 settingsXaml,
                 Does.Contain("BasedOn=\"{StaticResource AppTabItemStyle}\"")
