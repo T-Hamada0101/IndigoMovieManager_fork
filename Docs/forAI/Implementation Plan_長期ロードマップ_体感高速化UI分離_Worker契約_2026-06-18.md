@@ -68,6 +68,8 @@
 - 2026-06-27 Worker Curie(Phase0): UI Shell snapshot detail の `is_user_priority_active` / `is_manual_mode` / `is_watch_ui_suppressed` / `is_recent_viewport_active` / `is_player_playback_active` を Phase0 optional evidence として扱う。`ui_shell_contract=ui-shell-v1` と同じ行にある時だけ採用し、Phase0 必須12件は増やさない。optional count は 33 とする。
 - 2026-06-27 Worker Helmholtz: audit summary に `phase0_audit_status=...` を追加し、`missing-timestamp` / `missing-contract-evidence` / `missing-phase0-evidence` / `complete` を固定順で読めるようにした。`IsComplete` の条件は変えていない。
 - 2026-06-27 Worker Hypatia: Worker detail optional evidence は `worker_contract=worker-job-v1` と同じ行にある時だけ採用する。汎用 `metric_count` 等の誤検出を避ける補強で、Phase0 必須12件と optional count 33 は変えない。
+- 2026-06-27 Worker Descartes: ReadModel Diff detail optional evidence は `diff_contract=readmodel-diff-v1` と同じ行にある時だけ採用する。汎用 diff field の誤検出を避ける補強で、Phase0 必須12件と optional count 33 は変えない。
+- 2026-06-27 Worker Hilbert(Image): Image detail optional evidence は `image_contract=image-pipeline-v1` と同じ行にある時だけ採用する。aggregate-decode-plan と stale discard の誤検出を避ける補強で、Phase0 必須12件と optional count 33 は変えない。
 - Worker契約候補は `WorkerContractSourcePolicyTests` で WPF / Dispatcher / ViewModel / WebView2 / MainWindow を参照しない source policy を追加した。
 - thumbnail 進捗 refresh 予約は、coalesce / latest-only / shutdown guard を source policy で固定し、Scheduler 化の最初の足場にした。
 - `UiWorkRequest` を thumbnail 進捗 refresh 予約へ接続し、priority / coalesce / latest-only / log reason / shutdown受理可否を既存経路のまま説明できるようにした。
@@ -477,6 +479,15 @@
 - 親検証は focused test 43件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
 - 今回も実機同一runの新規採取ではない。次の実機採取では `phase0_audit_status` がどの不足で止まっているかを示すこと、Worker detail が contract 行に揃った時だけ optional evidence として出ることを見る。
 
+### 2.38 2026-06-27 PM親レビュー Diff/Image detail誤検出抑制
+
+- Worker Descartes / Hilbert(Image) は UI簡素化別スレと競合しないよう、Phase0 evidence policy と audit / live audit tests に限定した。XAML、Themes、Settings、Views/Main runtime 挙動は触っていない。
+- 親レビューでは、Worker Descartes の ReadModel Diff detail optional evidence 同行限定化を採用した。`diff_change_set=single` / `diff_changed_total=` / `diff_source_revision=` / `diff_view_revision=` / `diff_full_fallback_reason=` は `diff_contract=readmodel-diff-v1` と同じ行にある時だけ拾い、候補 field だけの行は optional evidence にしない。
+- 親レビューでは、Worker Hilbert(Image) の Image detail optional evidence 同行限定化を採用した。`image-aggregate-decode-plan` は `image_contract=image-pipeline-v1` と aggregate reason が同じ行にある時だけ拾い、`image-stale-discard` は `image_contract=image-pipeline-v1` と stale 系 failure reason のどちらかが同じ行にある時だけ拾う。
+- Phase0 必須12件、optional count 33、完了条件は変えていない。これは実機採取後の summary が汎用 field を拾って誤って観測済みに見えることを避けるための補強である。
+- 親検証は focused test 88件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
+- 今回も実機同一runの新規採取ではない。次の実機採取では ReadModel Diff / Image detail が契約行に揃った時だけ optional evidence として出ることを見る。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -505,6 +516,8 @@
 - 済: UI Shell snapshot detail の `is_user_priority_active` / `is_manual_mode` / `is_watch_ui_suppressed` / `is_recent_viewport_active` / `is_player_playback_active` は Phase0 optional evidence として summary に残す。`ui_shell_contract=ui-shell-v1` と同じ行にある時だけ採用し、Phase0 必須12件は増やさない。
 - 済: audit summary は `phase0_audit_status=...` を出し、timestamp 不足、contract evidence 不足、Phase0 evidence 不足、完了を1行で判別できる。完了条件そのものは変えない。
 - 済: Worker detail optional evidence は `worker_contract=worker-job-v1` と同じ行にある時だけ採用する。汎用 field の誤検出を避ける補強であり、Phase0 必須12件と optional count 33 は増やさない。
+- 済: ReadModel Diff detail optional evidence は `diff_contract=readmodel-diff-v1` と同じ行にある時だけ採用する。汎用 diff field の誤検出を避ける補強であり、Phase0 必須12件と optional count 33 は増やさない。
+- 済: Image detail optional evidence は `image_contract=image-pipeline-v1` と同じ行にある時だけ採用する。aggregate-decode-plan と stale discard の誤検出を避ける補強であり、Phase0 必須12件と optional count 33 は増やさない。
 - 未: 2026-06-27 の実ログ audit は `log_evidence=2/9`、`phase0_log_evidence=1/12` で不足を示した。次は同一 Release run で startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin を操作し、summary 欠落が消えることを確認する。
 
 ### Phase 1. UI Shell 入力契約
