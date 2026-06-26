@@ -1,4 +1,6 @@
 using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -859,6 +861,40 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayerPlayback_core_route_helperはPhase7契約値を返す()
+    {
+        // Player の実遷移ログに出る core route 値を固定し、再生制御の観測語彙を守る。
+        MainWindow window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+
+        string startResult = InvokePlayerPlaybackCoreRouteLogFields(
+            window,
+            isActive: true,
+            "start-webview"
+        );
+        string stopResult = InvokePlayerPlaybackCoreRouteLogFields(
+            window,
+            isActive: false,
+            "stop-webview"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                startResult,
+                Is.EqualTo(
+                    "core_route=player-playback operation_reason=player-playback player_surface=mediaelement player_surface_ready=false active=true player_transition=start reason=start-webview"
+                )
+            );
+            Assert.That(
+                stopResult,
+                Is.EqualTo(
+                    "core_route=player-playback operation_reason=player-playback player_surface=mediaelement player_surface_ready=false active=false player_transition=stop reason=stop-webview"
+                )
+            );
+        });
+    }
+
+    [Test]
     public void OpenMovieInPlayerTabAsync_存在確認はuser_priority開始前に背景へ逃がす()
     {
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
@@ -930,6 +966,21 @@ public sealed class ManualPlayerResizeHookPolicyTests
             resetMethod.IndexOf("ReleasePendingPlayerUserPriorityWork();", StringComparison.Ordinal),
             Is.LessThan(resetMethod.IndexOf("if (uxWebVideoPlayer == null)", StringComparison.Ordinal))
         );
+    }
+
+    private static string InvokePlayerPlaybackCoreRouteLogFields(
+        MainWindow window,
+        bool isActive,
+        string reason
+    )
+    {
+        MethodInfo? method = typeof(MainWindow).GetMethod(
+            "BuildPlayerPlaybackCoreRouteLogFields",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        );
+        Assert.That(method, Is.Not.Null);
+
+        return (string)method!.Invoke(window, [isActive, reason])!;
     }
 
     private static string GetMainWindowPlayerSourceText()

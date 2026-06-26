@@ -184,6 +184,10 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
             adapterMethod,
             Does.Contain("BuildWatchUiApplyCoreRouteLogFields(request)")
         );
+        Assert.That(
+            adapterMethod,
+            Does.Contain("\"watch ui apply request: {BuildWatchUiApplyCoreRouteLogFields(request)}")
+        );
         Assert.That(coreLogMethod, Does.Contain("core_route=watch-ui-apply"));
         Assert.That(coreLogMethod, Does.Contain("watch_apply_kind="));
         Assert.That(coreLogMethod, Does.Contain("watch_reason="));
@@ -206,8 +210,12 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
             Assert.That(adapterMethod, Does.Contain("BuildWatchUiApplyCoreRouteLogFields(request)"));
             Assert.That(coreLogMethod, Does.Contain("core_route=watch-ui-apply"));
             Assert.That(coreLogMethod, Does.Contain("watch_apply_kind="));
+            Assert.That(coreLogMethod, Does.Contain("\"full-fallback-reload\""));
+            Assert.That(coreLogMethod, Does.Contain("\"in-memory-read-model-refresh\""));
             Assert.That(coreLogMethod, Does.Contain("watch_reason="));
+            Assert.That(coreLogMethod, Does.Contain("? \"watch\""));
             Assert.That(coreLogMethod, Does.Contain("operation_reason="));
+            Assert.That(coreLogMethod, Does.Contain("? \"unknown\""));
             Assert.That(coreLogMethod, Does.Contain("request.WorkRequest.LogReason"));
         });
     }

@@ -171,6 +171,36 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_refresh_core_route_helperはPhase7契約値を返す()
+    {
+        // 実ログへ出る値そのものを固定し、skin refresh の core route 語彙を戻さない。
+        string dbInfoResult = MainWindow.BuildExternalSkinRefreshCoreLogFieldsForTesting(
+            "dbinfo-Skin",
+            "trace-dbinfo"
+        );
+        string headerReloadResult = MainWindow.BuildExternalSkinRefreshCoreLogFieldsForTesting(
+            "header-reload",
+            "trace-header"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                dbInfoResult,
+                Is.EqualTo(
+                    "core_route=skin-refresh operation_reason=skin.host-refresh refresh_reason=dbinfo-Skin request_trace=trace-dbinfo definition_mode=CachedSnapshot"
+                )
+            );
+            Assert.That(
+                headerReloadResult,
+                Is.EqualTo(
+                    "core_route=skin-refresh operation_reason=skin.host-refresh refresh_reason=header-reload request_trace=trace-header definition_mode=CatalogRefresh"
+                )
+            );
+        });
+    }
+
+    [Test]
     public void 診断用same_document確認refreshは明示フラグとno_persist時だけ動く()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
