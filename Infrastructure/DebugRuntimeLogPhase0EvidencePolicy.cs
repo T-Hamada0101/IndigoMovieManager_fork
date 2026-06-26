@@ -28,6 +28,9 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
     [
         // manual reload 入力は Phase1 補助 evidence として扱い、Phase0 必須12件は増やさない。
         new("manual-reload-input", "ui shell input: operation_reason=manual-reload"),
+        // タブ切替入力も Phase1 補助 evidence として扱い、必須採取手順には入れない。
+        new("upper-tab-switch-input", "ui shell input: operation_reason=upper-tab-switch"),
+        new("log-tab-switch-input", "ui shell input: operation_reason=log-tab-switch"),
         // UI Shell snapshot 詳細は契約名と同じ行にある時だけ拾い、汎用 field の誤検出を避ける。
         RequiredPhase0EvidenceToken.All(
             "ui-shell-user-priority-active",

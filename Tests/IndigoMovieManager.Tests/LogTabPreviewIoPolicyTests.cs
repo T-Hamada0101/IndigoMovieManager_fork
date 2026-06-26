@@ -145,7 +145,7 @@ public sealed class LogTabPreviewIoPolicyTests
             Assert.That(
                 resultLines[3],
                 Is.EqualTo(
-                    "phase0_log_evidence=3/12 missing=search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core optional_evidence=2/33 optional=watch-apply-kind,watch-reason"
+                    "phase0_log_evidence=3/12 missing=search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core optional_evidence=2/35 optional=watch-apply-kind,watch-reason"
                 )
             );
             Assert.That(

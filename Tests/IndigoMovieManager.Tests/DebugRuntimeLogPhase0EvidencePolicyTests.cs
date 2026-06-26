@@ -96,15 +96,49 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
             Assert.That(summary.IsComplete, Is.False);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(1));
             Assert.That(summary.OptionalObservedKeys, Is.EqualTo(["manual-reload-input"]));
             Assert.That(summary.MissingKeys, Does.Contain("search-input"));
             Assert.That(
                 summary.BuildSummaryText(),
-                Does.Contain("optional_evidence=1/33 optional=manual-reload-input")
+                Does.Contain("optional_evidence=1/35 optional=manual-reload-input")
             );
             Assert.That(summary.BuildSummaryText(), Does.EndWith("optional=manual-reload-input"));
+        });
+    }
+
+    [Test]
+    public void tab_switch_inputはoptional_evidenceとして認識する()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "input ui shell input: operation_reason=upper-tab-switch ui_shell_contract=ui-shell-v1",
+                "input ui shell input: operation_reason=log-tab-switch ui_shell_contract=ui-shell-v1",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(summary.ObservedCount, Is.EqualTo(0));
+            Assert.That(summary.IsComplete, Is.False);
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
+            Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
+            Assert.That(
+                summary.OptionalObservedKeys,
+                Is.EqualTo(["upper-tab-switch-input", "log-tab-switch-input"])
+            );
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.Contain(
+                    "optional_evidence=2/35 optional=upper-tab-switch-input,log-tab-switch-input"
+                )
+            );
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.EndWith("optional=upper-tab-switch-input,log-tab-switch-input")
+            );
         });
     }
 
@@ -121,7 +155,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(5));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -138,7 +172,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(
                 summary.BuildSummaryText(),
                 Does.Contain(
-                    "optional_evidence=5/33 optional=ui-shell-user-priority-active,ui-shell-manual-mode,ui-shell-watch-suppressed,ui-shell-recent-viewport-active,ui-shell-player-playback-active"
+                    "optional_evidence=5/35 optional=ui-shell-user-priority-active,ui-shell-manual-mode,ui-shell-watch-suppressed,ui-shell-recent-viewport-active,ui-shell-player-playback-active"
                 )
             );
         });
@@ -158,7 +192,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.ObservedKeys, Is.Empty);
             Assert.That(summary.OptionalObservedKeys, Is.Empty);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
         });
     }
 
@@ -176,7 +210,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(5));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -214,7 +248,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.ObservedKeys, Is.Empty);
             Assert.That(summary.OptionalObservedKeys, Is.Empty);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
         });
     }
 
@@ -237,7 +271,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(5));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -276,7 +310,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["image-pipeline"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -305,7 +339,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.ObservedKeys, Is.EqualTo(["image-pipeline"]));
             Assert.That(summary.OptionalObservedKeys, Is.Empty);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
         });
     }
 
@@ -324,7 +358,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["worker"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(3));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -359,7 +393,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.ObservedKeys, Is.EqualTo(["worker"]));
             Assert.That(summary.OptionalObservedKeys, Is.Empty);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
         });
     }
 
@@ -381,7 +415,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["player-core", "watch-core", "skin-core"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(6));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -423,7 +457,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.ObservedKeys, Is.EqualTo(["player-core", "watch-core", "skin-core"]));
             Assert.That(summary.OptionalObservedKeys, Is.Empty);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
         });
     }
 
@@ -442,7 +476,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["persistence"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(6));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -480,7 +514,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.ObservedKeys, Is.Empty);
             Assert.That(summary.OptionalObservedKeys, Is.Empty);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(35));
         });
     }
 

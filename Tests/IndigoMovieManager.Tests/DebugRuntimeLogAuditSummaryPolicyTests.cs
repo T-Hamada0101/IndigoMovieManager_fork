@@ -176,11 +176,45 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
-                Does.Contain("optional_evidence=1/33 optional=manual-reload-input")
+                Does.Contain("optional_evidence=1/35 optional=manual-reload-input")
             );
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
                 Does.EndWith("optional=manual-reload-input")
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("search"));
+        });
+    }
+
+    [Test]
+    public void tab_switch_inputはoptional_evidenceとしてsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "input ui shell input: operation_reason=upper-tab-switch",
+                    "input ui shell input: operation_reason=log-tab-switch",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(["upper-tab-switch-input", "log-tab-switch-input"])
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.Contain(
+                    "optional_evidence=2/35 optional=upper-tab-switch-input,log-tab-switch-input"
+                )
+            );
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith("optional=upper-tab-switch-input,log-tab-switch-input")
             );
             Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("search"));
         });
@@ -216,7 +250,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
                 Does.Contain(
-                    "optional_evidence=5/33 optional=ui-shell-user-priority-active,ui-shell-manual-mode,ui-shell-watch-suppressed,ui-shell-recent-viewport-active,ui-shell-player-playback-active"
+                    "optional_evidence=5/35 optional=ui-shell-user-priority-active,ui-shell-manual-mode,ui-shell-watch-suppressed,ui-shell-recent-viewport-active,ui-shell-player-playback-active"
                 )
             );
             Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("search"));
