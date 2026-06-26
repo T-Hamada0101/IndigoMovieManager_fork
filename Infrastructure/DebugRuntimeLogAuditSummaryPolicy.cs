@@ -59,11 +59,34 @@ public sealed class DebugRuntimeLogAuditSummary
 
     public DebugRuntimeLogPhase0NextActionSummary Phase0NextActions { get; }
 
+    public string AuditStatusKey
+    {
+        get
+        {
+            if (!RunWindow.HasTimestamp)
+            {
+                return "missing-timestamp";
+            }
+
+            if (!ContractEvidence.IsComplete)
+            {
+                return "missing-contract-evidence";
+            }
+
+            if (!Phase0Evidence.IsComplete)
+            {
+                return "missing-phase0-evidence";
+            }
+
+            return "complete";
+        }
+    }
+
     public bool IsComplete => ContractEvidence.IsComplete && Phase0Evidence.IsComplete;
 
     public string BuildSummaryText()
     {
-        // 監査入口では、run範囲、契約evidence、Phase0の次操作、完了状態を固定順で並べる。
+        // 監査入口では、run範囲、契約evidence、Phase0の次操作、未完理由、完了状態を固定順で並べる。
         return string.Join(
             Environment.NewLine,
             RunSlice.BuildSummaryText(),
@@ -71,6 +94,7 @@ public sealed class DebugRuntimeLogAuditSummary
             ContractEvidence.BuildSummaryText(),
             Phase0Evidence.BuildSummaryText(),
             Phase0NextActions.BuildSummaryText(),
+            $"phase0_audit_status={AuditStatusKey}",
             $"phase0_audit_complete={(IsComplete ? "true" : "false")}"
         );
     }

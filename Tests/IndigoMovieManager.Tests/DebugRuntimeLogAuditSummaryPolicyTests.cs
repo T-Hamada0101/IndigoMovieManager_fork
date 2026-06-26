@@ -63,6 +63,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
             Assert.That(summary.Phase0NextActions.IsComplete, Is.True);
             Assert.That(summary.IsComplete, Is.True);
+            Assert.That(summary.AuditStatusKey, Is.EqualTo("complete"));
             Assert.That(summary.ContractEvidence.BuildSummaryText(), Is.EqualTo("log_evidence=9/9 missing=none"));
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
@@ -94,9 +95,66 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
             Assert.That(summary.Phase0NextActions.IsComplete, Is.True);
             Assert.That(summary.IsComplete, Is.False);
+            Assert.That(summary.AuditStatusKey, Is.EqualTo("missing-contract-evidence"));
             Assert.That(
                 summary.BuildSummaryText().Split(Environment.NewLine).Last(),
                 Is.EqualTo("phase0_audit_complete=false")
+            );
+        });
+    }
+
+    [Test]
+    public void timestampが無い時はevidence完了でもstatusはmissing_timestampになる()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            AllEvidenceMessages()
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.ContractEvidence.IsComplete, Is.True);
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
+            Assert.That(summary.IsComplete, Is.True);
+            Assert.That(summary.AuditStatusKey, Is.EqualTo("missing-timestamp"));
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.Contain("phase0_audit_status=missing-timestamp")
+            );
+            Assert.That(
+                summary.BuildSummaryText().Split(Environment.NewLine).Last(),
+                Is.EqualTo("phase0_audit_complete=true")
+            );
+        });
+    }
+
+    [Test]
+    public void contract完了でPhase0必須不足ならstatusはmissing_phase0_evidenceになる()
+    {
+        string[] messages =
+        [
+            "input ui shell input: operation_reason=search ui_shell_contract=ui-shell-v1",
+            "apply diff_contract=readmodel-diff-v1",
+            "queue scheduler_contract=scheduler-v1",
+            "image image_contract=image-pipeline-v1",
+            "save persist_contract=persistence-write-v1",
+            "worker worker_contract=worker-job-v1",
+            "skin core_route=skin-refresh",
+            "player core_route=player-playback",
+            "watch core_route=watch-ui-apply",
+        ];
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(messages)
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.ContractEvidence.IsComplete, Is.True);
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(summary.IsComplete, Is.False);
+            Assert.That(summary.AuditStatusKey, Is.EqualTo("missing-phase0-evidence"));
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.Contain("phase0_audit_status=missing-phase0-evidence")
             );
         });
     }
@@ -441,6 +499,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                     "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core",
                     "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
                     "phase0_next_actions=startup,search,sort,scroll,player,image,persistence,thumbnail,skin",
+                    "phase0_audit_status=missing-contract-evidence",
                     "phase0_audit_complete=false"
                 )
             )
@@ -484,6 +543,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                         "log_evidence=0/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core,watch-core",
                         "phase0_log_evidence=0/12 missing=startup-first-page,startup-input-ready,search-input,sort-input,scroll-input,player-core,watch-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
                         "phase0_next_actions=startup,search,sort,scroll,player,watch,image,persistence,thumbnail,skin",
+                        "phase0_audit_status=missing-timestamp",
                         "phase0_audit_complete=false"
                     )
                 )
