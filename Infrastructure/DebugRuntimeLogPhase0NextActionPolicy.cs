@@ -10,16 +10,16 @@ public static class DebugRuntimeLogPhase0NextActionPolicy
 {
     private static readonly Phase0NextActionRule[] ActionRules =
     [
-        new("startup", ["startup-first-page", "startup-input-ready"]),
-        new("search", ["search-input"]),
-        new("sort", ["sort-input"]),
-        new("scroll", ["scroll-input"]),
-        new("player", ["player-core"]),
-        new("watch", ["watch-core"]),
-        new("image", ["image-pipeline"]),
-        new("persistence", ["persistence"]),
-        new("thumbnail", ["worker", "thumbnail-worker"]),
-        new("skin", ["skin-core"]),
+        new("startup", "startup", ["startup-first-page", "startup-input-ready"]),
+        new("search", "search", ["search-input"]),
+        new("sort", "sort", ["sort-input"]),
+        new("scroll", "scroll", ["scroll-input"]),
+        new("player", "Player", ["player-core"]),
+        new("watch", "watch", ["watch-core"]),
+        new("image", "image", ["image-pipeline"]),
+        new("persistence", "persistence", ["persistence"]),
+        new("thumbnail", "thumbnail", ["worker", "thumbnail-worker"]),
+        new("skin", "skin", ["skin-core"]),
     ];
 
     public static DebugRuntimeLogPhase0NextActionSummary Evaluate(
@@ -39,8 +39,14 @@ public static class DebugRuntimeLogPhase0NextActionPolicy
         return new DebugRuntimeLogPhase0NextActionSummary(actionKeys);
     }
 
+    public static string BuildFullCaptureGuideText()
+    {
+        return string.Join(" / ", ActionRules.Select(rule => rule.GuideLabel));
+    }
+
     private readonly record struct Phase0NextActionRule(
         string ActionKey,
+        string GuideLabel,
         IReadOnlyList<string> MissingKeys
     )
     {

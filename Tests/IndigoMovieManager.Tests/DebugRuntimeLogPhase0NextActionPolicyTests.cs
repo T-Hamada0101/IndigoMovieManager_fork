@@ -109,6 +109,17 @@ public sealed class DebugRuntimeLogPhase0NextActionPolicyTests
         );
     }
 
+    [Test]
+    public void 全採取対象guideは正本順で返す()
+    {
+        Assert.That(
+            DebugRuntimeLogPhase0NextActionPolicy.BuildFullCaptureGuideText(),
+            Is.EqualTo(
+                "startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin"
+            )
+        );
+    }
+
     private static DebugRuntimeLogPhase0EvidenceSummary BuildEvidenceWithMissing(
         params string[] missingKeys
     )

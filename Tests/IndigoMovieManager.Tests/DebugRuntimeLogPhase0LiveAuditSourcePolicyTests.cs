@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using IndigoMovieManager.Infrastructure;
 
 namespace IndigoMovieManager.Tests;
 
@@ -104,6 +105,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditSourcePolicyTests
     {
         string source = GetTargetSource();
         string failMethod = GetMethodBlock(source, "private static void FailWithSummary(");
+        string guideText = DebugRuntimeLogPhase0NextActionPolicy.BuildFullCaptureGuideText();
 
         // 失敗時に次の実機採取操作がすぐ分かることを source policy として守る。
         Assert.Multiple(() =>
@@ -111,7 +113,17 @@ public sealed class DebugRuntimeLogPhase0LiveAuditSourcePolicyTests
             Assert.That(failMethod, Does.Contain("summary.BuildSummaryText()"));
             Assert.That(
                 failMethod,
-                Does.Contain(
+                Does.Contain("DebugRuntimeLogPhase0NextActionPolicy.BuildFullCaptureGuideText()")
+            );
+            Assert.That(
+                failMethod,
+                Does.Not.Contain(
+                    "startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin"
+                )
+            );
+            Assert.That(
+                guideText,
+                Is.EqualTo(
                     "startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin"
                 )
             );
