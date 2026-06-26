@@ -82,6 +82,10 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         {
             Assert.That(summary.ContractEvidence.IsComplete, Is.True);
             Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(["manual-reload-input"])
+            );
             Assert.That(summary.IsComplete, Is.True);
         });
     }
@@ -182,6 +186,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
             "startup input ready",
             "input ui shell input: operation_reason=search ui_shell_contract=ui-shell-v1",
             "input ui shell input: operation_reason=sort",
+            "input ui shell input: operation_reason=manual-reload",
             "scroll page scroll end:",
             "apply diff_contract=readmodel-diff-v1",
             "queue scheduler_contract=scheduler-v1",

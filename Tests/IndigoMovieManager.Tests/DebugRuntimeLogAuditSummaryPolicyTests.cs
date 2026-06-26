@@ -102,6 +102,29 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
     }
 
     [Test]
+    public void manual_reload_inputはoptional_evidenceとしてsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(["input ui shell input: operation_reason=manual-reload"])
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(["manual-reload-input"])
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith("optional=manual-reload-input")
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("search"));
+        });
+    }
+
+    [Test]
     public void 欠けがある時も既存summaryの順序と文言が安定する()
     {
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(

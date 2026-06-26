@@ -83,6 +83,28 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
     }
 
     [Test]
+    public void manual_reload_inputはoptional_evidenceとして認識する()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "input ui shell input: operation_reason=manual-reload ui_shell_contract=ui-shell-v1",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(summary.ObservedCount, Is.EqualTo(0));
+            Assert.That(summary.IsComplete, Is.False);
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(1));
+            Assert.That(summary.OptionalObservedCount, Is.EqualTo(1));
+            Assert.That(summary.OptionalObservedKeys, Is.EqualTo(["manual-reload-input"]));
+            Assert.That(summary.MissingKeys, Does.Contain("search-input"));
+            Assert.That(summary.BuildSummaryText(), Does.EndWith("optional=manual-reload-input"));
+        });
+    }
+
+    [Test]
     public void 一部tokenが欠けるとmissing_keysが安定順で返る()
     {
         DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(

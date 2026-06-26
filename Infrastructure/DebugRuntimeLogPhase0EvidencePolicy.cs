@@ -24,11 +24,18 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         new("skin-core", "core_route=skin-refresh"),
     ];
 
+    private static readonly RequiredPhase0EvidenceToken[] OptionalEvidenceTokens =
+    [
+        // manual reload 入力は Phase1 補助 evidence として扱い、Phase0 必須12件は増やさない。
+        new("manual-reload-input", "ui shell input: operation_reason=manual-reload"),
+    ];
+
     public static DebugRuntimeLogPhase0EvidenceSummary Evaluate(IEnumerable<string> logLines)
     {
         ArgumentNullException.ThrowIfNull(logLines);
 
         HashSet<string> observedKeys = new(StringComparer.Ordinal);
+        HashSet<string> optionalObservedKeys = new(StringComparer.Ordinal);
 
         // 採取済みログ行だけを読み、Phase0 操作確認用 token の有無へ畳み込む。
         foreach (string? line in logLines)
@@ -45,6 +52,14 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
                     observedKeys.Add(token.Key);
                 }
             }
+
+            foreach (RequiredPhase0EvidenceToken token in OptionalEvidenceTokens)
+            {
+                if (token.Matches(line))
+                {
+                    optionalObservedKeys.Add(token.Key);
+                }
+            }
         }
 
         string[] observedKeysInOrder = RequiredEvidenceTokens
@@ -55,11 +70,17 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
             .Where(token => !observedKeys.Contains(token.Key))
             .Select(token => token.Key)
             .ToArray();
+        string[] optionalObservedKeysInOrder = OptionalEvidenceTokens
+            .Where(token => optionalObservedKeys.Contains(token.Key))
+            .Select(token => token.Key)
+            .ToArray();
 
         return new DebugRuntimeLogPhase0EvidenceSummary(
             RequiredEvidenceTokens.Length,
             observedKeysInOrder,
-            missingKeys
+            missingKeys,
+            OptionalEvidenceTokens.Length,
+            optionalObservedKeysInOrder
         );
     }
 
@@ -93,25 +114,51 @@ public sealed class DebugRuntimeLogPhase0EvidenceSummary
         IReadOnlyList<string> observedKeys,
         IReadOnlyList<string> missingKeys
     )
+        : this(totalRequiredCount, observedKeys, missingKeys, 0, [])
+    {
+    }
+
+    internal DebugRuntimeLogPhase0EvidenceSummary(
+        int totalRequiredCount,
+        IReadOnlyList<string> observedKeys,
+        IReadOnlyList<string> missingKeys,
+        int totalOptionalCount,
+        IReadOnlyList<string> optionalObservedKeys
+    )
     {
         TotalRequiredCount = totalRequiredCount;
         ObservedKeys = observedKeys;
         MissingKeys = missingKeys;
+        TotalOptionalCount = totalOptionalCount;
+        OptionalObservedKeys = optionalObservedKeys;
     }
 
     public int TotalRequiredCount { get; }
 
     public int ObservedCount => ObservedKeys.Count;
 
+    public int TotalOptionalCount { get; }
+
+    public int OptionalObservedCount => OptionalObservedKeys.Count;
+
     public bool IsComplete => MissingKeys.Count == 0;
 
     public IReadOnlyList<string> MissingKeys { get; }
+
+    public IReadOnlyList<string> OptionalObservedKeys { get; }
 
     public IReadOnlyList<string> ObservedKeys { get; }
 
     public string BuildSummaryText()
     {
         string missing = MissingKeys.Count == 0 ? "none" : string.Join(",", MissingKeys);
-        return $"phase0_log_evidence={ObservedCount}/{TotalRequiredCount} missing={missing}";
+        string summary = $"phase0_log_evidence={ObservedCount}/{TotalRequiredCount} missing={missing}";
+
+        if (OptionalObservedKeys.Count == 0)
+        {
+            return summary;
+        }
+
+        return $"{summary} optional={string.Join(",", OptionalObservedKeys)}";
     }
 }
