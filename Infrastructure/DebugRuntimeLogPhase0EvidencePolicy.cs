@@ -28,6 +28,27 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
     [
         // manual reload 入力は Phase1 補助 evidence として扱い、Phase0 必須12件は増やさない。
         new("manual-reload-input", "ui shell input: operation_reason=manual-reload"),
+        // UI Shell snapshot 詳細は契約名と同じ行にある時だけ拾い、汎用 field の誤検出を避ける。
+        RequiredPhase0EvidenceToken.All(
+            "ui-shell-user-priority-active",
+            ["ui_shell_contract=ui-shell-v1", "is_user_priority_active="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "ui-shell-manual-mode",
+            ["ui_shell_contract=ui-shell-v1", "is_manual_mode="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "ui-shell-watch-suppressed",
+            ["ui_shell_contract=ui-shell-v1", "is_watch_ui_suppressed="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "ui-shell-recent-viewport-active",
+            ["ui_shell_contract=ui-shell-v1", "is_recent_viewport_active="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "ui-shell-player-playback-active",
+            ["ui_shell_contract=ui-shell-v1", "is_player_playback_active="]
+        ),
         // ReadModel Diff 詳細は Phase2 補助 evidence として扱い、実機採取時の小変更判定を読みやすくする。
         new("readmodel-diff-single", "diff_change_set=single"),
         new("readmodel-diff-total", "diff_changed_total="),

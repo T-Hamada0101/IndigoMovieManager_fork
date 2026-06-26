@@ -118,13 +118,73 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
-                Does.Contain("optional_evidence=1/28 optional=manual-reload-input")
+                Does.Contain("optional_evidence=1/33 optional=manual-reload-input")
             );
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
                 Does.EndWith("optional=manual-reload-input")
             );
             Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("search"));
+        });
+    }
+
+    [Test]
+    public void ui_shell_snapshot_detail補助evidenceはsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "snapshot ui_shell_contract=ui-shell-v1 is_user_priority_active=True is_manual_mode=False is_watch_ui_suppressed=False is_recent_viewport_active=True is_player_playback_active=False",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(
+                    [
+                        "ui-shell-user-priority-active",
+                        "ui-shell-manual-mode",
+                        "ui-shell-watch-suppressed",
+                        "ui-shell-recent-viewport-active",
+                        "ui-shell-player-playback-active",
+                    ]
+                )
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.Contain(
+                    "optional_evidence=5/33 optional=ui-shell-user-priority-active,ui-shell-manual-mode,ui-shell-watch-suppressed,ui-shell-recent-viewport-active,ui-shell-player-playback-active"
+                )
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("search"));
+        });
+    }
+
+    [Test]
+    public void ui_shell_snapshot_detail候補だけの行はsummaryに残さない()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "snapshot is_user_priority_active=True is_manual_mode=False is_watch_ui_suppressed=False is_recent_viewport_active=True is_player_playback_active=False",
+                    "snapshot ui_shell_contract=ui-shell-v1",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedKeys, Is.Empty);
+            Assert.That(summary.Phase0Evidence.OptionalObservedKeys, Is.Empty);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.Not.Contain("optional=")
+            );
         });
     }
 
