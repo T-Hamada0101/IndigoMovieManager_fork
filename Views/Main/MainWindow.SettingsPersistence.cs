@@ -89,6 +89,7 @@ namespace IndigoMovieManager
         // 終了時だけは保存取りこぼしを避けるため、並走させた保存を短時間だけ回収する。
         private void WaitForApplicationSettingsSaveForShutdown(string reason, int timeoutMs = 1000)
         {
+            PersistenceWriteRequest writeRequest = BuildApplicationSettingsWriteRequest(reason);
             Task saveTask;
             lock (_applicationSettingsSaveSync)
             {
@@ -101,7 +102,7 @@ namespace IndigoMovieManager
                 {
                     DebugRuntimeLog.Write(
                         "ui-tempo",
-                        $"application settings save drain timeout: reason={reason ?? ""} timeout_ms={timeoutMs}"
+                        $"application settings save drain timeout: reason={reason ?? ""} {writeRequest.BuildLogFields()} timeout_ms={timeoutMs}"
                     );
                 }
             }
@@ -109,7 +110,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"application settings save drain failed: reason={reason ?? ""} err='{ex.GetType().Name}: {ex.Message}'"
+                    $"application settings save drain failed: reason={reason ?? ""} {writeRequest.BuildLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }

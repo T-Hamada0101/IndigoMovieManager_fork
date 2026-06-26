@@ -57,6 +57,30 @@ public sealed class MainWindowSettingsPersistencePolicyTests
                 "application settings save failed: {result.LogFields}"
             )
         );
+
+        string shutdownDrainMethod = ExtractMethod(
+            persistenceSource,
+            "private void WaitForApplicationSettingsSaveForShutdown("
+        );
+        Assert.That(
+            shutdownDrainMethod,
+            Does.Contain(
+                "PersistenceWriteRequest writeRequest = BuildApplicationSettingsWriteRequest(reason);"
+            )
+        );
+        Assert.That(
+            shutdownDrainMethod,
+            Does.Contain(
+                "application settings save drain timeout: reason={reason ?? \"\"} {writeRequest.BuildLogFields()} timeout_ms={timeoutMs}"
+            )
+        );
+        Assert.That(
+            shutdownDrainMethod,
+            Does.Contain(
+                "application settings save drain failed: reason={reason ?? \"\"} {writeRequest.BuildLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
+            )
+        );
+
         Assert.That(playerSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
         Assert.That(playerSource, Does.Contain("BuildPlayerVolumeSettingsWriteRequest()"));
         Assert.That(playerSource, Does.Contain("PersistenceWriteKind.BackgroundDbWrite"));
