@@ -14,7 +14,7 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         new("startup-input-ready", "input ready"),
         new("search-input", "ui shell input: operation_reason=search"),
         new("sort-input", "ui shell input: operation_reason=sort"),
-        new("scroll-input", "page scroll end:"),
+        new("scroll-input", ["ui shell input: operation_reason=scroll", "page scroll end:"]),
         new("player-core", "core_route=player-playback"),
         new("watch-core", "core_route=watch-ui-apply"),
         new("image-pipeline", "image_contract=image-pipeline-v1"),
@@ -40,7 +40,7 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
 
             foreach (RequiredPhase0EvidenceToken token in RequiredEvidenceTokens)
             {
-                if (line.Contains(token.Token, StringComparison.Ordinal))
+                if (token.Matches(line))
                 {
                     observedKeys.Add(token.Key);
                 }
@@ -63,7 +63,27 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         );
     }
 
-    private readonly record struct RequiredPhase0EvidenceToken(string Key, string Token);
+    private readonly record struct RequiredPhase0EvidenceToken(string Key, string[] Tokens)
+    {
+        public RequiredPhase0EvidenceToken(string key, string token)
+            : this(key, [token])
+        {
+        }
+
+        public bool Matches(string line)
+        {
+            // 先頭を優先語彙にし、移行中の旧ログも同じ evidence key へ畳み込む。
+            foreach (string token in Tokens)
+            {
+                if (line.Contains(token, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 }
 
 public sealed class DebugRuntimeLogPhase0EvidenceSummary

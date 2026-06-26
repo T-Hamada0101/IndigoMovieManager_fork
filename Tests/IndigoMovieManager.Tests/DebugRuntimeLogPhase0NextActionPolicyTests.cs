@@ -44,7 +44,7 @@ public sealed class DebugRuntimeLogPhase0NextActionPolicyTests
                 [
                     "startup first-page shown",
                     "startup input ready",
-                    "scroll page scroll end:",
+                    "scroll ui shell input: operation_reason=scroll",
                     "player core_route=player-playback",
                     "watch core_route=watch-ui-apply",
                     "image image_contract=image-pipeline-v1",
@@ -132,7 +132,7 @@ public sealed class DebugRuntimeLogPhase0NextActionPolicyTests
             new("startup-input-ready", "startup input ready"),
             new("search-input", "input ui shell input: operation_reason=search"),
             new("sort-input", "input ui shell input: operation_reason=sort"),
-            new("scroll-input", "scroll page scroll end:"),
+            new("scroll-input", "scroll ui shell input: operation_reason=scroll"),
             new("player-core", "player core_route=player-playback"),
             new("watch-core", "watch core_route=watch-ui-apply"),
             new("image-pipeline", "image image_contract=image-pipeline-v1"),

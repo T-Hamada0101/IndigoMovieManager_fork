@@ -14,7 +14,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                 "startup input ready",
                 "input ui shell input: operation_reason=search",
                 "input ui shell input: operation_reason=sort",
-                "scroll page scroll end:",
+                "scroll ui shell input: operation_reason=scroll",
                 "player core_route=player-playback",
                 "watch core_route=watch-ui-apply",
                 "image image_contract=image-pipeline-v1",
@@ -50,6 +50,35 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                     ]
                 )
             );
+        });
+    }
+
+    [Test]
+    public void scroll_inputは新旧ログを同じkeyとして認識する()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary newLogSummary =
+            DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+                ["scroll ui shell input: operation_reason=scroll"]
+            );
+        DebugRuntimeLogPhase0EvidenceSummary oldLogSummary =
+            DebugRuntimeLogPhase0EvidencePolicy.Evaluate(["scroll page scroll end:"]);
+        DebugRuntimeLogPhase0EvidenceSummary bothLogSummary =
+            DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+                [
+                    "scroll ui shell input: operation_reason=scroll",
+                    "scroll page scroll end:",
+                ]
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(newLogSummary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(newLogSummary.ObservedCount, Is.EqualTo(1));
+            Assert.That(newLogSummary.ObservedKeys, Is.EqualTo(["scroll-input"]));
+            Assert.That(oldLogSummary.ObservedCount, Is.EqualTo(1));
+            Assert.That(oldLogSummary.ObservedKeys, Is.EqualTo(["scroll-input"]));
+            Assert.That(bothLogSummary.ObservedCount, Is.EqualTo(1));
+            Assert.That(bothLogSummary.ObservedKeys, Is.EqualTo(["scroll-input"]));
         });
     }
 
@@ -120,7 +149,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                     "startup input ready",
                     "input ui shell input: operation_reason=search",
                     "input ui shell input: operation_reason=sort",
-                    "scroll page scroll end:",
+                    "scroll ui shell input: operation_reason=scroll",
                     "player core_route=player-playback",
                     "watch core_route=watch-ui-apply",
                     "image image_contract=image-pipeline-v1",
