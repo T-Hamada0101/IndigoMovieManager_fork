@@ -92,12 +92,16 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
             ["scheduler_contract=scheduler-v1", "pending_count_after="]
         ),
         // Phase4 画像 pipeline の実機確認は補助 evidence に留め、必須12件の完了条件は動かさない。
-        new(
+        RequiredPhase0EvidenceToken.All(
             "image-aggregate-decode-plan",
-            "image_log_reason=image.thumbnail-error-list.aggregate-decode-plan"
+            [
+                "image_contract=image-pipeline-v1",
+                "image_log_reason=image.thumbnail-error-list.aggregate-decode-plan",
+            ]
         ),
-        new(
+        RequiredPhase0EvidenceToken.AllWithAny(
             "image-stale-discard",
+            ["image_contract=image-pipeline-v1"],
             ["failure_reason=stale-image-request", "failure_reason=stale-player-right-rail"]
         ),
         // Persistence 詳細は契約名と同じ行にある時だけ拾い、汎用 field の誤検出を避ける。
@@ -222,22 +226,32 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
     private readonly record struct RequiredPhase0EvidenceToken(
         string Key,
         string[] Tokens,
-        bool RequireAllTokens
+        bool RequireAllTokens,
+        string[] AnyTokens
     )
     {
         public RequiredPhase0EvidenceToken(string key, string token)
-            : this(key, [token], false)
+            : this(key, [token], false, [])
         {
         }
 
         public RequiredPhase0EvidenceToken(string key, string[] tokens)
-            : this(key, tokens, false)
+            : this(key, tokens, false, [])
         {
         }
 
         public static RequiredPhase0EvidenceToken All(string key, string[] tokens)
         {
-            return new RequiredPhase0EvidenceToken(key, tokens, true);
+            return new RequiredPhase0EvidenceToken(key, tokens, true, []);
+        }
+
+        public static RequiredPhase0EvidenceToken AllWithAny(
+            string key,
+            string[] requiredTokens,
+            string[] anyTokens
+        )
+        {
+            return new RequiredPhase0EvidenceToken(key, requiredTokens, true, anyTokens);
         }
 
         public bool Matches(string line)
@@ -245,7 +259,16 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
             if (RequireAllTokens)
             {
                 // 詳細 field は契約名や core route と同じ行にある時だけ採用し、別ログの同名 field を拾わない。
-                return Tokens.All(token => line.Contains(token, StringComparison.Ordinal));
+                bool hasRequiredTokens = Tokens.All(token =>
+                    line.Contains(token, StringComparison.Ordinal)
+                );
+                if (AnyTokens.Length == 0)
+                {
+                    return hasRequiredTokens;
+                }
+
+                return hasRequiredTokens
+                    && AnyTokens.Any(token => line.Contains(token, StringComparison.Ordinal));
             }
 
             // 先頭を優先語彙にし、移行中の旧ログも同じ evidence key へ畳み込む。

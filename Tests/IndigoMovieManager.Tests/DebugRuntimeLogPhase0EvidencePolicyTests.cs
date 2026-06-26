@@ -267,8 +267,8 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
             [
                 "image image_log_reason=image.thumbnail-error-list.aggregate-decode-plan image_contract=image-pipeline-v1",
-                "detail failure_reason=stale-image-request",
-                "player failure_reason=stale-player-right-rail",
+                "detail image_contract=image-pipeline-v1 failure_reason=stale-image-request",
+                "player image_contract=image-pipeline-v1 failure_reason=stale-player-right-rail",
             ]
         );
 
@@ -286,6 +286,26 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                 summary.BuildSummaryText(),
                 Does.EndWith("optional=image-aggregate-decode-plan,image-stale-discard")
             );
+        });
+    }
+
+    [Test]
+    public void image_pipeline補助evidence候補だけの行はoptionalとして認識しない()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "image image_log_reason=image.thumbnail-error-list.aggregate-decode-plan",
+                "detail failure_reason=stale-image-request",
+                "player failure_reason=stale-player-right-rail",
+                "image image_contract=image-pipeline-v1",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.ObservedKeys, Is.EqualTo(["image-pipeline"]));
+            Assert.That(summary.OptionalObservedKeys, Is.Empty);
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
         });
     }
 

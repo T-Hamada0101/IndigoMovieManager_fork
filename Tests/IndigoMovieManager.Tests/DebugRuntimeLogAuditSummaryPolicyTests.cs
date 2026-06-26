@@ -329,16 +329,16 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
             BuildSequencedLines(
                 [
-                    "image image_log_reason=image.thumbnail-error-list.aggregate-decode-plan",
-                    "detail failure_reason=stale-image-request",
-                    "player failure_reason=stale-player-right-rail",
+                    "image image_contract=image-pipeline-v1 image_log_reason=image.thumbnail-error-list.aggregate-decode-plan",
+                    "detail image_contract=image-pipeline-v1 failure_reason=stale-image-request",
+                    "player image_contract=image-pipeline-v1 failure_reason=stale-player-right-rail",
                 ]
             )
         );
 
         Assert.Multiple(() =>
         {
-            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
+            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(1));
             Assert.That(
                 summary.Phase0Evidence.OptionalObservedKeys,
                 Is.EqualTo(["image-aggregate-decode-plan", "image-stale-discard"])
@@ -348,7 +348,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 summary.Phase0Evidence.BuildSummaryText(),
                 Does.EndWith("optional=image-aggregate-decode-plan,image-stale-discard")
             );
-            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("image"));
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Not.Contain("image"));
         });
     }
 
