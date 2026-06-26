@@ -774,35 +774,53 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     [Test]
     public void FilterAndSortTrueの許容fallbackは起動fallbackと段階ロード中sortだけに固定する()
     {
-        string[] actual = EnumerateFilterAndSortTrueCallSites().ToArray();
+        string[] actual = EnumerateFilterAndSortTrueCallSites()
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
         string[] expected =
         [
-            "Views/Main/MainWindow.Startup.cs|startup-fallback-full-reload|FilterAndSort(sortId, true);",
             "Views/Main/MainWindow.InputRouting.cs|startup-partial-sort-full-order|FilterAndSort(plan.SortId, true);",
+            "Views/Main/MainWindow.Startup.cs|startup-fallback-full-reload|FilterAndSort(sortId, true);",
         ];
 
-        Assert.That(actual, Is.EquivalentTo(expected));
+        Assert.That(
+            actual,
+            Is.EqualTo(expected),
+            "FilterAndSort(..., true) の直書き許容は startup-fallback-full-reload (起動 fallback full reload) と startup-partial-sort-full-order (段階ロード中 sort) の2箇所だけです。"
+        );
     }
 
     [Test]
     public void 直書きRefreshの許容入口は起動初回表示と選択変化互換だけに固定する()
     {
-        string[] actual = EnumerateDirectRefreshCallSites().ToArray();
+        string[] actual = EnumerateDirectRefreshCallSites()
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
         string[] expected =
         [
             "Views/Main/MainWindow.Startup.cs|startup-first-page-detail-sync|Refresh();",
             "Views/Main/MainWindow.xaml.cs|collection-apply-selection-changed-compat|Refresh();",
         ];
 
-        Assert.That(actual, Is.EquivalentTo(expected));
+        Assert.That(
+            actual,
+            Is.EqualTo(expected),
+            "直書き Refresh(); の許容入口は startup-first-page-detail-sync と collection-apply-selection-changed-compat の2箇所だけです。"
+        );
     }
 
     [Test]
-    public void ItemsRefreshは本体コードへ戻さない()
+    public void ItemsRefreshはWpf本体CSharp全体へ戻さない()
     {
-        string[] actual = EnumerateProductionCallLines("Items.Refresh()").ToArray();
+        string[] actual = EnumerateProductionCallLines("Items.Refresh()")
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
 
-        Assert.That(actual, Is.Empty);
+        Assert.That(
+            actual,
+            Is.Empty,
+            "Items.Refresh() は WPF本体C# production code 全体で禁止です。ObservableCollection通知や局所refreshへ戻してください。"
+        );
     }
 
     [Test]
@@ -1138,38 +1156,54 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     {
         DirectoryInfo repoRoot = GetRepoRoot();
         foreach (
-            string sourceRootName in new[]
-            {
-                "BottomTabs",
-                "Thumbnail",
-                "UpperTabs",
-                "UserControls",
-                "Views",
-                "Watcher",
-            }
+            string filePath in Directory.EnumerateFiles(
+                repoRoot.FullName,
+                "*.cs",
+                SearchOption.AllDirectories
+            )
         )
         {
-            string sourceRoot = Path.Combine(repoRoot.FullName, sourceRootName);
-            if (!Directory.Exists(sourceRoot))
+            string relativePath = NormalizeRepoRelativePath(repoRoot, filePath);
+            if (ShouldSkipProductionSourceFile(relativePath))
             {
                 continue;
             }
 
-            foreach (
-                string filePath in Directory.EnumerateFiles(
-                    sourceRoot,
-                    "*.cs",
-                    SearchOption.AllDirectories
-                )
-            )
+            foreach (string line in File.ReadLines(filePath))
             {
-                string relativePath = NormalizeRepoRelativePath(repoRoot, filePath);
-                foreach (string line in File.ReadLines(filePath))
-                {
-                    yield return (relativePath, line.Trim());
-                }
+                yield return (relativePath, line.Trim());
             }
         }
+    }
+
+    private static bool ShouldSkipProductionSourceFile(string relativePath)
+    {
+        string[] segments = relativePath.Split('/');
+        foreach (string segment in segments)
+        {
+            // テスト、生成物、別プロジェクト、作業用ディレクトリを外し、WPF本体C#を広く見る。
+            if (segment.StartsWith(".", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (
+                segment is "Tests"
+                    or "WhiteBrowserSkin"
+                    or "skin"
+                    or "bin"
+                    or "obj"
+                    or "artifacts"
+                    or "installer"
+                    or "scripts"
+                    or "tools"
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static DirectoryInfo GetRepoRoot()

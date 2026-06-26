@@ -47,8 +47,32 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
                 ]
             )
         );
-        Assert.That(directRefreshCalls, Is.Empty);
-        Assert.That(itemsRefreshCalls, Is.Empty);
+        Assert.That(
+            directRefreshCalls,
+            Is.Empty,
+            "Watcher境界では直書き Refresh(); を禁止し、reload policy / read model 再適用へ集約します。"
+        );
+        Assert.That(
+            itemsRefreshCalls,
+            Is.Empty,
+            "Watcher境界では Items.Refresh() を禁止し、ObservableCollection通知や差分applyへ寄せます。"
+        );
+    }
+
+    [Test]
+    public void ItemsRefreshはWpf本体CSharp全体へ戻さない()
+    {
+        string[] actual = EnumerateWpfProductionSourceLines()
+            .Where(x => x.TrimmedLine.Contains("Items.Refresh()", StringComparison.Ordinal))
+            .Select(x => $"{x.RelativePath}|{x.TrimmedLine}")
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(
+            actual,
+            Is.Empty,
+            "Items.Refresh() は WPF本体C# production code 全体で禁止です。Watcher / Phase0 / Phase2 の許容線を広げないでください。"
+        );
     }
 
     [Test]
@@ -295,6 +319,60 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
                 yield return (relativePath, line.Trim());
             }
         }
+    }
+
+    private static IEnumerable<(string RelativePath, string TrimmedLine)> EnumerateWpfProductionSourceLines()
+    {
+        DirectoryInfo repoRoot = GetRepoRoot();
+        foreach (
+            string filePath in Directory.EnumerateFiles(
+                repoRoot.FullName,
+                "*.cs",
+                SearchOption.AllDirectories
+            )
+        )
+        {
+            string relativePath = NormalizeRepoRelativePath(repoRoot, filePath);
+            if (ShouldSkipWpfProductionSourceFile(relativePath))
+            {
+                continue;
+            }
+
+            foreach (string line in File.ReadLines(filePath))
+            {
+                yield return (relativePath, line.Trim());
+            }
+        }
+    }
+
+    private static bool ShouldSkipWpfProductionSourceFile(string relativePath)
+    {
+        string[] segments = relativePath.Split('/');
+        foreach (string segment in segments)
+        {
+            // integration test や skin JS 周辺を外し、WPF本体C#の逆流だけを見る。
+            if (segment.StartsWith(".", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (
+                segment is "Tests"
+                    or "WhiteBrowserSkin"
+                    or "skin"
+                    or "bin"
+                    or "obj"
+                    or "artifacts"
+                    or "installer"
+                    or "scripts"
+                    or "tools"
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string GetRepoText(params string[] relativePathParts)
