@@ -317,9 +317,12 @@ namespace IndigoMovieManager
                 )
             )
             {
+                string writeLogFields = MainWindow.BuildCurrentDbSettingsWriteLogFields(
+                    "settings-window-closing"
+                );
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"settings persist skipped: reason=db-changed db='{_currentDbSettingsPath}'"
+                    $"settings persist skipped: reason=db-changed {writeLogFields} db='{_currentDbSettingsPath}'"
                 );
                 return;
             }
@@ -358,9 +361,12 @@ namespace IndigoMovieManager
             );
             if (persistedSettingsCount != 5)
             {
+                string writeLogFields = MainWindow.BuildCurrentDbSettingsWriteLogFields(
+                    "settings-window-closing"
+                );
                 DebugRuntimeLog.Write(
                     "skin-db",
-                    $"settings persist partial: success={persistedSettingsCount}/5 db='{_currentDbSettingsPath}'"
+                    $"settings persist partial: success={persistedSettingsCount}/5 {writeLogFields} db='{_currentDbSettingsPath}'"
                 );
             }
         }

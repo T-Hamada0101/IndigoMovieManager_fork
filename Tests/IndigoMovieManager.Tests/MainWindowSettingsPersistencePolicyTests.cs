@@ -398,6 +398,80 @@ public sealed class MainWindowSettingsPersistencePolicyTests
     }
 
     [Test]
+    public void 現在DB設定保存のskipped_partialログはPersistenceWriteRequest語彙を持つ()
+    {
+        string menuSource = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string settingsSource = GetRepoText("Views", "Settings", "CommonSettingsWindow.xaml.cs");
+        string persistenceSource = GetRepoText("Persistence", "PersistenceWriteRequest.cs");
+        string requestMethod = ExtractMethod(
+            menuSource,
+            "internal static PersistenceWriteRequest BuildCurrentDbSettingsWriteRequest("
+        );
+        string logFieldsMethod = ExtractMethod(
+            menuSource,
+            "internal static string BuildCurrentDbSettingsWriteLogFields("
+        );
+        string settingsPersistMethod = ExtractMethod(
+            settingsSource,
+            "private void PersistCurrentDbSettingsValuesIfNeeded()"
+        );
+        string menuSettingsMethod = ExtractMethod(
+            menuSource,
+            "private void MenuBtnSettings_Click("
+        );
+        PersistenceWriteRequest request = MainWindow.BuildCurrentDbSettingsWriteRequest(
+            "settings-window-closing"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                request.BuildLogFields(),
+                Is.EqualTo(
+                    "write_kind=current-db-settings persist_contract=persistence-write-v1 write_reason=settings-window-closing queue_key=current-db-settings retryable_policy=true"
+                )
+            );
+            Assert.That(requestMethod, Does.Contain("PersistenceWriteKind.CurrentDbSettings"));
+            Assert.That(requestMethod, Does.Contain("\"current-db-settings\""));
+            Assert.That(
+                logFieldsMethod,
+                Does.Contain("BuildCurrentDbSettingsWriteRequest(reason).BuildLogFields()")
+            );
+            Assert.That(
+                persistenceSource,
+                Does.Contain("PersistenceWriteKind.CurrentDbSettings => \"current-db-settings\"")
+            );
+            Assert.That(
+                settingsPersistMethod,
+                Does.Contain("MainWindow.BuildCurrentDbSettingsWriteLogFields(")
+            );
+            Assert.That(settingsPersistMethod, Does.Contain("\"settings-window-closing\""));
+            Assert.That(
+                settingsPersistMethod,
+                Does.Contain(
+                    "settings persist skipped: reason=db-changed {writeLogFields} db='{_currentDbSettingsPath}'"
+                )
+            );
+            Assert.That(
+                settingsPersistMethod,
+                Does.Contain(
+                    "settings persist partial: success={persistedSettingsCount}/5 {writeLogFields} db='{_currentDbSettingsPath}'"
+                )
+            );
+            Assert.That(
+                menuSettingsMethod,
+                Does.Contain("BuildCurrentDbSettingsWriteLogFields(")
+            );
+            Assert.That(
+                menuSettingsMethod,
+                Does.Contain(
+                    "settings persist partial: success={persistedSettingsCount}/5 {writeLogFields} db='{MainVM.DbInfo.DBFullPath}'"
+                )
+            );
+        });
+    }
+
+    [Test]
     public void PersistenceWriteRequest_BuildLogFieldsはcontract識別子を固定する()
     {
         string source = GetRepoText("Persistence", "PersistenceWriteRequest.cs");

@@ -2895,9 +2895,12 @@ namespace IndigoMovieManager
                                 );
                                 if (persistedSettingsCount != 5)
                                 {
+                                    string writeLogFields = BuildCurrentDbSettingsWriteLogFields(
+                                        "settings-window-closing"
+                                    );
                                     DebugRuntimeLog.Write(
                                         "skin-db",
-                                        $"settings persist partial: success={persistedSettingsCount}/5 db='{MainVM.DbInfo.DBFullPath}'"
+                                        $"settings persist partial: success={persistedSettingsCount}/5 {writeLogFields} db='{MainVM.DbInfo.DBFullPath}'"
                                     );
                                 }
                                 break;
@@ -2941,6 +2944,22 @@ namespace IndigoMovieManager
                 playerPrg,
                 playerParam
             );
+        }
+
+        // 現在DB設定保存は既存ライターを使い、ログ契約だけ共通語彙へ揃える。
+        internal static PersistenceWriteRequest BuildCurrentDbSettingsWriteRequest(string reason)
+        {
+            return PersistenceWriteRequest.Create(
+                PersistenceWriteKind.CurrentDbSettings,
+                reason,
+                "current-db-settings",
+                retryable: true
+            );
+        }
+
+        internal static string BuildCurrentDbSettingsWriteLogFields(string reason)
+        {
+            return BuildCurrentDbSettingsWriteRequest(reason).BuildLogFields();
         }
 
         internal void OpenWatchFolderEditorFromSettingsWindow()

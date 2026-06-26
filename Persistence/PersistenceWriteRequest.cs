@@ -7,6 +7,7 @@ namespace IndigoMovieManager
     {
         ApplicationSettings,
         BackgroundDbWrite,
+        CurrentDbSettings,
     }
 
     internal readonly record struct PersistenceWriteRequest(
@@ -56,6 +57,7 @@ namespace IndigoMovieManager
             {
                 PersistenceWriteKind.ApplicationSettings => "application-settings",
                 PersistenceWriteKind.BackgroundDbWrite => "background-db-write",
+                PersistenceWriteKind.CurrentDbSettings => "current-db-settings",
                 _ => kind.ToString().ToLowerInvariant(),
             };
         }
