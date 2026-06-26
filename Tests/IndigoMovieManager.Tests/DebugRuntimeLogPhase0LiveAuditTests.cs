@@ -87,6 +87,8 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
                 Is.EqualTo(
                     [
                         "manual-reload-input",
+                        "readmodel-diff-single",
+                        "readmodel-diff-total",
                         "image-aggregate-decode-plan",
                         "image-stale-discard",
                         "worker-diagnostic-context",
@@ -197,7 +199,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
             "input ui shell input: operation_reason=sort",
             "input ui shell input: operation_reason=manual-reload",
             "scroll page scroll end:",
-            "apply diff_contract=readmodel-diff-v1",
+            "apply diff_contract=readmodel-diff-v1 diff_change_set=single diff_changed_total=1",
             "queue scheduler_contract=scheduler-v1",
             "image image_contract=image-pipeline-v1",
             "image image_log_reason=image.thumbnail-error-list.aggregate-decode-plan",

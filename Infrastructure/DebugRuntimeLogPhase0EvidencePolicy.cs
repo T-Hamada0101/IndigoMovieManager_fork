@@ -28,6 +28,9 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
     [
         // manual reload 入力は Phase1 補助 evidence として扱い、Phase0 必須12件は増やさない。
         new("manual-reload-input", "ui shell input: operation_reason=manual-reload"),
+        // ReadModel Diff 詳細は Phase2 補助 evidence として扱い、実機採取時の小変更判定を読みやすくする。
+        new("readmodel-diff-single", "diff_change_set=single"),
+        new("readmodel-diff-total", "diff_changed_total="),
         // Phase4 画像 pipeline の実機確認は補助 evidence に留め、必須12件の完了条件は動かさない。
         new(
             "image-aggregate-decode-plan",

@@ -125,6 +125,34 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
     }
 
     [Test]
+    public void readmodel_diff詳細補助evidenceはsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "watch diff_change_set=single diff_changed_total=1",
+                    "apply diff_changed_total=120",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(["readmodel-diff-single", "readmodel-diff-total"])
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith("optional=readmodel-diff-single,readmodel-diff-total")
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("watch"));
+        });
+    }
+
+    [Test]
     public void image_pipeline補助evidenceはsummaryに残る()
     {
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(

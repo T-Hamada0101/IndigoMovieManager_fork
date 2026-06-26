@@ -96,11 +96,38 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
             Assert.That(summary.IsComplete, Is.False);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(6));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(1));
             Assert.That(summary.OptionalObservedKeys, Is.EqualTo(["manual-reload-input"]));
             Assert.That(summary.MissingKeys, Does.Contain("search-input"));
             Assert.That(summary.BuildSummaryText(), Does.EndWith("optional=manual-reload-input"));
+        });
+    }
+
+    [Test]
+    public void readmodel_diff詳細補助evidenceはoptionalとして認識する()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "watch diff_contract=readmodel-diff-v1 diff_change_set=single diff_changed_total=1",
+                "apply diff_changed_total=120",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(summary.ObservedCount, Is.EqualTo(0));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
+            Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
+            Assert.That(
+                summary.OptionalObservedKeys,
+                Is.EqualTo(["readmodel-diff-single", "readmodel-diff-total"])
+            );
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.EndWith("optional=readmodel-diff-single,readmodel-diff-total")
+            );
         });
     }
 
@@ -119,7 +146,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["image-pipeline"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(6));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -147,7 +174,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["worker"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(6));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(3));
             Assert.That(
                 summary.OptionalObservedKeys,
