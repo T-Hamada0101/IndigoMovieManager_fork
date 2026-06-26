@@ -31,6 +31,30 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         // ReadModel Diff 詳細は Phase2 補助 evidence として扱い、実機採取時の小変更判定を読みやすくする。
         new("readmodel-diff-single", "diff_change_set=single"),
         new("readmodel-diff-total", "diff_changed_total="),
+        new("readmodel-diff-source-revision", "diff_source_revision="),
+        new("readmodel-diff-view-revision", "diff_view_revision="),
+        new("readmodel-diff-full-fallback-reason", "diff_full_fallback_reason="),
+        // Scheduler 詳細は Phase3 補助 evidence として扱い、採取後の queue 判断を追いやすくする。
+        RequiredPhase0EvidenceToken.All(
+            "scheduler-accepted",
+            ["scheduler_contract=scheduler-v1", "accepted="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "scheduler-target-index",
+            ["scheduler_contract=scheduler-v1", "target_index="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "scheduler-has-request",
+            ["scheduler_contract=scheduler-v1", "has_request="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "scheduler-timeout-released",
+            ["scheduler_contract=scheduler-v1", "timeout_released="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "scheduler-pending-count-after",
+            ["scheduler_contract=scheduler-v1", "pending_count_after="]
+        ),
         // Phase4 画像 pipeline の実機確認は補助 evidence に留め、必須12件の完了条件は動かさない。
         new(
             "image-aggregate-decode-plan",
@@ -100,15 +124,35 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         );
     }
 
-    private readonly record struct RequiredPhase0EvidenceToken(string Key, string[] Tokens)
+    private readonly record struct RequiredPhase0EvidenceToken(
+        string Key,
+        string[] Tokens,
+        bool RequireAllTokens
+    )
     {
         public RequiredPhase0EvidenceToken(string key, string token)
-            : this(key, [token])
+            : this(key, [token], false)
         {
+        }
+
+        public RequiredPhase0EvidenceToken(string key, string[] tokens)
+            : this(key, tokens, false)
+        {
+        }
+
+        public static RequiredPhase0EvidenceToken All(string key, string[] tokens)
+        {
+            return new RequiredPhase0EvidenceToken(key, tokens, true);
         }
 
         public bool Matches(string line)
         {
+            if (RequireAllTokens)
+            {
+                // Scheduler 詳細のように単独 field では誤検出しやすいものは、契約名と同じ行にある時だけ採用する。
+                return Tokens.All(token => line.Contains(token, StringComparison.Ordinal));
+            }
+
             // 先頭を優先語彙にし、移行中の旧ログも同じ evidence key へ畳み込む。
             foreach (string token in Tokens)
             {

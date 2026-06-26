@@ -131,7 +131,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             BuildSequencedLines(
                 [
                     "watch diff_change_set=single diff_changed_total=1",
-                    "apply diff_changed_total=120",
+                    "apply diff_full_fallback_reason=none diff_source_revision=10 diff_view_revision=11 diff_changed_total=120",
                 ]
             )
         );
@@ -141,12 +141,61 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
             Assert.That(
                 summary.Phase0Evidence.OptionalObservedKeys,
-                Is.EqualTo(["readmodel-diff-single", "readmodel-diff-total"])
+                Is.EqualTo(
+                    [
+                        "readmodel-diff-single",
+                        "readmodel-diff-total",
+                        "readmodel-diff-source-revision",
+                        "readmodel-diff-view-revision",
+                        "readmodel-diff-full-fallback-reason",
+                    ]
+                )
             );
             Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
-                Does.EndWith("optional=readmodel-diff-single,readmodel-diff-total")
+                Does.EndWith(
+                    "optional=readmodel-diff-single,readmodel-diff-total,readmodel-diff-source-revision,readmodel-diff-view-revision,readmodel-diff-full-fallback-reason"
+                )
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("watch"));
+        });
+    }
+
+    [Test]
+    public void scheduler_detail補助evidenceはsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "queue scheduler_contract=scheduler-v1 admission_action=enqueued accepted=True target_index=-1",
+                    "queue scheduler_contract=scheduler-v1 sequence=1 has_request=True pending_count_after=0",
+                    "queue scheduler_contract=scheduler-v1 timeout_released=true pending_count_after=4",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(
+                    [
+                        "scheduler-accepted",
+                        "scheduler-target-index",
+                        "scheduler-has-request",
+                        "scheduler-timeout-released",
+                        "scheduler-pending-count-after",
+                    ]
+                )
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith(
+                    "optional=scheduler-accepted,scheduler-target-index,scheduler-has-request,scheduler-timeout-released,scheduler-pending-count-after"
+                )
             );
             Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("watch"));
         });

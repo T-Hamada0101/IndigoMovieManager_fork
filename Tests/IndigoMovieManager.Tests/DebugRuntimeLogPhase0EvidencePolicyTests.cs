@@ -96,7 +96,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
             Assert.That(summary.IsComplete, Is.False);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(16));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(1));
             Assert.That(summary.OptionalObservedKeys, Is.EqualTo(["manual-reload-input"]));
             Assert.That(summary.MissingKeys, Does.Contain("search-input"));
@@ -110,7 +110,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
             [
                 "watch diff_contract=readmodel-diff-v1 diff_change_set=single diff_changed_total=1",
-                "apply diff_changed_total=120",
+                "apply diff_full_fallback_reason=none diff_source_revision=10 diff_view_revision=11 diff_changed_total=120",
             ]
         );
 
@@ -118,16 +118,69 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
-            Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(16));
+            Assert.That(summary.OptionalObservedCount, Is.EqualTo(5));
             Assert.That(
                 summary.OptionalObservedKeys,
-                Is.EqualTo(["readmodel-diff-single", "readmodel-diff-total"])
+                Is.EqualTo(
+                    [
+                        "readmodel-diff-single",
+                        "readmodel-diff-total",
+                        "readmodel-diff-source-revision",
+                        "readmodel-diff-view-revision",
+                        "readmodel-diff-full-fallback-reason",
+                    ]
+                )
             );
             Assert.That(
                 summary.BuildSummaryText(),
-                Does.EndWith("optional=readmodel-diff-single,readmodel-diff-total")
+                Does.EndWith(
+                    "optional=readmodel-diff-single,readmodel-diff-total,readmodel-diff-source-revision,readmodel-diff-view-revision,readmodel-diff-full-fallback-reason"
+                )
             );
+        });
+    }
+
+    [Test]
+    public void scheduler_detail補助evidenceはoptionalとして認識する()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "queue scheduler_contract=scheduler-v1 admission_action=enqueued accepted=True target_index=-1",
+                "queue scheduler_contract=scheduler-v1 sequence=1 has_request=True pending_count_after=0",
+                "queue scheduler_contract=scheduler-v1 timeout_released=true pending_count_after=4",
+            ]
+        );
+        DebugRuntimeLogPhase0EvidenceSummary nonSchedulerSummary =
+            DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+                ["diagnostic repeat skin refresh queued: accepted=True"]
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(summary.ObservedCount, Is.EqualTo(0));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(16));
+            Assert.That(summary.OptionalObservedCount, Is.EqualTo(5));
+            Assert.That(
+                summary.OptionalObservedKeys,
+                Is.EqualTo(
+                    [
+                        "scheduler-accepted",
+                        "scheduler-target-index",
+                        "scheduler-has-request",
+                        "scheduler-timeout-released",
+                        "scheduler-pending-count-after",
+                    ]
+                )
+            );
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.EndWith(
+                    "optional=scheduler-accepted,scheduler-target-index,scheduler-has-request,scheduler-timeout-released,scheduler-pending-count-after"
+                )
+            );
+            Assert.That(nonSchedulerSummary.OptionalObservedKeys, Is.Empty);
         });
     }
 
@@ -146,7 +199,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["image-pipeline"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(16));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -174,7 +227,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["worker"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(8));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(16));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(3));
             Assert.That(
                 summary.OptionalObservedKeys,
