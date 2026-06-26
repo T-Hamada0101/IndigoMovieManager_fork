@@ -70,6 +70,8 @@
 - 2026-06-27 Worker Hypatia: Worker detail optional evidence は `worker_contract=worker-job-v1` と同じ行にある時だけ採用する。汎用 `metric_count` 等の誤検出を避ける補強で、Phase0 必須12件と optional count 33 は変えない。
 - 2026-06-27 Worker Descartes: ReadModel Diff detail optional evidence は `diff_contract=readmodel-diff-v1` と同じ行にある時だけ採用する。汎用 diff field の誤検出を避ける補強で、Phase0 必須12件と optional count 33 は変えない。
 - 2026-06-27 Worker Hilbert(Image): Image detail optional evidence は `image_contract=image-pipeline-v1` と同じ行にある時だけ採用する。aggregate-decode-plan と stale discard の誤検出を避ける補強で、Phase0 必須12件と optional count 33 は変えない。
+- 2026-06-27 Worker Planck: 上側タブ切替入口で `ui shell input: operation_reason=upper-tab-switch` を出す。タブ切替後の snapshot を同じ語彙で読めるようにするだけで、Phase0 必須/optional evidence は増やさない。
+- 2026-06-27 Worker Lagrange(UI Shell): Logタブ Debug 切替入口で `ui shell input: operation_reason=log-tab-switch` を出す。設定保存と preview 更新の順序は変えず、Phase0 必須/optional evidence は増やさない。
 - Worker契約候補は `WorkerContractSourcePolicyTests` で WPF / Dispatcher / ViewModel / WebView2 / MainWindow を参照しない source policy を追加した。
 - thumbnail 進捗 refresh 予約は、coalesce / latest-only / shutdown guard を source policy で固定し、Scheduler 化の最初の足場にした。
 - `UiWorkRequest` を thumbnail 進捗 refresh 予約へ接続し、priority / coalesce / latest-only / log reason / shutdown受理可否を既存経路のまま説明できるようにした。
@@ -488,6 +490,15 @@
 - 親検証は focused test 88件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
 - 今回も実機同一runの新規採取ではない。次の実機採取では ReadModel Diff / Image detail が契約行に揃った時だけ optional evidence として出ることを見る。
 
+### 2.39 2026-06-27 PM親レビュー タブ系入力契約ログ補強
+
+- Worker Planck / Lagrange(UI Shell) は UI簡素化別スレと競合しないよう、上側タブ切替と Logタブ Debug 切替の入力ログ、対応 source policy tests に限定した。XAML、Themes、Settings、Phase0 audit policy は触っていない。
+- 親レビューでは、Worker Planck の上側タブ切替 `ui shell input` を採用した。`operation_reason=upper-tab-switch` / `trigger_reason=selection-changed` は固定値で、ログ cardinality を増やさず、`HandleUpperTabSelectionChangedCore()` の直前に snapshot を残す。
+- 親レビューでは、Worker Lagrange(UI Shell) の Logタブ Debug 切替 `ui shell input` を採用した。`operation_reason=log-tab-switch` / `trigger_reason=debug-switch-changed` は固定値で、設定保存 queue と preview refresh の順序は変えない。
+- Phase0 必須12件、optional count 33、完了条件は変えていない。タブ系入力ログは Phase1 の入力契約補強として扱い、採取手順を重くしない。
+- 親検証は focused test 84件成功、Release x64 build 成功、警告0件で完了した。
+- 今回も実機同一runの新規採取ではない。次の実機採取では search / sort / scroll / Player / manual reload に加え、必要に応じて upper-tab-switch / log-tab-switch の snapshot が同じ語彙で読めることを見る。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -530,6 +541,8 @@
 - 済: Player 再生状態の実遷移時も `ui shell input` と `operation_reason=player-playback` / `trigger_reason` / `UiOperationSnapshot` fields を `ui-priority` へ出す。同状態通知では出さず、Player 操作ログ量を増やしすぎない。
 - 済: PageUp / PageDown の実スクロール成功時も `ui shell input` と `operation_reason=scroll` / `trigger_reason=page-up|page-down` / `UiOperationSnapshot` fields を `ui-priority` へ出す。scroll は user-priority にせず recent viewport のまま扱う。
 - 済: Header Reload 明示手動再読込入口も `ui shell input` と `operation_reason=manual-reload` / `trigger_reason` / `is_manual_mode=true` / `UiOperationSnapshot` fields を `ui-priority` へ出す。Phase0 監査では必須 token を増やさず optional evidence として扱う。
+- 済: 上側タブ切替入口も `ui shell input` と `operation_reason=upper-tab-switch` / `trigger_reason=selection-changed` / `UiOperationSnapshot` fields を `ui-priority` へ出す。Phase0 監査の必須/optional evidence は増やさず、Phase1 の補助ログとして扱う。
+- 済: Logタブ Debug 切替入口も `ui shell input` と `operation_reason=log-tab-switch` / `trigger_reason=debug-switch-changed` / `UiOperationSnapshot` fields を `ui-priority` へ出す。設定保存と preview refresh の順序は変えない。
 - Scheduler本体はまだ作らず、既存の user-priority / watch suppression / Everything poll delay の判断口を揃える。
 
 ### Phase 2. ReadModel Store と Diff-first
