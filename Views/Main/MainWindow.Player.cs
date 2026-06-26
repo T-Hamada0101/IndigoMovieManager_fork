@@ -713,6 +713,18 @@ namespace IndigoMovieManager
             }
 
             // 実際の遷移だけをログ化し、Everything poll の延期理由と Player 操作を同じ語彙で結ぶ。
+            UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
+                IsUserPriorityWorkActive(),
+                isManualMode: false
+            );
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                BuildUiShellInputLogMessage(
+                    UiOperationPriorityPolicy.OperationReasonPlayerPlayback,
+                    reason,
+                    snapshot
+                )
+            );
             DebugRuntimeLog.Write(
                 "player",
                 $"player playback state changed: {BuildPlayerPlaybackCoreRouteLogFields(isActive, reason)}"

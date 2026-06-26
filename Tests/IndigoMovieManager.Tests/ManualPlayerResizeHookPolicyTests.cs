@@ -788,6 +788,49 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
+    public void PlayerPlaybackState_実遷移でUiShell入力snapshotをui_priorityへ残す()
+    {
+        // Player 遷移時点の UI Shell 状態を残し、同状態通知ではログを増やさない。
+        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
+        string stateMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void SetPlayerPlaybackActive(bool isActive, string reason = \"\")"
+        );
+
+        int noTransitionGuardIndex = stateMethod.IndexOf(
+            "if (previousValue == nextValue)",
+            StringComparison.Ordinal
+        );
+        int snapshotIndex = stateMethod.IndexOf(
+            "UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(",
+            StringComparison.Ordinal
+        );
+        int uiPriorityLogIndex = stateMethod.IndexOf("\"ui-priority\"", StringComparison.Ordinal);
+        int coreRouteLogIndex = stateMethod.IndexOf(
+            "BuildPlayerPlaybackCoreRouteLogFields(isActive, reason)",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(noTransitionGuardIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(snapshotIndex, Is.GreaterThan(noTransitionGuardIndex));
+            Assert.That(uiPriorityLogIndex, Is.GreaterThan(snapshotIndex));
+            Assert.That(coreRouteLogIndex, Is.GreaterThan(uiPriorityLogIndex));
+            Assert.That(stateMethod, Does.Contain("CaptureUserPriorityOperationSnapshot("));
+            Assert.That(stateMethod, Does.Contain("IsUserPriorityWorkActive()"));
+            Assert.That(stateMethod, Does.Contain("isManualMode: false"));
+            Assert.That(stateMethod, Does.Contain("BuildUiShellInputLogMessage("));
+            Assert.That(
+                stateMethod,
+                Does.Contain("UiOperationPriorityPolicy.OperationReasonPlayerPlayback,")
+            );
+            Assert.That(stateMethod, Does.Contain("reason,"));
+            Assert.That(stateMethod, Does.Contain("snapshot"));
+        });
+    }
+
+    [Test]
     public void PlayerPlayback_core_route_helperはPhase7契約fieldsを固定する()
     {
         string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
