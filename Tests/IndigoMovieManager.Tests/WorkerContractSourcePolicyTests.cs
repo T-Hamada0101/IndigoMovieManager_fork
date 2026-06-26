@@ -223,6 +223,11 @@ public sealed class WorkerContractSourcePolicyTests
             failureRecorderSource,
             Does.Contain("ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(")
         );
+        Assert.That(failureRecorderSource, Does.Contain("failuredb append:"));
+        Assert.That(failureRecorderSource, Does.Contain("BuildTerminalFailureWorkerLogFields("));
+        Assert.That(failureRecorderSource, Does.Contain("lane={lane} {workerResultFields}"));
+        Assert.That(failureRecorderSource, Does.Contain("message: \"failuredb handoff\""));
+        Assert.That(failureRecorderSource, Does.Contain("retryable: false"));
     }
 
     [Test]

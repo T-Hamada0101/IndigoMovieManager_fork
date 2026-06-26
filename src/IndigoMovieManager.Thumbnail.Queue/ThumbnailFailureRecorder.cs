@@ -137,8 +137,13 @@ namespace IndigoMovieManager.Thumbnail
                         UpdatedAtUtc = nowUtc,
                     }
                 );
+                string workerResultFields = BuildTerminalFailureWorkerLogFields(
+                    leasedItem,
+                    ex,
+                    failureKind
+                );
                 log?.Invoke(
-                    $"failuredb append: queue_id={leasedItem?.QueueId} failure_id={failureId} status=pending_rescue handoff={handoffType} failure_kind={failureKind} lane={lane}"
+                    $"failuredb append: queue_id={leasedItem?.QueueId} failure_id={failureId} status=pending_rescue handoff={handoffType} failure_kind={failureKind} lane={lane} {workerResultFields}"
                 );
             }
             catch (Exception appendEx)
@@ -170,6 +175,31 @@ namespace IndigoMovieManager.Thumbnail
                     FailureKind = failureKind.ToString(),
                     WorkerRole = "normal",
                 }
+            );
+        }
+
+        private static string BuildTerminalFailureWorkerLogFields(
+            QueueDbLeaseItem leasedItem,
+            Exception ex,
+            ThumbnailFailureKind failureKind
+        )
+        {
+            return ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(
+                ThumbnailQueueWorkerContractAdapter.ToWorkerJobRequestDto(leasedItem),
+                ThumbnailQueueWorkerContractAdapter.ToWorkerJobProgressDto(
+                    leasedItem,
+                    completedCount: 0,
+                    totalCount: 1,
+                    stage: ThumbnailQueueWorkerContractAdapter.ProgressStageCompleted,
+                    message: "failuredb handoff"
+                ),
+                ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                    leasedItem,
+                    succeeded: false,
+                    failureKind: failureKind.ToString(),
+                    failureReason: ex?.Message ?? "",
+                    retryable: false
+                )
             );
         }
 
