@@ -168,7 +168,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
             [
                 "watch diff_contract=readmodel-diff-v1 diff_change_set=single diff_changed_total=1",
-                "apply diff_full_fallback_reason=none diff_source_revision=10 diff_view_revision=11 diff_changed_total=120",
+                "apply diff_contract=readmodel-diff-v1 diff_full_fallback_reason=none diff_source_revision=10 diff_view_revision=11 diff_changed_total=120",
             ]
         );
 
@@ -196,6 +196,25 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
                     "optional=readmodel-diff-single,readmodel-diff-total,readmodel-diff-source-revision,readmodel-diff-view-revision,readmodel-diff-full-fallback-reason"
                 )
             );
+        });
+    }
+
+    [Test]
+    public void readmodel_diff詳細候補だけの行はoptionalとして認識しない()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "watch diff_change_set=single diff_changed_total=1",
+                "apply diff_full_fallback_reason=none diff_source_revision=10 diff_view_revision=11",
+                "apply diff_contract=readmodel-diff-v1",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.ObservedKeys, Is.Empty);
+            Assert.That(summary.OptionalObservedKeys, Is.Empty);
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(33));
         });
     }
 

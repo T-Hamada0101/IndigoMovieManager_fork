@@ -49,12 +49,27 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
             "ui-shell-player-playback-active",
             ["ui_shell_contract=ui-shell-v1", "is_player_playback_active="]
         ),
-        // ReadModel Diff 詳細は Phase2 補助 evidence として扱い、実機採取時の小変更判定を読みやすくする。
-        new("readmodel-diff-single", "diff_change_set=single"),
-        new("readmodel-diff-total", "diff_changed_total="),
-        new("readmodel-diff-source-revision", "diff_source_revision="),
-        new("readmodel-diff-view-revision", "diff_view_revision="),
-        new("readmodel-diff-full-fallback-reason", "diff_full_fallback_reason="),
+        // ReadModel Diff 詳細は契約名と同じ行にある時だけ拾い、汎用 diff field の誤検出を避ける。
+        RequiredPhase0EvidenceToken.All(
+            "readmodel-diff-single",
+            ["diff_contract=readmodel-diff-v1", "diff_change_set=single"]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "readmodel-diff-total",
+            ["diff_contract=readmodel-diff-v1", "diff_changed_total="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "readmodel-diff-source-revision",
+            ["diff_contract=readmodel-diff-v1", "diff_source_revision="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "readmodel-diff-view-revision",
+            ["diff_contract=readmodel-diff-v1", "diff_view_revision="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "readmodel-diff-full-fallback-reason",
+            ["diff_contract=readmodel-diff-v1", "diff_full_fallback_reason="]
+        ),
         // Scheduler 詳細は Phase3 補助 evidence として扱い、採取後の queue 判断を追いやすくする。
         RequiredPhase0EvidenceToken.All(
             "scheduler-accepted",

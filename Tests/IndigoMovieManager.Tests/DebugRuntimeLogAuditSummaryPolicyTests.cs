@@ -252,8 +252,8 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
             BuildSequencedLines(
                 [
-                    "watch diff_change_set=single diff_changed_total=1",
-                    "apply diff_full_fallback_reason=none diff_source_revision=10 diff_view_revision=11 diff_changed_total=120",
+                    "watch diff_contract=readmodel-diff-v1 diff_change_set=single diff_changed_total=1",
+                    "apply diff_contract=readmodel-diff-v1 diff_full_fallback_reason=none diff_source_revision=10 diff_view_revision=11 diff_changed_total=120",
                 ]
             )
         );
