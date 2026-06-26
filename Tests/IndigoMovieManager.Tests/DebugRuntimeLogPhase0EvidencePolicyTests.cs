@@ -96,11 +96,39 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
             Assert.That(summary.IsComplete, Is.False);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(1));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(3));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(1));
             Assert.That(summary.OptionalObservedKeys, Is.EqualTo(["manual-reload-input"]));
             Assert.That(summary.MissingKeys, Does.Contain("search-input"));
             Assert.That(summary.BuildSummaryText(), Does.EndWith("optional=manual-reload-input"));
+        });
+    }
+
+    [Test]
+    public void image_pipeline補助evidenceはoptionalとして認識する()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "image image_log_reason=image.thumbnail-error-list.aggregate-decode-plan image_contract=image-pipeline-v1",
+                "detail failure_reason=stale-image-request",
+                "player failure_reason=stale-player-right-rail",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(summary.ObservedKeys, Is.EqualTo(["image-pipeline"]));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(3));
+            Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
+            Assert.That(
+                summary.OptionalObservedKeys,
+                Is.EqualTo(["image-aggregate-decode-plan", "image-stale-discard"])
+            );
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.EndWith("optional=image-aggregate-decode-plan,image-stale-discard")
+            );
         });
     }
 

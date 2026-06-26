@@ -84,7 +84,13 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
             Assert.That(summary.Phase0Evidence.IsComplete, Is.True);
             Assert.That(
                 summary.Phase0Evidence.OptionalObservedKeys,
-                Is.EqualTo(["manual-reload-input"])
+                Is.EqualTo(
+                    [
+                        "manual-reload-input",
+                        "image-aggregate-decode-plan",
+                        "image-stale-discard",
+                    ]
+                )
             );
             Assert.That(summary.IsComplete, Is.True);
         });
@@ -191,6 +197,8 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
             "apply diff_contract=readmodel-diff-v1",
             "queue scheduler_contract=scheduler-v1",
             "image image_contract=image-pipeline-v1",
+            "image image_log_reason=image.thumbnail-error-list.aggregate-decode-plan",
+            "detail failure_reason=stale-player-right-rail",
             "save persist_contract=persistence-write-v1",
             "worker worker_contract=worker-job-v1",
             "thumbnail worker_kind=thumbnail-create",

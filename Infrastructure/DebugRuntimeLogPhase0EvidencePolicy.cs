@@ -28,6 +28,15 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
     [
         // manual reload 入力は Phase1 補助 evidence として扱い、Phase0 必須12件は増やさない。
         new("manual-reload-input", "ui shell input: operation_reason=manual-reload"),
+        // Phase4 画像 pipeline の実機確認は補助 evidence に留め、必須12件の完了条件は動かさない。
+        new(
+            "image-aggregate-decode-plan",
+            "image_log_reason=image.thumbnail-error-list.aggregate-decode-plan"
+        ),
+        new(
+            "image-stale-discard",
+            ["failure_reason=stale-image-request", "failure_reason=stale-player-right-rail"]
+        ),
     ];
 
     public static DebugRuntimeLogPhase0EvidenceSummary Evaluate(IEnumerable<string> logLines)

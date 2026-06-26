@@ -125,6 +125,35 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
     }
 
     [Test]
+    public void image_pipeline補助evidenceはsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "image image_log_reason=image.thumbnail-error-list.aggregate-decode-plan",
+                    "detail failure_reason=stale-image-request",
+                    "player failure_reason=stale-player-right-rail",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedCount, Is.EqualTo(0));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(["image-aggregate-decode-plan", "image-stale-discard"])
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith("optional=image-aggregate-decode-plan,image-stale-discard")
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("image"));
+        });
+    }
+
+    [Test]
     public void 欠けがある時も既存summaryの順序と文言が安定する()
     {
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
