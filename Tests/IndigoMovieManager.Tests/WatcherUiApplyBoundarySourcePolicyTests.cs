@@ -196,6 +196,30 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
     }
 
     [Test]
+    public void WatchUiReloadPolicy_applyログはcore_routeとchange_setとdiff_planを同じ行に載せる()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
+        string adapterMethod = GetMethodBlock(source, "private void ApplyWatchUiApplyRequest(");
+        string applyLogLine = GetLineContaining(adapterMethod, "watch ui apply request:");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                applyLogLine,
+                Does.Contain("BuildWatchUiApplyCoreRouteLogFields(request)")
+            );
+            Assert.That(
+                applyLogLine,
+                Does.Contain("BuildWatchUiApplyChangeSetLogFields(request.ChangedMovies, request.ChangedMovieCount)")
+            );
+            Assert.That(
+                applyLogLine,
+                Does.Contain("MovieViewDiffApplyPolicy.BuildDiffApplyPlanLogFields(request.DiffApplyPlan)")
+            );
+        });
+    }
+
+    [Test]
     public void WatchUiReloadPolicy_core_route_helperはPhase7契約fieldsを固定する()
     {
         string source = GetRepoText("Watcher", "MainWindow.WatchUiReloadPolicy.cs");
@@ -355,5 +379,14 @@ public sealed class WatcherUiApplyBoundarySourcePolicyTests
 
         Assert.Fail($"{signature} の本文終了が見つかりません。");
         return "";
+    }
+
+    private static string GetLineContaining(string source, string marker)
+    {
+        string? line = source.Replace("\r\n", "\n")
+            .Split('\n')
+            .FirstOrDefault(x => x.Contains(marker, StringComparison.Ordinal));
+        Assert.That(line, Is.Not.Null, $"{marker} を含む行が見つかりません。");
+        return line!;
     }
 }

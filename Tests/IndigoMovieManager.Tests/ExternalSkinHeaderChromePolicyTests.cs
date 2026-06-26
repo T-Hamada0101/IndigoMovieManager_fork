@@ -201,6 +201,52 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     }
 
     [Test]
+    public void 外部skin_refresh_core_route詳細はqueue_begin_batchログ行に同居する()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
+        string queueMethod = GetMethodBlock(
+            source,
+            "private bool QueueExternalSkinHostRefresh("
+        );
+        string batchEndMethod = GetMethodBlock(
+            source,
+            "private void EndExternalSkinHostRefreshBatch("
+        );
+        string refreshMethod = GetMethodBlock(
+            source,
+            "private async Task RefreshExternalSkinHostPresentationAsync("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                GetLineContaining(queueMethod, "refresh deferred:"),
+                Does.Contain("{deferredCoreFields} {deferredSchedulerFields}")
+            );
+            Assert.That(
+                GetLineContaining(queueMethod, "refresh queued:"),
+                Does.Contain("{queueCoreFields} {queueSchedulerFields}")
+            );
+            Assert.That(
+                GetLineContaining(queueMethod, "refresh queue rejected:"),
+                Does.Contain("{queueCoreFields} {queueSchedulerFields}")
+            );
+            Assert.That(
+                GetLineContaining(batchEndMethod, "refresh batch flush:"),
+                Does.Contain("{flushCoreFields}")
+            );
+            Assert.That(
+                GetLineContaining(refreshMethod, "refresh begin:"),
+                Does.Contain("{beginCoreFields}")
+            );
+            Assert.That(
+                GetLineContaining(refreshMethod, "refresh begin:"),
+                Does.Contain("reason={reason}")
+            );
+        });
+    }
+
+    [Test]
     public void 診断用same_document確認refreshは明示フラグとno_persist時だけ動く()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.cs");
@@ -700,6 +746,15 @@ public sealed class ExternalSkinHeaderChromePolicyTests
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static string GetLineContaining(string source, string marker)
+    {
+        string? line = source.Replace("\r\n", "\n")
+            .Split('\n')
+            .FirstOrDefault(x => x.Contains(marker, StringComparison.Ordinal));
+        Assert.That(line, Is.Not.Null, $"{marker} を含む行が見つかりません。");
+        return line!;
     }
 
     private static IEnumerable<string> EnumerateRepoSearchDirectories(

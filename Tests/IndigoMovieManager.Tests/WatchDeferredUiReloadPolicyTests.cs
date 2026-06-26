@@ -774,6 +774,34 @@ public sealed class WatchDeferredUiReloadPolicyTests
         );
     }
 
+    [Test]
+    public void BuildWatchUiApplyCoreRouteLogFields_空reasonと空operationは既定語彙へ畳む()
+    {
+        MainWindow.WatchUiApplyRequest request = MainWindow.BuildWatchUiApplyRequest(
+            "28",
+            useQueryOnlyReload: true,
+            "watch-test",
+            []
+        );
+        request = request with
+        {
+            Reason = "",
+            WorkRequest = request.WorkRequest with
+            {
+                LogReason = "",
+            },
+        };
+
+        string result = MainWindow.BuildWatchUiApplyCoreRouteLogFields(request);
+
+        Assert.That(
+            result,
+            Is.EqualTo(
+                "core_route=watch-ui-apply watch_apply_kind=in-memory-read-model-refresh watch_reason=watch operation_reason=unknown"
+            )
+        );
+    }
+
     [TestCase(0, "none")]
     [TestCase(1, "single")]
     [TestCase(2, "multiple")]

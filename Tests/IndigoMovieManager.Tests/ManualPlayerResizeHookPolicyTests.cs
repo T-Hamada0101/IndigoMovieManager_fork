@@ -857,6 +857,31 @@ public sealed class ManualPlayerResizeHookPolicyTests
             Assert.That(helperMethod, Does.Contain("player_surface_ready="));
             Assert.That(helperMethod, Does.Contain("player_transition="));
             Assert.That(helperMethod, Does.Contain("ResolvePlayerPlaybackTransitionLogValue(isActive)"));
+            Assert.That(helperMethod, Does.Contain("reason="));
+        });
+    }
+
+    [Test]
+    public void PlayerPlayback_core_route詳細はstate_changedログ行に同居する()
+    {
+        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
+        string stateMethod = GetMethodBlock(
+            mainWindowPlayerSource,
+            "private void SetPlayerPlaybackActive(bool isActive, string reason = \"\")"
+        );
+        string stateChangedLogLine = GetLineContaining(
+            stateMethod,
+            "player playback state changed:"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                stateChangedLogLine,
+                Does.Contain("BuildPlayerPlaybackCoreRouteLogFields(isActive, reason)")
+            );
+            Assert.That(stateMethod, Does.Contain("BuildUiShellInputLogMessage("));
+            Assert.That(stateMethod, Does.Contain("UiOperationPriorityPolicy.OperationReasonPlayerPlayback"));
         });
     }
 
@@ -876,6 +901,11 @@ public sealed class ManualPlayerResizeHookPolicyTests
             isActive: false,
             "stop-webview"
         );
+        string emptyReasonResult = InvokePlayerPlaybackCoreRouteLogFields(
+            window,
+            isActive: true,
+            null!
+        );
 
         Assert.Multiple(() =>
         {
@@ -889,6 +919,12 @@ public sealed class ManualPlayerResizeHookPolicyTests
                 stopResult,
                 Is.EqualTo(
                     "core_route=player-playback operation_reason=player-playback player_surface=mediaelement player_surface_ready=false active=false player_transition=stop reason=stop-webview"
+                )
+            );
+            Assert.That(
+                emptyReasonResult,
+                Is.EqualTo(
+                    "core_route=player-playback operation_reason=player-playback player_surface=mediaelement player_surface_ready=false active=true player_transition=start reason="
                 )
             );
         });
@@ -1053,6 +1089,15 @@ public sealed class ManualPlayerResizeHookPolicyTests
 
         Assert.Fail($"{signature} の本文終了が見つかりません。");
         return string.Empty;
+    }
+
+    private static string GetLineContaining(string source, string marker)
+    {
+        string? line = source.Replace("\r\n", "\n")
+            .Split('\n')
+            .FirstOrDefault(x => x.Contains(marker, StringComparison.Ordinal));
+        Assert.That(line, Is.Not.Null, $"{marker} を含む行が見つかりません。");
+        return line!;
     }
 
     private static void AssertPlayerSurfaceMethodDoesNotPersist(string method)
