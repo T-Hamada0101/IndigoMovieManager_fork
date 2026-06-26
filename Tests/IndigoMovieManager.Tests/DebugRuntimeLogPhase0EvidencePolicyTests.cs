@@ -100,6 +100,10 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(1));
             Assert.That(summary.OptionalObservedKeys, Is.EqualTo(["manual-reload-input"]));
             Assert.That(summary.MissingKeys, Does.Contain("search-input"));
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.Contain("optional_evidence=1/28 optional=manual-reload-input")
+            );
             Assert.That(summary.BuildSummaryText(), Does.EndWith("optional=manual-reload-input"));
         });
     }

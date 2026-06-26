@@ -269,6 +269,7 @@ public sealed class DebugRuntimeLogPhase0EvidenceSummary
             return summary;
         }
 
-        return $"{summary} optional={string.Join(",", OptionalObservedKeys)}";
+        string optional = string.Join(",", OptionalObservedKeys);
+        return $"{summary} optional_evidence={OptionalObservedCount}/{TotalOptionalCount} optional={optional}";
     }
 }

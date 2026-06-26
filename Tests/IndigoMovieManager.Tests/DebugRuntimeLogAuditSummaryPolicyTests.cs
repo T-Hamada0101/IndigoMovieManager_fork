@@ -118,6 +118,10 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
+                Does.Contain("optional_evidence=1/28 optional=manual-reload-input")
+            );
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
                 Does.EndWith("optional=manual-reload-input")
             );
             Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("search"));
