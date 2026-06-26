@@ -198,6 +198,54 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
+    public void PageUpDown成功後にUiShell入力snapshotをログへ残す()
+    {
+        string pageScrollSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.PageScroll.cs"
+        );
+        string pageScrollMethod = GetMethodBlock(
+            pageScrollSource,
+            "private bool TryHandleUpperTabPageScroll("
+        );
+
+        int scrollAttemptIndex = pageScrollMethod.IndexOf(
+            "if (!UpperTabScrollNavigator.TryScrollPage(",
+            StringComparison.Ordinal
+        );
+        int refreshRequestIndex = pageScrollMethod.IndexOf(
+            "RequestUpperTabVisibleRangeRefresh(",
+            scrollAttemptIndex,
+            StringComparison.Ordinal
+        );
+        int snapshotIndex = pageScrollMethod.IndexOf(
+            "UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(",
+            StringComparison.Ordinal
+        );
+        int inputLogIndex = pageScrollMethod.IndexOf(
+            "BuildUiShellInputLogMessage(\"scroll\", triggerReason, snapshot)",
+            StringComparison.Ordinal
+        );
+        int endLogIndex = pageScrollMethod.IndexOf("page scroll end:", StringComparison.Ordinal);
+        int inputLogCount = pageScrollMethod.Split("BuildUiShellInputLogMessage(").Length - 1;
+
+        Assert.That(
+            pageScrollMethod,
+            Does.Contain("string triggerReason = scrollForward.Value ? \"page-down\" : \"page-up\";")
+        );
+        Assert.That(pageScrollMethod, Does.Contain("reason: triggerReason"));
+        Assert.That(pageScrollMethod, Does.Contain("IsUserPriorityWorkActive()"));
+        Assert.That(pageScrollMethod, Does.Contain("isManualMode: false"));
+        Assert.That(inputLogCount, Is.EqualTo(1));
+        Assert.That(scrollAttemptIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(refreshRequestIndex, Is.GreaterThan(scrollAttemptIndex));
+        Assert.That(snapshotIndex, Is.GreaterThan(refreshRequestIndex));
+        Assert.That(inputLogIndex, Is.GreaterThan(snapshotIndex));
+        Assert.That(endLogIndex, Is.GreaterThan(inputLogIndex));
+    }
+
+    [Test]
     public void Gate側の同一snapshot判定はclear前にno_opで返す()
     {
         string source = GetRepoText("UpperTabs", "Common", "UpperTabActivationGate.cs");

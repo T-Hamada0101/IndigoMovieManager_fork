@@ -35,6 +35,7 @@ namespace IndigoMovieManager
             int currentTabIndex = TryGetCurrentUpperTabFixedIndex(out int resolvedTabIndex)
                 ? resolvedTabIndex
                 : -1;
+            string triggerReason = scrollForward.Value ? "page-down" : "page-up";
             Stopwatch stopwatch = Stopwatch.StartNew();
             DebugRuntimeLog.Write(
                 "ui-tempo",
@@ -58,7 +59,15 @@ namespace IndigoMovieManager
             SuppressStartupAppendAfterPageScrollBriefly();
             RequestUpperTabVisibleRangeRefresh(
                 immediate: true,
-                reason: scrollForward.Value ? "page-down" : "page-up"
+                reason: triggerReason
+            );
+            UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
+                IsUserPriorityWorkActive(),
+                isManualMode: false
+            );
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                BuildUiShellInputLogMessage("scroll", triggerReason, snapshot)
             );
             DebugRuntimeLog.Write(
                 "ui-tempo",
