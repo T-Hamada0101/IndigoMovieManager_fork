@@ -1,6 +1,6 @@
 # Implementation Plan OS互換デフォルトテーマと配色シンプル化 2026-06-25
 
-最終更新日: 2026-06-25
+最終更新日: 2026-06-27
 
 ## 目的
 
@@ -16,6 +16,7 @@
 - ボタンとタブは軽量テンプレートを持たせ、選択状態や hover 状態で背景と文字が分離しないようにする。
 - 本体ヘッダーとメインタブの操作 UI は下部タブ「サムネイル進捗」程度の高密度に寄せ、サムネイル表示領域を優先して確保する。
 - ヘッダーは 32px 帯、検索欄は 26px、ヘッダーボタン / コンパクト ComboBox / メインタブは 24px 帯を基準にする。
+- MainWindow 標準ヘッダーの `MainHeaderStandardChromePanel` は 10列構成、検索欄 / DBパス / fallback notice の配置、ヘッダーボタンと ComboBox の compact style を source policy で固定し、UI簡素化後の高密度配置を戻さない。
 - 上部タブは個別 `Background` を持たせず、`AppTabItemStyle` の標準色へ任せる。
 - ComboBox とドロップダウン項目は `SystemColors.Window*` 系へ寄せ、閉じた状態と展開状態で背景色が割れないようにする。
 - ComboBox の閉じた状態は軽量テンプレートで描画し、入力型 ComboBox 用の `PART_EditableTextBox` は残して検索・設定入力を壊さない。
@@ -51,6 +52,7 @@
 - `SystemAuto` は OS 状態に応じて `SimpleLight` または `SimpleDark` を読むこと。
 - `SystemColors.*BrushKey` と軽量テンプレートの存在をソースポリシーテストで守ること。
 - 本体ヘッダー / メインタブの高密度寸法が維持され、旧 48px / 36px 帯へ戻っていないこと。
+- MainWindow 標準ヘッダーの 10列構成、検索欄の 26px 帯、DBパス表示、fallback notice、ヘッダーボタン / ComboBox の compact style を source policy test で守ること。
 - 上部タブに `UpperTabBackground` の個別指定が残っていないこと。
 - ComboBoxItem の暗黙 style と動画一覧パネル背景の標準色指定をテストで守ること。
 - ComboBox / ComboBoxItem の軽量テンプレート、`PART_Popup`、`PART_EditableTextBox` をソースポリシーテストで守ること。
