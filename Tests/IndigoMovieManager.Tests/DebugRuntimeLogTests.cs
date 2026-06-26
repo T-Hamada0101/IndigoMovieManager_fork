@@ -1,4 +1,5 @@
 using IndigoMovieManager;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace IndigoMovieManager.Tests;
@@ -151,6 +152,31 @@ public sealed class DebugRuntimeLogTests
     }
 
     [Test]
+    public void RuntimeLog入口はSource上でもDEBUG限定へ戻さない()
+    {
+        string source = GetRepoText("Infrastructure", "DebugRuntimeLog.cs");
+
+        foreach (string methodName in new[] { "Write", "TaskStart", "TaskEnd" })
+        {
+            string entrance = GetMethodEntrance(source, methodName);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    ContainsConditionalDebugAttribute(entrance),
+                    Is.False,
+                    $"{methodName} の入口に Conditional(DEBUG) を戻すと Release の debug-runtime.log が更新されません。"
+                );
+                Assert.That(
+                    ContainsDebugPreprocessorGuard(entrance),
+                    Is.False,
+                    $"{methodName} の入口を #if DEBUG 前提にすると Release 実機ログ入口が消えます。"
+                );
+            });
+        }
+    }
+
+    [Test]
     public void BuildLineForTesting_改行とタブを潰して1行形式を維持する()
     {
         DateTime localNow = new(2026, 4, 16, 12, 34, 56, 789, DateTimeKind.Local);
@@ -294,5 +320,80 @@ public sealed class DebugRuntimeLogTests
         IndigoMovieManager.Properties.Settings.Default.DebugLogDebugToolEnabled = debug;
         IndigoMovieManager.Properties.Settings.Default.DebugLogDatabaseEnabled = database;
         IndigoMovieManager.Properties.Settings.Default.DebugLogOtherEnabled = other;
+    }
+
+    private static string GetRepoText(params string[] relativePathParts)
+    {
+        string repoRoot = FindRepoRoot();
+        string candidate = Path.Combine([repoRoot, .. relativePathParts]);
+        Assert.That(File.Exists(candidate), Is.True, candidate);
+        return File.ReadAllText(candidate);
+    }
+
+    private static string FindRepoRoot([CallerFilePath] string callerFilePath = "")
+    {
+        // 呼び出し元から親へたどり、テスト実行場所に依存しない repo root を探す。
+        DirectoryInfo? current = new(
+            Path.GetDirectoryName(callerFilePath) ?? Directory.GetCurrentDirectory()
+        );
+        while (current != null)
+        {
+            if (
+                File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj"))
+                && Directory.Exists(Path.Combine(current.FullName, "Tests"))
+            )
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail("repo root を解決できませんでした。");
+        return "";
+    }
+
+    private static string GetMethodEntrance(string source, string methodName)
+    {
+        string signature = $"internal static void {methodName}(";
+        string[] lines = source.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        int lineIndex = Array.FindIndex(
+            lines,
+            line => line.Contains(signature, StringComparison.Ordinal)
+        );
+
+        Assert.That(lineIndex, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
+
+        int start = Math.Max(0, lineIndex - 8);
+        int endExclusive = Math.Min(lines.Length, lineIndex + 9);
+        return string.Join("\n", lines.Skip(start).Take(endExclusive - start));
+    }
+
+    private static bool ContainsConditionalDebugAttribute(string source)
+    {
+        string compact = new(source.Where(character => !char.IsWhiteSpace(character)).ToArray());
+        return compact.Contains("[Conditional(\"DEBUG\")]", StringComparison.Ordinal)
+            || compact.Contains("[ConditionalAttribute(\"DEBUG\")]", StringComparison.Ordinal)
+            || compact.Contains("[System.Diagnostics.Conditional(\"DEBUG\")]", StringComparison.Ordinal)
+            || compact.Contains(
+                "[System.Diagnostics.ConditionalAttribute(\"DEBUG\")]",
+                StringComparison.Ordinal
+            );
+    }
+
+    private static bool ContainsDebugPreprocessorGuard(string source)
+    {
+        return source
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Any(
+                line =>
+                    (
+                        line.StartsWith("#if", StringComparison.Ordinal)
+                        || line.StartsWith("#elif", StringComparison.Ordinal)
+                    ) && line.Contains("DEBUG", StringComparison.Ordinal)
+            );
     }
 }
