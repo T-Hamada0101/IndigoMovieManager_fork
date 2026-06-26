@@ -311,6 +311,90 @@ public sealed class ThemeModeTests
     }
 
     [Test]
+    public void MainWindow_標準ヘッダーの高密度配置をsource_policyで固定する()
+    {
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string standardHeader = GetSourceSection(
+            mainWindowXaml,
+            "x:Name=\"MainHeaderStandardChromePanel\"",
+            "x:Name=\"ExternalSkinMinimalChromePanel\""
+        );
+        string headerColumns = GetSourceSection(
+            standardHeader,
+            "<Grid.ColumnDefinitions>",
+            "</Grid.ColumnDefinitions>"
+        );
+        string[] columnDefinitions = headerColumns
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("<ColumnDefinition", StringComparison.Ordinal))
+            .ToArray();
+        string fallbackNotice = GetSourceSection(
+            mainWindowXaml,
+            "x:Name=\"ExternalSkinFallbackNoticeBorder\"",
+            "</Border>"
+        );
+        string searchBox = GetNamedElementStartTag(mainWindowXaml, "SearchBox");
+        string comboSort = GetNamedElementStartTag(mainWindowXaml, "ComboSort");
+        string skinSelector = GetNamedElementStartTag(
+            mainWindowXaml,
+            "ExternalSkinMinimalSkinSelector"
+        );
+        string[] headerButtonNames =
+        [
+            "BtnNew",
+            "BtnOpen",
+            "BtnSettings",
+            "BulkTagAssignButton",
+            "ReloadButton",
+            "ExternalSkinFallbackRetryButton",
+            "ExternalSkinFallbackOpenRuntimeDownloadButton",
+            "ExternalSkinFallbackOpenLogButton",
+        ];
+
+        Assert.Multiple(() =>
+        {
+            // ヘッダーの密度は表示面積に直結するため、MainWindow側の配置契約だけを固定する。
+            Assert.That(standardHeader, Does.Contain("Height=\"26\""));
+
+            Assert.That(columnDefinitions, Has.Length.EqualTo(10));
+            Assert.That(
+                columnDefinitions[0],
+                Is.EqualTo("<ColumnDefinition Width=\"2*\" MinWidth=\"150\" MaxWidth=\"260\" />")
+            );
+            Assert.That(
+                columnDefinitions[8],
+                Is.EqualTo("<ColumnDefinition Width=\"*\" MinWidth=\"0\" />")
+            );
+            Assert.That(columnDefinitions[^1], Is.EqualTo("<ColumnDefinition Width=\"Auto\" />"));
+
+            Assert.That(fallbackNotice, Does.Contain("Grid.Column=\"9\""));
+            Assert.That(fallbackNotice, Does.Contain("MaxWidth=\"320\""));
+            Assert.That(fallbackNotice, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
+
+            Assert.That(searchBox, Does.Contain("FontSize=\"11\""));
+            Assert.That(searchBox, Does.Contain("Style=\"{StaticResource AppSearchComboBoxStyle}\""));
+            Assert.That(comboSort, Does.Contain("FontSize=\"11\""));
+            Assert.That(comboSort, Does.Contain("Style=\"{StaticResource AppCompactComboBoxStyle}\""));
+            Assert.That(skinSelector, Does.Contain("FontSize=\"11\""));
+            Assert.That(
+                skinSelector,
+                Does.Contain("Style=\"{StaticResource AppCompactComboBoxStyle}\"")
+            );
+
+            foreach (string buttonName in headerButtonNames)
+            {
+                string button = GetNamedElementStartTag(mainWindowXaml, buttonName);
+                Assert.That(
+                    button,
+                    Does.Contain("Style=\"{StaticResource AppHeaderButtonStyle}\""),
+                    $"{buttonName} はヘッダー共通ボタンstyleを使う必要があります。"
+                );
+            }
+        });
+    }
+
+    [Test]
     public void RescueTab_対象タブComboBoxは共通ComboBox色へ寄せる()
     {
         string rescueTabXaml = GetRepoText("UpperTabs", "Rescue", "RescueTabView.xaml");
@@ -704,6 +788,34 @@ public sealed class ThemeModeTests
     {
         string path = Path.Combine([FindRepositoryRoot(), .. relativePathParts]);
         return File.ReadAllText(path);
+    }
+
+    private static string GetSourceSection(string source, string startMarker, string endMarker)
+    {
+        int markerIndex = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.That(markerIndex, Is.GreaterThanOrEqualTo(0), $"{startMarker} が見つかりません。");
+
+        int startIndex = source.LastIndexOf('<', markerIndex);
+        Assert.That(startIndex, Is.GreaterThanOrEqualTo(0), $"{startMarker} の開始タグを見つけられません。");
+
+        int endIndex = source.IndexOf(endMarker, markerIndex, StringComparison.Ordinal);
+        Assert.That(endIndex, Is.GreaterThanOrEqualTo(0), $"{endMarker} が見つかりません。");
+
+        return source[startIndex..endIndex];
+    }
+
+    private static string GetNamedElementStartTag(string source, string xName)
+    {
+        int nameIndex = source.IndexOf($"x:Name=\"{xName}\"", StringComparison.Ordinal);
+        Assert.That(nameIndex, Is.GreaterThanOrEqualTo(0), $"{xName} が見つかりません。");
+
+        int startIndex = source.LastIndexOf('<', nameIndex);
+        Assert.That(startIndex, Is.GreaterThanOrEqualTo(0), $"{xName} の開始タグを見つけられません。");
+
+        int endIndex = source.IndexOf('>', nameIndex);
+        Assert.That(endIndex, Is.GreaterThanOrEqualTo(0), $"{xName} の終了位置を見つけられません。");
+
+        return source[startIndex..(endIndex + 1)];
     }
 
     private void RestoreApplicationResources()
