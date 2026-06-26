@@ -89,6 +89,10 @@ public sealed class UiHangOverlayLifecycleSourceTests
             Assert.That(pendingLogMethod, Does.Contain("ReleaseReasonCanceled"));
             Assert.That(
                 pendingLogMethod,
+                Does.Contain("{UiWorkSchedulerPolicy.SchedulerContractLogField}")
+            );
+            Assert.That(
+                pendingLogMethod,
                 Does.Contain("ui work scheduler shutdown pending item")
             );
         });

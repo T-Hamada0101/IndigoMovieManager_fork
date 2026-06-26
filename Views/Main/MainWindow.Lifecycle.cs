@@ -366,7 +366,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "lifecycle",
-                $"ui work scheduler shutdown pending: reason={reason ?? ""} pending_count={pendingRequests.Length}"
+                $"ui work scheduler shutdown pending: reason={reason ?? ""} pending_count={pendingRequests.Length} {UiWorkSchedulerPolicy.SchedulerContractLogField}"
             );
             foreach (UiWorkSchedulerPendingRequest pendingRequest in pendingRequests)
             {
