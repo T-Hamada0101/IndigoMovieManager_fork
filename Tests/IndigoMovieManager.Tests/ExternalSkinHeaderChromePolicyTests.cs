@@ -216,6 +216,10 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             source,
             "private async Task RefreshExternalSkinHostPresentationAsync("
         );
+        string refreshEndMethod = GetMethodBlock(
+            source,
+            "private void WriteExternalSkinRefreshEndLog("
+        );
 
         Assert.Multiple(() =>
         {
@@ -242,6 +246,15 @@ public sealed class ExternalSkinHeaderChromePolicyTests
             Assert.That(
                 GetLineContaining(refreshMethod, "refresh begin:"),
                 Does.Contain("reason={reason}")
+            );
+            Assert.That(refreshEndMethod, Does.Contain("string endCoreFields ="));
+            Assert.That(
+                refreshEndMethod,
+                Does.Contain("BuildExternalSkinRefreshCoreLogFields(")
+            );
+            Assert.That(
+                GetLineContaining(refreshEndMethod, "refresh end:"),
+                Does.Contain("{endCoreFields}")
             );
         });
     }

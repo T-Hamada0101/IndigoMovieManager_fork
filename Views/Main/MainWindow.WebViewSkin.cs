@@ -616,9 +616,14 @@ namespace IndigoMovieManager
                 includeZeroValues: true
             );
             string dbKey = ResolveExternalSkinRefreshDbKeyForTesting(MainVM?.DbInfo?.DBFullPath ?? "");
+            string endCoreFields = BuildExternalSkinRefreshCoreLogFields(
+                reason,
+                requestTraceId,
+                definitionRefreshMode
+            );
             DebugRuntimeLog.Write(
                 "skin-webview",
-                $"refresh end: request={requestTraceId} generation={generation} outcome={refreshOutcome} definition_mode={definitionRefreshMode} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={(refreshStopwatch?.Elapsed.TotalMilliseconds ?? 0):F1} prepare_ms={(operationResult?.PrepareElapsedMilliseconds ?? 0):F1} file_prepare_ms={(operationResult?.FilePrepareElapsedMilliseconds ?? 0):F1} host_navigate_ms={(operationResult?.HostNavigateElapsedMilliseconds ?? 0):F1} initial_doc_ms={(operationResult?.InitialDocumentBuildElapsedMilliseconds ?? 0):F1} navigate_to_string_ms={(operationResult?.NavigateToStringElapsedMilliseconds ?? 0):F1} navigate_skipped_current={(operationResult?.NavigateSkipped == true)} navigate_skip_reason='{operationResult?.NavigateSkipReason ?? ""}'{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} skip_stage={skipStage ?? ""} reason={reason}"
+                $"refresh end: {endCoreFields} request={requestTraceId} generation={generation} outcome={refreshOutcome} definition_mode={definitionRefreshMode} active={externalSkinActive} ready={hostReady} skinResolved='{externalSkinDefinition?.Name ?? ""}' dbKey='{dbKey}' errorType='{operationResult?.ErrorType ?? ""}' elapsed_ms={(refreshStopwatch?.Elapsed.TotalMilliseconds ?? 0):F1} prepare_ms={(operationResult?.PrepareElapsedMilliseconds ?? 0):F1} file_prepare_ms={(operationResult?.FilePrepareElapsedMilliseconds ?? 0):F1} host_navigate_ms={(operationResult?.HostNavigateElapsedMilliseconds ?? 0):F1} initial_doc_ms={(operationResult?.InitialDocumentBuildElapsedMilliseconds ?? 0):F1} navigate_to_string_ms={(operationResult?.NavigateToStringElapsedMilliseconds ?? 0):F1} navigate_skipped_current={(operationResult?.NavigateSkipped == true)} navigate_skip_reason='{operationResult?.NavigateSkipReason ?? ""}'{(string.IsNullOrWhiteSpace(metricSummary) ? "" : " " + metricSummary)} skip_stage={skipStage ?? ""} reason={reason}"
             );
         }
 
