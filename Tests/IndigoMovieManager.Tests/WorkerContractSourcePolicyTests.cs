@@ -205,8 +205,10 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("worker_stage="));
         Assert.That(adapterSource, Does.Contain("artifact_kind="));
         Assert.That(adapterSource, Does.Contain("retryability="));
+        Assert.That(adapterSource, Does.Contain("retryable="));
         Assert.That(adapterSource, Does.Contain("elapsed_ms="));
         Assert.That(adapterSource, Does.Contain("metric_count="));
+        Assert.That(adapterSource, Does.Contain("failure_kind="));
         Assert.That(adapterSource, Does.Contain("failure_reason="));
         Assert.That(adapterSource, Does.Contain("progress_completed="));
         Assert.That(adapterSource, Does.Contain("queue_id="));
@@ -283,10 +285,13 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(jobJsonClientSource, Does.Contain("input_count="));
         Assert.That(jobJsonClientSource, Does.Contain("capability_count="));
         Assert.That(jobJsonClientSource, Does.Contain("diagnostic_context_count="));
+        Assert.That(jobJsonClientSource, Does.Contain("worker_stage="));
         Assert.That(jobJsonClientSource, Does.Contain("artifact_kind="));
         Assert.That(jobJsonClientSource, Does.Contain("retryability="));
+        Assert.That(jobJsonClientSource, Does.Contain("retryable="));
         Assert.That(jobJsonClientSource, Does.Contain("elapsed_ms="));
         Assert.That(jobJsonClientSource, Does.Contain("metric_count="));
+        Assert.That(jobJsonClientSource, Does.Contain("failure_kind="));
         Assert.That(jobJsonClientSource, Does.Contain("failure_reason="));
         Assert.That(jobJsonClientSource, Does.Contain("output_artifact_path="));
         Assert.That(jobJsonClientSource, Does.Contain("requested_failure_id="));
@@ -381,9 +386,12 @@ public sealed class WorkerContractSourcePolicyTests
         Assert.That(adapterSource, Does.Contain("worker_status="));
         Assert.That(adapterSource, Does.Contain("worker_stage="));
         Assert.That(adapterSource, Does.Contain("artifact_kind="));
+        Assert.That(adapterSource, Does.Contain("retryability="));
         Assert.That(adapterSource, Does.Contain("retryable="));
         Assert.That(adapterSource, Does.Contain("elapsed_ms="));
         Assert.That(adapterSource, Does.Contain("metric_count="));
+        Assert.That(adapterSource, Does.Contain("failure_kind="));
+        Assert.That(adapterSource, Does.Contain("failure_reason="));
         Assert.That(adapterSource, Does.Contain("input_count="));
         Assert.That(adapterSource, Does.Contain("capability_count="));
         Assert.That(adapterSource, Does.Contain("diagnostic_context_count="));

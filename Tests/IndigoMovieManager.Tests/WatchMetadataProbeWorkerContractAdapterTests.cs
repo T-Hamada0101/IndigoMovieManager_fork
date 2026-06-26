@@ -346,4 +346,72 @@ public sealed class WatchMetadataProbeWorkerContractAdapterTests
             Assert.That(combinedFields, Does.Contain("movie_length_seconds=120"));
         });
     }
+
+    [Test]
+    public void MetadataProbeログFieldsは失敗Skip相当の語彙も1行で読める()
+    {
+        WatchMetadataProbeRequest request =
+            new()
+            {
+                MoviePath = "%USERPROFILE%/videos/sample.mp4",
+                ExistingMovieLengthSeconds = 42,
+                HasMovieSizeDirty = true,
+                Source = "watch-existing-movie",
+                RequestedAtUtc = DateTime.SpecifyKind(
+                    new DateTime(2026, 6, 18, 15, 0, 0),
+                    DateTimeKind.Utc
+                ),
+            };
+        WorkerJobRequestDto requestDto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobRequestDto(request);
+        WorkerJobProgressDto progressDto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobProgressDto(
+                new WatchMetadataProbeProgress
+                {
+                    JobId = requestDto.JobId,
+                    MoviePath = request.MoviePath,
+                    Stage = WatchMetadataProbeWorkerContractAdapter.ProgressStageCompleted,
+                    CompletedCount = 0,
+                    TotalCount = 1,
+                    Message = "metadata probe skipped",
+                }
+            );
+        WorkerJobResultDto resultDto =
+            WatchMetadataProbeWorkerContractAdapter.ToWorkerJobResultDto(
+                new WatchMetadataProbeResult
+                {
+                    JobId = requestDto.JobId,
+                    MoviePath = request.MoviePath,
+                    Succeeded = false,
+                    FailureKind = "ProbeTimeout",
+                    FailureReason = "probe timeout",
+                    Retryable = true,
+                    ElapsedMs = 456,
+                }
+            );
+
+        string combinedFields =
+            WatchMetadataProbeWorkerContractAdapter.BuildWorkerProbeLogFields(
+                requestDto,
+                progressDto,
+                resultDto
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(combinedFields, Does.Contain("worker_contract=worker-job-v1"));
+            Assert.That(combinedFields, Does.Contain("worker_status=failed"));
+            Assert.That(combinedFields, Does.Contain("worker_stage=completed"));
+            Assert.That(combinedFields, Does.Contain("retryability=retryable"));
+            Assert.That(combinedFields, Does.Contain("retryable=true"));
+            Assert.That(combinedFields, Does.Contain("failure_kind=ProbeTimeout"));
+            Assert.That(combinedFields, Does.Contain("failure_reason='probe timeout'"));
+            Assert.That(combinedFields, Does.Contain($"metric_count={resultDto.Metrics.Count}"));
+            Assert.That(combinedFields, Does.Contain("capability_count=3"));
+            Assert.That(combinedFields, Does.Contain("diagnostic_context_count=7"));
+            Assert.That(combinedFields, Does.Contain("source=watch-existing-movie"));
+            Assert.That(combinedFields, Does.Contain("has_cheap_dirty_fields=true"));
+            Assert.That(combinedFields, Does.Contain("existing_movie_length_seconds=42"));
+        });
+    }
 }

@@ -132,7 +132,9 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailRescueWorkerMainJobArtifact firstArtifact =
                 result.Artifacts?.FirstOrDefault() ?? new ThumbnailRescueWorkerMainJobArtifact();
             string failureReason = ResolveWorkerFailureReason(result);
+            string failureKind = ResolveWorkerFailureKind(result, failureReason);
             long elapsedMs = ResolveWorkerElapsedMs(result.StartedAt, result.FinishedAt);
+            string retryability = ResolveWorkerRetryability(result.Status, failureReason);
 
             return new WorkerJobResultDto
             {
@@ -145,13 +147,15 @@ namespace IndigoMovieManager.Thumbnail
                 },
                 FailureReason = failureReason,
                 ElapsedMs = elapsedMs,
-                Retryability = ResolveWorkerRetryability(result.Status, failureReason),
+                Retryability = retryability,
                 Logs = string.IsNullOrWhiteSpace(result.Message) ? [] : [result.Message.Trim()],
                 Metrics = new Dictionary<string, string>
                 {
                     ["resultCode"] = result.ResultCode ?? "",
                     ["engineVersion"] = result.EngineVersion ?? "",
                     ["compatibilityVersion"] = result.CompatibilityVersion ?? "",
+                    ["failureKind"] = failureKind,
+                    ["retryable"] = ResolveWorkerRetryableFlag(retryability),
                 },
             };
         }
@@ -173,7 +177,7 @@ namespace IndigoMovieManager.Thumbnail
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_contract={FormatLogValue(WorkerContract)} status={FormatLogValue(result.Status)} artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} result_code={FormatLogValue(GetMetricValue(result, "resultCode"))} engine_version={FormatLogValue(GetMetricValue(result, "engineVersion"))} compatibility_version={FormatLogValue(GetMetricValue(result, "compatibilityVersion"))} log_count={Math.Max(0, result.Logs?.Count ?? 0)}"
+                $"job_id={FormatLogValue(result.JobId)} worker_kind={FormatLogValue(WorkerKind)} worker_contract={FormatLogValue(WorkerContract)} status={FormatLogValue(result.Status)} worker_stage=completed artifact_kind={FormatLogValue(artifact.ArtifactKind)} retryability={FormatLogValue(result.Retryability)} retryable={FormatLogValue(GetMetricValue(result, "retryable"))} elapsed_ms={Math.Max(0, result.ElapsedMs)} metric_count={Math.Max(0, result.Metrics?.Count ?? 0)} failure_kind={FormatLogValue(GetMetricValue(result, "failureKind"))} failure_reason={FormatLogValue(result.FailureReason)} output_artifact_path={FormatLogValue(artifact.Path)} result_code={FormatLogValue(GetMetricValue(result, "resultCode"))} engine_version={FormatLogValue(GetMetricValue(result, "engineVersion"))} compatibility_version={FormatLogValue(GetMetricValue(result, "compatibilityVersion"))} log_count={Math.Max(0, result.Logs?.Count ?? 0)}"
             );
         }
 
@@ -386,6 +390,38 @@ namespace IndigoMovieManager.Thumbnail
             return succeeded ? "" : result?.Message?.Trim() ?? "";
         }
 
+        private static string ResolveWorkerFailureKind(
+            ThumbnailRescueWorkerMainJobResult result,
+            string failureReason
+        )
+        {
+            bool succeeded = string.Equals(result?.Status, "success", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(result?.Status, "succeeded", StringComparison.OrdinalIgnoreCase);
+            if (succeeded && string.IsNullOrWhiteSpace(failureReason))
+            {
+                return "";
+            }
+
+            ThumbnailRescueWorkerMainJobError firstError =
+                result?.Errors?.FirstOrDefault() ?? new ThumbnailRescueWorkerMainJobError();
+            if (!string.IsNullOrWhiteSpace(firstError.Code))
+            {
+                return firstError.Code.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(result?.ResultCode))
+            {
+                return result.ResultCode.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(result?.Status))
+            {
+                return result.Status.Trim();
+            }
+
+            return string.IsNullOrWhiteSpace(failureReason) ? "" : "worker-failure";
+        }
+
         private static string ResolveWorkerRetryability(string status, string failureReason)
         {
             if (string.IsNullOrWhiteSpace(failureReason))
@@ -396,6 +432,21 @@ namespace IndigoMovieManager.Thumbnail
             return string.Equals(status, "canceled", StringComparison.OrdinalIgnoreCase)
                 ? "retryable"
                 : "unknown";
+        }
+
+        private static string ResolveWorkerRetryableFlag(string retryability)
+        {
+            if (string.Equals(retryability, "retryable", StringComparison.OrdinalIgnoreCase))
+            {
+                return "true";
+            }
+
+            if (string.Equals(retryability, "not-retryable", StringComparison.OrdinalIgnoreCase))
+            {
+                return "false";
+            }
+
+            return "unknown";
         }
 
         private static long ResolveWorkerElapsedMs(DateTimeOffset startedAt, DateTimeOffset finishedAt)

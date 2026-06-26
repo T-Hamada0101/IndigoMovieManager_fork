@@ -1155,16 +1155,21 @@ public sealed class ThumbnailRescueWorkerLauncherTests
             Assert.That(workerResult.Retryability, Is.EqualTo("not-retryable"));
             Assert.That(workerResult.ElapsedMs, Is.EqualTo(62000));
             Assert.That(workerResult.Metrics["resultCode"], Is.EqualTo("OK"));
+            Assert.That(workerResult.Metrics["failureKind"], Is.Empty);
+            Assert.That(workerResult.Metrics["retryable"], Is.EqualTo("false"));
             string resultLogFields =
                 ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(workerResult);
             Assert.That(resultLogFields, Does.Contain("job_id=req-002"));
             Assert.That(resultLogFields, Does.Contain("worker_kind=thumbnail-rescue"));
             Assert.That(resultLogFields, Does.Contain("worker_contract=worker-job-v1"));
             Assert.That(resultLogFields, Does.Contain("status=success"));
+            Assert.That(resultLogFields, Does.Contain("worker_stage=completed"));
             Assert.That(resultLogFields, Does.Contain("artifact_kind=process-log"));
             Assert.That(resultLogFields, Does.Contain("retryability=not-retryable"));
+            Assert.That(resultLogFields, Does.Contain("retryable=false"));
             Assert.That(resultLogFields, Does.Contain("elapsed_ms=62000"));
-            Assert.That(resultLogFields, Does.Contain("metric_count=3"));
+            Assert.That(resultLogFields, Does.Contain("metric_count=5"));
+            Assert.That(resultLogFields, Does.Contain("failure_kind=''"));
             Assert.That(resultLogFields, Does.Contain("failure_reason=''"));
             Assert.That(
                 resultLogFields,
@@ -1195,6 +1200,61 @@ public sealed class ThumbnailRescueWorkerLauncherTests
         {
             TryDeleteDirectory(testRoot);
         }
+    }
+
+    [Test]
+    public void ToWorkerJobResultDto_失敗結果はfailureKindとretryableをログFieldsへ出す()
+    {
+        ThumbnailRescueWorkerMainJobResult result =
+            new()
+            {
+                RequestId = "req-failed",
+                Status = "failed",
+                ResultCode = "NO_FRAMES_DECODED",
+                Message = "RescueWorker failed.",
+                StartedAt = new DateTimeOffset(2026, 4, 4, 10, 30, 0, TimeSpan.FromHours(9)),
+                FinishedAt = new DateTimeOffset(2026, 4, 4, 10, 30, 5, TimeSpan.FromHours(9)),
+                Errors =
+                [
+                    new ThumbnailRescueWorkerMainJobError
+                    {
+                        Code = "NoFramesDecoded",
+                        Message = "No frames decoded",
+                        Target = "movies/sample.mp4",
+                    },
+                ],
+            };
+
+        WorkerJobResultDto workerResult =
+            ThumbnailRescueWorkerJobJsonClient.ToWorkerJobResultDto(result);
+        string resultLogFields =
+            ThumbnailRescueWorkerJobJsonClient.BuildWorkerJobResultLogFields(workerResult);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(workerResult.Status, Is.EqualTo("failed"));
+            Assert.That(workerResult.Retryability, Is.EqualTo("unknown"));
+            Assert.That(workerResult.Metrics["failureKind"], Is.EqualTo("NoFramesDecoded"));
+            Assert.That(workerResult.Metrics["retryable"], Is.EqualTo("unknown"));
+            Assert.That(
+                workerResult.FailureReason,
+                Is.EqualTo("NoFramesDecoded No frames decoded movies/sample.mp4")
+            );
+            Assert.That(resultLogFields, Does.Contain("worker_contract=worker-job-v1"));
+            Assert.That(resultLogFields, Does.Contain("status=failed"));
+            Assert.That(resultLogFields, Does.Contain("worker_stage=completed"));
+            Assert.That(resultLogFields, Does.Contain("retryability=unknown"));
+            Assert.That(resultLogFields, Does.Contain("retryable=unknown"));
+            Assert.That(resultLogFields, Does.Contain("failure_kind=NoFramesDecoded"));
+            Assert.That(
+                resultLogFields,
+                Does.Contain(
+                    "failure_reason='NoFramesDecoded No frames decoded movies/sample.mp4'"
+                )
+            );
+            Assert.That(resultLogFields, Does.Contain("metric_count=5"));
+            Assert.That(resultLogFields, Does.Contain("result_code=NO_FRAMES_DECODED"));
+        });
     }
 
     [Test]

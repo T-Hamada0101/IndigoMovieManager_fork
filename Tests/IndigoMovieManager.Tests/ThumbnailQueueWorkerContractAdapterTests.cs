@@ -414,6 +414,62 @@ public sealed class ThumbnailQueueWorkerContractAdapterTests
         });
     }
 
+    [Test]
+    public void Worker契約Fieldsは失敗Skip相当の語彙も1行で読める()
+    {
+        QueueDbLeaseItem leasedItem = CreateLeaseItem();
+        WorkerJobRequestDto request =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobRequestDto(
+                leasedItem,
+                outputArtifactPath: "thumbs/movie-key-001.jpg",
+                timeoutMs: 60000
+            );
+        WorkerJobProgressDto progress =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobProgressDto(
+                leasedItem,
+                completedCount: 0,
+                totalCount: 1,
+                currentParallelism: 2,
+                configuredParallelism: 6,
+                stage: ThumbnailQueueWorkerContractAdapter.ProgressStageCompleted,
+                message: "queue item failed"
+            );
+        WorkerJobResultDto result =
+            ThumbnailQueueWorkerContractAdapter.ToWorkerJobResultDto(
+                leasedItem,
+                succeeded: false,
+                failureKind: "TransientDecodeFailure",
+                failureReason: "decode failed",
+                retryable: true,
+                elapsedMs: 321
+            );
+
+        string combinedFields =
+            ThumbnailQueueWorkerContractAdapter.BuildWorkerQueueLogFields(
+                request,
+                progress,
+                result
+            );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(combinedFields, Does.Contain("worker_contract=worker-job-v1"));
+            Assert.That(combinedFields, Does.Contain("worker_status=failed"));
+            Assert.That(combinedFields, Does.Contain("worker_stage=completed"));
+            Assert.That(combinedFields, Does.Contain("retryability=retryable"));
+            Assert.That(combinedFields, Does.Contain("retryable=true"));
+            Assert.That(combinedFields, Does.Contain("failure_kind=TransientDecodeFailure"));
+            Assert.That(combinedFields, Does.Contain("failure_reason='decode failed'"));
+            Assert.That(combinedFields, Does.Contain($"metric_count={result.Metrics.Count}"));
+            Assert.That(combinedFields, Does.Contain("capability_count=3"));
+            Assert.That(combinedFields, Does.Contain("diagnostic_context_count=11"));
+            Assert.That(combinedFields, Does.Contain("queue_id=77"));
+            Assert.That(combinedFields, Does.Contain("attempt_count=3"));
+            Assert.That(combinedFields, Does.Contain("current_parallelism=2"));
+            Assert.That(combinedFields, Does.Contain("configured_parallelism=6"));
+        });
+    }
+
     private static QueueDbLeaseItem CreateLeaseItem()
     {
         return new QueueDbLeaseItem
