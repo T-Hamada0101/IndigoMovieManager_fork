@@ -101,10 +101,7 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(log, Does.Contain("write_succeeded=false"));
             Assert.That(log, Does.Contain("failure_kind=bookmark"));
             Assert.That(log, Does.Contain("persist_state=dirty-retryable"));
-            Assert.That(log, Does.Contain("dirty=true"));
-            Assert.That(log, Does.Contain("failed=true"));
-            Assert.That(log, Does.Contain("retryable=true"));
-            Assert.That(log, Does.Contain("notify_ui=false"));
+            Assert.That(log, Does.Contain("dirty=true failed=true retryable=true notify_ui=false"));
             Assert.That(log, Does.Contain("reason='SQLiteException'"));
         });
     }
@@ -164,14 +161,30 @@ public sealed class BookmarkReloadPolicyTests
                 Does.Contain("persist_contract=persistence-write-v1")
             );
             Assert.That(addRequest.BuildLogFields(), Does.Contain("queue_key=bookmark-db"));
-            Assert.That(addSuccess.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
-            Assert.That(addSuccess.LogFields, Does.Contain("persist_state=persisted"));
-            Assert.That(deleteSuccess.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
-            Assert.That(deleteSuccess.LogFields, Does.Contain("persist_state=persisted"));
-            Assert.That(addFailure.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
-            Assert.That(addFailure.LogFields, Does.Contain("persist_state=dirty-retryable"));
-            Assert.That(deleteFailure.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
-            Assert.That(deleteFailure.LogFields, Does.Contain("persist_state=dirty-retryable"));
+            AssertBookmarkWriteLogVocabulary(
+                addSuccess.LogFields,
+                succeeded: true,
+                persistState: "persisted",
+                stateFields: "dirty=false failed=false retryable=false notify_ui=false"
+            );
+            AssertBookmarkWriteLogVocabulary(
+                deleteSuccess.LogFields,
+                succeeded: true,
+                persistState: "persisted",
+                stateFields: "dirty=false failed=false retryable=false notify_ui=false"
+            );
+            AssertBookmarkWriteLogVocabulary(
+                addFailure.LogFields,
+                succeeded: false,
+                persistState: "dirty-retryable",
+                stateFields: "dirty=true failed=true retryable=true notify_ui=false"
+            );
+            AssertBookmarkWriteLogVocabulary(
+                deleteFailure.LogFields,
+                succeeded: false,
+                persistState: "dirty-retryable",
+                stateFields: "dirty=true failed=true retryable=true notify_ui=false"
+            );
             Assert.That(deleteMethod, Does.Contain("BuildBookmarkPersistenceWriteRequest("));
             Assert.That(persistMethod, Does.Contain("BuildBookmarkPersistenceWriteRequest("));
             Assert.That(deleteMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
@@ -324,5 +337,24 @@ public sealed class BookmarkReloadPolicyTests
 
         Assert.Fail($"{signature} の本文終了が見つかりません。");
         return "";
+    }
+
+    private static void AssertBookmarkWriteLogVocabulary(
+        string logFields,
+        bool succeeded,
+        string persistState,
+        string stateFields
+    )
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(logFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(
+                logFields,
+                Does.Contain($"write_succeeded={(succeeded ? "true" : "false")}")
+            );
+            Assert.That(logFields, Does.Contain($"persist_state={persistState}"));
+            Assert.That(logFields, Does.Contain(stateFields));
+        });
     }
 }

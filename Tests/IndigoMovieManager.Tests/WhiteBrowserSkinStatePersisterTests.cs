@@ -172,17 +172,14 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                             x.Contains("skin state persist succeeded:", StringComparison.Ordinal)
                             && x.Contains("target=System", StringComparison.Ordinal)
                             && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
-                            && x.Contains(
-                                "persist_contract=persistence-write-v1",
-                                StringComparison.Ordinal
-                            )
                             && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
                             && x.Contains("queue_key=skin-system:skin", StringComparison.Ordinal)
-                            && x.Contains("write_succeeded=true", StringComparison.Ordinal)
                             && x.Contains("failure_kind=none", StringComparison.Ordinal)
-                            && x.Contains(
-                                "dirty=false failed=false retryable=false notify_ui=false",
-                                StringComparison.Ordinal
+                            && ContainsPersistenceVocabulary(
+                                x,
+                                succeeded: true,
+                                persistState: "persisted",
+                                stateFields: "dirty=false failed=false retryable=false notify_ui=false"
                             )
                     ),
                     Is.True
@@ -193,20 +190,17 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                             x.Contains("skin state persist succeeded:", StringComparison.Ordinal)
                             && x.Contains("target=Profile", StringComparison.Ordinal)
                             && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
-                            && x.Contains(
-                                "persist_contract=persistence-write-v1",
-                                StringComparison.Ordinal
-                            )
                             && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
                             && x.Contains(
                                 "queue_key=skin-profile:SampleExternalSkin:LastUpperTab",
                                 StringComparison.Ordinal
                             )
-                            && x.Contains("write_succeeded=true", StringComparison.Ordinal)
                             && x.Contains("failure_kind=none", StringComparison.Ordinal)
-                            && x.Contains(
-                                "dirty=false failed=false retryable=false notify_ui=false",
-                                StringComparison.Ordinal
+                            && ContainsPersistenceVocabulary(
+                                x,
+                                succeeded: true,
+                                persistState: "persisted",
+                                stateFields: "dirty=false failed=false retryable=false notify_ui=false"
                             )
                     ),
                     Is.True
@@ -298,21 +292,18 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                     static x =>
                         x.Contains("skin state persist failed:", StringComparison.Ordinal)
                         && x.Contains("write_kind=background-db-write", StringComparison.Ordinal)
-                        && x.Contains(
-                            "persist_contract=persistence-write-v1",
-                            StringComparison.Ordinal
-                        )
                         && x.Contains("write_reason=persister-write", StringComparison.Ordinal)
                         && x.Contains(
                             "queue_key=skin-profile:SampleExternalSkin:LastUpperTab",
                             StringComparison.Ordinal
                         )
-                        && x.Contains("write_succeeded=false", StringComparison.Ordinal)
                         && x.Contains("failure_kind=skin-profile", StringComparison.Ordinal)
-                        && x.Contains("dirty=true", StringComparison.Ordinal)
-                        && x.Contains("failed=true", StringComparison.Ordinal)
-                        && x.Contains("retryable=true", StringComparison.Ordinal)
-                        && x.Contains("notify_ui=false", StringComparison.Ordinal)
+                        && ContainsPersistenceVocabulary(
+                            x,
+                            succeeded: false,
+                            persistState: "dirty-retryable",
+                            stateFields: "dirty=true failed=true retryable=true notify_ui=false"
+                        )
                 ),
                 Is.True
             );
@@ -366,17 +357,20 @@ public sealed class WhiteBrowserSkinStatePersisterTests
                 )
             );
             Assert.That(failureLog, Does.Contain("write_kind=background-db-write"));
-            Assert.That(failureLog, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(failureLog, Does.Contain("write_reason=persister-write"));
-            Assert.That(failureLog, Does.Contain("write_succeeded=false"));
             Assert.That(failureLog, Does.Contain("failure_kind=skin-profile"));
-            Assert.That(failureLog, Does.Contain("dirty=true failed=true retryable=true notify_ui=false"));
-            Assert.That(successLog, Does.Contain("persist_contract=persistence-write-v1"));
-            Assert.That(successLog, Does.Contain("write_succeeded=true"));
+            AssertPersistenceVocabulary(
+                failureLog,
+                succeeded: false,
+                persistState: "dirty-retryable",
+                stateFields: "dirty=true failed=true retryable=true notify_ui=false"
+            );
             Assert.That(successLog, Does.Contain("failure_kind=none"));
-            Assert.That(
+            AssertPersistenceVocabulary(
                 successLog,
-                Does.Contain("dirty=false failed=false retryable=false notify_ui=false")
+                succeeded: true,
+                persistState: "persisted",
+                stateFields: "dirty=false failed=false retryable=false notify_ui=false"
             );
         });
     }
@@ -415,12 +409,15 @@ public sealed class WhiteBrowserSkinStatePersisterTests
         Assert.Multiple(() =>
         {
             Assert.That(failureLog, Does.Contain("write_kind=background-db-write"));
-            Assert.That(failureLog, Does.Contain("persist_contract=persistence-write-v1"));
             Assert.That(failureLog, Does.Contain("write_reason=queue-closed"));
             Assert.That(failureLog, Does.Contain("queue_key=skin-system:skin"));
-            Assert.That(failureLog, Does.Contain("write_succeeded=false"));
             Assert.That(failureLog, Does.Contain("failure_kind=skin-system"));
-            Assert.That(failureLog, Does.Contain("dirty=false failed=true retryable=false notify_ui=true"));
+            AssertPersistenceVocabulary(
+                failureLog,
+                succeeded: false,
+                persistState: "failed-notify",
+                stateFields: "dirty=false failed=true retryable=false notify_ui=true"
+            );
         });
     }
 
@@ -499,5 +496,34 @@ public sealed class WhiteBrowserSkinStatePersisterTests
         command.Parameters.AddWithValue("@skin", skinName ?? "");
         command.Parameters.AddWithValue("@key", key ?? "");
         return command.ExecuteScalar()?.ToString() ?? "";
+    }
+
+    private static bool ContainsPersistenceVocabulary(
+        string logFields,
+        bool succeeded,
+        string persistState,
+        string stateFields
+    )
+    {
+        return logFields.Contains("persist_contract=persistence-write-v1", StringComparison.Ordinal)
+            && logFields.Contains(
+                $"write_succeeded={(succeeded ? "true" : "false")}",
+                StringComparison.Ordinal
+            )
+            && logFields.Contains($"persist_state={persistState}", StringComparison.Ordinal)
+            && logFields.Contains(stateFields, StringComparison.Ordinal);
+    }
+
+    private static void AssertPersistenceVocabulary(
+        string logFields,
+        bool succeeded,
+        string persistState,
+        string stateFields
+    )
+    {
+        Assert.That(
+            ContainsPersistenceVocabulary(logFields, succeeded, persistState, stateFields),
+            Is.True
+        );
     }
 }

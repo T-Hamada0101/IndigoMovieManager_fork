@@ -367,6 +367,10 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             source,
             "internal static PersistenceWriteResult FromSuccess("
         );
+        string persistStateMethod = ExtractMethod(
+            source,
+            "private static string ToPersistStateLogValue("
+        );
 
         Assert.Multiple(() =>
         {
@@ -377,6 +381,20 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             Assert.That(buildLogFieldsMethod, Does.Contain("retryable_policy="));
             Assert.That(failureMethod, Does.Contain("request.BuildLogFields()"));
             Assert.That(successMethod, Does.Contain("request.BuildLogFields()"));
+            Assert.That(failureMethod, Does.Contain("persist_state={ToPersistStateLogValue(notificationState)}"));
+            Assert.That(successMethod, Does.Contain("persist_state={ToPersistStateLogValue(notificationState)}"));
+            Assert.That(
+                failureMethod,
+                Does.Contain("PersistenceFailureNotificationPolicy.BuildLogFields(notificationState)")
+            );
+            Assert.That(
+                successMethod,
+                Does.Contain("PersistenceFailureNotificationPolicy.BuildLogFields(notificationState)")
+            );
+            Assert.That(persistStateMethod, Does.Contain("return \"persisted\";"));
+            Assert.That(persistStateMethod, Does.Contain("return \"dirty-retryable\";"));
+            Assert.That(persistStateMethod, Does.Contain("return \"failed-notify\";"));
+            Assert.That(persistStateMethod, Does.Contain("return state.Failed ? \"failed\" : \"dirty\";"));
         });
     }
 
@@ -566,9 +584,21 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.Multiple(() =>
         {
             Assert.That(success.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(success.LogFields, Does.Contain("write_succeeded=true"));
+            Assert.That(success.LogFields, Does.Contain("failure_kind=none"));
             Assert.That(success.LogFields, Does.Contain("persist_state=persisted"));
+            Assert.That(
+                success.LogFields,
+                Does.Contain("dirty=false failed=false retryable=false notify_ui=false")
+            );
             Assert.That(failure.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(failure.LogFields, Does.Contain("write_succeeded=false"));
+            Assert.That(failure.LogFields, Does.Contain("failure_kind=background-db-write"));
             Assert.That(failure.LogFields, Does.Contain("persist_state=dirty-retryable"));
+            Assert.That(
+                failure.LogFields,
+                Does.Contain("dirty=true failed=true retryable=true notify_ui=false")
+            );
         });
     }
 
