@@ -456,6 +456,61 @@ public sealed class UiWorkSchedulerPolicyTests
         });
     }
 
+    [Test]
+    public void SourcePolicy_scheduler詳細fieldは各ログbuilderから固定語彙で出す()
+    {
+        string source = GetRepoText("Views", "Main", "UiWorkSchedulerPolicy.cs");
+        string admissionMethod = ExtractMethod(
+            source,
+            "internal static string BuildAdmissionLogFields("
+        );
+        string takeMethod = ExtractMethod(source, "internal static string BuildTakeLogFields(");
+        string timeoutMethod = ExtractMethod(
+            source,
+            "internal static string BuildTimeoutLogFields(UiWorkSchedulerTimeoutDecision decision)"
+        );
+        string timeoutReleaseMethod = ExtractMethod(
+            source,
+            "internal static string BuildTimeoutReleaseLogFields("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                admissionMethod,
+                Does.Contain("BuildRequestSchedulerLogFields(request, decision.ReleaseReason)")
+            );
+            Assert.That(admissionMethod, Does.Contain("accepted={decision.Accepted}"));
+            Assert.That(admissionMethod, Does.Contain("target_index={decision.TargetIndex}"));
+            Assert.That(
+                admissionMethod,
+                Does.Contain("queue_depth_after={decision.QueueDepthAfter}")
+            );
+            Assert.That(takeMethod, Does.Contain("sequence={pendingRequest.Sequence}"));
+            Assert.That(takeMethod, Does.Contain("has_request={decision.HasRequest}"));
+            Assert.That(
+                takeMethod,
+                Does.Contain("pending_count_after={Math.Max(0, pendingCountAfter)}")
+            );
+            Assert.That(timeoutMethod, Does.Contain("timeout_released={timeoutReleased}"));
+            Assert.That(
+                timeoutReleaseMethod,
+                Does.Contain(
+                    "BuildRequestSchedulerLogFields(pendingRequest.Request, decision.ReleaseReason)"
+                )
+            );
+            Assert.That(timeoutReleaseMethod, Does.Contain("BuildTimeoutLogFields(decision)"));
+            Assert.That(
+                timeoutReleaseMethod,
+                Does.Contain("sequence={pendingRequest.Sequence}")
+            );
+            Assert.That(
+                timeoutReleaseMethod,
+                Does.Contain("pending_count_after={Math.Max(0, pendingCountAfter)}")
+            );
+        });
+    }
+
     private static UiWorkRequest CreateRequest(
         UiWorkPriority priority,
         string coalesceKey = "test:coalesce",

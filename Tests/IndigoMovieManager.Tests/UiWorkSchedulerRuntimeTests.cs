@@ -281,6 +281,10 @@ public sealed class UiWorkSchedulerRuntimeTests
                 Is.EqualTo("watch-timeout")
             );
             Assert.That(drain.ReleasedRequests[0].LogFields, Does.Contain("log_reason=test.watchreload"));
+            Assert.That(
+                drain.ReleasedRequests[0].LogFields,
+                Does.Contain(UiWorkSchedulerPolicy.SchedulerContractLogField)
+            );
             Assert.That(drain.ReleasedRequests[0].LogFields, Does.Contain("release_reason=timeout"));
             Assert.That(
                 drain.ReleasedRequests[0].LogFields,
