@@ -191,6 +191,10 @@ public sealed class ThumbnailErrorSourceTests
         Assert.That(summaryMethod, Does.Contain("BuildThumbnailErrorListImageDecodePlan("));
         Assert.That(summaryMethod, Does.Contain("ImageLoadLogFields.Build(loadResult)"));
         Assert.That(summaryMethod, Does.Contain("ImageDecodePlanLogFields.Build(decodePlan)"));
+        Assert.That(
+            summaryMethod,
+            Does.Contain("sampleDecodeFields = ImageDecodePlanLogFields.Build(decodePlan);")
+        );
         Assert.That(logFieldsMethod, Does.Contain("total="));
         Assert.That(logFieldsMethod, Does.Contain("ready="));
         Assert.That(logFieldsMethod, Does.Contain("placeholder="));
@@ -201,9 +205,11 @@ public sealed class ThumbnailErrorSourceTests
         Assert.That(logFieldsMethod, Does.Contain("stale_skip="));
         Assert.That(logFieldsMethod, Does.Contain("decode_plan="));
         Assert.That(logFieldsMethod, Does.Contain("sample_decode="));
+        Assert.That(logFieldsMethod, Does.Contain("sample_decode=\\\"{SampleDecodeFields}\\\""));
         Assert.That(logFieldsMethod, Does.Contain("image.thumbnail-error-list.aggregate"));
         Assert.That(decodePlanMethod, Does.Contain("ImageRequest.ForThumbnailErrorList("));
         Assert.That(decodePlanMethod, Does.Contain("ImageDecodeRequest.ForSynchronousDecode("));
+        Assert.That(decodePlanMethod, Does.Contain("ThumbnailErrorListDecodePixelHeight"));
         Assert.That(decodePlanMethod, Does.Contain("\"image.thumbnail-error-list.aggregate-decode-plan\""));
         Assert.That(decodePlanMethod, Does.Contain("ImageDecodePlanResult.FromBackgroundProbe("));
         Assert.That(resultMethod, Does.Contain("HasThumbnailErrorListImage("));

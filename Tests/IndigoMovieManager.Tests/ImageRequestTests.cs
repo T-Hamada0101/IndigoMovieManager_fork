@@ -397,6 +397,73 @@ public sealed class ImageRequestTests
     }
 
     [Test]
+    public void stale_discardログは要求文脈とfailure_reasonを同じ行へ畳める()
+    {
+        ImageRequest detailRequest = ImageRequest.ForExtensionDetail(
+            Path.Combine("thumb", "detail-stale.jpg"),
+            "detail-key",
+            isVisiblePriority: true,
+            requestRevision: 91
+        );
+        ImageRequest playerRequest = ImageRequest.ForPlayerRightRail(
+            Path.Combine("thumb", "player-stale.jpg"),
+            "player-key",
+            isVisiblePriority: true,
+            requestRevision: 93
+        );
+
+        string detailLog = ImageLoadLogFields.Build(
+            ImageLoadResult.Canceled(
+                detailRequest,
+                resultRevision: 92,
+                failureReason: "stale-image-request",
+                isStale: true
+            )
+        );
+        string playerLog = ImageLoadLogFields.Build(
+            ImageLoadResult.Canceled(
+                playerRequest,
+                resultRevision: 94,
+                failureReason: "stale-player-right-rail",
+                isStale: true
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            AssertImageRequestContextFields(
+                detailLog,
+                "ExtensionDetail",
+                "detail-key",
+                visiblePriority: true,
+                shouldDecode: true
+            );
+            Assert.That(detailLog, Does.Contain("image_request_revision=91"));
+            Assert.That(detailLog, Does.Contain("image_result_revision=92"));
+            Assert.That(detailLog, Does.Contain("image_outcome=canceled"));
+            Assert.That(detailLog, Does.Contain("resolved=false"));
+            Assert.That(detailLog, Does.Contain("placeholder=false"));
+            Assert.That(detailLog, Does.Contain("stale=true"));
+            Assert.That(detailLog, Does.Contain("failure_reason=stale-image-request"));
+
+            AssertImageRequestContextFields(
+                playerLog,
+                "PlayerRightRail",
+                "player-key",
+                visiblePriority: true,
+                shouldDecode: true
+            );
+            Assert.That(playerLog, Does.Contain("image_request_revision=93"));
+            Assert.That(playerLog, Does.Contain("image_result_revision=94"));
+            Assert.That(playerLog, Does.Contain("image_outcome=canceled"));
+            Assert.That(playerLog, Does.Contain("resolved=false"));
+            Assert.That(playerLog, Does.Contain("placeholder=false"));
+            Assert.That(playerLog, Does.Contain("stale=true"));
+            Assert.That(playerLog, Does.Contain("failure_reason=stale-player-right-rail"));
+        });
+    }
+
+    [Test]
     public void ImageDecodeRequestはdecode最小語彙をImageRequestから作る()
     {
         ImageRequest imageRequest = ImageRequest.ForUpperTab(
@@ -507,6 +574,15 @@ public sealed class ImageRequestTests
                 CountOccurrences(logFields, "image_contract=image-pipeline-v1"),
                 Is.EqualTo(1)
             );
+            AssertImageRequestContextFields(
+                logFields,
+                "ThumbnailErrorList",
+                "movie-key",
+                visiblePriority: true,
+                shouldDecode: true
+            );
+            Assert.That(logFields, Does.Not.Contain("\r"));
+            Assert.That(logFields, Does.Not.Contain("\n"));
             Assert.That(logFields, Does.Contain("image_log_reason=image.thumbnail-error-list.aggregate-decode-plan"));
             Assert.That(logFields, Does.Contain("image_key=movie-key"));
             Assert.That(logFields, Does.Contain("visible_priority=true"));
@@ -521,6 +597,32 @@ public sealed class ImageRequestTests
             Assert.That(logFields, Does.Contain("stale=false"));
             Assert.That(logFields, Does.Contain("failure_reason=error-marker"));
         });
+    }
+
+    private static void AssertImageRequestContextFields(
+        string logFields,
+        string imageRole,
+        string imageKey,
+        bool visiblePriority,
+        bool shouldDecode
+    )
+    {
+        Assert.That(logFields, Does.Not.Contain("\r"));
+        Assert.That(logFields, Does.Not.Contain("\n"));
+        Assert.That(
+            CountOccurrences(logFields, "image_contract=image-pipeline-v1"),
+            Is.EqualTo(1)
+        );
+        Assert.That(logFields, Does.Contain($"image_role={imageRole}"));
+        Assert.That(logFields, Does.Contain($"image_key={imageKey}"));
+        Assert.That(logFields, Does.Contain($"visible_priority={FormatLogBool(visiblePriority)}"));
+        Assert.That(logFields, Does.Contain("image_cache_policy=UseConverterCache"));
+        Assert.That(logFields, Does.Contain($"should_decode={FormatLogBool(shouldDecode)}"));
+    }
+
+    private static string FormatLogBool(bool value)
+    {
+        return value ? "true" : "false";
     }
 
     private static int CountOccurrences(string text, string value)

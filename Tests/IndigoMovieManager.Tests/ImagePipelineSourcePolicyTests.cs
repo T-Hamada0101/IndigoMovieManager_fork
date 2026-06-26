@@ -301,7 +301,39 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.Multiple(() =>
         {
             Assert.That(decodeBuildMethod, Does.Contain("image_contract=image-pipeline-v1"));
+            Assert.That(
+                decodeBuildMethod,
+                Does.Contain("image_key={request.ImageRequest.MoviePathKey ?? \"\"}")
+            );
+            Assert.That(
+                decodeBuildMethod,
+                Does.Contain("visible_priority={FormatLogBool(request.ImageRequest.IsVisiblePriority)}")
+            );
+            Assert.That(
+                decodeBuildMethod,
+                Does.Contain("image_cache_policy={request.ImageRequest.CachePolicy}")
+            );
+            Assert.That(
+                decodeBuildMethod,
+                Does.Contain("should_decode={FormatLogBool(request.ImageRequest.ShouldDecode)}")
+            );
             Assert.That(loadBuildMethod, Does.Contain("image_contract=image-pipeline-v1"));
+            Assert.That(
+                loadBuildMethod,
+                Does.Contain("image_key={result.ImageRequest.MoviePathKey ?? \"\"}")
+            );
+            Assert.That(
+                loadBuildMethod,
+                Does.Contain("visible_priority={FormatLogBool(result.ImageRequest.IsVisiblePriority)}")
+            );
+            Assert.That(
+                loadBuildMethod,
+                Does.Contain("image_cache_policy={result.ImageRequest.CachePolicy}")
+            );
+            Assert.That(
+                loadBuildMethod,
+                Does.Contain("should_decode={FormatLogBool(result.ImageRequest.ShouldDecode)}")
+            );
             Assert.That(
                 decodePlanBuildMethod,
                 Does.Contain("ImageDecodeLogFields.Build(result.DecodeRequest, result.DecodeResult)")
@@ -309,6 +341,23 @@ public sealed class ImagePipelineSourcePolicyTests
             Assert.That(
                 decodePlanBuildMethod,
                 Does.Contain("ImageLoadLogFields.BuildStateSuffix(result.ImageLoadResult)")
+            );
+            Assert.That(
+                stateSuffixMethod,
+                Does.Contain("image_result_revision={result.ResultRevision}")
+            );
+            Assert.That(
+                stateSuffixMethod,
+                Does.Contain("resolved={FormatLogBool(result.HasResolvedImage)}")
+            );
+            Assert.That(
+                stateSuffixMethod,
+                Does.Contain("placeholder={FormatLogBool(result.UsesPlaceholder)}")
+            );
+            Assert.That(stateSuffixMethod, Does.Contain("stale={FormatLogBool(result.IsStale)}"));
+            Assert.That(
+                stateSuffixMethod,
+                Does.Contain("failure_reason={result.FailureReason ?? \"\"}")
             );
             Assert.That(decodePlanBuildMethod, Does.Not.Contain("image_contract="));
             Assert.That(stateSuffixMethod, Does.Not.Contain("image_contract="));
