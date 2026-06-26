@@ -215,6 +215,13 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("\"image.player-right-rail.sync-decode\""));
         Assert.That(converterSource, Does.Contain("ImageLoadResult.Canceled("));
         Assert.That(converterSource, Does.Contain("\"stale-player-right-rail\""));
+        string staleMethod = ExtractMethod(
+            converterSource,
+            "internal static object ResolveStalePlayerRightRailImageResult("
+        );
+        Assert.That(staleMethod, Does.Contain("DebugRuntimeLog.Write("));
+        Assert.That(staleMethod, Does.Contain("ImageLoadLogFields.Build(loadResult)"));
+        Assert.That(staleMethod, Does.Contain("player {ImageLoadLogFields.Build(loadResult)}"));
     }
 
     [Test]

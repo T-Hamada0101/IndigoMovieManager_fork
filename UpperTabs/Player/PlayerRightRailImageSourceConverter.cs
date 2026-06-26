@@ -82,6 +82,10 @@ namespace IndigoMovieManager.UpperTabs.Player
                 "stale-player-right-rail",
                 isStale: true
             );
+            global::IndigoMovieManager.DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"player {ImageLoadLogFields.Build(loadResult)} image_event=right-rail-request-discarded"
+            );
             decodeResult = new ImageDecodeResult(
                 loadResult,
                 DecodeElapsedMilliseconds: 0,
