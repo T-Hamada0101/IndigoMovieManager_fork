@@ -137,6 +137,30 @@ public sealed class MainWindowSettingsPersistencePolicyTests
             playerSource,
             "private void QueueMoviePlaybackStatsPersist("
         );
+        PersistenceWriteRequest scoreRequest = PersistenceWriteRequest.Create(
+            PersistenceWriteKind.BackgroundDbWrite,
+            "movie-score",
+            "main-db-score",
+            retryable: true
+        );
+        PersistenceWriteRequest tagRequest = PersistenceWriteRequest.Create(
+            PersistenceWriteKind.BackgroundDbWrite,
+            "movie-tag",
+            "main-db-tag",
+            retryable: true
+        );
+        PersistenceWriteRequest moviePathRequest = PersistenceWriteRequest.Create(
+            PersistenceWriteKind.BackgroundDbWrite,
+            "movie-path",
+            "main-db-movie-path",
+            retryable: true
+        );
+        PersistenceWriteRequest playbackStatsRequest = PersistenceWriteRequest.Create(
+            PersistenceWriteKind.BackgroundDbWrite,
+            "playback-stats",
+            "main-db-playback-stats",
+            retryable: true
+        );
 
         Assert.That(scoreClickMethod, Does.Contain("QueueMovieScorePersist("));
         Assert.That(scoreClickMethod, Does.Not.Contain("_mainDbMovieMutationFacade.UpdateScore("));
@@ -250,6 +274,10 @@ public sealed class MainWindowSettingsPersistencePolicyTests
                 "playback stats persist failed: db='{dbFullPath}' movie_id={movieId} {result.LogFields}"
             )
         );
+        AssertHotPathWriteLogIncludesPersistState(scoreRequest);
+        AssertHotPathWriteLogIncludesPersistState(tagRequest);
+        AssertHotPathWriteLogIncludesPersistState(moviePathRequest);
+        AssertHotPathWriteLogIncludesPersistState(playbackStatsRequest);
     }
 
     [Test]
@@ -519,6 +547,29 @@ public sealed class MainWindowSettingsPersistencePolicyTests
 
         Assert.Fail($"{signature} の本文終端が見つかりません。");
         return "";
+    }
+
+    private static void AssertHotPathWriteLogIncludesPersistState(
+        PersistenceWriteRequest request
+    )
+    {
+        PersistenceWriteResult success = PersistenceWriteResult.FromSuccess(
+            request,
+            TimeSpan.FromMilliseconds(1.0d)
+        );
+        PersistenceWriteResult failure = PersistenceWriteResult.FromFailure(
+            request,
+            TimeSpan.FromMilliseconds(2.0d),
+            PersistenceFailureKind.BackgroundDbWrite
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(success.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(success.LogFields, Does.Contain("persist_state=persisted"));
+            Assert.That(failure.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(failure.LogFields, Does.Contain("persist_state=dirty-retryable"));
+        });
     }
 
     private static IEnumerable<DirectoryInfo> EnumerateRepoSearchRoots(

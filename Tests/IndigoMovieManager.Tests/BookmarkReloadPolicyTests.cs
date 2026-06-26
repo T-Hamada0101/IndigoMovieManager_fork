@@ -100,6 +100,7 @@ public sealed class BookmarkReloadPolicyTests
             Assert.That(log, Does.Contain("queue_key=bookmark-db"));
             Assert.That(log, Does.Contain("write_succeeded=false"));
             Assert.That(log, Does.Contain("failure_kind=bookmark"));
+            Assert.That(log, Does.Contain("persist_state=dirty-retryable"));
             Assert.That(log, Does.Contain("dirty=true"));
             Assert.That(log, Does.Contain("failed=true"));
             Assert.That(log, Does.Contain("retryable=true"));
@@ -128,6 +129,24 @@ public sealed class BookmarkReloadPolicyTests
         PersistenceWriteRequest deleteRequest = MainWindow.BuildBookmarkPersistenceWriteRequest(
             "delete-db"
         );
+        PersistenceWriteResult addSuccess = PersistenceWriteResult.FromSuccess(
+            addRequest,
+            TimeSpan.FromMilliseconds(1.1d)
+        );
+        PersistenceWriteResult deleteSuccess = PersistenceWriteResult.FromSuccess(
+            deleteRequest,
+            TimeSpan.FromMilliseconds(1.2d)
+        );
+        PersistenceWriteResult addFailure = PersistenceWriteResult.FromFailure(
+            addRequest,
+            TimeSpan.FromMilliseconds(2.1d),
+            PersistenceFailureKind.Bookmark
+        );
+        PersistenceWriteResult deleteFailure = PersistenceWriteResult.FromFailure(
+            deleteRequest,
+            TimeSpan.FromMilliseconds(2.2d),
+            PersistenceFailureKind.Bookmark
+        );
 
         Assert.Multiple(() =>
         {
@@ -145,6 +164,14 @@ public sealed class BookmarkReloadPolicyTests
                 Does.Contain("persist_contract=persistence-write-v1")
             );
             Assert.That(addRequest.BuildLogFields(), Does.Contain("queue_key=bookmark-db"));
+            Assert.That(addSuccess.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(addSuccess.LogFields, Does.Contain("persist_state=persisted"));
+            Assert.That(deleteSuccess.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(deleteSuccess.LogFields, Does.Contain("persist_state=persisted"));
+            Assert.That(addFailure.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(addFailure.LogFields, Does.Contain("persist_state=dirty-retryable"));
+            Assert.That(deleteFailure.LogFields, Does.Contain("persist_contract=persistence-write-v1"));
+            Assert.That(deleteFailure.LogFields, Does.Contain("persist_state=dirty-retryable"));
             Assert.That(deleteMethod, Does.Contain("BuildBookmarkPersistenceWriteRequest("));
             Assert.That(persistMethod, Does.Contain("BuildBookmarkPersistenceWriteRequest("));
             Assert.That(deleteMethod, Does.Contain("PersistenceWriteResult.FromSuccess("));
