@@ -178,7 +178,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
             string.Join(
                 Environment.NewLine,
                 reason,
-                "実機操作で同一 Release run の search / sort / scroll / Player / watch / thumbnail / skin を採取してから再実行してください。",
+                "実機操作で同一 Release run の startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin を採取してから再実行してください。",
                 summary.BuildSummaryText()
             )
         );

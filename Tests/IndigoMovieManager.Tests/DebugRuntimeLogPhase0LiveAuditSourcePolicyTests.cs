@@ -111,7 +111,9 @@ public sealed class DebugRuntimeLogPhase0LiveAuditSourcePolicyTests
             Assert.That(failMethod, Does.Contain("summary.BuildSummaryText()"));
             Assert.That(
                 failMethod,
-                Does.Contain("search / sort / scroll / Player / watch / thumbnail / skin")
+                Does.Contain(
+                    "startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin"
+                )
             );
         });
     }
