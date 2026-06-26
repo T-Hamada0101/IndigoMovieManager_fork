@@ -308,6 +308,54 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
     }
 
     [Test]
+    public void phase7_core_route_detail補助evidenceはsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "skin core_route=skin-refresh operation_reason=skin.host-refresh definition_mode=external",
+                    "player core_route=player-playback player_surface_ready=True player_transition=start",
+                    "watch core_route=watch-ui-apply watch_apply_kind=query-only watch_reason=watch-query-only",
+                    "noise operation_reason=skin.host-refresh definition_mode=missing-route",
+                    "noise player_surface_ready=True player_transition=stop",
+                    "noise watch_apply_kind=full watch_reason=fallback",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                summary.Phase0Evidence.ObservedKeys,
+                Is.EqualTo(["player-core", "watch-core", "skin-core"])
+            );
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(
+                    [
+                        "skin-operation-reason",
+                        "skin-definition-mode",
+                        "player-surface-ready",
+                        "player-transition",
+                        "watch-apply-kind",
+                        "watch-reason",
+                    ]
+                )
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith(
+                    "optional=skin-operation-reason,skin-definition-mode,player-surface-ready,player-transition,watch-apply-kind,watch-reason"
+                )
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Not.Contain("player"));
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Not.Contain("watch"));
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Not.Contain("skin"));
+        });
+    }
+
+    [Test]
     public void 欠けがある時も既存summaryの順序と文言が安定する()
     {
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(

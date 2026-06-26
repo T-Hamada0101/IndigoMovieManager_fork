@@ -93,6 +93,31 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         new("worker-diagnostic-context", "diagnostic_context_count="),
         new("worker-capability-count", "capability_count="),
         new("worker-metric-count", "metric_count="),
+        // Phase7 core route 詳細は同じ行の route と組み合わせて拾い、単独 field の誤検出を避ける。
+        RequiredPhase0EvidenceToken.All(
+            "skin-operation-reason",
+            ["core_route=skin-refresh", "operation_reason=skin.host-refresh"]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "skin-definition-mode",
+            ["core_route=skin-refresh", "definition_mode="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "player-surface-ready",
+            ["core_route=player-playback", "player_surface_ready="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "player-transition",
+            ["core_route=player-playback", "player_transition="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "watch-apply-kind",
+            ["core_route=watch-ui-apply", "watch_apply_kind="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "watch-reason",
+            ["core_route=watch-ui-apply", "watch_reason="]
+        ),
     ];
 
     public static DebugRuntimeLogPhase0EvidenceSummary Evaluate(IEnumerable<string> logLines)
@@ -174,7 +199,7 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
         {
             if (RequireAllTokens)
             {
-                // Scheduler 詳細のように単独 field では誤検出しやすいものは、契約名と同じ行にある時だけ採用する。
+                // 詳細 field は契約名や core route と同じ行にある時だけ採用し、別ログの同名 field を拾わない。
                 return Tokens.All(token => line.Contains(token, StringComparison.Ordinal));
             }
 
