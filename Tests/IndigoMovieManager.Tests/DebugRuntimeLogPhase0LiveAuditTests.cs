@@ -206,7 +206,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
             "detail failure_reason=stale-player-right-rail",
             "save persist_contract=persistence-write-v1",
             "worker worker_contract=worker-job-v1 diagnostic_context_count=7 capability_count=3",
-            "worker result metric_count=2",
+            "worker worker_contract=worker-job-v1 metric_count=2",
             "thumbnail worker_kind=thumbnail-create",
             "skin core_route=skin-refresh",
             "player core_route=player-playback",

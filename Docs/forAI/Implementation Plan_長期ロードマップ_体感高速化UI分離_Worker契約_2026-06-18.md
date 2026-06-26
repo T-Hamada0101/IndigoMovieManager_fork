@@ -66,6 +66,8 @@
 - 2026-06-27 Worker Kuhn: live audit 失敗時の採取案内を、現行の Phase0 採取対象である `startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin` へ揃えた。実機ログ採取や完了判定は変えていない。
 - 2026-06-27 Worker Boyle(採取案内): live audit の採取案内文は `DebugRuntimeLogPhase0NextActionPolicy.BuildFullCaptureGuideText()` から作る。次アクション語彙と失敗案内が手書きでズレないようにするだけで、`phase0_next_actions` の出力や完了判定は変えない。
 - 2026-06-27 Worker Curie(Phase0): UI Shell snapshot detail の `is_user_priority_active` / `is_manual_mode` / `is_watch_ui_suppressed` / `is_recent_viewport_active` / `is_player_playback_active` を Phase0 optional evidence として扱う。`ui_shell_contract=ui-shell-v1` と同じ行にある時だけ採用し、Phase0 必須12件は増やさない。optional count は 33 とする。
+- 2026-06-27 Worker Helmholtz: audit summary に `phase0_audit_status=...` を追加し、`missing-timestamp` / `missing-contract-evidence` / `missing-phase0-evidence` / `complete` を固定順で読めるようにした。`IsComplete` の条件は変えていない。
+- 2026-06-27 Worker Hypatia: Worker detail optional evidence は `worker_contract=worker-job-v1` と同じ行にある時だけ採用する。汎用 `metric_count` 等の誤検出を避ける補強で、Phase0 必須12件と optional count 33 は変えない。
 - Worker契約候補は `WorkerContractSourcePolicyTests` で WPF / Dispatcher / ViewModel / WebView2 / MainWindow を参照しない source policy を追加した。
 - thumbnail 進捗 refresh 予約は、coalesce / latest-only / shutdown guard を source policy で固定し、Scheduler 化の最初の足場にした。
 - `UiWorkRequest` を thumbnail 進捗 refresh 予約へ接続し、priority / coalesce / latest-only / log reason / shutdown受理可否を既存経路のまま説明できるようにした。
@@ -466,6 +468,15 @@
 - 親検証は focused test 158件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
 - 今回も実機同一runの新規採取ではない。次の実機採取では Logタブ preview / live audit summary の `optional_evidence=x/33` と UI Shell snapshot detail が、同一 Release run の startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin 操作後に読めることを見る。
 
+### 2.37 2026-06-27 PM親レビュー Phase0 audit statusとWorker detail誤検出抑制
+
+- Worker Helmholtz / Hypatia は UI簡素化別スレと競合しないよう、Infrastructure policy と audit / evidence tests に限定した。XAML、Themes、Settings、Views/Main UI 本体は触っていない。
+- 親レビューでは、Worker Helmholtz の `phase0_audit_status=...` を採用した。status は `missing-timestamp`、`missing-contract-evidence`、`missing-phase0-evidence`、`complete` の優先順で出し、採取済みログがどこで未完かを Logタブ preview / live audit summary の1行で読めるようにした。`IsComplete` は引き続き contract evidence と Phase0 evidence の両方が揃った時だけ true とする。
+- 親レビューでは、Worker Hypatia の Worker detail optional evidence 同行限定化を採用した。`diagnostic_context_count` / `capability_count` / `metric_count` は `worker_contract=worker-job-v1` と同じ行にある時だけ拾い、候補 field だけの行は optional evidence にしない。Phase0 必須12件、optional count 33、完了条件は変えていない。
+- 親側では live audit 合成ログの `worker-metric-count` fixture を contract 同行へ追従した。これはテストデータ補正だけで、runtime 挙動は変えていない。
+- 親検証は focused test 43件成功 / 1件skip、Release x64 build 成功、警告0件で完了した。
+- 今回も実機同一runの新規採取ではない。次の実機採取では `phase0_audit_status` がどの不足で止まっているかを示すこと、Worker detail が contract 行に揃った時だけ optional evidence として出ることを見る。
+
 ## 3. Roadmap
 
 ### Phase 0. 現状固定とログ証跡補強
@@ -492,6 +503,8 @@
 - 済: Logタブ preview でも `DebugRuntimeLogAuditSummaryPolicy` 経由の `optional_evidence=x/33 optional=...` が先頭summaryに出ることをテストで固定した。
 - 済: live audit 失敗時の採取案内は `DebugRuntimeLogPhase0NextActionPolicy.BuildFullCaptureGuideText()` 経由で `startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin` を示し、現行の Phase0 採取対象とズレないようにした。
 - 済: UI Shell snapshot detail の `is_user_priority_active` / `is_manual_mode` / `is_watch_ui_suppressed` / `is_recent_viewport_active` / `is_player_playback_active` は Phase0 optional evidence として summary に残す。`ui_shell_contract=ui-shell-v1` と同じ行にある時だけ採用し、Phase0 必須12件は増やさない。
+- 済: audit summary は `phase0_audit_status=...` を出し、timestamp 不足、contract evidence 不足、Phase0 evidence 不足、完了を1行で判別できる。完了条件そのものは変えない。
+- 済: Worker detail optional evidence は `worker_contract=worker-job-v1` と同じ行にある時だけ採用する。汎用 field の誤検出を避ける補強であり、Phase0 必須12件と optional count 33 は増やさない。
 - 未: 2026-06-27 の実ログ audit は `log_evidence=2/9`、`phase0_log_evidence=1/12` で不足を示した。次は同一 Release run で startup / search / sort / scroll / Player / watch / image / persistence / thumbnail / skin を操作し、summary 欠落が消えることを確認する。
 
 ### Phase 1. UI Shell 入力契約
