@@ -48,6 +48,15 @@ namespace IndigoMovieManager
                 return;
             }
 
+            UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
+                IsUserPriorityWorkActive(),
+                isManualMode: false
+            );
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                BuildUiShellInputLogMessage("upper-tab-switch", "selection-changed", snapshot)
+            );
+
             HandleUpperTabSelectionChangedCore();
         }
 

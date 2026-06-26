@@ -246,6 +246,44 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
+    public void 上側タブ切替はUiShell入力snapshotを1回だけログへ残す()
+    {
+        string source = GetRepoText("BottomTabs", "Common", "MainWindow.BottomTabs.Common.cs");
+        string method = GetMethodBlock(
+            source,
+            "private async void Tabs_SelectionChangedAsync("
+        );
+
+        int guardReturnIndex = method.IndexOf("return;", StringComparison.Ordinal);
+        int snapshotIndex = method.IndexOf(
+            "UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(",
+            StringComparison.Ordinal
+        );
+        int inputLogIndex = method.IndexOf(
+            "BuildUiShellInputLogMessage(\"upper-tab-switch\", \"selection-changed\", snapshot)",
+            StringComparison.Ordinal
+        );
+        int handleIndex = method.IndexOf(
+            "HandleUpperTabSelectionChangedCore();",
+            StringComparison.Ordinal
+        );
+        int inputLogCount = method.Split("BuildUiShellInputLogMessage(").Length - 1;
+
+        Assert.That(method, Does.Contain("sender as TabControl == null || e.OriginalSource is not TabControl"));
+        Assert.That(method, Does.Contain("IsUserPriorityWorkActive()"));
+        Assert.That(method, Does.Contain("isManualMode: false"));
+        Assert.That(
+            method,
+            Does.Contain("BuildUiShellInputLogMessage(\"upper-tab-switch\", \"selection-changed\", snapshot)")
+        );
+        Assert.That(inputLogCount, Is.EqualTo(1));
+        Assert.That(guardReturnIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(snapshotIndex, Is.GreaterThan(guardReturnIndex));
+        Assert.That(inputLogIndex, Is.GreaterThan(snapshotIndex));
+        Assert.That(handleIndex, Is.GreaterThan(inputLogIndex));
+    }
+
+    [Test]
     public void Gate側の同一snapshot判定はclear前にno_opで返す()
     {
         string source = GetRepoText("UpperTabs", "Common", "UpperTabActivationGate.cs");
