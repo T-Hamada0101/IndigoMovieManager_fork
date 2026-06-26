@@ -231,6 +231,46 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
     }
 
     [Test]
+    public void persistence_detail補助evidenceはsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "save persist_contract=persistence-write-v1 write_succeeded=True persist_state=persisted dirty=False",
+                    "save persist_contract=persistence-write-v1 failed=0 retryable=False notify_ui=False",
+                    "watch dirty=True failed=1 retryable=True notify_ui=True",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedKeys, Is.EqualTo(["persistence"]));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(
+                    [
+                        "persistence-write-succeeded",
+                        "persistence-state",
+                        "persistence-dirty",
+                        "persistence-failed",
+                        "persistence-retryable",
+                        "persistence-notify-ui",
+                    ]
+                )
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith(
+                    "optional=persistence-write-succeeded,persistence-state,persistence-dirty,persistence-failed,persistence-retryable,persistence-notify-ui"
+                )
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Not.Contain("persistence"));
+        });
+    }
+
+    [Test]
     public void worker_DTO_detail補助evidenceはsummaryに残る()
     {
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(

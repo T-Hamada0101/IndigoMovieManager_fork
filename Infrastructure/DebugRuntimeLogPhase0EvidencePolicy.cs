@@ -64,6 +64,31 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
             "image-stale-discard",
             ["failure_reason=stale-image-request", "failure_reason=stale-player-right-rail"]
         ),
+        // Persistence 詳細は契約名と同じ行にある時だけ拾い、汎用 field の誤検出を避ける。
+        RequiredPhase0EvidenceToken.All(
+            "persistence-write-succeeded",
+            ["persist_contract=persistence-write-v1", "write_succeeded="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "persistence-state",
+            ["persist_contract=persistence-write-v1", "persist_state="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "persistence-dirty",
+            ["persist_contract=persistence-write-v1", "dirty="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "persistence-failed",
+            ["persist_contract=persistence-write-v1", "failed="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "persistence-retryable",
+            ["persist_contract=persistence-write-v1", "retryable="]
+        ),
+        RequiredPhase0EvidenceToken.All(
+            "persistence-notify-ui",
+            ["persist_contract=persistence-write-v1", "notify_ui="]
+        ),
         // Worker DTO detail は Phase6 補助 evidence として扱い、Phase0 必須12件は増やさない。
         new("worker-diagnostic-context", "diagnostic_context_count="),
         new("worker-capability-count", "capability_count="),
