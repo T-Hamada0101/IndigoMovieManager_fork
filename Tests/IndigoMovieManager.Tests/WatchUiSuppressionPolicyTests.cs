@@ -290,6 +290,31 @@ public sealed class WatchUiSuppressionPolicyTests
     }
 
     [Test]
+    public void BuildUiShellInputLogMessage_manual_reloadは手動modeで残す()
+    {
+        UiOperationSnapshot snapshot = new(
+            IsUserPriorityActive: false,
+            IsManualMode: true,
+            IsWatchUiSuppressed: false,
+            IsRecentViewportInteractionActive: false,
+            IsPlayerPlaybackActive: false
+        );
+
+        string message = MainWindow.BuildUiShellInputLogMessage(
+            operationReason: "manual-reload",
+            triggerReason: "Header.ReloadButton",
+            snapshot: snapshot
+        );
+
+        Assert.That(
+            message,
+            Is.EqualTo(
+                "ui shell input: operation_reason=manual-reload trigger_reason=Header.ReloadButton is_user_priority_active=false is_manual_mode=true is_watch_ui_suppressed=false is_recent_viewport_active=false is_player_playback_active=false ui_shell_contract=ui-shell-v1"
+            )
+        );
+    }
+
+    [Test]
     public void BuildUserPriorityReleaseLogMessage_timeout時もdeferred_watchを残す()
     {
         UiOperationSnapshot snapshot = new(

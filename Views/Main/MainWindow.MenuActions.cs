@@ -2604,6 +2604,15 @@ namespace IndigoMovieManager
             bool deferredScanScheduled = false;
             bool watchUiSuppressionStarted = false;
 
+            UiOperationSnapshot inputSnapshot = CaptureUserPriorityOperationSnapshot(
+                IsUserPriorityWorkActive(),
+                isManualMode: true
+            );
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                BuildUiShellInputLogMessage("manual-reload", trigger, inputSnapshot)
+            );
+
             DebugRuntimeLog.Write(
                 "ui-tempo",
                 $"header reload begin: reload_id={reloadId} trigger={trigger} sort={sortId} full_reload_reason={fullReloadReason}"

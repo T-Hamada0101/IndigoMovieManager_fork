@@ -189,6 +189,11 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(reloadMethod, Does.Contain("string reloadId = CreateHeaderReloadLogCorrelationId();"));
         Assert.That(reloadMethod, Does.Contain("bool externalSkinRefreshQueued = false;"));
         Assert.That(reloadMethod, Does.Contain("bool deferredScanScheduled = false;"));
+        Assert.That(reloadMethod, Does.Contain("UiOperationSnapshot inputSnapshot = CaptureUserPriorityOperationSnapshot("));
+        Assert.That(reloadMethod, Does.Contain("IsUserPriorityWorkActive(),"));
+        Assert.That(reloadMethod, Does.Contain("isManualMode: true"));
+        Assert.That(reloadMethod, Does.Contain("BuildUiShellInputLogMessage(\"manual-reload\", trigger, inputSnapshot)"));
+        Assert.That(CountOccurrences(reloadMethod, "BuildUiShellInputLogMessage("), Is.EqualTo(1));
         Assert.That(reloadMethod, Does.Contain("header reload begin:"));
         Assert.That(reloadMethod, Does.Contain("header reload end:"));
         Assert.That(reloadMethod, Does.Contain("header reload failed:"));
