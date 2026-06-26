@@ -154,6 +154,43 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
     }
 
     [Test]
+    public void worker_DTO_detail補助evidenceはsummaryに残る()
+    {
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(
+            BuildSequencedLines(
+                [
+                    "worker worker_contract=worker-job-v1 diagnostic_context_count=7",
+                    "worker capability_count=3",
+                    "worker result metric_count=2",
+                ]
+            )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Phase0Evidence.ObservedKeys, Is.EqualTo(["worker"]));
+            Assert.That(
+                summary.Phase0Evidence.OptionalObservedKeys,
+                Is.EqualTo(
+                    [
+                        "worker-diagnostic-context",
+                        "worker-capability-count",
+                        "worker-metric-count",
+                    ]
+                )
+            );
+            Assert.That(summary.Phase0Evidence.IsComplete, Is.False);
+            Assert.That(
+                summary.Phase0Evidence.BuildSummaryText(),
+                Does.EndWith(
+                    "optional=worker-diagnostic-context,worker-capability-count,worker-metric-count"
+                )
+            );
+            Assert.That(summary.Phase0NextActions.ActionKeys, Does.Contain("thumbnail"));
+        });
+    }
+
+    [Test]
     public void 欠けがある時も既存summaryの順序と文言が安定する()
     {
         DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(

@@ -37,6 +37,10 @@ public static class DebugRuntimeLogPhase0EvidencePolicy
             "image-stale-discard",
             ["failure_reason=stale-image-request", "failure_reason=stale-player-right-rail"]
         ),
+        // Worker DTO detail は Phase6 補助 evidence として扱い、Phase0 必須12件は増やさない。
+        new("worker-diagnostic-context", "diagnostic_context_count="),
+        new("worker-capability-count", "capability_count="),
+        new("worker-metric-count", "metric_count="),
     ];
 
     public static DebugRuntimeLogPhase0EvidenceSummary Evaluate(IEnumerable<string> logLines)

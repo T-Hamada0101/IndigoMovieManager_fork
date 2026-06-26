@@ -96,7 +96,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedCount, Is.EqualTo(0));
             Assert.That(summary.IsComplete, Is.False);
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(3));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(6));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(1));
             Assert.That(summary.OptionalObservedKeys, Is.EqualTo(["manual-reload-input"]));
             Assert.That(summary.MissingKeys, Does.Contain("search-input"));
@@ -119,7 +119,7 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
         {
             Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
             Assert.That(summary.ObservedKeys, Is.EqualTo(["image-pipeline"]));
-            Assert.That(summary.TotalOptionalCount, Is.EqualTo(3));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(6));
             Assert.That(summary.OptionalObservedCount, Is.EqualTo(2));
             Assert.That(
                 summary.OptionalObservedKeys,
@@ -128,6 +128,42 @@ public sealed class DebugRuntimeLogPhase0EvidencePolicyTests
             Assert.That(
                 summary.BuildSummaryText(),
                 Does.EndWith("optional=image-aggregate-decode-plan,image-stale-discard")
+            );
+        });
+    }
+
+    [Test]
+    public void worker_DTO_detail補助evidenceはoptionalとして認識する()
+    {
+        DebugRuntimeLogPhase0EvidenceSummary summary = DebugRuntimeLogPhase0EvidencePolicy.Evaluate(
+            [
+                "worker worker_contract=worker-job-v1 diagnostic_context_count=7",
+                "worker capability_count=3",
+                "worker result metric_count=2",
+            ]
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.TotalRequiredCount, Is.EqualTo(12));
+            Assert.That(summary.ObservedKeys, Is.EqualTo(["worker"]));
+            Assert.That(summary.TotalOptionalCount, Is.EqualTo(6));
+            Assert.That(summary.OptionalObservedCount, Is.EqualTo(3));
+            Assert.That(
+                summary.OptionalObservedKeys,
+                Is.EqualTo(
+                    [
+                        "worker-diagnostic-context",
+                        "worker-capability-count",
+                        "worker-metric-count",
+                    ]
+                )
+            );
+            Assert.That(
+                summary.BuildSummaryText(),
+                Does.EndWith(
+                    "optional=worker-diagnostic-context,worker-capability-count,worker-metric-count"
+                )
             );
         });
     }
