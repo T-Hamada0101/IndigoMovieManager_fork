@@ -50,6 +50,57 @@ public sealed class LogTabPreviewIoPolicyTests
     }
 
     [Test]
+    public void LogタブDebug切替はUiShell入力snapshotを保存前に1回だけ残す()
+    {
+        string source = GetRepoText("BottomTabs", "LogTab", "MainWindow.BottomTab.Log.cs");
+        string handler = ExtractMethod(
+            source,
+            "private void LogTabSwitchChanged_Click("
+        );
+        int snapshotIndex = handler.IndexOf(
+            "UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(",
+            StringComparison.Ordinal
+        );
+        int logWriteIndex = handler.IndexOf("DebugRuntimeLog.Write(", StringComparison.Ordinal);
+        int inputLogIndex = handler.IndexOf(
+            "BuildUiShellInputLogMessage(\"log-tab-switch\", \"debug-switch-changed\", snapshot)",
+            StringComparison.Ordinal
+        );
+        int saveIndex = handler.IndexOf(
+            "QueueApplicationSettingsSave(\"log-tab-debug-switch\")",
+            StringComparison.Ordinal
+        );
+        int refreshIndex = handler.IndexOf(
+            "UpdateLogTabRefreshState(forceRefresh: true)",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(handler, Does.Contain("CaptureUserPriorityOperationSnapshot("));
+            Assert.That(handler, Does.Contain("IsUserPriorityWorkActive()"));
+            Assert.That(handler, Does.Contain("isManualMode: false"));
+            Assert.That(handler, Does.Contain("DebugRuntimeLog.Write("));
+            Assert.That(handler, Does.Contain("\"ui-priority\""));
+            Assert.That(
+                handler,
+                Does.Contain(
+                    "BuildUiShellInputLogMessage(\"log-tab-switch\", \"debug-switch-changed\", snapshot)"
+                )
+            );
+            Assert.That(CountOccurrences(handler, "BuildUiShellInputLogMessage("), Is.EqualTo(1));
+            Assert.That(CountOccurrences(handler, "\"ui-priority\""), Is.EqualTo(1));
+            Assert.That(handler, Does.Contain("QueueApplicationSettingsSave(\"log-tab-debug-switch\")"));
+            Assert.That(handler, Does.Contain("UpdateLogTabRefreshState(forceRefresh: true)"));
+            Assert.That(snapshotIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(logWriteIndex, Is.GreaterThan(snapshotIndex));
+            Assert.That(inputLogIndex, Is.GreaterThan(logWriteIndex));
+            Assert.That(saveIndex, Is.GreaterThan(inputLogIndex));
+            Assert.That(refreshIndex, Is.GreaterThan(saveIndex));
+        });
+    }
+
+    [Test]
     public void BuildLogPreviewTextWithSummaryは固定順summaryの後に元previewを残す()
     {
         string[] previewLines =
@@ -129,6 +180,19 @@ public sealed class LogTabPreviewIoPolicyTests
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
         return string.Empty;
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 
     private static string ExtractMethod(string source, string signature)

@@ -201,6 +201,16 @@ namespace IndigoMovieManager
 
         private void LogTabSwitchChanged_Click(object sender, RoutedEventArgs e)
         {
+            // Debug切替も入力入口として snapshot を先に残し、保存と表示更新の順序は保つ。
+            UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
+                IsUserPriorityWorkActive(),
+                isManualMode: false
+            );
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                BuildUiShellInputLogMessage("log-tab-switch", "debug-switch-changed", snapshot)
+            );
+
             // TwoWay バインド済みの設定値は、画面反映を先に戻して保存I/Oだけ背景へ逃がす。
             QueueApplicationSettingsSave("log-tab-debug-switch");
             UpdateLogTabRefreshState(forceRefresh: true);
