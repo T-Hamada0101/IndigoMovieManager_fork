@@ -300,6 +300,7 @@ namespace IndigoMovieManager
         // 終了直前の音量変更を落とさないよう、shutdown では短時間だけ保存完了を回収する。
         private void WaitForPlayerVolumeSettingSaveForShutdown(int timeoutMs = 1000)
         {
+            PersistenceWriteRequest writeRequest = BuildPlayerVolumeSettingsWriteRequest();
             Task saveTask;
             lock (_playerVolumeSettingsSaveSync)
             {
@@ -312,7 +313,7 @@ namespace IndigoMovieManager
                 {
                     DebugRuntimeLog.Write(
                         "player",
-                        $"player volume settings save drain timeout: timeout_ms={timeoutMs}"
+                        $"player volume settings save drain timeout: {writeRequest.BuildLogFields()} timeout_ms={timeoutMs}"
                     );
                 }
             }
@@ -320,7 +321,7 @@ namespace IndigoMovieManager
             {
                 DebugRuntimeLog.Write(
                     "player",
-                    $"player volume settings save drain failed: err='{ex.GetType().Name}: {ex.Message}'"
+                    $"player volume settings save drain failed: {writeRequest.BuildLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
         }

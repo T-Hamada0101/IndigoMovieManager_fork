@@ -98,6 +98,28 @@ public sealed class MainWindowSettingsPersistencePolicyTests
                 "player volume settings save failed: {result.LogFields}"
             )
         );
+        string playerShutdownDrainMethod = ExtractMethod(
+            playerSource,
+            "private void WaitForPlayerVolumeSettingSaveForShutdown("
+        );
+        Assert.That(
+            playerShutdownDrainMethod,
+            Does.Contain(
+                "PersistenceWriteRequest writeRequest = BuildPlayerVolumeSettingsWriteRequest();"
+            )
+        );
+        Assert.That(
+            playerShutdownDrainMethod,
+            Does.Contain(
+                "player volume settings save drain timeout: {writeRequest.BuildLogFields()} timeout_ms={timeoutMs}"
+            )
+        );
+        Assert.That(
+            playerShutdownDrainMethod,
+            Does.Contain(
+                "player volume settings save drain failed: {writeRequest.BuildLogFields()} err='{ex.GetType().Name}: {ex.Message}'"
+            )
+        );
         Assert.That(settingsWindowSource, Does.Contain("App.IsDiagnosticNoPersistEnabled()"));
         Assert.That(appSource, Does.Contain("internal const string DiagnosticNoPersistEnvironmentVariable"));
         Assert.That(appSource, Does.Contain("internal static bool IsDiagnosticNoPersistEnabled()"));
