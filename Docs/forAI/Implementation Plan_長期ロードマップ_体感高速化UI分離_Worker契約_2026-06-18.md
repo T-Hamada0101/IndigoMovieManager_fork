@@ -4,6 +4,8 @@
 
 再構築: 2026-07-11
 
+親レビュー: 2026-07-11
+
 位置づけ: UIのスムーズ化とユーザーストレス最小化を長期判断へ落とす実装正本
 
 変更概要:
@@ -13,6 +15,8 @@
 - 「速い」だけでなく、入力を失わない、表示を飛ばさない、古い結果を見せない、背後処理が操作へ譲ることを固定原則にした。
 - Phase 0からPhase 7を、操作シナリオ、成果物、完了ゲート、次フェーズへの接続が読める形へ再構築した。
 - 直近の最優先を、同一Release runの実機証跡採取と、検索・sort・scroll・watch小差分の体感ボトルネック特定に固定した。
+- 主要8シナリオのlog evidenceと目視確認を分離したscorecardを追加し、scorecardだけではPhase 0を完了扱いにしない判断を固定した。
+- 最新runからUI停止delayのp50 / p95 / max、最大queue深さ、stale破棄行数、full fallback行数を要約できるようにした。runtimeログ契約は増やしていない。
 
 ## 0. 結論
 
@@ -177,6 +181,16 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 
 目的: 「何となく重い」を操作単位の事実へ変える。
 
+#### 2026-07-11 親レビュー
+
+- `76ef865` で、既存contract / Phase 0 evidenceを主要8シナリオへ再分類するscorecardを追加した。log evidenceとselection / focus / scroll / blankなどの目視確認は分離し、目視未確認のままPhase 0完了にはしない。
+- `74e2cb4` で、最新runの `ui hang updated:` に限ったdelay分布と、queue / stale / full fallbackのログ行要約を追加した。操作latencyや一意操作数とは呼ばない。
+- サブエージェント検証はscorecard 27件、run metrics 24件のRelease x64 focused testが成功した。親レビューでも実装範囲、Author / Committer、`git diff --check` を確認した。
+- 2026-07-10の最新runをlive auditへ通した結果は、contract evidence `5/9`、Phase 0 evidence `2/12`、scenario log evidence `1/8` だった。log evidenceが揃ったのは `persistence-shutdown` だけで、同シナリオも目視確認は未完了である。
+- 同runの参考値は、UI停止delay sample 90件、p50 750ms、p95 1251ms、max 1498ms、最大queue深さ1、stale discard 0行、full fallback 2行だった。full fallbackは2行とも `reason=query` で、selection refreshとscroll resetを伴っていた。
+- 最大queue深さ1のため、少なくともこのrunではqueue滞留を主因と断定しない。大きいdelayはWatch / Thumbnail / activityなしの各状態で観測したが、主要操作が同一runに揃っていないため、WatchやThumbnailを支配要因とも断定しない。
+- Phase 0は `実機確認待ち` のまま維持する。次は新しいログfieldを足さず、主要8シナリオと目視項目を同一Release runで採取する。
+
 実行シナリオ:
 
 1. cold startから `first-page shown`、`input ready`、`heavy services started` まで。
@@ -195,6 +209,8 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 - `phase0_audit_complete` と不足evidence一覧。
 - p50 / p95、最大停止、stale discard、full fallback、queue depthの要約。
 - 次に直す支配要因を最大3件に絞った判断。
+
+scorecardとrun metricsの自動要約は実装済みである。残る成果物は、主要8シナリオを通した同一runと、人間の目で確認したselection / focus / scroll / blankの記録である。
 
 完了ゲート:
 
@@ -484,6 +500,8 @@ sidecar判断ゲート:
 1. ユーザーが実際に待たされる最長区間はどこか。
 2. 選択、focus、scroll、blankのどれが体感を悪化させているか。
 3. full fallback、queue競合、同期I/O、decode、navigateのどれが支配要因か。
+
+監査summaryには `phase0_scenario_log_evidence`、`phase0_scenario_scorecard`、`phase0_manual_visual_review`、`phase0_run_metrics` が出る。次回採取では、この4行と実表示の記録を同じrunへ揃える。
 
 その結果から最上位1件だけを選び、Phase 1からPhase 5の該当境界へ最小変更を入れる。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
