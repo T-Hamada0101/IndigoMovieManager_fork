@@ -563,7 +563,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(comboChanged, Does.Contain("DebugRuntimeLog.Write("));
         Assert.That(comboChanged, Does.Contain("BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"));
         Assert.That(comboChanged, Does.Contain("BeginUserPriorityWork(\"sort\");"));
-        Assert.That(comboChanged, Does.Contain("await SortDataAsync(plan.SortId);"));
+        Assert.That(comboChanged, Does.Contain("if (!await SortDataAsync(plan.SortId))"));
         Assert.That(comboChanged, Does.Contain("finally"));
         Assert.That(comboChanged, Does.Contain("EndUserPriorityWork(\"sort\");"));
         Assert.That(sortSnapshotIndex, Is.GreaterThanOrEqualTo(0));
@@ -577,16 +577,16 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(
             sortBeginIndex,
             Is.LessThan(
-                comboChanged.IndexOf("await SortDataAsync(plan.SortId);", StringComparison.Ordinal)
+                comboChanged.IndexOf("await SortDataAsync(plan.SortId)", StringComparison.Ordinal)
             )
         );
         Assert.That(
             comboChanged.IndexOf("EndUserPriorityWork(\"sort\");", StringComparison.Ordinal),
             Is.GreaterThan(
-                comboChanged.IndexOf("await SortDataAsync(plan.SortId);", StringComparison.Ordinal)
+                comboChanged.IndexOf("await SortDataAsync(plan.SortId)", StringComparison.Ordinal)
             )
         );
-        Assert.That(comboChanged, Does.Contain("if (shouldSelectFirstItem)"));
+        Assert.That(comboChanged, Does.Not.Contain("shouldSelectFirstItem"));
         Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
     }
 
@@ -707,9 +707,40 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         Assert.That(comboChanged, Does.Contain("if (plan.ShouldUseStartupFullReload)"));
         Assert.That(comboChanged, Does.Contain("FilterAndSort(plan.SortId, true);"));
-        Assert.That(comboChanged, Does.Contain("else"));
-        Assert.That(comboChanged, Does.Contain("await SortDataAsync(plan.SortId);"));
+        Assert.That(comboChanged, Does.Contain("SelectFirstItem();"));
+        Assert.That(
+            comboChanged.IndexOf("SelectFirstItem();", StringComparison.Ordinal),
+            Is.LessThan(comboChanged.IndexOf("if (!await SortDataAsync(plan.SortId))", StringComparison.Ordinal))
+        );
         Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
+    }
+
+    [Test]
+    public void ComboSort_通常sortは選択を維持しstale時は後処理しない()
+    {
+        string inputRoutingSource = GetRepoText("Views", "Main", "MainWindow.InputRouting.cs");
+        string comboChanged = GetMethodBlock(
+            inputRoutingSource,
+            "private async void ComboSort_SelectionChanged("
+        );
+        int sortIndex = comboChanged.IndexOf(
+            "if (!await SortDataAsync(plan.SortId))",
+            StringComparison.Ordinal
+        );
+        int staleReturnIndex = comboChanged.IndexOf("return;", sortIndex, StringComparison.Ordinal);
+        int refreshIndex = comboChanged.LastIndexOf(
+            "RefreshThumbnailErrorRecords(force: true);",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(sortIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(staleReturnIndex, Is.GreaterThan(sortIndex));
+        Assert.That(refreshIndex, Is.GreaterThan(staleReturnIndex));
+        Assert.That(comboChanged.Split("SelectFirstItem();").Length - 1, Is.EqualTo(1));
+        Assert.That(
+            comboChanged.IndexOf("SelectFirstItem();", StringComparison.Ordinal),
+            Is.LessThan(sortIndex)
+        );
     }
 
     [Test]
@@ -742,7 +773,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(inputRoutingSource, Does.Contain("BeginUserPriorityWork(\"sort\");"));
         Assert.That(inputRoutingSource, Does.Contain("EndUserPriorityWork(\"sort\");"));
         Assert.That(inputRoutingSource, Does.Contain("FilterAndSort(plan.SortId, true);"));
-        Assert.That(inputRoutingSource, Does.Contain("await SortDataAsync(plan.SortId);"));
+        Assert.That(inputRoutingSource, Does.Contain("if (!await SortDataAsync(plan.SortId))"));
         Assert.That(inputRoutingSource, Does.Contain("RefreshThumbnailErrorRecords(force: true)"));
         Assert.That(inputRoutingSource, Does.Contain("SelectFirstItem();"));
         Assert.That(sortComboPolicySource, Does.Contain("internal static class SortComboSelectionPolicy"));

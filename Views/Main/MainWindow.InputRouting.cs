@@ -88,7 +88,7 @@ namespace IndigoMovieManager
 
         /// <summary>
         /// ソートコンボボックスの選択変更ハンドラ。
-        /// 段階ロード中は全件再取得付き FilterAndSort、通常時はインメモリ SortData で並び替えて先頭を選択する。
+        /// 段階ロード中は全件再取得付き FilterAndSort、通常時は選択を保ったままインメモリ SortData で並び替える。
         /// </summary>
         private async void ComboSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -128,24 +128,28 @@ namespace IndigoMovieManager
             BeginUserPriorityWork("sort");
             try
             {
-                bool shouldSelectFirstItem = true;
                 if (plan.ShouldUseStartupFullReload)
                 {
                     FilterAndSort(plan.SortId, true);
+
+                    if (plan.ShouldRefreshThumbnailErrorRecords)
+                    {
+                        RefreshThumbnailErrorRecords(force: true);
+                    }
+
+                    // 起動時の全件順序復旧だけは、従来どおり先頭選択へ戻す。
+                    SelectFirstItem();
+                    return;
                 }
-                else
+
+                if (!await SortDataAsync(plan.SortId))
                 {
-                    shouldSelectFirstItem = await SortDataAsync(plan.SortId);
+                    return;
                 }
 
                 if (plan.ShouldRefreshThumbnailErrorRecords)
                 {
                     RefreshThumbnailErrorRecords(force: true);
-                }
-
-                if (shouldSelectFirstItem)
-                {
-                    SelectFirstItem();
                 }
             }
             finally
