@@ -189,6 +189,9 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 - 2026-07-10の最新runをlive auditへ通した結果は、contract evidence `5/9`、Phase 0 evidence `2/12`、scenario log evidence `1/8` だった。log evidenceが揃ったのは `persistence-shutdown` だけで、同シナリオも目視確認は未完了である。
 - 同runの参考値は、UI停止delay sample 90件、p50 750ms、p95 1251ms、max 1498ms、最大queue深さ1、stale discard 0行、full fallback 2行だった。full fallbackは2行とも `reason=query` で、selection refreshとscroll resetを伴っていた。
 - 最大queue深さ1のため、少なくともこのrunではqueue滞留を主因と断定しない。大きいdelayはWatch / Thumbnail / activityなしの各状態で観測したが、主要操作が同一runに揃っていないため、WatchやThumbnailを支配要因とも断定しない。
+- `55bd5e0` で、コピー済み `.wb` の明示指定と確認フラグを必須にしたPhase 0診断起動スクリプトを追加した。DBの自動コピーや変更は行わず、起動した子プロセスだけへno-persist、コピーDB、Releaseログ設定を渡す。
+- `4d32338` で、live auditの対象ログをliteral pathで解決し、監査用環境変数を実行後に復元して終了コードをそのまま返す監査スクリプトを追加した。終了コード1はスクリプト異常ではなく、現行ログの必須証跡不足を表す。
+- サブエージェント検証は診断起動7件、live audit 5件のRelease x64 focused testが成功した。親レビューでも両方をまとめた12件が成功し、監査スクリプトの実行結果はscenario log evidence `1/8` のため想定どおり終了コード1だった。
 - Phase 0は `実機確認待ち` のまま維持する。次は新しいログfieldを足さず、主要8シナリオと目視項目を同一Release runで採取する。
 
 実行シナリオ:
@@ -201,6 +204,15 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 6. visible thumbnail、進捗、ERROR一覧、詳細画像を表示する。
 7. コピーDB + no-persistでskin通常切り替えとHeader Reloadを行う。
 8. 設定変更、bookmark / score / tag保存後に終了する。
+
+安全な採取手順:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Start-Phase0DiagnosticRun.ps1 -CopiedDbPath "<コピー済み.wb>" -AcknowledgeCopiedDb -Wait
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Invoke-Phase0LiveAudit.ps1 -NoBuild
+```
+
+1本目はユーザーが事前に用意したコピーDBだけを受け付け、主要8シナリオを画面へ表示してRelease x64アプリを起動する。2本目は採取後の最新ログを監査する。監査の終了コードが0になることに加え、目視項目を人間が確認するまでPhase 0は完了にしない。
 
 成果物:
 
