@@ -551,8 +551,24 @@ namespace IndigoMovieManager
                 endUserPriorityWork: EndUserPriorityWork,
                 restartThumbnailTask: RestartThumbnailTask,
                 refreshSearchResultsAsync: RefreshSearchResultsAsync,
-                selectFirstItem: SelectFirstItem
+                selectFirstItem: SelectFirstSearchResultIfNeeded
             );
+
+        // 検索後も現在選択が残っていれば維持し、未選択になった時だけ従来の先頭選択へ戻す。
+        private void SelectFirstSearchResultIfNeeded()
+        {
+            if (!ShouldSelectFirstSearchResult(GetSelectedItemByTabIndex()))
+            {
+                return;
+            }
+
+            SelectFirstItem();
+        }
+
+        internal static bool ShouldSelectFirstSearchResult(MovieRecords selectedItem)
+        {
+            return selectedItem == null;
+        }
 
         // 検索確定は通常時は query-only で軽く流し、起動直後の部分ロード中だけ full reload を維持する。
         private Task RefreshSearchResultsAsync(string sortId)
