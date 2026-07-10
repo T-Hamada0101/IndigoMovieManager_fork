@@ -344,7 +344,7 @@ namespace IndigoMovieManager.ViewModels
             for (int index = 0; index < count; index++)
             {
                 MovieRecords currentItem = FilteredMovieRecs[index];
-                if (!TryResolveMovieViewStableKey(currentItem, out string stableKey))
+                if (!MovieViewStableKeyPolicy.TryResolve(currentItem, out string stableKey))
                 {
                     return false;
                 }
@@ -356,7 +356,7 @@ namespace IndigoMovieManager.ViewModels
             for (int targetIndex = 0; targetIndex < count; targetIndex++)
             {
                 MovieRecords nextItem = nextItems[targetIndex];
-                if (!TryResolveMovieViewStableKey(nextItem, out string stableKey))
+                if (!MovieViewStableKeyPolicy.TryResolve(nextItem, out string stableKey))
                 {
                     return false;
                 }
@@ -370,7 +370,7 @@ namespace IndigoMovieManager.ViewModels
             for (int targetIndex = 0; targetIndex < count; targetIndex++)
             {
                 MovieRecords nextItem = nextItems[targetIndex];
-                if (!TryResolveMovieViewStableKey(nextItem, out string stableKey))
+                if (!MovieViewStableKeyPolicy.TryResolve(nextItem, out string stableKey))
                 {
                     return false;
                 }
@@ -388,7 +388,10 @@ namespace IndigoMovieManager.ViewModels
                 int rangeEnd = Math.Max(targetIndex, currentIndex);
                 for (int index = rangeStart; index <= rangeEnd; index++)
                 {
-                    if (!TryResolveMovieViewStableKey(FilteredMovieRecs[index], out stableKey))
+                    if (!MovieViewStableKeyPolicy.TryResolve(
+                            FilteredMovieRecs[index],
+                            out stableKey
+                        ))
                     {
                         return false;
                     }
@@ -432,7 +435,7 @@ namespace IndigoMovieManager.ViewModels
                     currentItem != null
                     && nextItem != null
                     && !ReferenceEquals(currentItem, nextItem)
-                    && AreSameMovieViewStableKey(currentItem, nextItem)
+                    && MovieViewStableKeyPolicy.AreSame(currentItem, nextItem)
                 )
                 {
                     updatedCount++;
@@ -510,7 +513,7 @@ namespace IndigoMovieManager.ViewModels
             int comparableCount = Math.Min(removedCount, insertedCount);
             while (
                 matchedPrefixCount < comparableCount
-                && AreSameMovieViewStableKey(
+                && MovieViewStableKeyPolicy.AreSame(
                     FilteredMovieRecs[startIndex + matchedPrefixCount],
                     nextItems[startIndex + matchedPrefixCount]
                 )
@@ -523,7 +526,7 @@ namespace IndigoMovieManager.ViewModels
             while (
                 matchedSuffixCount < removedCount - matchedPrefixCount
                 && matchedSuffixCount < insertedCount - matchedPrefixCount
-                && AreSameMovieViewStableKey(
+                && MovieViewStableKeyPolicy.AreSame(
                     FilteredMovieRecs[startIndex + removedCount - 1 - matchedSuffixCount],
                     nextItems[startIndex + insertedCount - 1 - matchedSuffixCount]
                 )
@@ -610,7 +613,7 @@ namespace IndigoMovieManager.ViewModels
             for (int index = 0; index < items.Count; index++)
             {
                 MovieRecords item = items[index];
-                if (!TryResolveMovieViewStableKey(item, out string stableKey))
+                if (!MovieViewStableKeyPolicy.TryResolve(item, out string stableKey))
                 {
                     return false;
                 }
@@ -628,42 +631,6 @@ namespace IndigoMovieManager.ViewModels
                 }
             }
 
-            return true;
-        }
-
-        private static bool AreSameMovieViewStableKey(MovieRecords left, MovieRecords right)
-        {
-            return TryResolveMovieViewStableKey(left, out string leftStableKey)
-                && TryResolveMovieViewStableKey(right, out string rightStableKey)
-                && string.Equals(
-                    leftStableKey,
-                    rightStableKey,
-                    StringComparison.OrdinalIgnoreCase
-                );
-        }
-
-        private static bool TryResolveMovieViewStableKey(MovieRecords movie, out string stableKey)
-        {
-            stableKey = "";
-            if (movie == null)
-            {
-                return false;
-            }
-
-            // DB登録済み行は rename / path 更新でも同じ動画として追えるよう、Movie_Id を優先する。
-            if (movie.Movie_Id > 0)
-            {
-                stableKey = $"id:{movie.Movie_Id}";
-                return true;
-            }
-
-            string moviePath = movie.Movie_Path ?? "";
-            if (string.IsNullOrWhiteSpace(moviePath))
-            {
-                return false;
-            }
-
-            stableKey = $"path:{moviePath}";
             return true;
         }
 
