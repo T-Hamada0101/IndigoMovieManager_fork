@@ -19,6 +19,7 @@
 - 最新runからUI停止delayのp50 / p95 / max、最大queue深さ、stale破棄行数、full fallback行数を要約できるようにした。runtimeログ契約は増やしていない。
 - 通常UIと外部skinのインメモリsort後に先頭選択へ戻していた後処理を除き、既存の差分Moveが選択とscrollを維持できる経路を塞がないようにした。起動partialの全件復旧だけは従来互換を維持する。
 - 検索結果更新後と上側タブ往復時も、既存選択が残る時は維持し、未選択時だけ先頭へ戻すようにした。
+- Reset更新では、apply前の主選択1件をID優先・path fallbackのstable keyで捕捉し、apply後の現行レコードへ復元するようにした。
 
 ## 0. 結論
 
@@ -246,7 +247,9 @@ scorecardとrun metricsの自動要約は実装済みである。残る成果物
 - サブエージェント検証は通常UI 45件、外部skin 17件のRelease x64 focused testが成功した。親レビューでは両テスト群62件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
 - `4466d8a` で検索結果更新後、`0efd679` で上側タブ往復時の選択を条件付きfallbackへ変更した。どちらも現在選択を先に確認し、未選択時だけ `SelectFirstItem()` を実行するため、選択が生きている通常経路を先頭へ巻き戻さない。
 - サブエージェント検証は検索7件、タブ1件が成功した。親レビューでは関連42件とRelease x64全体buildが成功し、テストの汎用source parserも39行の期待ブロック検証へ差し戻して簡素化した。
-- Phase 1は `接続中` のまま維持する。Reset更新時のstable key復元、keyboard focus、scroll anchor、複数選択は未達であり、今回のfocused testだけで完了扱いにしない。
+- `ca87d50` でViewModel内のstable key判定を `MovieViewStableKeyPolicy` へ分離し、既存diff / moveも同じID優先・path fallback契約を使うようにした。`efb4f30` でReset apply前の主選択キーを捕捉し、変更後の一覧に同じキーが残る場合だけ現行レコードを現在タブへ復元する。Diff / Move、対象消失、key解決不可では介入しない。
+- サブエージェント検証はstable key側21件、Reset復元側54件が成功した。親レビューでは関連67件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
+- Phase 1は `接続中` のまま維持する。今回閉じたのは主選択1件だけであり、keyboard focus、scroll anchor、複数選択のstable key復元は未達である。実機でReset後の選択と表示位置を確認するまでBehavior完了扱いにしない。
 
 実装項目:
 
@@ -532,7 +535,7 @@ sidecar判断ゲート:
 
 監査summaryには `phase0_scenario_log_evidence`、`phase0_scenario_scorecard`、`phase0_manual_visual_review`、`phase0_run_metrics` が出る。次回採取では、この4行と実表示の記録を同じrunへ揃える。
 
-シナリオ2では検索と通常sortの後に選択項目とscrollが先頭へ飛ばないこと、シナリオ3では上側タブ往復後に各タブの既存選択が残ることを目視し、今回の修正をBehavior証跡で閉じる。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
+シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択とscrollが先頭へ飛ばないこと、シナリオ3では上側タブ往復後に各タブの既存選択が残ることを目視し、今回の修正をBehavior証跡で閉じる。複数選択、focus、scroll anchorは別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
 その結果から最上位1件だけを選び、Phase 1からPhase 5の該当境界へ最小変更を入れる。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
