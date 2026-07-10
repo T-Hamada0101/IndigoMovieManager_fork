@@ -18,6 +18,7 @@
 - 主要8シナリオのlog evidenceと目視確認を分離したscorecardを追加し、scorecardだけではPhase 0を完了扱いにしない判断を固定した。
 - 最新runからUI停止delayのp50 / p95 / max、最大queue深さ、stale破棄行数、full fallback行数を要約できるようにした。runtimeログ契約は増やしていない。
 - 通常UIと外部skinのインメモリsort後に先頭選択へ戻していた後処理を除き、既存の差分Moveが選択とscrollを維持できる経路を塞がないようにした。起動partialの全件復旧だけは従来互換を維持する。
+- 検索結果更新後と上側タブ往復時も、既存選択が残る時は維持し、未選択時だけ先頭へ戻すようにした。
 
 ## 0. 結論
 
@@ -243,7 +244,9 @@ scorecardとrun metricsの自動要約は実装済みである。残る成果物
 - 2系統の監査で、通常UIと外部skinのsortがインメモリ差分Move後にも `SelectFirstItem()` を実行し、保持できる選択とscrollを先頭へ戻していたことを最上位の静的阻害要因と判断した。
 - `60d4b65` で通常UI、`0a38a20` で外部skinの通常sortから無条件先頭選択を除いた。起動partialの全件再取得時だけ先頭選択を残し、通常sortのstale / cancel時は後処理へ進まず、外部skin APIもfalseを返す。
 - サブエージェント検証は通常UI 45件、外部skin 17件のRelease x64 focused testが成功した。親レビューでは両テスト群62件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
-- Phase 1は `接続中` のまま維持する。検索後、タブ往復、Reset更新時のstable key復元、keyboard focus、scroll anchor、複数選択は未達であり、今回のsource policyだけで完了扱いにしない。
+- `4466d8a` で検索結果更新後、`0efd679` で上側タブ往復時の選択を条件付きfallbackへ変更した。どちらも現在選択を先に確認し、未選択時だけ `SelectFirstItem()` を実行するため、選択が生きている通常経路を先頭へ巻き戻さない。
+- サブエージェント検証は検索7件、タブ1件が成功した。親レビューでは関連42件とRelease x64全体buildが成功し、テストの汎用source parserも39行の期待ブロック検証へ差し戻して簡素化した。
+- Phase 1は `接続中` のまま維持する。Reset更新時のstable key復元、keyboard focus、scroll anchor、複数選択は未達であり、今回のfocused testだけで完了扱いにしない。
 
 実装項目:
 
@@ -529,7 +532,7 @@ sidecar判断ゲート:
 
 監査summaryには `phase0_scenario_log_evidence`、`phase0_scenario_scorecard`、`phase0_manual_visual_review`、`phase0_run_metrics` が出る。次回採取では、この4行と実表示の記録を同じrunへ揃える。
 
-シナリオ2では、通常sort後に選択項目とscrollが先頭へ飛ばないことを目視し、今回の修正をBehavior証跡で閉じる。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
+シナリオ2では検索と通常sortの後に選択項目とscrollが先頭へ飛ばないこと、シナリオ3では上側タブ往復後に各タブの既存選択が残ることを目視し、今回の修正をBehavior証跡で閉じる。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
 その結果から最上位1件だけを選び、Phase 1からPhase 5の該当境界へ最小変更を入れる。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
