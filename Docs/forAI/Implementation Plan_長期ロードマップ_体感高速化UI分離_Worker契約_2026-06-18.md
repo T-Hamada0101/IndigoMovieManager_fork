@@ -21,6 +21,7 @@
 - 検索結果更新後と上側タブ往復時も、既存選択が残る時は維持し、未選択時だけ先頭へ戻すようにした。
 - Reset更新では、apply前の主選択1件をID優先・path fallbackのstable keyで捕捉し、apply後の現行レコードへ復元するようにした。
 - Reset更新の複数選択も、主選択を先頭にしたstable key一覧として捕捉し、曖昧な重複keyを除いて現行レコードへ復元するようにした。
+- Reset更新のscrollも、先頭可視項目のstable keyとviewport内top offsetを捕捉し、同じ項目が残る時だけReset後の表示位置を補正するようにした。
 
 ## 0. 結論
 
@@ -252,7 +253,9 @@ scorecardとrun metricsの自動要約は実装済みである。残る成果物
 - サブエージェント検証はstable key側21件、Reset復元側54件が成功した。親レビューでは関連67件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
 - `ffdaee4` で主選択を先頭にした複数stable keyの捕捉と、Reset後の現行レコード一括解決を追加した。key重複は大小文字を区別せず除き、apply後一覧で同じkeyが複数ある場合は曖昧なため復元しない。`9deee65` でsnapshot順に既存のExtended選択反映へ接続し、対象が消えた場合は残存項目だけを戻す。
 - サブエージェント検証は複数key policy 18件、UI接続45件が成功した。親レビューではstable key、複数選択、ReadModel apply、外部skin選択の関連89件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
-- Phase 1は `接続中` のまま維持する。単一・複数選択の実装接続は進んだが、keyboard focusとscroll anchorは未達である。複数復元時のSelectionChanged回数、主選択の見え方、scroll位置は実機で確認するまでBehavior完了扱いにしない。
+- `a998896` で先頭可視項目のstable keyとviewport相対top offsetを持つscroll anchor policyを追加した。`496b0f8` でReset前のanchor捕捉、Reset後の `ScrollIntoView`、container再実現、top差分によるoffset補正、visible range再計測を接続した。同一タブ・一意key・Reset変更ありの場合だけ同期layoutへ入り、取得失敗やteardown競合は現在位置を壊さずskipする。
+- サブエージェント検証はscroll anchor policy 20件、WPF接続92件が成功した。親レビューではscroll、viewport、ReadModel、選択の関連113件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
+- Phase 1は `接続中` のまま維持する。選択とscroll anchorの実装接続は進んだが、keyboard focusは未達である。VirtualizingWrapPanelのoffset単位、同期 `UpdateLayout()` の所要時間、Reset時のちらつき、複数SelectionChangedは実機で確認するまでBehavior完了扱いにしない。
 
 実装項目:
 
@@ -538,7 +541,7 @@ sidecar判断ゲート:
 
 監査summaryには `phase0_scenario_log_evidence`、`phase0_scenario_scorecard`、`phase0_manual_visual_review`、`phase0_run_metrics` が出る。次回採取では、この4行と実表示の記録を同じrunへ揃える。
 
-シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・scrollが先頭へ飛ばないこと、シナリオ3では上側タブ往復後に各タブの既存選択が残ることを目視し、今回の修正をBehavior証跡で閉じる。focusとscroll anchorは別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
+シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置が飛ばないこと、シナリオ3では上側タブ往復後に各タブの既存選択が残ることを目視し、今回の修正をBehavior証跡で閉じる。focus、Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
 その結果から最上位1件だけを選び、Phase 1からPhase 5の該当境界へ最小変更を入れる。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
