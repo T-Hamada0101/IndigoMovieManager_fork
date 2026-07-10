@@ -15,19 +15,23 @@ public static class DebugRuntimeLogAuditSummaryPolicy
         DebugRuntimeLogEvidenceSummary contractEvidence = DebugRuntimeLogEvidencePolicy.Evaluate(
             runSlice.Lines
         );
-        DebugRuntimeLogRunWindowSummary runWindow =
-            DebugRuntimeLogRunWindowPolicy.Evaluate(runSlice.Lines);
+        DebugRuntimeLogRunWindowSummary runWindow = DebugRuntimeLogRunWindowPolicy.Evaluate(
+            runSlice.Lines
+        );
         DebugRuntimeLogPhase0EvidenceSummary phase0Evidence =
             DebugRuntimeLogPhase0EvidencePolicy.Evaluate(runSlice.Lines);
         DebugRuntimeLogPhase0NextActionSummary phase0NextActions =
             DebugRuntimeLogPhase0NextActionPolicy.Evaluate(phase0Evidence);
+        DebugRuntimeLogPhase0ScenarioScorecard phase0ScenarioScorecard =
+            DebugRuntimeLogPhase0ScenarioScorecardPolicy.Evaluate(contractEvidence, phase0Evidence);
 
         return new DebugRuntimeLogAuditSummary(
             runSlice,
             runWindow,
             contractEvidence,
             phase0Evidence,
-            phase0NextActions
+            phase0NextActions,
+            phase0ScenarioScorecard
         );
     }
 }
@@ -39,7 +43,8 @@ public sealed class DebugRuntimeLogAuditSummary
         DebugRuntimeLogRunWindowSummary runWindow,
         DebugRuntimeLogEvidenceSummary contractEvidence,
         DebugRuntimeLogPhase0EvidenceSummary phase0Evidence,
-        DebugRuntimeLogPhase0NextActionSummary phase0NextActions
+        DebugRuntimeLogPhase0NextActionSummary phase0NextActions,
+        DebugRuntimeLogPhase0ScenarioScorecard phase0ScenarioScorecard
     )
     {
         RunSlice = runSlice;
@@ -47,6 +52,7 @@ public sealed class DebugRuntimeLogAuditSummary
         ContractEvidence = contractEvidence;
         Phase0Evidence = phase0Evidence;
         Phase0NextActions = phase0NextActions;
+        Phase0ScenarioScorecard = phase0ScenarioScorecard;
     }
 
     public DebugRuntimeLogRunSliceResult RunSlice { get; }
@@ -58,6 +64,8 @@ public sealed class DebugRuntimeLogAuditSummary
     public DebugRuntimeLogPhase0EvidenceSummary Phase0Evidence { get; }
 
     public DebugRuntimeLogPhase0NextActionSummary Phase0NextActions { get; }
+
+    public DebugRuntimeLogPhase0ScenarioScorecard Phase0ScenarioScorecard { get; }
 
     public string AuditStatusKey
     {
@@ -94,6 +102,7 @@ public sealed class DebugRuntimeLogAuditSummary
             ContractEvidence.BuildSummaryText(),
             Phase0Evidence.BuildSummaryText(),
             Phase0NextActions.BuildSummaryText(),
+            Phase0ScenarioScorecard.BuildSummaryText(),
             $"phase0_audit_status={AuditStatusKey}",
             $"phase0_audit_complete={(IsComplete ? "true" : "false")}"
         );

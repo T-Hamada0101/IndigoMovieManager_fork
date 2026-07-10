@@ -64,6 +64,8 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             Assert.That(summary.Phase0NextActions.IsComplete, Is.True);
             Assert.That(summary.IsComplete, Is.True);
             Assert.That(summary.AuditStatusKey, Is.EqualTo("complete"));
+            Assert.That(summary.Phase0ScenarioScorecard.IsLogEvidenceComplete, Is.False);
+            Assert.That(summary.Phase0ScenarioScorecard.IsPhase0Complete, Is.False);
             Assert.That(summary.ContractEvidence.BuildSummaryText(), Is.EqualTo("log_evidence=9/9 missing=none"));
             Assert.That(
                 summary.Phase0Evidence.BuildSummaryText(),
@@ -546,21 +548,38 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
             )
         );
 
-        Assert.That(
-            summary.BuildSummaryText(),
-            Is.EqualTo(
-                string.Join(
-                    Environment.NewLine,
-                    "log_run_lines=2/2 has_sequence=true sequence=1-2 resets=0",
-                    "log_run_window=2026-06-25T10:00:00.001..2026-06-25T10:00:00.002 elapsed_ms=1 timestamp_lines=2/2",
-                    "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core",
-                    "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
-                    "phase0_next_actions=startup,search,sort,scroll,player,image,persistence,thumbnail,skin",
-                    "phase0_audit_status=missing-contract-evidence",
-                    "phase0_audit_complete=false"
+        string[] lines = summary.BuildSummaryText().Split(Environment.NewLine);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                lines.Take(5),
+                Is.EqualTo(
+                    new[]
+                    {
+                        "log_run_lines=2/2 has_sequence=true sequence=1-2 resets=0",
+                        "log_run_window=2026-06-25T10:00:00.001..2026-06-25T10:00:00.002 elapsed_ms=1 timestamp_lines=2/2",
+                        "log_evidence=1/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core",
+                        "phase0_log_evidence=2/12 missing=startup-input-ready,search-input,sort-input,scroll-input,player-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
+                        "phase0_next_actions=startup,search,sort,scroll,player,image,persistence,thumbnail,skin",
+                    }
                 )
-            )
-        );
+            );
+            Assert.That(lines, Has.Length.EqualTo(10));
+            Assert.That(
+                lines[5],
+                Is.EqualTo(
+                    "phase0_scenario_log_evidence=0/8 missing_scenarios=startup,search-sort-scroll,tab-selection-page,watch-small-diff,player,image,skin,persistence-shutdown"
+                )
+            );
+            Assert.That(lines[6], Does.StartWith("phase0_scenario_scorecard=startup{"));
+            Assert.That(
+                lines[7],
+                Does.StartWith("phase0_manual_visual_review=required phase0_complete=false checks=")
+            );
+            Assert.That(lines[8], Is.EqualTo("phase0_audit_status=missing-contract-evidence"));
+            Assert.That(lines[9], Is.EqualTo("phase0_audit_complete=false"));
+        });
     }
 
     [Test]
@@ -590,21 +609,35 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 Is.EqualTo("log_run_window=none elapsed_ms=none timestamp_lines=0/0")
             );
             Assert.That(summary.Phase0NextActions.IsComplete, Is.False);
+            string[] lines = summary.BuildSummaryText().Split(Environment.NewLine);
             Assert.That(
-                summary.BuildSummaryText(),
+                lines.Take(5),
                 Is.EqualTo(
-                    string.Join(
-                        Environment.NewLine,
+                    new[]
+                    {
                         "log_run_lines=0/0 has_sequence=false sequence=none resets=0",
                         "log_run_window=none elapsed_ms=none timestamp_lines=0/0",
                         "log_evidence=0/9 missing=ui-shell,readmodel-diff,scheduler,image,persistence,worker,skin-core,player-core,watch-core",
                         "phase0_log_evidence=0/12 missing=startup-first-page,startup-input-ready,search-input,sort-input,scroll-input,player-core,watch-core,image-pipeline,persistence,worker,thumbnail-worker,skin-core",
                         "phase0_next_actions=startup,search,sort,scroll,player,watch,image,persistence,thumbnail,skin",
-                        "phase0_audit_status=missing-timestamp",
-                        "phase0_audit_complete=false"
-                    )
+                    }
                 )
             );
+            Assert.That(lines, Has.Length.EqualTo(10));
+            Assert.That(
+                lines[5],
+                Is.EqualTo(
+                    "phase0_scenario_log_evidence=0/8 missing_scenarios=startup,search-sort-scroll,tab-selection-page,watch-small-diff,player,image,skin,persistence-shutdown"
+                )
+            );
+            Assert.That(
+                lines[7],
+                Does.Contain(
+                    "tab-selection-page=selection,focus,page-or-scroll-position,blank"
+                )
+            );
+            Assert.That(lines[8], Is.EqualTo("phase0_audit_status=missing-timestamp"));
+            Assert.That(lines[9], Is.EqualTo("phase0_audit_complete=false"));
         });
     }
 

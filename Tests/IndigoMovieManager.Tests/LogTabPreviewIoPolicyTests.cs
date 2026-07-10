@@ -156,11 +156,27 @@ public sealed class LogTabPreviewIoPolicyTests
             );
             Assert.That(
                 resultLines[5],
+                Is.EqualTo(
+                    "phase0_scenario_log_evidence=1/8 missing_scenarios=search-sort-scroll,tab-selection-page,watch-small-diff,player,image,skin,persistence-shutdown"
+                )
+            );
+            Assert.That(
+                resultLines[6],
+                Does.StartWith("phase0_scenario_scorecard=startup{")
+            );
+            Assert.That(
+                resultLines[7],
+                Does.Contain(
+                    "tab-selection-page=selection,focus,page-or-scroll-position,blank"
+                )
+            );
+            Assert.That(
+                resultLines[8],
                 Is.EqualTo("phase0_audit_status=missing-contract-evidence")
             );
-            Assert.That(resultLines[6], Is.EqualTo("phase0_audit_complete=false"));
-            Assert.That(resultLines[7], Is.Empty);
-            Assert.That(resultLines.Skip(8), Is.EqualTo(previewLines));
+            Assert.That(resultLines[9], Is.EqualTo("phase0_audit_complete=false"));
+            Assert.That(resultLines[10], Is.Empty);
+            Assert.That(resultLines.Skip(11), Is.EqualTo(previewLines));
         });
     }
 
