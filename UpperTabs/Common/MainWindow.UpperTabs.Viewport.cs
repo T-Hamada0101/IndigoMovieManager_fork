@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using IndigoMovieManager.UpperTabs.Common;
 using IndigoMovieManager.Thumbnail.QueueDb;
+using IndigoMovieManager.ViewModels;
 
 namespace IndigoMovieManager
 {
@@ -17,6 +18,12 @@ namespace IndigoMovieManager
         private readonly record struct UpperTabViewportRefreshContext(
             int CurrentTabIndex,
             UpperTabVisibleRange NextRange
+        );
+
+        // Reset 前に保持する UI 専用情報を、現在タブと純粋 policy の anchor だけへ絞る。
+        private readonly record struct MovieViewScrollAnchorContext(
+            int TabIndex,
+            MovieViewScrollAnchor Anchor
         );
 
         private const int UpperTabViewportOverscanItemCount = 24;
@@ -557,6 +564,139 @@ namespace IndigoMovieManager
                 itemsHostPanel,
                 UpperTabViewportOverscanItemCount
             );
+        }
+
+        private MovieViewScrollAnchorContext? CaptureMovieViewScrollAnchor()
+        {
+            if (
+                !TryGetCurrentUpperTabContext(out int currentTabIndex, out bool isStandardUpperTab)
+                || !isStandardUpperTab
+                || !TryGetItemsControlByUpperTabFixedIndex(
+                    currentTabIndex,
+                    out ItemsControl itemsControl
+                )
+            )
+            {
+                return null;
+            }
+
+            ScrollViewer scrollViewer = GetUpperTabViewportScrollViewer(itemsControl);
+            if (scrollViewer == null)
+            {
+                return null;
+            }
+
+            UpperTabVisibleRange visibleRange = ResolveUpperTabVisibleRange(
+                itemsControl,
+                scrollViewer
+            );
+            int firstVisibleIndex = visibleRange.FirstVisibleIndex;
+            if (
+                !visibleRange.HasVisibleItems
+                || firstVisibleIndex < 0
+                || firstVisibleIndex >= itemsControl.Items.Count
+                || itemsControl.Items[firstVisibleIndex] is not MovieRecords firstVisibleMovie
+                || itemsControl.ItemContainerGenerator.ContainerFromIndex(firstVisibleIndex)
+                    is not FrameworkElement container
+                || !UpperTabViewportTracker.TryGetContainerTopRelativeToViewport(
+                    container,
+                    scrollViewer,
+                    out double containerTop
+                )
+                || !MovieViewScrollAnchorPolicy.TryCapture(
+                    firstVisibleMovie,
+                    containerTop,
+                    out MovieViewScrollAnchor anchor
+                )
+            )
+            {
+                return null;
+            }
+
+            return new MovieViewScrollAnchorContext(currentTabIndex, anchor);
+        }
+
+        private void RestoreMovieViewScrollAnchor(
+            MovieViewScrollAnchorContext? anchorContext,
+            FilteredMovieRecsUpdateMode updateMode,
+            FilteredMovieRecsUpdateResult collectionResult
+        )
+        {
+            if (
+                anchorContext is not MovieViewScrollAnchorContext captured
+                || !TryGetCurrentUpperTabContext(out int currentTabIndex, out bool isStandardUpperTab)
+                || !isStandardUpperTab
+                || currentTabIndex != captured.TabIndex
+                || !TryGetItemsControlByUpperTabFixedIndex(
+                    currentTabIndex,
+                    out ItemsControl itemsControl
+                )
+            )
+            {
+                return;
+            }
+
+            MovieRecords anchorMovie = MovieViewScrollAnchorPolicy.ResolveAfterCollectionApply(
+                captured.Anchor,
+                MainVM?.FilteredMovieRecs,
+                updateMode,
+                collectionResult.HasChanges
+            );
+            ScrollViewer scrollViewer = GetUpperTabViewportScrollViewer(itemsControl);
+            if (anchorMovie == null || scrollViewer == null)
+            {
+                return;
+            }
+
+            SuppressUpperTabFollowupScrollRefreshBriefly();
+            try
+            {
+                // ScrollIntoView で仮想化コンテナを実現してから、Reset 前の上端へ微調整する。
+                if (itemsControl is ListBox listBox)
+                {
+                    listBox.ScrollIntoView(anchorMovie);
+                }
+                else if (itemsControl is DataGrid dataGrid)
+                {
+                    dataGrid.ScrollIntoView(anchorMovie);
+                }
+                else
+                {
+                    return;
+                }
+
+                itemsControl.UpdateLayout();
+                if (
+                    itemsControl.ItemContainerGenerator.ContainerFromItem(anchorMovie)
+                        is not FrameworkElement container
+                    || !UpperTabViewportTracker.TryGetContainerTopRelativeToViewport(
+                        container,
+                        scrollViewer,
+                        out double currentContainerTop
+                    )
+                )
+                {
+                    return;
+                }
+
+                double restoredOffset = MovieViewScrollAnchorPolicy.CalculateRestoredVerticalOffset(
+                    scrollViewer.VerticalOffset,
+                    currentContainerTop,
+                    captured.Anchor.TopOffset
+                );
+                scrollViewer.ScrollToVerticalOffset(restoredOffset);
+            }
+            catch (InvalidOperationException)
+            {
+                // teardown や再仮想化と競合した場合は、現在位置を壊さず次の viewport 更新へ任せる。
+            }
+            finally
+            {
+                RequestUpperTabVisibleRangeRefresh(
+                    immediate: true,
+                    reason: "reset-scroll-anchor"
+                );
+            }
         }
 
         // viewport 差分と source revision を見て、preferred key の再計算要否をここで揃える。

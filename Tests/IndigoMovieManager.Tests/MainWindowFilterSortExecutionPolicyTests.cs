@@ -624,6 +624,9 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(applyReadModel, Does.Contain("MovieViewSelectionContinuityPolicy.ResolveManyAfterCollectionApply("));
         Assert.That(applyReadModel, Does.Contain("foreach (MovieRecords restoredSelection in restoredSelections)"));
         Assert.That(applyReadModel, Does.Contain("SetCurrentUpperTabMovieSelection(restoredSelection, true);"));
+        Assert.That(applyReadModel, Does.Contain("CaptureMovieViewScrollAnchor()"));
+        Assert.That(applyReadModel, Does.Contain("updateMode == FilteredMovieRecsUpdateMode.Reset"));
+        Assert.That(applyReadModel, Does.Contain("RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);"));
         Assert.That(applyReadModel, Does.Not.Contain("MovieViewSelectionContinuityPolicy.TryCaptureStableKey("));
         Assert.That(applyReadModel, Does.Not.Contain("MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply("));
         Assert.That(applyReadModel, Does.Not.Contain("SelectUpperTabMovieRecord("));
@@ -652,6 +655,36 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(
             applyReadModel.IndexOf(
                 "SetCurrentUpperTabMovieSelection(restoredSelection, true);",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(
+                applyReadModel.IndexOf(
+                    "RefreshSelectionDetailAfterCollectionApplyIfNeeded(",
+                    StringComparison.Ordinal
+                )
+            )
+        );
+        Assert.That(
+            applyReadModel.IndexOf("CaptureMovieViewScrollAnchor()", StringComparison.Ordinal),
+            Is.LessThan(
+                applyReadModel.IndexOf("MainVM.ReplaceFilteredMovieRecs(", StringComparison.Ordinal)
+            )
+        );
+        Assert.That(
+            applyReadModel.IndexOf(
+                "RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);",
+                StringComparison.Ordinal
+            ),
+            Is.GreaterThan(
+                applyReadModel.IndexOf(
+                    "SetCurrentUpperTabMovieSelection(restoredSelection, true);",
+                    StringComparison.Ordinal
+                )
+            )
+        );
+        Assert.That(
+            applyReadModel.IndexOf(
+                "RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);",
                 StringComparison.Ordinal
             ),
             Is.LessThan(

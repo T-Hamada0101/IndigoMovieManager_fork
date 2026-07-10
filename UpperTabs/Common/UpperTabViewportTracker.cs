@@ -63,6 +63,40 @@ namespace IndigoMovieManager.UpperTabs.Common
             );
         }
 
+        public static bool TryGetContainerTopRelativeToViewport(
+            FrameworkElement container,
+            ScrollViewer scrollViewer,
+            out double top
+        )
+        {
+            top = 0;
+            if (container == null || scrollViewer == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                // 実現済みコンテナの上端を viewport 座標へ変換し、Reset 前後の基準位置に使う。
+                top = container
+                    .TransformToAncestor(scrollViewer)
+                    .Transform(new Point(0, 0))
+                    .Y;
+                if (double.IsFinite(top))
+                {
+                    return true;
+                }
+
+                top = 0;
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                top = 0;
+                return false;
+            }
+        }
+
         private static IEnumerable<FrameworkElement> EnumerateRealizedContainers(
             ItemsControl itemsControl,
             Panel itemsHostPanel

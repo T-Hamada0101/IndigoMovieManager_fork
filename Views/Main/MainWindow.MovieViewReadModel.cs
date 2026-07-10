@@ -151,6 +151,10 @@ namespace IndigoMovieManager
             );
             MainVM.DbInfo.SearchCount = readModelResult.SearchCount;
             filterList = sortedMovies;
+            MovieViewScrollAnchorContext? scrollAnchorContext =
+                updateMode == FilteredMovieRecsUpdateMode.Reset
+                    ? CaptureMovieViewScrollAnchor()
+                    : null;
             FilteredMovieRecsUpdateResult collectionResult = MainVM.ReplaceFilteredMovieRecs(
                 sortedMovies,
                 updateMode: updateMode
@@ -169,6 +173,8 @@ namespace IndigoMovieManager
             {
                 SetCurrentUpperTabMovieSelection(restoredSelection, true);
             }
+
+            RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);
 
             Stopwatch selectionRefreshStopwatch = Stopwatch.StartNew();
             bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(

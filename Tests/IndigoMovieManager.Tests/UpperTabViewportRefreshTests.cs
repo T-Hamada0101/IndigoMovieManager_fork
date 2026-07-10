@@ -117,6 +117,53 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
+    public void Reset_scroll_anchorは標準タブと一意な現行recordだけを復元する()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string captureMethod = GetMethodBlock(
+            source,
+            "private MovieViewScrollAnchorContext? CaptureMovieViewScrollAnchor()"
+        );
+        string restoreMethod = GetMethodBlock(
+            source,
+            "private void RestoreMovieViewScrollAnchor("
+        );
+
+        Assert.That(captureMethod, Does.Contain("TryGetCurrentUpperTabContext("));
+        Assert.That(captureMethod, Does.Contain("!isStandardUpperTab"));
+        Assert.That(captureMethod, Does.Contain("visibleRange.FirstVisibleIndex"));
+        Assert.That(captureMethod, Does.Contain("MovieViewScrollAnchorPolicy.TryCapture("));
+        Assert.That(restoreMethod, Does.Contain("currentTabIndex != captured.TabIndex"));
+        Assert.That(restoreMethod, Does.Contain("MovieViewScrollAnchorPolicy.ResolveAfterCollectionApply("));
+        Assert.That(restoreMethod, Does.Contain("collectionResult.HasChanges"));
+        Assert.That(restoreMethod, Does.Contain("SuppressUpperTabFollowupScrollRefreshBriefly();"));
+        Assert.That(restoreMethod, Does.Contain("listBox.ScrollIntoView(anchorMovie);"));
+        Assert.That(restoreMethod, Does.Contain("dataGrid.ScrollIntoView(anchorMovie);"));
+        Assert.That(restoreMethod, Does.Contain("itemsControl.UpdateLayout();"));
+        Assert.That(restoreMethod, Does.Contain("MovieViewScrollAnchorPolicy.CalculateRestoredVerticalOffset("));
+        Assert.That(restoreMethod, Does.Contain("scrollViewer.ScrollToVerticalOffset(restoredOffset);"));
+        Assert.That(restoreMethod, Does.Contain("reason: \"reset-scroll-anchor\""));
+        Assert.That(restoreMethod, Does.Contain("catch (InvalidOperationException)"));
+    }
+
+    [Test]
+    public void Container_top取得はancestor例外と非finiteをfalseへ閉じる()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "UpperTabViewportTracker.cs");
+        string helper = GetMethodBlock(
+            source,
+            "public static bool TryGetContainerTopRelativeToViewport("
+        );
+
+        Assert.That(helper, Does.Contain("TransformToAncestor(scrollViewer)"));
+        Assert.That(helper, Does.Contain("if (double.IsFinite(top))"));
+        Assert.That(helper, Does.Contain("return false;"));
+        Assert.That(helper, Does.Contain("catch (InvalidOperationException)"));
+        Assert.That(helper, Does.Contain("top = 0;"));
+        Assert.That(helper, Does.Not.Contain("UpdateLayout"));
+    }
+
+    [Test]
     public void Preferredキー更新時は画像MultiBinding再評価用revisionを進める()
     {
         string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
