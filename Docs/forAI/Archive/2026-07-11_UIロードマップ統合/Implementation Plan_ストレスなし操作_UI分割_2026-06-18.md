@@ -180,4 +180,4 @@ dotnet build IndigoMovieManager.sln --configuration Release -p:Platform=x64 -p:U
 - active skin 実機採取は完了。今後の再採取も、コピー `.wb` と `INDIGO_DIAGNOSTIC_NO_PERSIST=1` / `INDIGO_DIAGNOSTIC_STARTUP_DB=<コピー.wb>` だけで行う。
 - same-document skip の自動確認時だけ `INDIGO_DIAGNOSTIC_REPEAT_SKIN_REFRESH=1` を併用する。通常起動やユーザーDBでは使わない。
 - 次の候補は、初回 active skin navigate の `host_navigate_ms` 772.6ms 帯を、WebView2 attach / initial document / `NavigateToString` / HTML準備のどれが支配しているかに分解すること。
-- さらに抜本的な UI 分割の次段は `Docs\forAI\Implementation Plan_抜本UI分割ロードマップ_2026-06-18.md` で完了監査済み。次は検索入力、sort 変更、watch reload を含む Release 実機ログが取れた時だけ、監査証跡を補強する。
+- さらに抜本的な UI 分割の次段は `Docs\forAI\Archive\2026-07-11_UIロードマップ統合\Implementation Plan_抜本UI分割ロードマップ_2026-06-18.md` で完了監査済み。次は検索入力、sort 変更、watch reload を含む Release 実機ログが取れた時だけ、監査証跡を補強する。

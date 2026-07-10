@@ -1,8 +1,9 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-06-18
+最終更新日: 2026-07-11
 
 変更概要:
+- 再構築した長期ロードマップに合わせ、直近着手を主要8シナリオの同一Release run採取へ更新した。処理時間だけでなく、入力受理、選択 / focus / scroll保持、blank / ちらつき、後着巻き戻りをscenario scorecardで確認し、支配要因を最大3件へ絞ってから最上位1件を実装する。
 - watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定した。`plan_reason` と並べて実機ログで読める契約を source policy で守り、`dirty-fields-unsafe:*` の実頻度を見るまで Hash / MovieName などを安全扱いへ広げない。
 - `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。2026-06-18 の Release 実機ログでは `_Anime - コピー.wb` で `elapsed_ms=150`、`watch_table_load_ms=3`、`registration_ms=6`、`failed=0` だったため、このDBでは watcher 作成を削らない。
 - `DebugRuntimeLog.Write(...)` / `TaskStart(...)` / `TaskEnd(...)` は Release ビルドでも呼び出しを残す。Release 実機で `debug-runtime.log` が更新されない場合は、性能判断ではなくログ入口の問題として扱う。
@@ -10,7 +11,7 @@
 - `FilterAndSort(..., true)` の直書き許容は起動 fallback full reload と段階ロード中 sort の2箇所に固定した。直書き `Refresh();` は startup first page と選択変化互換 helper の2箇所だけ、`Items.Refresh()` は本体コードへ戻さない source policy で守る。
 - 体感高速化の UI 操作優先境界を追加した。sort は user-priority として watch / Everything poll を既存 catch-up へ逃がし、scroll / PageUp / PageDown は catch-up を積まない recent viewport として 250ms だけ poll を一周見送る。`operation_reason` / `defer_reason` / `recent_viewport` / `catch_up` / `poll_delay_ms` で実機ログ上の延期理由を読める。
 - 長期ロードマップとして、WPF一覧維持のまま UI Shell / ReadModel / Scheduler / Image / Persistence / Worker契約へ段階分離する正本を追加した。Worker / sidecar は契約整備まで含めるが、IPC導入は実機ログで必要性が確定してからにする。詳細は `Docs\forAI\Implementation Plan_長期ロードマップ_体感高速化UI分離_Worker契約_2026-06-18.md`。
-- ストレスなし操作の UI 分割は v1 / v1.1 から Phase 6-D と完了監査まで進み、ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / window lifecycle、入力 routing を専用 partial / helper へ分けた。Phase 6-A では `Views\Main\DockLayoutRestorePolicy.cs`、Phase 6-B では `Views\Main\RegisteredMovieCountRefreshPolicy.cs`、Phase 6-C では `Views\Main\SortComboSelectionPolicy.cs`、Phase 6-D では `Views\Main\MainDbSwitchPlanPolicy.cs` を追加し、WPF 非依存の純粋判断だけを切り出した。UI 反映は `SortDataAsync(...)` を含めて `TryApplyMovieViewReadModelResultOnUiThread(...)` へ集約し、`request_revision` / `result_count` / `changed` / `update_mode` / `fallback_reason` / `apply_ms` を apply ログで読める。`DbSwitch.cs` は切替フロー、`Search.cs` は履歴候補 UI apply として維持し、`FilterAndSort(..., true)` / `Refresh()` / `Items.Refresh()` の許容線は増やしていない。完了監査ではテスト / Release build / source policy を確認し、最新ログで sort / watch 新規操作が薄い点は過去ログ補完と次回採取条件として明記した。詳細は `Docs\forAI\Implementation Plan_ストレスなし操作_UI分割_2026-06-18.md` と `Docs\forAI\Implementation Plan_抜本UI分割ロードマップ_2026-06-18.md`。
+- ストレスなし操作の UI 分割は v1 / v1.1 から Phase 6-D と完了監査まで進み、ReadModel 計算、一覧 apply、要求制御、表示レコード生成、MainDB runtime、起動 / dock layout / window lifecycle、入力 routing を専用 partial / helper へ分けた。Phase 6-A では `Views\Main\DockLayoutRestorePolicy.cs`、Phase 6-B では `Views\Main\RegisteredMovieCountRefreshPolicy.cs`、Phase 6-C では `Views\Main\SortComboSelectionPolicy.cs`、Phase 6-D では `Views\Main\MainDbSwitchPlanPolicy.cs` を追加し、WPF 非依存の純粋判断だけを切り出した。UI 反映は `SortDataAsync(...)` を含めて `TryApplyMovieViewReadModelResultOnUiThread(...)` へ集約し、`request_revision` / `result_count` / `changed` / `update_mode` / `fallback_reason` / `apply_ms` を apply ログで読める。`DbSwitch.cs` は切替フロー、`Search.cs` は履歴候補 UI apply として維持し、`FilterAndSort(..., true)` / `Refresh()` / `Items.Refresh()` の許容線は増やしていない。完了監査ではテスト / Release build / source policy を確認し、最新ログで sort / watch 新規操作が薄い点は過去ログ補完と次回採取条件として明記した。詳細は `Docs\forAI\Implementation Plan_長期ロードマップ_体感高速化UI分離_Worker契約_2026-06-18.md` と `Docs\forAI\Archive\2026-07-11_UIロードマップ統合\README.md`。
 - active skin の same-document skip 契約を runtime test でも固定した。通常 `dbinfo-*` 同期だけ許可し、`header-reload` / `fallback-notice-retry` / `minimal-chrome-reload` / `skin-tag-mutation` は不許可とする。`refresh end` には operation result 由来の `navigate_skipped_current` と `navigate_skip_reason` を並べ、同一行で今回の navigate の成否と skip 理由を読めるようにした。
 - Filter / in-memory refresh / sort / 動画削除後の `ReplaceFilteredMovieRecs(...)` 後処理は、Reset 互換が必要なタブでも選択レコードが前後で同一なら `Refresh()` を呼ばず、詳細＋タグ編集の再表示を省くようにした。Grid 系の安全 fallback と List / Player の Diff/Move 省略線は維持する。
 - サムネ成功後段の main tab local refresh 予約は、非 UI スレッドから `DispatcherPriority.Background` で UI へ戻す。shutdown 中は予約を積まず、入力・描画を押しのけにくい後段局所 refresh として扱う。
@@ -86,7 +87,7 @@
 - 2026-05-26 の `8f7f8ff` で、viewport が一時的に計測不能でも、同一タブかつ同一 source revision の場合は直前の preferred key snapshot を保持し、不要な revision 更新と全画像再評価を増やさないようにした。
 - 2026-05-26 の `218ff91` で、watch / rename / query-only の in-memory refresh に後着キャンセル token を通し、古い再検索・再整列が UI へ戻らないようにした。
 - 2026-05-26 の見直しで、計画の軸は維持しつつ、次の主戦場を「watch / rename の in-memory refresh 後着キャンセル」「残る Refresh() / Items.Refresh() / FilterAndSort(true) の局所反映化」「大件数 sort の background + revision guard」「実機ログでの起動 / skin / visible-first 完了判定」へ絞った。
-- 進捗は実装ベース約 80〜82%、実機確認込み 72〜74% として扱う。完了扱いは、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
+- 進捗は `未着手` / `契約済み` / `接続中` / `実機確認待ち` / `完了` のPhase状態で扱う。完了扱いは Behavior、Evidence、Regression Guard の3条件を満たし、debug-runtime.log と実機操作で支配要因を説明できる状態まで保留する。
 - 大件数検索では、後着検索が入った時に古い `FilterAndSortAsync(...)` の `filter-movies` 列挙を cancellation token で中断できるようにし、入力中の古い全件検索が CPU を食い続ける状態を減らした
 - 大件数の ASCII 検索では `Movie_Name / Movie_Path / Tags / Comment1-3 / 既存 Roma / 既存 Kana 由来 Roma` の軽量投影に留め、`Kana/Roma` が空の行で名前/パスから読み仮名解析へ戻る fallback を UI hot path から外した
 - watch 終端 reload は `changedMovies` が no-op 札だけなら実効変更なしとして扱い、deferred/full reload を積まないようにした
@@ -257,6 +258,8 @@
 - 検索、並び替え、ページ移動、タブ切り替えなどの明示的なユーザー要求は、watch / rescue / thumbnail / poll などの背後処理より最優先で完了させる。
 - 高速化の主戦場を「重い処理を少し速くする」から、「重い処理をそもそも起こさない」へ移す。
 - 通常動画の初動を守りながら、rescue / queue / watcher / skin の既存本線と矛盾しない着手順を固定する。
+- 入力を受理したことがすぐ分かり、選択 / focus / scrollを保ち、blankやちらつきを作らず、最新結果だけを反映するところまでをUI高速化の対象にする。
+- 完了は Behavior、Evidence、Regression Guard の3条件で判定し、ログ契約追加だけでは進捗扱いにしない。
 
 ## 1.1 2026-05-28 未来図反映の実装判断
 
@@ -386,6 +389,9 @@
 5. rescue / repair / queue の既定動作を重くしない。
 6. 検索の正本は既存 `SearchService` に置き、本線ではここを基準に保守する。
 7. `UiHang` オーバーレイ残留は `無通信timer` だけで隠さない。owner / lifecycle / shutdown guarantee を正してから、最後に shutdown 専用 fuse を足す。
+8. 250msを超える明示操作は、進行中か継続利用可能かをユーザーが判断できる状態にする。
+9. 一覧更新では選択、focus、scroll位置を不必要に失わず、意味のないblankや全件消去を見せない。
+10. 既存ログで判断できる場合は新しい契約語彙を追加しない。ログ追加だけを成果にしない。
 
 ## 5. 実行レーン
 
@@ -610,20 +616,33 @@
 
 実装順は次で固定する。
 
-1. Lane 0 計測固定と作業差分保全
-2. Lane 1 UIスレッド簡素化と入力優先
-3. Lane 2 watch change set と diff-first UI の一本化
-4. Lane 3 watcher / poll / shutdown 境界の安定化
+1. Lane 0 作業差分保全と主要8シナリオの同一Release run採取
+2. Lane 1 入力受理と選択 / focus / scrollの操作連続性
+3. Lane 2 watch小差分と大件数sortのdiff-first完成
+4. Lane 3 Scheduler接続とwatcher / poll / shutdown境界の安定化
 5. Lane 3.5 `UiHang` オーバーレイ寿命管理の是正
 6. Lane 4 起動 warm path の再短縮
 7. Lane 5 visible-first / Player / 画像供給
 8. Lane 6 `skin` 切り替え完全分離
-9. Lane 7 rescue / repair 維持レーン
+9. Lane 7 rescue / repair / Worker境界の維持レーン
 
 理由:
 - 先に UI スレッドを塞ぐ経路と全面再評価構造を減らさないと、watch / skin / Player を個別最適化しても体感差が頭打ちになるため。
 
 ## 7. 直近の着手順
+
+### 2026-07-11 長期ロードマップ同期後の直近タスク
+
+この節を現在の着手順とする。下の2026-05-26節は実装履歴として残す。
+
+1. 現在の未コミット差分を守り、主要8シナリオを同一Release x64 runで操作する。
+2. cold start、search / sort / scroll、tab / selection、watch 1件追加 / rename、Player、image、skin、persistence / shutdownを一続きの `debug-runtime.log` へ収める。
+3. scenario scorecardへ入力受理、最初の有用表示、最大停止、選択 / focus / scroll保持、blank / ちらつき、stale discard、full fallback、queue depthを記録する。
+4. `phase0_audit_complete` と不足evidenceを確認し、不足ログの補強と性能修正を混同しない。
+5. 支配要因を最大3件へ絞り、最上位1件だけをLane 1からLane 6の該当境界へ割り当てる。
+6. 最小変更後、Behavior、Evidence、Regression Guardの3条件を同じ変更系列で閉じる。
+
+現時点では、新しい抽象、契約識別子、sidecarを先に追加しない。既存の `ui-shell-v1`、`readmodel-diff-v1`、`scheduler-v1`、`image-pipeline-v1`、`persistence-write-v1`、`worker-job-v1` と各 `core_route` を実操作で横断する。
 
 ### 2026-05-26 見直し後の反映状況と次タスク
 
@@ -687,6 +706,10 @@
 9. Diff 反映は request id、stable key、source revision、view revision、operation、fallback reason を説明できる。
 10. Scheduler は bounded queue、coalesce、latest-only、user-priority release / timeout log、shutdown bounded drain のどこまで満たしたか説明できる。
 11. full fallback は DB 切替、初期完全読込、query / sort 変更、大量変更、dup / hash などへ分類されている。
+12. 入力受理、選択 / focus / scroll保持、blank / ちらつき、後着巻き戻りを実表示で確認している。
+13. 主要8シナリオを同一Release runで追い、支配要因を最大3件へ絞っている。
+14. 完了項目は Behavior、Evidence、Regression Guard の3条件を満たす。
+15. ログ契約やsource policyの追加だけを体感改善の完了根拠にしていない。
 
 ## 9. 今回やらないこと
 
@@ -704,7 +727,8 @@
 
 - `%USERPROFILE%\source\repos\IndigoMovieManager\AI向け_現在の全体プラン_workthree_2026-03-20.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_Indigoの未来図_2026-05-28.md`
-- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_UI分離とスムーズ表示アーキテクチャ_2026-05-27.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Goal_Indigoの未来図_2026-05-28.md`
+- `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\Implementation Plan_長期ロードマップ_体感高速化UI分離_Worker契約_2026-06-18.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\調査結果_UIボトルネック解消_2026-03-11.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Docs\forAI\調査結果_watch_DB管理分離_UI詰まり防止_2026-03-20.md`
 - `%USERPROFILE%\source\repos\IndigoMovieManager\Views\Main\Docs\Implementation Plan_大DB起動段階ロード化_2026-03-17.md`
