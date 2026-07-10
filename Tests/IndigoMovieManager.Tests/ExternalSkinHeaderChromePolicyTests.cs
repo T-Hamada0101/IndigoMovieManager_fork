@@ -461,12 +461,30 @@ public sealed class ExternalSkinHeaderChromePolicyTests
     {
         string apiSource = GetRepoText("Views", "Main", "MainWindow.WebViewSkin.Api.cs");
         string method = GetMethodBlock(apiSource, "private async Task<bool> SortExternalSkinAsync(");
+        int fallbackIndex = method.IndexOf(
+            "await FilterAndSortAsync(resolvedSortId, isGetNew: true);",
+            StringComparison.Ordinal
+        );
+        int selectFirstIndex = method.IndexOf("SelectFirstItem();", StringComparison.Ordinal);
+        int fallbackSuccessIndex = method.IndexOf("return true;", StringComparison.Ordinal);
+        int normalSortIndex = method.IndexOf(
+            "return await SortDataAsync(resolvedSortId);",
+            StringComparison.Ordinal
+        );
 
         Assert.That(method, Does.Contain("await SortDataAsync(resolvedSortId);"));
         Assert.That(method, Does.Not.Contain("FilterAndSort(resolvedSortId, true);"));
         Assert.That(method, Does.Contain("CancelStartupFeed(\"skin-sort\");"));
         Assert.That(method, Does.Contain("await FilterAndSortAsync(resolvedSortId, isGetNew: true);"));
         Assert.That(method, Does.Contain("partial-feed-needs-complete-source"));
+        Assert.That(method, Does.Contain("return await SortDataAsync(resolvedSortId);"));
+        Assert.That(
+            method.Split("SelectFirstItem();", StringSplitOptions.None).Length - 1,
+            Is.EqualTo(1)
+        );
+        Assert.That(selectFirstIndex, Is.GreaterThan(fallbackIndex));
+        Assert.That(selectFirstIndex, Is.LessThan(fallbackSuccessIndex));
+        Assert.That(normalSortIndex, Is.GreaterThan(fallbackSuccessIndex));
     }
 
     [Test]

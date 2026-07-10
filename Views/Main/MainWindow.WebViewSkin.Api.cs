@@ -795,14 +795,12 @@ namespace IndigoMovieManager
                         // DB再読込理由をログへ明示したうえで、後着キャンセル付きの正規経路へ寄せる。
                         CancelStartupFeed("skin-sort");
                         await FilterAndSortAsync(resolvedSortId, isGetNew: true);
-                    }
-                    else
-                    {
-                        await SortDataAsync(resolvedSortId);
+                        SelectFirstItem();
+                        return true;
                     }
 
-                    SelectFirstItem();
-                    return true;
+                    // 通常の局所 sort は選択と scroll を維持し、stale / cancel の結果もそのまま返す。
+                    return await SortDataAsync(resolvedSortId);
                 },
                 false
             );
