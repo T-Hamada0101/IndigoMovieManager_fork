@@ -48,12 +48,13 @@ namespace IndigoMovieManager
             out MovieRecords selectedMovie
         )
         {
-            if (selectFirstItem)
+            selectedMovie = GetSelectedItemByTabIndex();
+            if (selectedMovie == null && selectFirstItem)
             {
                 SelectFirstItem();
+                selectedMovie = GetSelectedItemByTabIndex();
             }
 
-            selectedMovie = GetSelectedItemByTabIndex();
             return selectedMovie != null;
         }
 
