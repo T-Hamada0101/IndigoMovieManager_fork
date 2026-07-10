@@ -144,9 +144,10 @@ namespace IndigoMovieManager
                 $"readmodel apply begin: request_revision={requestRevision} reason={resolvedVisibleRefreshReason} result_count={sortedMovies.Count} update_mode={updateMode} fallback_reason={resolvedFallbackReason}"
             );
             MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();
-            MovieViewSelectionContinuityPolicy.TryCaptureStableKey(
+            IReadOnlyList<string> selectedStableKeys =
+                MovieViewSelectionContinuityPolicy.CaptureStableKeys(
                 selectedBeforeCollectionApply,
-                out string selectedStableKey
+                GetSelectedItemsByTabIndex()
             );
             MainVM.DbInfo.SearchCount = readModelResult.SearchCount;
             filterList = sortedMovies;
@@ -156,16 +157,17 @@ namespace IndigoMovieManager
             );
             UpdateExtensionDetailVisibilityBySearchCount();
 
-            MovieRecords restoredSelection =
-                MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply(
-                    selectedStableKey,
+            IReadOnlyList<MovieRecords> restoredSelections =
+                MovieViewSelectionContinuityPolicy.ResolveManyAfterCollectionApply(
+                    selectedStableKeys,
                     MainVM.FilteredMovieRecs,
                     updateMode,
                     collectionResult.HasChanges
                 );
-            if (restoredSelection != null)
+            // snapshot 順に追加し、主選択を先頭のまま現在タブへ戻す。
+            foreach (MovieRecords restoredSelection in restoredSelections)
             {
-                SelectUpperTabMovieRecord(currentTabIndex, restoredSelection);
+                SetCurrentUpperTabMovieSelection(restoredSelection, true);
             }
 
             Stopwatch selectionRefreshStopwatch = Stopwatch.StartNew();
