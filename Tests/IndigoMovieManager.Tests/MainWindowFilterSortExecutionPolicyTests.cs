@@ -618,8 +618,44 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(mainWindowSource, Does.Not.Contain("private async Task FilterAndSortAsync("));
 
         Assert.That(applyReadModel, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
+        Assert.That(applyReadModel, Does.Contain("MovieViewSelectionContinuityPolicy.TryCaptureStableKey("));
         Assert.That(applyReadModel, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
+        Assert.That(applyReadModel, Does.Contain("MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply("));
+        Assert.That(applyReadModel, Does.Contain("SelectUpperTabMovieRecord(currentTabIndex, restoredSelection);"));
         Assert.That(applyReadModel, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(
+            applyReadModel.IndexOf(
+                "MovieViewSelectionContinuityPolicy.TryCaptureStableKey(",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(
+                applyReadModel.IndexOf(
+                    "MainVM.ReplaceFilteredMovieRecs(",
+                    StringComparison.Ordinal
+                )
+            )
+        );
+        Assert.That(
+            applyReadModel.IndexOf("MainVM.ReplaceFilteredMovieRecs(", StringComparison.Ordinal),
+            Is.LessThan(
+                applyReadModel.IndexOf(
+                    "MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply(",
+                    StringComparison.Ordinal
+                )
+            )
+        );
+        Assert.That(
+            applyReadModel.IndexOf(
+                "SelectUpperTabMovieRecord(currentTabIndex, restoredSelection);",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(
+                applyReadModel.IndexOf(
+                    "RefreshSelectionDetailAfterCollectionApplyIfNeeded(",
+                    StringComparison.Ordinal
+                )
+            )
+        );
         Assert.That(applyReadModel, Does.Contain("!isSortOnly && string.Equals(resolvedSortId, \"28\", StringComparison.Ordinal)"));
         Assert.That(applyReadModel, Does.Contain("readmodel apply end: request_revision="));
         Assert.That(

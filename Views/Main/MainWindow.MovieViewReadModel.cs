@@ -144,6 +144,10 @@ namespace IndigoMovieManager
                 $"readmodel apply begin: request_revision={requestRevision} reason={resolvedVisibleRefreshReason} result_count={sortedMovies.Count} update_mode={updateMode} fallback_reason={resolvedFallbackReason}"
             );
             MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();
+            MovieViewSelectionContinuityPolicy.TryCaptureStableKey(
+                selectedBeforeCollectionApply,
+                out string selectedStableKey
+            );
             MainVM.DbInfo.SearchCount = readModelResult.SearchCount;
             filterList = sortedMovies;
             FilteredMovieRecsUpdateResult collectionResult = MainVM.ReplaceFilteredMovieRecs(
@@ -151,6 +155,18 @@ namespace IndigoMovieManager
                 updateMode: updateMode
             );
             UpdateExtensionDetailVisibilityBySearchCount();
+
+            MovieRecords restoredSelection =
+                MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply(
+                    selectedStableKey,
+                    MainVM.FilteredMovieRecs,
+                    updateMode,
+                    collectionResult.HasChanges
+                );
+            if (restoredSelection != null)
+            {
+                SelectUpperTabMovieRecord(currentTabIndex, restoredSelection);
+            }
 
             Stopwatch selectionRefreshStopwatch = Stopwatch.StartNew();
             bool shouldRefresh = RefreshSelectionDetailAfterCollectionApplyIfNeeded(
