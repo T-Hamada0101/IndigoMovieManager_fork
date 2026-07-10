@@ -8,7 +8,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
     [Test]
     public void 複数runがある場合は最新runだけでevidenceを集計する()
     {
-        string oldFirst = BuildLine(1, "old ui_shell_contract=ui-shell-v1");
+        string oldFirst = BuildLine(1, "old ui hang updated: delay_ms=900 ui_shell_contract=ui-shell-v1");
         string oldSecond = BuildLine(2, "old diff_contract=readmodel-diff-v1");
         string newFirst = BuildLine(1, "new first-page shown");
         string newSecond = BuildLine(2, "new core_route=watch-ui-apply");
@@ -31,6 +31,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 summary.Phase0Evidence.ObservedKeys,
                 Is.EqualTo(["startup-first-page", "watch-core"])
             );
+            Assert.That(summary.Phase0RunMetrics.UiHangDelaySampleCount, Is.EqualTo(0));
             Assert.That(
                 summary.Phase0NextActions.ActionKeys,
                 Is.EqualTo(
@@ -565,7 +566,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                     }
                 )
             );
-            Assert.That(lines, Has.Length.EqualTo(10));
+            Assert.That(lines, Has.Length.EqualTo(11));
             Assert.That(
                 lines[5],
                 Is.EqualTo(
@@ -577,8 +578,9 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                 lines[7],
                 Does.StartWith("phase0_manual_visual_review=required phase0_complete=false checks=")
             );
-            Assert.That(lines[8], Is.EqualTo("phase0_audit_status=missing-contract-evidence"));
-            Assert.That(lines[9], Is.EqualTo("phase0_audit_complete=false"));
+            Assert.That(lines[8], Does.StartWith("phase0_run_metrics=available "));
+            Assert.That(lines[9], Is.EqualTo("phase0_audit_status=missing-contract-evidence"));
+            Assert.That(lines[10], Is.EqualTo("phase0_audit_complete=false"));
         });
     }
 
@@ -623,7 +625,7 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                     }
                 )
             );
-            Assert.That(lines, Has.Length.EqualTo(10));
+            Assert.That(lines, Has.Length.EqualTo(11));
             Assert.That(
                 lines[5],
                 Is.EqualTo(
@@ -636,8 +638,9 @@ public sealed class DebugRuntimeLogAuditSummaryPolicyTests
                     "tab-selection-page=selection,focus,page-or-scroll-position,blank"
                 )
             );
-            Assert.That(lines[8], Is.EqualTo("phase0_audit_status=missing-timestamp"));
-            Assert.That(lines[9], Is.EqualTo("phase0_audit_complete=false"));
+            Assert.That(lines[8], Does.StartWith("phase0_run_metrics=available "));
+            Assert.That(lines[9], Is.EqualTo("phase0_audit_status=missing-timestamp"));
+            Assert.That(lines[10], Is.EqualTo("phase0_audit_complete=false"));
         });
     }
 

@@ -170,13 +170,14 @@ public sealed class LogTabPreviewIoPolicyTests
                     "tab-selection-page=selection,focus,page-or-scroll-position,blank"
                 )
             );
+            Assert.That(resultLines[8], Does.StartWith("phase0_run_metrics=available "));
             Assert.That(
-                resultLines[8],
+                resultLines[9],
                 Is.EqualTo("phase0_audit_status=missing-contract-evidence")
             );
-            Assert.That(resultLines[9], Is.EqualTo("phase0_audit_complete=false"));
-            Assert.That(resultLines[10], Is.Empty);
-            Assert.That(resultLines.Skip(11), Is.EqualTo(previewLines));
+            Assert.That(resultLines[10], Is.EqualTo("phase0_audit_complete=false"));
+            Assert.That(resultLines[11], Is.Empty);
+            Assert.That(resultLines.Skip(12), Is.EqualTo(previewLines));
         });
     }
 
