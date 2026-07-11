@@ -74,6 +74,7 @@ namespace IndigoMovieManager
         private EventHandler _playerThumbnailScrollLayoutUpdatedHandler;
         private EventHandler _playerThumbnailScrollRenderingHandler;
         private bool _playerRightRailWarmCompletionHooked;
+        private bool _playerRightRailViewportRevisionPending;
         private readonly HashSet<string> _playerRightRailWarmCompletedMoviePathKeys = new(
             StringComparer.OrdinalIgnoreCase
         );
@@ -522,6 +523,7 @@ namespace IndigoMovieManager
             }
 
             _playerRightRailWarmCompletedMoviePathKeys.Clear();
+            _playerRightRailViewportRevisionPending = false;
             _playerRightRailWarmRefreshOperation?.Abort();
             _playerRightRailWarmRefreshOperation = null;
         }
@@ -667,7 +669,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player thumbnail scroll burst: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore}"
+                $"player thumbnail scroll burst: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_flush_state={(_playerRightRailViewportRevisionPending ? "pending-before-idle-flush" : "not-pending")}"
             );
         }
 
@@ -777,7 +779,10 @@ namespace IndigoMovieManager
         private void QueuePlayerRightRailWarmRefresh()
         {
             if (
-                _playerRightRailWarmCompletedMoviePathKeys.Count == 0
+                (
+                    _playerRightRailWarmCompletedMoviePathKeys.Count == 0
+                    && !_playerRightRailViewportRevisionPending
+                )
                 || Dispatcher == null
                 || Dispatcher.HasShutdownStarted
                 || Dispatcher.HasShutdownFinished
@@ -807,6 +812,22 @@ namespace IndigoMovieManager
             if (TabPlayer?.IsSelected != true)
             {
                 _playerRightRailWarmCompletedMoviePathKeys.Clear();
+                _playerRightRailViewportRevisionPending = false;
+                return;
+            }
+
+            if (
+                !_isUpperTabPreferredMoviePathKeysSnapshotPublished
+                || _preferredVisibleMoviePathKeysSourceRevision
+                    != _upperTabViewportSourceRevision
+            )
+            {
+                _playerRightRailWarmCompletedMoviePathKeys.Clear();
+                _playerRightRailViewportRevisionPending = false;
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    "player right rail warm refresh skipped: reason=stale viewport_revision_pending=False"
+                );
                 return;
             }
 
@@ -822,17 +843,24 @@ namespace IndigoMovieManager
             }
 
             _playerRightRailWarmCompletedMoviePathKeys.Clear();
+            bool viewportRevisionPending = _playerRightRailViewportRevisionPending;
+            _playerRightRailViewportRevisionPending = false;
             int playerRevisionBefore = PlayerRightRailImageRevision;
-            if (visibleCompletionCount > 0)
+            if (visibleCompletionCount > 0 || viewportRevisionPending)
             {
                 RefreshPlayerRightRailImageRevision();
             }
 
             bool playerRevisionUpdated = PlayerRightRailImageRevision != playerRevisionBefore;
+            string revisionReason = viewportRevisionPending
+                ? visibleCompletionCount > 0
+                    ? "viewport-pending+visible-warm"
+                    : "viewport-pending"
+                : "visible-warm";
             stopwatch.Stop();
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player right rail warm refresh: visible_completions={visibleCompletionCount} shared_revision_updated=False player_revision_updated={playerRevisionUpdated} elapsed_ms={stopwatch.ElapsedMilliseconds} scroll_priority_active={scrollPriorityActive}"
+                $"player right rail warm refresh: visible_completions={visibleCompletionCount} viewport_revision_pending={viewportRevisionPending} revision_reason={revisionReason} shared_revision_updated=False player_revision_updated={playerRevisionUpdated} elapsed_ms={stopwatch.ElapsedMilliseconds} scroll_priority_active={scrollPriorityActive}"
             );
         }
 
@@ -1273,16 +1301,25 @@ namespace IndigoMovieManager
             bool playerActive = TabPlayer?.IsSelected == true;
             if (playerActive)
             {
-                RefreshPlayerRightRailImageRevision();
+                if (_isPlayerThumbnailScrollUserPriorityActive)
+                {
+                    // scroll中のviewport差分はidle後のwarm反映へ畳み、再layoutを1回に抑える。
+                    _playerRightRailViewportRevisionPending = true;
+                }
+                else
+                {
+                    RefreshPlayerRightRailImageRevision();
+                }
             }
             else
             {
+                _playerRightRailViewportRevisionPending = false;
                 RefreshSharedUpperTabImageRevision();
             }
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"upper tab image revision refreshed: shared_revision_updated={!playerActive} player_revision_updated={playerActive}"
+                $"upper tab image revision refreshed: shared_revision_updated={!playerActive} player_revision_updated={playerActive && !_playerRightRailViewportRevisionPending} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_reason={(playerActive ? _playerRightRailViewportRevisionPending ? "viewport-deferred-scroll-priority" : "viewport-immediate" : "shared-viewport")}"
             );
         }
 
