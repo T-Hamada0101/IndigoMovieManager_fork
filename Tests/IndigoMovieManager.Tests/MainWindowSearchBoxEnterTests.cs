@@ -419,6 +419,51 @@ public sealed class MainWindowSearchBoxEnterTests
     }
 
     [Test]
+    public async Task SearchBox_TextChanged_起動時部分ロード中も入力停止まで優先区間を維持する()
+    {
+        (bool TimerEnabled, bool InputPriorityActive) result = await RunOnStaDispatcherAsync(
+            async () =>
+            {
+                using TestEnvironmentScope scope = TestEnvironmentScope.Create();
+                MainWindow window = CreateHiddenMainWindow();
+
+                try
+                {
+                    window.Show();
+                    await WaitForDispatcherIdleAsync();
+
+                    window.MainVM.DbInfo.DBFullPath = CreateTempMainDb();
+                    window.MainVM.DbInfo.Sort = "12";
+                    SetPrivateField(window, "_startupFeedIsPartialActive", true);
+                    SetPrivateField(window, "_startupFeedLoadedAllPages", false);
+                    window.SearchBox.Text = "alpha";
+
+                    InvokeSearchBoxTextChanged(
+                        window,
+                        CreateSearchBoxTextChangedEventArgs(window.SearchBox)
+                    );
+
+                    return (
+                        GetSearchInputDebounceTimer(window).IsEnabled,
+                        GetPrivateField<bool>(window, "_searchInputPriorityActive")
+                    );
+                }
+                finally
+                {
+                    await CloseWindowAsync(window);
+                    TryDeleteFile(window.MainVM.DbInfo.DBFullPath);
+                }
+            }
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.TimerEnabled, Is.True);
+            Assert.That(result.InputPriorityActive, Is.True);
+        });
+    }
+
+    [Test]
     public async Task SearchBox_TextChanged_通常入力ではサムネ常駐を再起動しない()
     {
         bool thumbnailCtsUnchanged = await RunOnStaDispatcherAsync(async () =>
@@ -480,7 +525,7 @@ public sealed class MainWindowSearchBoxEnterTests
     }
 
     [Test]
-    public async Task SearchBox_TextChanged_途中構文ではインクリメント検索用デバウンスタイマーを起動しない()
+    public async Task SearchBox_TextChanged_途中構文でも入力保護用デバウンスタイマーを起動する()
     {
         bool timerEnabled = await RunOnStaDispatcherAsync(async () =>
         {
@@ -528,7 +573,7 @@ public sealed class MainWindowSearchBoxEnterTests
             }
         });
 
-        Assert.That(timerEnabled, Is.False);
+        Assert.That(timerEnabled, Is.True);
     }
 
     [Test]

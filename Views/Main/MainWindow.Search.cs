@@ -177,7 +177,7 @@ namespace IndigoMovieManager
                 }
 
                 // 通常時だけ debounce で検索確定し、連打入力でも UI を詰まらせにくくする。
-                QueueIncrementalSearch(text);
+                QueueIncrementalSearch();
             }
         }
 
@@ -605,15 +605,9 @@ namespace IndigoMovieManager
             }
         }
 
-        // 変換途中の記号入力や部分ロード中は既存の確定検索へ寄せ、通常時だけ debounce で流す。
-        private void QueueIncrementalSearch(string text)
+        // 検索可否に関係なく入力停止を待ち、その間は背後のUI更新より文字入力を優先する。
+        private void QueueIncrementalSearch()
         {
-            if (!CanRunIncrementalSearch(text))
-            {
-                CancelIncrementalSearchDebounce();
-                return;
-            }
-
             StopDispatcherTimerSafely(_searchInputDebounceTimer, nameof(_searchInputDebounceTimer));
             TryStartDispatcherTimer(_searchInputDebounceTimer, nameof(_searchInputDebounceTimer));
         }
