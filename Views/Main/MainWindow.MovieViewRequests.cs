@@ -235,6 +235,7 @@ namespace IndigoMovieManager
             }
 
             refreshElapsedMs = applyResult.SelectionRefreshElapsedMs;
+            QueueVisibleSourceImageProbe("filter-apply");
 
             totalStopwatch.Stop();
             DebugRuntimeLog.Write(

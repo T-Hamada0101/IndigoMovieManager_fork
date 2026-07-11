@@ -144,10 +144,8 @@ namespace IndigoMovieManager
             string imagesDirectoryPath =
                 bulkContext?.ImagesDirectoryPath
                 ?? Path.Combine(AppContext.BaseDirectory, "Images");
-            LazyThumbnailSourceImagePathResolver sourceImageResolver =
-                bulkContext.HasValue && bulkCache != null
-                    ? new LazyThumbnailSourceImagePathResolver(movieFullPath)
-                    : null;
+            // bulk変換では同名source画像を探索せず、可視範囲確定後の背景probeへ譲る。
+            LazyThumbnailSourceImagePathResolver sourceImageResolver = null;
 
             for (int i = 0; i < thumbErrorPath.Length; i++)
             {
@@ -161,7 +159,8 @@ namespace IndigoMovieManager
                         movieName,
                         hash,
                         fallbackPath,
-                        sourceImageResolver
+                        sourceImageResolver,
+                        allowSourceImageProbe: false
                     );
                     continue;
                 }
@@ -186,7 +185,8 @@ namespace IndigoMovieManager
                     movieName,
                     hash,
                     Path.Combine(imagesDirectoryPath, thumbErrorPath[2]),
-                    sourceImageResolver
+                    sourceImageResolver,
+                    allowSourceImageProbe: false
                 );
             }
             else
@@ -340,7 +340,8 @@ namespace IndigoMovieManager
             string movieName,
             string hash,
             string fallbackPath,
-            LazyThumbnailSourceImagePathResolver sourceImageResolver = null
+            LazyThumbnailSourceImagePathResolver sourceImageResolver = null,
+            bool allowSourceImageProbe = true
         )
         {
             if (!string.IsNullOrWhiteSpace(thumbnailOutPath) && existingFileNames != null)
@@ -365,6 +366,11 @@ namespace IndigoMovieManager
                         return Path.Combine(thumbnailOutPath, legacyFileName);
                     }
                 }
+            }
+
+            if (!allowSourceImageProbe)
+            {
+                return fallbackPath;
             }
 
             string sourceImagePath;

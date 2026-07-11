@@ -1247,6 +1247,11 @@ namespace IndigoMovieManager
                 elapsedMilliseconds
             );
 
+            if (preferredMoviePathKeysChanged)
+            {
+                QueueVisibleSourceImageProbe("viewport-preferred-keys");
+            }
+
             if (!rangeChanged && !preferredMoviePathKeysChanged)
             {
                 return;
