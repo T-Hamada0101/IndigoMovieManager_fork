@@ -25,11 +25,23 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
     [Test]
     public void 管理サムネがある用途はsourceImageで上書きしない()
     {
-        string source = GetMovieRecordFactorySource();
+        string factorySource = GetMovieRecordFactorySource();
+        string probeSource = GetVisibleSourceImageProbeSource();
 
-        Assert.That(source, Does.Contain("existingFileNames.Contains(currentFileName)"));
-        Assert.That(source, Does.Contain("existingFileNames.Contains(legacyFileName)"));
-        Assert.That(source, Does.Contain("return Path.Combine(thumbnailOutPath, currentFileName)"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(factorySource, Does.Contain("existingFileNames.Contains(currentFileName)"));
+            Assert.That(factorySource, Does.Contain("existingFileNames.Contains(legacyFileName)"));
+            Assert.That(probeSource, Does.Contain("ApplySourceImageToPlaceholder("));
+            Assert.That(
+                probeSource,
+                Does.Contain("ThumbnailErrorPlaceholderHelper.IsPlaceholderPath(currentPath)")
+            );
+            Assert.That(
+                probeSource,
+                Does.Contain("ThumbnailErrorPlaceholderHelper.CountPlaceholders(record) > 0")
+            );
+        });
     }
 
     [Test]
@@ -47,7 +59,7 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
     }
 
     [Test]
-    public void 一レコード六用途は同じlazyResolverを共有する()
+    public void 一レコード六用途は一度だけ探索してplaceholderだけ反映する()
     {
         string source = GetVisibleSourceImageProbeSource();
 
@@ -59,27 +71,27 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
             );
             Assert.That(
                 source,
-                Does.Contain("record.ThumbPathSmall = resolution.SourceImagePath;")
+                Does.Contain("value => record.ThumbPathSmall = value")
             );
             Assert.That(
                 source,
-                Does.Contain("record.ThumbPathBig = resolution.SourceImagePath;")
+                Does.Contain("value => record.ThumbPathBig = value")
             );
             Assert.That(
                 source,
-                Does.Contain("record.ThumbPathGrid = resolution.SourceImagePath;")
+                Does.Contain("value => record.ThumbPathGrid = value")
             );
             Assert.That(
                 source,
-                Does.Contain("record.ThumbPathList = resolution.SourceImagePath;")
+                Does.Contain("value => record.ThumbPathList = value")
             );
             Assert.That(
                 source,
-                Does.Contain("record.ThumbPathBig10 = resolution.SourceImagePath;")
+                Does.Contain("value => record.ThumbPathBig10 = value")
             );
             Assert.That(
                 source,
-                Does.Contain("record.ThumbDetail = resolution.SourceImagePath;")
+                Does.Contain("value => record.ThumbDetail = value")
             );
         });
     }

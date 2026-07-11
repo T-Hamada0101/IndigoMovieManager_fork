@@ -84,7 +84,11 @@ namespace IndigoMovieManager
                 string moviePathKey = QueueDbPathResolver.CreateMoviePathKey(
                     record?.Movie_Path ?? ""
                 );
-                if (record != null && preferredKeys.Remove(moviePathKey))
+                if (
+                    record != null
+                    && ThumbnailErrorPlaceholderHelper.CountPlaceholders(record) > 0
+                    && preferredKeys.Remove(moviePathKey)
+                )
                 {
                     targets.Add(new VisibleSourceImageProbeTarget(moviePathKey, index, record));
                 }
@@ -183,13 +187,41 @@ namespace IndigoMovieManager
                     }
 
                     MovieRecords record = resolution.Target.Record;
-                    record.ThumbPathSmall = resolution.SourceImagePath;
-                    record.ThumbPathBig = resolution.SourceImagePath;
-                    record.ThumbPathGrid = resolution.SourceImagePath;
-                    record.ThumbPathList = resolution.SourceImagePath;
-                    record.ThumbPathBig10 = resolution.SourceImagePath;
-                    record.ThumbDetail = resolution.SourceImagePath;
-                    applied++;
+                    bool changed = false;
+                    changed |= ApplySourceImageToPlaceholder(
+                        record.ThumbPathSmall,
+                        value => record.ThumbPathSmall = value,
+                        resolution.SourceImagePath
+                    );
+                    changed |= ApplySourceImageToPlaceholder(
+                        record.ThumbPathBig,
+                        value => record.ThumbPathBig = value,
+                        resolution.SourceImagePath
+                    );
+                    changed |= ApplySourceImageToPlaceholder(
+                        record.ThumbPathGrid,
+                        value => record.ThumbPathGrid = value,
+                        resolution.SourceImagePath
+                    );
+                    changed |= ApplySourceImageToPlaceholder(
+                        record.ThumbPathList,
+                        value => record.ThumbPathList = value,
+                        resolution.SourceImagePath
+                    );
+                    changed |= ApplySourceImageToPlaceholder(
+                        record.ThumbPathBig10,
+                        value => record.ThumbPathBig10 = value,
+                        resolution.SourceImagePath
+                    );
+                    changed |= ApplySourceImageToPlaceholder(
+                        record.ThumbDetail,
+                        value => record.ThumbDetail = value,
+                        resolution.SourceImagePath
+                    );
+                    if (changed)
+                    {
+                        applied++;
+                    }
                 }
                 applyStopwatch.Stop();
                 if (applied > 0)
@@ -214,6 +246,22 @@ namespace IndigoMovieManager
                     $"source image probe failed: reason={reason} revision={probeRevision} filter_revision={filterRevision} requested={targets.Length} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
+        }
+
+        // 背景探索の完了後も、その間に生成された管理サムネイルは上書きしない。
+        private static bool ApplySourceImageToPlaceholder(
+            string currentPath,
+            Action<string> apply,
+            string sourceImagePath
+        )
+        {
+            if (!ThumbnailErrorPlaceholderHelper.IsPlaceholderPath(currentPath))
+            {
+                return false;
+            }
+
+            apply(sourceImagePath);
+            return true;
         }
 
         private bool IsVisibleSourceImageProbeRequestCurrent(
