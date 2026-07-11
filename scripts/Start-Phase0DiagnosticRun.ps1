@@ -64,10 +64,10 @@ Write-Host "コピー済みDB: $resolvedDbPath"
 Write-Host @'
 主要8シナリオ:
 1. cold startから first-page shown、input ready、heavy services started まで。
-2. 検索入力中にsortを変更し、直後にscroll / PageUp / PageDownする。
-3. 上側タブ、Logタブ、選択、ページを連続で切り替える。
+2. Grid系Resetを含む検索・通常sort後に、主選択・複数選択・先頭可視top・focusを確認する。250ms未満は操作表示を出さず、超過時も入力とscroll / PageUp / PageDownを継続し、Wrap系とList系のoffsetを別記録する。
+3. 上側タブとLogタブを往復後、選択を保持し、SearchBox/別ペインのfocusを奪わないことを確認する。
 4. 検索中にwatch 1件追加とrenameを発生させる。
-5. Playerを開始、停止し、音量を変更する。
+5. Player準備中の操作表示を確認し、開始、停止、音量を変更する。
 6. visible thumbnail、進捗、ERROR一覧、詳細画像を表示する。
 7. コピーDB + no-persistでskin通常切り替えとHeader Reloadを行う。
 8. 設定変更、bookmark / score / tag保存後に終了する。

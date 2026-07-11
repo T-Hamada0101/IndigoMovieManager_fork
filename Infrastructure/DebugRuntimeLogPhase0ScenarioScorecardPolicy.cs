@@ -37,7 +37,17 @@ public static class DebugRuntimeLogPhase0ScenarioScorecardPolicy
                 "scheduler-timeout-released",
                 "scheduler-pending-count-after",
             ],
-            ["input-continuity", "selection", "focus", "scroll", "blank"]
+            [
+                "input-continuity",
+                "selection",
+                "focus",
+                "scroll",
+                "blank",
+                "multi-selection",
+                "scroll-anchor",
+                "operation-feedback",
+                "continued-input-during-feedback",
+            ]
         ),
         new(
             "tab-selection-page",
@@ -50,7 +60,7 @@ public static class DebugRuntimeLogPhase0ScenarioScorecardPolicy
                 "ui-shell-user-priority-active",
                 "ui-shell-recent-viewport-active",
             ],
-            ["selection", "focus", "page-or-scroll-position", "blank"]
+            ["selection", "focus", "page-or-scroll-position", "blank", "focus-not-stolen"]
         ),
         new(
             "watch-small-diff",
@@ -79,7 +89,7 @@ public static class DebugRuntimeLogPhase0ScenarioScorecardPolicy
             ["player-core"],
             [],
             ["ui-shell-player-playback-active", "player-surface-ready", "player-transition"],
-            ["playback-continuity", "selection", "focus", "blank"]
+            ["playback-continuity", "selection", "focus", "blank", "operation-feedback"]
         ),
         new(
             "image",

@@ -90,9 +90,37 @@ public sealed class DebugRuntimeLogPhase0ScenarioScorecardPolicyTests
             Assert.That(tab.ManualVisualReviewRequired, Is.True);
             Assert.That(
                 tab.ManualVisualReviewKeys,
-                Is.EqualTo(["selection", "focus", "page-or-scroll-position", "blank"])
+                Is.EqualTo(["selection", "focus", "page-or-scroll-position", "blank", "focus-not-stolen"])
             );
             Assert.That(scorecard.IsPhase0Complete, Is.False);
+        });
+    }
+
+    [Test]
+    public void Phase1の操作連続性目視キーを主要3シナリオへ追加する()
+    {
+        DebugRuntimeLogPhase0ScenarioScorecard scorecard = Evaluate([]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                scorecard.GetScenario("search-sort-scroll").ManualVisualReviewKeys,
+                Is.EqualTo([
+                    "input-continuity",
+                    "selection",
+                    "focus",
+                    "scroll",
+                    "blank",
+                    "multi-selection",
+                    "scroll-anchor",
+                    "operation-feedback",
+                    "continued-input-during-feedback",
+                ])
+            );
+            Assert.That(
+                scorecard.GetScenario("player").ManualVisualReviewKeys,
+                Is.EqualTo(["playback-continuity", "selection", "focus", "blank", "operation-feedback"])
+            );
         });
     }
 
@@ -128,7 +156,7 @@ public sealed class DebugRuntimeLogPhase0ScenarioScorecardPolicyTests
             );
             Assert.That(
                 lines[2],
-                Does.Contain("tab-selection-page=selection,focus,page-or-scroll-position,blank")
+                Does.Contain("tab-selection-page=selection,focus,page-or-scroll-position,blank,focus-not-stolen")
             );
         });
     }
