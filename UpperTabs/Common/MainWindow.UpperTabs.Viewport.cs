@@ -62,6 +62,12 @@ namespace IndigoMovieManager
         private int _playerThumbnailScrollGeneratorStatusChangedCount;
         private int _playerThumbnailScrollLayoutUpdatedCount;
         private int _playerThumbnailScrollRenderingCount;
+        private long _playerThumbnailScrollFirstLayoutMilliseconds = -1;
+        private long _playerThumbnailScrollFirstRenderingMilliseconds = -1;
+        private long _playerThumbnailScrollLastLayoutTimestamp;
+        private long _playerThumbnailScrollLastRenderingTimestamp;
+        private long _playerThumbnailScrollMaxLayoutGapMilliseconds;
+        private long _playerThumbnailScrollMaxRenderingGapMilliseconds;
         private int _playerThumbnailScrollRealizedCountBefore;
         private int _playerThumbnailScrollRevisionBefore;
         private EventHandler _playerThumbnailScrollGeneratorStatusChangedHandler;
@@ -562,6 +568,12 @@ namespace IndigoMovieManager
             _playerThumbnailScrollGeneratorStatusChangedCount = 0;
             _playerThumbnailScrollLayoutUpdatedCount = 0;
             _playerThumbnailScrollRenderingCount = 0;
+            _playerThumbnailScrollFirstLayoutMilliseconds = -1;
+            _playerThumbnailScrollFirstRenderingMilliseconds = -1;
+            _playerThumbnailScrollLastLayoutTimestamp = 0;
+            _playerThumbnailScrollLastRenderingTimestamp = 0;
+            _playerThumbnailScrollMaxLayoutGapMilliseconds = 0;
+            _playerThumbnailScrollMaxRenderingGapMilliseconds = 0;
             _playerThumbnailScrollRealizedCountBefore = GetPlayerThumbnailRealizedCount();
             _playerThumbnailScrollRevisionBefore = PlayerRightRailImageRevision;
             PlayerRightRailImageBurstMetrics.Begin(sessionId);
@@ -591,6 +603,11 @@ namespace IndigoMovieManager
             if (sessionId == _playerThumbnailScrollBurstSessionId)
             {
                 _playerThumbnailScrollLayoutUpdatedCount++;
+                RecordPlayerThumbnailScrollEventTiming(
+                    ref _playerThumbnailScrollFirstLayoutMilliseconds,
+                    ref _playerThumbnailScrollLastLayoutTimestamp,
+                    ref _playerThumbnailScrollMaxLayoutGapMilliseconds
+                );
             }
         }
 
@@ -599,7 +616,37 @@ namespace IndigoMovieManager
             if (sessionId == _playerThumbnailScrollBurstSessionId)
             {
                 _playerThumbnailScrollRenderingCount++;
+                RecordPlayerThumbnailScrollEventTiming(
+                    ref _playerThumbnailScrollFirstRenderingMilliseconds,
+                    ref _playerThumbnailScrollLastRenderingTimestamp,
+                    ref _playerThumbnailScrollMaxRenderingGapMilliseconds
+                );
             }
+        }
+
+        private void RecordPlayerThumbnailScrollEventTiming(
+            ref long firstElapsedMilliseconds,
+            ref long lastTimestamp,
+            ref long maxGapMilliseconds
+        )
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (firstElapsedMilliseconds < 0 && _playerThumbnailScrollStartedTimestamp > 0)
+            {
+                firstElapsedMilliseconds = (long)Stopwatch
+                    .GetElapsedTime(_playerThumbnailScrollStartedTimestamp, now)
+                    .TotalMilliseconds;
+            }
+
+            if (lastTimestamp > 0)
+            {
+                long gapMilliseconds = (long)Stopwatch
+                    .GetElapsedTime(lastTimestamp, now)
+                    .TotalMilliseconds;
+                maxGapMilliseconds = Math.Max(maxGapMilliseconds, gapMilliseconds);
+            }
+
+            lastTimestamp = now;
         }
 
         private void EndPlayerThumbnailScrollBurstMetrics(
@@ -620,7 +667,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player thumbnail scroll burst: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore}"
+                $"player thumbnail scroll burst: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore}"
             );
         }
 
