@@ -265,12 +265,19 @@ public sealed class ManualPlayerResizeHookPolicyTests
     {
         string selectionSource = GetMainWindowSelectionSourceText();
 
-        Assert.That(selectionSource, Does.Contain("SelectPlayerThumbnailRecordWithoutScroll(label, record);"));
+        Assert.That(
+            selectionSource,
+            Does.Contain("sender is FrameworkElement clickedElement")
+        );
+        Assert.That(
+            selectionSource,
+            Does.Contain("SelectPlayerThumbnailRecordWithoutScroll(clickedElement, record);")
+        );
         Assert.That(selectionSource, Does.Contain("syncPlayerSelection: false"));
         Assert.That(selectionSource, Does.Contain("return;"));
         Assert.That(
             selectionSource,
-            Does.Contain("private void SelectPlayerThumbnailRecordWithoutScroll(Label label, MovieRecords record)")
+            Does.Contain("FrameworkElement clickedElement,")
         );
         Assert.That(selectionSource, Does.Contain("_suppressPlayerThumbnailSelectionChanged = true;"));
         Assert.That(selectionSource, Does.Contain("SyncPlayerThumbnailSelectionAcrossViews(sourceList, record);"));

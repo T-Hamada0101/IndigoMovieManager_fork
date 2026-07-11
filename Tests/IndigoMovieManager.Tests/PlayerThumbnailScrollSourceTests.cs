@@ -63,16 +63,25 @@ public sealed class PlayerThumbnailScrollSourceTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
-        {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
-            {
-                return File.ReadAllText(candidate);
-            }
+        string[] searchRoots =
+        [
+            Directory.GetCurrentDirectory(),
+            TestContext.CurrentContext.TestDirectory,
+        ];
 
-            current = current.Parent;
+        foreach (string searchRoot in searchRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            DirectoryInfo? current = new(searchRoot);
+            while (current != null)
+            {
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
+
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置をrepo rootから解決できませんでした。");
