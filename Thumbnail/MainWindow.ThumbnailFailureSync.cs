@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows.Threading;
@@ -23,6 +24,7 @@ namespace IndigoMovieManager
     public partial class MainWindow
     {
         private const int ThumbnailFailureSyncBatchSize = 16;
+        private const int ThumbnailFailureSyncUserPriorityDelayMs = 120;
         private const int ThumbnailSuccessMainTabReloadDelayMs = 180;
         private static readonly int[] ThumbnailSyncCleanupTabIndexes = [0, 1, 2, 3, 4, 99];
         private static readonly TimeSpan ThumbnailFailureSyncPeriodicInterval = TimeSpan.FromSeconds(
@@ -36,6 +38,13 @@ namespace IndigoMovieManager
         {
             public bool AppliedToUi => AppliedCount > 0;
         }
+
+        private readonly record struct RescuedThumbnailBatchUiApplyResult(
+            IReadOnlyDictionary<long, RescuedThumbnailUiApplyResult> ResultsByFailureId,
+            int MatchedCount,
+            long ApplyMilliseconds,
+            int DeferredCount
+        );
 
         private readonly object thumbnailFailureDbServiceLock = new();
         private ThumbnailFailureDbService currentThumbnailFailureDbService;
@@ -244,6 +253,7 @@ namespace IndigoMovieManager
                 int reflectedCount = 0;
                 int requeuedCount = 0;
                 bool rescuedAppliedToSelectedRecord = false;
+                List<ThumbnailFailureRecord> reflectableRecords = [];
 
                 foreach (ThumbnailFailureRecord rescuedRecord in rescuedRecords)
                 {
@@ -273,11 +283,32 @@ namespace IndigoMovieManager
                         continue;
                     }
 
-                    RescuedThumbnailUiApplyResult applyResult = await ApplyRescuedThumbnailRecordToUiAsync(
-                            rescuedRecord,
+                    reflectableRecords.Add(rescuedRecord);
+                }
+
+                string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+                long dbSessionStamp = ReadCurrentMainDbQueueRequestSessionStamp();
+                RescuedThumbnailBatchUiApplyResult batchApplyResult =
+                    await ApplyRescuedThumbnailRecordsToUiAsync(
+                            reflectableRecords,
+                            dbFullPath,
+                            dbSessionStamp,
                             cts
                         )
                         .ConfigureAwait(false);
+
+                foreach (ThumbnailFailureRecord rescuedRecord in reflectableRecords)
+                {
+                    cts.ThrowIfCancellationRequested();
+                    if (!IsRescuedThumbnailSyncContextCurrent(dbFullPath, dbSessionStamp))
+                    {
+                        return;
+                    }
+
+                    batchApplyResult.ResultsByFailureId.TryGetValue(
+                        rescuedRecord.FailureId,
+                        out RescuedThumbnailUiApplyResult applyResult
+                    );
                     bool appliedToUi = applyResult.AppliedToUi;
                     rescuedAppliedToSelectedRecord |= applyResult.AppliedToSelectedRecord;
                     if (
@@ -343,7 +374,7 @@ namespace IndigoMovieManager
                         .Task.ConfigureAwait(false);
                     DebugRuntimeLog.Write(
                         "thumbnail-sync",
-                        $"rescued sync completed: trigger={trigger} reflected={reflectedCount} requeued={requeuedCount} recovered_stale={recoveredStaleCount} cleaned_error_markers={cleanedErrorMarkerCount} cleaned_failure_records={cleanedFailureRecordCount}"
+                        $"rescued sync completed: trigger={trigger} batch_count={reflectableRecords.Count} matched_count={batchApplyResult.MatchedCount} apply_ms={batchApplyResult.ApplyMilliseconds} deferred={batchApplyResult.DeferredCount} reflected={reflectedCount} requeued={requeuedCount} recovered_stale={recoveredStaleCount} cleaned_error_markers={cleanedErrorMarkerCount} cleaned_failure_records={cleanedFailureRecordCount}"
                     );
                 }
             }
@@ -538,13 +569,15 @@ namespace IndigoMovieManager
             return record.UpdatedAtUtc >= sessionStartedUtc.ToUniversalTime();
         }
 
-        // UI側の成功反映を rescued 行にも使い回し、通常生成と同じ見え方へ揃える。
-        private async Task<RescuedThumbnailUiApplyResult> ApplyRescuedThumbnailRecordToUiAsync(
-            ThumbnailFailureRecord record,
+        // rescued を一括で UI へ渡し、MovieRecs の索引作成と Dispatcher 往復を batch ごとに1回へ畳む。
+        private async Task<RescuedThumbnailBatchUiApplyResult> ApplyRescuedThumbnailRecordsToUiAsync(
+            IReadOnlyList<ThumbnailFailureRecord> records,
+            string dbFullPath,
+            long dbSessionStamp,
             CancellationToken cts
         )
         {
-            if (record == null || !CanReflectRescuedThumbnailRecord(record))
+            if (records == null || records.Count < 1)
             {
                 return default;
             }
@@ -558,46 +591,187 @@ namespace IndigoMovieManager
                 return default;
             }
 
-            long resolvedMovieId = 0;
-            _ = TryResolveMovieIdentityFromDb(record.MoviePath, out resolvedMovieId, out _);
-
-            int appliedCount = 0;
-            bool appliedToSelectedRecord = false;
-            MovieRecords updatedMovie = null;
-            await Dispatcher
-                .InvokeAsync(() =>
+            int deferredCount = 0;
+            while (IsUserPriorityWorkActive())
+            {
+                deferredCount++;
+                await Task.Delay(ThumbnailFailureSyncUserPriorityDelayMs, cts)
+                    .ConfigureAwait(false);
+                if (!IsRescuedThumbnailSyncContextCurrent(dbFullPath, dbSessionStamp))
                 {
-                    MovieRecords selectedMovie = GetSelectedItemByTabIndex();
-                    IEnumerable<MovieRecords> targets = MainVM?.MovieRecs?.Where(x =>
-                            IsSameMovieForFailureRecord(x, record, resolvedMovieId)
-                        )
-                        ?? Enumerable.Empty<MovieRecords>();
-                    foreach (MovieRecords item in targets.ToArray())
-                    {
-                        if (TryApplyThumbnailPathToMovieRecord(item, record.TabIndex, record.OutputThumbPath))
-                        {
-                            appliedCount++;
-                            appliedToSelectedRecord |= IsSameMovieForFailureRecord(
-                                selectedMovie,
-                                record,
-                                resolvedMovieId
-                            );
-                            updatedMovie ??= item;
-                        }
-                    }
-                }, DispatcherPriority.Normal, cts)
-                .Task.ConfigureAwait(false);
+                    return default;
+                }
+            }
 
-            if (updatedMovie != null)
+            List<(ThumbnailFailureRecord Record, long MovieId)> requests = new(records.Count);
+            foreach (ThumbnailFailureRecord record in records)
+            {
+                long resolvedMovieId = 0;
+                _ = TryResolveMovieIdentityFromDb(record.MoviePath, out resolvedMovieId, out _);
+                requests.Add((record, resolvedMovieId));
+            }
+
+            Dictionary<long, RescuedThumbnailUiApplyResult> results = [];
+            List<(MovieRecords Movie, int TabIndex)> skinUpdates = [];
+            int matchedCount = 0;
+            Stopwatch applyStopwatch = Stopwatch.StartNew();
+            bool applied = false;
+            while (!applied)
+            {
+                while (IsUserPriorityWorkActive())
+                {
+                    deferredCount++;
+                    await Task.Delay(ThumbnailFailureSyncUserPriorityDelayMs, cts)
+                        .ConfigureAwait(false);
+                    if (!IsRescuedThumbnailSyncContextCurrent(dbFullPath, dbSessionStamp))
+                    {
+                        return default;
+                    }
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (
+                            IsUserPriorityWorkActive()
+                            || !IsRescuedThumbnailSyncContextCurrent(dbFullPath, dbSessionStamp)
+                        )
+                        {
+                            return;
+                        }
+
+                        applied = true;
+                        MovieRecords selectedMovie = GetSelectedItemByTabIndex();
+                        Dictionary<long, List<MovieRecords>> moviesById = [];
+                        Dictionary<string, List<MovieRecords>> moviesByPath = new(
+                            StringComparer.OrdinalIgnoreCase
+                        );
+
+                        // UI-bound collection は Dispatcher 内で1回だけ列挙し、batch 全体で索引を使い回す。
+                        foreach (MovieRecords movie in MainVM?.MovieRecs ?? [])
+                        {
+                            AddMovieToRescuedThumbnailIndex(moviesById, movie.Movie_Id, movie);
+                            AddMovieToRescuedThumbnailIndex(moviesByPath, movie.Movie_Path, movie);
+                        }
+
+                        foreach ((ThumbnailFailureRecord record, long movieId) in requests)
+                        {
+                            HashSet<MovieRecords> targets = [];
+                            AddRescuedThumbnailTargets(moviesById, movieId, targets);
+                            AddRescuedThumbnailTargets(moviesByPath, record.MoviePath, targets);
+
+                            int appliedCount = 0;
+                            bool appliedToSelectedRecord = false;
+                            MovieRecords updatedMovie = null;
+                            foreach (MovieRecords item in targets)
+                            {
+                                if (
+                                    TryApplyThumbnailPathToMovieRecord(
+                                        item,
+                                        record.TabIndex,
+                                        record.OutputThumbPath
+                                    )
+                                )
+                                {
+                                    appliedCount++;
+                                    appliedToSelectedRecord |= ReferenceEquals(item, selectedMovie);
+                                    updatedMovie ??= item;
+                                }
+                            }
+
+                            matchedCount += appliedCount;
+                            results[record.FailureId] = new RescuedThumbnailUiApplyResult(
+                                appliedCount,
+                                appliedToSelectedRecord
+                            );
+                            if (updatedMovie != null)
+                            {
+                                skinUpdates.Add((updatedMovie, record.TabIndex));
+                            }
+                        }
+                    }, DispatcherPriority.Normal, cts)
+                    .Task.ConfigureAwait(false);
+
+                if (!applied)
+                {
+                    deferredCount++;
+                    await Task.Delay(ThumbnailFailureSyncUserPriorityDelayMs, cts)
+                        .ConfigureAwait(false);
+                    if (!IsRescuedThumbnailSyncContextCurrent(dbFullPath, dbSessionStamp))
+                    {
+                        return default;
+                    }
+                }
+            }
+            applyStopwatch.Stop();
+
+            foreach ((MovieRecords movie, int tabIndex) in skinUpdates)
             {
                 TryQueueExternalSkinThumbnailUpdated(
-                    updatedMovie,
-                    record.TabIndex,
+                    movie,
+                    tabIndex,
                     "thumbnail-rescue-reflect"
                 );
             }
 
-            return new RescuedThumbnailUiApplyResult(appliedCount, appliedToSelectedRecord);
+            return new RescuedThumbnailBatchUiApplyResult(
+                results,
+                matchedCount,
+                applyStopwatch.ElapsedMilliseconds,
+                deferredCount
+            );
+        }
+
+        private bool IsRescuedThumbnailSyncContextCurrent(
+            string dbFullPath,
+            long dbSessionStamp
+        )
+        {
+            return isThumbnailQueueInputEnabled
+                && !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished
+                && dbSessionStamp == ReadCurrentMainDbQueueRequestSessionStamp()
+                && AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? "");
+        }
+
+        private static void AddMovieToRescuedThumbnailIndex<TKey>(
+            Dictionary<TKey, List<MovieRecords>> index,
+            TKey key,
+            MovieRecords movie
+        )
+        {
+            if (movie == null || key == null || EqualityComparer<TKey>.Default.Equals(key, default))
+            {
+                return;
+            }
+
+            if (!index.TryGetValue(key, out List<MovieRecords> movies))
+            {
+                movies = [];
+                index.Add(key, movies);
+            }
+
+            movies.Add(movie);
+        }
+
+        private static void AddRescuedThumbnailTargets<TKey>(
+            Dictionary<TKey, List<MovieRecords>> index,
+            TKey key,
+            HashSet<MovieRecords> targets
+        )
+        {
+            if (
+                key == null
+                || EqualityComparer<TKey>.Default.Equals(key, default)
+                || !index.TryGetValue(key, out List<MovieRecords> movies)
+            )
+            {
+                return;
+            }
+
+            foreach (MovieRecords movie in movies)
+            {
+                targets.Add(movie);
+            }
         }
 
         // rescued sync の汎用反映では、選択中に当たった時だけサムネ詳細表示を揺すり直す。
@@ -637,9 +811,21 @@ namespace IndigoMovieManager
                 if (record != null)
                 {
                     record.OutputThumbPath = normalizedOutputThumbPath;
-                    RescuedThumbnailUiApplyResult applyResult =
-                        await ApplyRescuedThumbnailRecordToUiAsync(record, cts)
-                        .ConfigureAwait(false);
+                    string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+                    long dbSessionStamp = ReadCurrentMainDbQueueRequestSessionStamp();
+                    RescuedThumbnailBatchUiApplyResult batchApplyResult =
+                        await ApplyRescuedThumbnailRecordsToUiAsync(
+                                [record],
+                                dbFullPath,
+                                dbSessionStamp,
+                                cts
+                            )
+                            .ConfigureAwait(false);
+                    RescuedThumbnailUiApplyResult applyResult = default;
+                    _ = batchApplyResult.ResultsByFailureId?.TryGetValue(
+                        record.FailureId,
+                        out applyResult
+                    );
                     bool appliedToUi = applyResult.AppliedToUi;
                     if (appliedToUi)
                     {
