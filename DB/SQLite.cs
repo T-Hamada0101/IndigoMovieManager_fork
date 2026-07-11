@@ -540,6 +540,12 @@ namespace IndigoMovieManager.DB
                 return "";
             }
 
+            // DBから最も多く返る正規文字列は、再解析・再生成せず同じ参照を返す。
+            if (value is string text && IsCanonicalDbDateTimeText(text))
+            {
+                return text;
+            }
+
             if (value is DateTime dateTime)
             {
                 return FormatDbDateTime(dateTime);
@@ -548,6 +554,46 @@ namespace IndigoMovieManager.DB
             return TryParseDbDateTimeText(value.ToString() ?? "", out DateTime parsed)
                 ? FormatDbDateTime(parsed)
                 : value.ToString() ?? "";
+        }
+
+        internal static bool IsCanonicalDbDateTimeText(string value)
+        {
+            if (value == null || value.Length != 19)
+            {
+                return false;
+            }
+
+            // 形を先に安価に絞り、最後に暦として存在する日時かを厳密確認する。
+            for (int index = 0; index < value.Length; index++)
+            {
+                bool separatorPosition =
+                    index == 4 || index == 7 || index == 10 || index == 13 || index == 16;
+                if (separatorPosition)
+                {
+                    char expected = index switch
+                    {
+                        4 or 7 => '-',
+                        10 => ' ',
+                        _ => ':'
+                    };
+                    if (value[index] != expected)
+                    {
+                        return false;
+                    }
+                }
+                else if (value[index] < '0' || value[index] > '9')
+                {
+                    return false;
+                }
+            }
+
+            return DateTime.TryParseExact(
+                value,
+                "yyyy-MM-dd HH:mm:ss",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out _
+            );
         }
 
         private static object NormalizeDbParameterValue(object value)
