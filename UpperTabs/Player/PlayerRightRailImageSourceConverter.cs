@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Threading;
 using System.Windows;
 using System.Windows.Data;
 using IndigoMovieManager.Converter;
@@ -22,6 +23,7 @@ namespace IndigoMovieManager.UpperTabs.Player
             CultureInfo culture
         )
         {
+            PlayerRightRailImageBurstMetrics.RecordConvert();
             if (values == null || values.Length < 3)
             {
                 return DependencyProperty.UnsetValue;
@@ -66,13 +68,20 @@ namespace IndigoMovieManager.UpperTabs.Player
                 )
             )
             {
+                PlayerRightRailImageBurstMetrics.RecordCacheHit();
                 return ResolvePlayerRightRailDecodeImage(
                     executionResult.Image,
                     executionResult.DecodeResult
                 );
             }
 
-            PlayerRightRailImageWarmQueue.Queue(decodeRequest, isExists, OnImageWarmCompleted);
+            PlayerRightRailImageBurstMetrics.RecordCacheMiss();
+            PlayerRightRailImageWarmQueueResult queueResult = PlayerRightRailImageWarmQueue.Queue(
+                decodeRequest,
+                isExists,
+                OnImageWarmCompleted
+            );
+            PlayerRightRailImageBurstMetrics.RecordQueueResult(queueResult);
             return DependencyProperty.UnsetValue;
         }
 
@@ -133,6 +142,138 @@ namespace IndigoMovieManager.UpperTabs.Player
         }
     }
 
+    internal enum PlayerRightRailImageWarmQueueResult
+    {
+        Enqueued,
+        Duplicate,
+    }
+
+    internal readonly record struct PlayerRightRailImageBurstMetricsSnapshot(
+        long SessionId,
+        long ConvertCount,
+        long CacheHitCount,
+        long CacheMissCount,
+        long QueueEnqueuedCount,
+        long QueueDuplicateCount
+    );
+
+    internal static class PlayerRightRailImageBurstMetrics
+    {
+        private static BurstState _activeSession;
+
+        internal static void Begin(long sessionId)
+        {
+            if (sessionId <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sessionId));
+            }
+
+            // 状態ごと差し替え、古い処理の後着加算を新しいburstへ混ぜない。
+            Interlocked.Exchange(ref _activeSession, new BurstState(sessionId));
+        }
+
+        internal static bool End(
+            long sessionId,
+            out PlayerRightRailImageBurstMetricsSnapshot snapshot
+        )
+        {
+            BurstState activeSession = Volatile.Read(ref _activeSession);
+            if (activeSession == null || activeSession.SessionId != sessionId)
+            {
+                snapshot = default;
+                return false;
+            }
+
+            BurstState endedSession = Interlocked.CompareExchange(
+                ref _activeSession,
+                null,
+                activeSession
+            );
+            if (!ReferenceEquals(endedSession, activeSession))
+            {
+                snapshot = default;
+                return false;
+            }
+
+            snapshot = activeSession.CreateSnapshot();
+            return true;
+        }
+
+        internal static void RecordConvert()
+        {
+            BurstState activeSession = Volatile.Read(ref _activeSession);
+            activeSession?.RecordConvert();
+        }
+
+        internal static void RecordCacheHit()
+        {
+            BurstState activeSession = Volatile.Read(ref _activeSession);
+            activeSession?.RecordCacheHit();
+        }
+
+        internal static void RecordCacheMiss()
+        {
+            BurstState activeSession = Volatile.Read(ref _activeSession);
+            activeSession?.RecordCacheMiss();
+        }
+
+        internal static void RecordQueueResult(PlayerRightRailImageWarmQueueResult result)
+        {
+            BurstState activeSession = Volatile.Read(ref _activeSession);
+            activeSession?.RecordQueueResult(result);
+        }
+
+        internal static void ResetForTesting()
+        {
+            Interlocked.Exchange(ref _activeSession, null);
+        }
+
+        private sealed class BurstState
+        {
+            private long _convertCount;
+            private long _cacheHitCount;
+            private long _cacheMissCount;
+            private long _queueEnqueuedCount;
+            private long _queueDuplicateCount;
+
+            internal BurstState(long sessionId)
+            {
+                SessionId = sessionId;
+            }
+
+            internal long SessionId { get; }
+
+            internal void RecordConvert() => Interlocked.Increment(ref _convertCount);
+
+            internal void RecordCacheHit() => Interlocked.Increment(ref _cacheHitCount);
+
+            internal void RecordCacheMiss() => Interlocked.Increment(ref _cacheMissCount);
+
+            internal void RecordQueueResult(PlayerRightRailImageWarmQueueResult result)
+            {
+                if (result == PlayerRightRailImageWarmQueueResult.Enqueued)
+                {
+                    Interlocked.Increment(ref _queueEnqueuedCount);
+                    return;
+                }
+
+                Interlocked.Increment(ref _queueDuplicateCount);
+            }
+
+            internal PlayerRightRailImageBurstMetricsSnapshot CreateSnapshot()
+            {
+                return new PlayerRightRailImageBurstMetricsSnapshot(
+                    SessionId,
+                    Interlocked.Read(ref _convertCount),
+                    Interlocked.Read(ref _cacheHitCount),
+                    Interlocked.Read(ref _cacheMissCount),
+                    Interlocked.Read(ref _queueEnqueuedCount),
+                    Interlocked.Read(ref _queueDuplicateCount)
+                );
+            }
+        }
+    }
+
     internal static class PlayerRightRailImageWarmQueue
     {
         internal const int Capacity = 64;
@@ -141,7 +282,7 @@ namespace IndigoMovieManager.UpperTabs.Player
         private static readonly HashSet<string> PendingKeys = new(StringComparer.OrdinalIgnoreCase);
         private static bool _workerActive;
 
-        internal static void Queue(
+        internal static PlayerRightRailImageWarmQueueResult Queue(
             ImageDecodeRequest decodeRequest,
             bool isExists,
             Action<ImageRequest> completed
@@ -152,7 +293,7 @@ namespace IndigoMovieManager.UpperTabs.Player
             {
                 if (!PendingKeys.Add(key))
                 {
-                    return;
+                    return PlayerRightRailImageWarmQueueResult.Duplicate;
                 }
 
                 while (Pending.Count >= Capacity)
@@ -164,11 +305,12 @@ namespace IndigoMovieManager.UpperTabs.Player
                 Pending.Enqueue(new WarmRequest(key, decodeRequest, isExists, completed));
                 if (_workerActive)
                 {
-                    return;
+                    return PlayerRightRailImageWarmQueueResult.Enqueued;
                 }
 
                 _workerActive = true;
                 _ = System.Threading.Tasks.Task.Run(ProcessAsync);
+                return PlayerRightRailImageWarmQueueResult.Enqueued;
             }
         }
 
