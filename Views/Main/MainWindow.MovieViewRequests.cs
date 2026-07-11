@@ -249,7 +249,8 @@ namespace IndigoMovieManager
             string sortId,
             string traceName,
             UiHangActivityKind uiHangActivityKind,
-            IReadOnlyList<WatchChangedMovie> changedMovies = null
+            IReadOnlyList<WatchChangedMovie> changedMovies = null,
+            bool forceBackgroundCompute = false
         )
         {
             string resolvedTraceName = string.IsNullOrWhiteSpace(traceName)
@@ -287,10 +288,13 @@ namespace IndigoMovieManager
             long snapshotElapsedMs = snapshotStopwatch.ElapsedMilliseconds;
             MovieRecords[] sourceMovies = snapshot.SourceMovies;
             MovieRecords[] currentFilteredMovies = snapshot.CurrentFilteredMovies;
+            bool runOnBackground =
+                forceBackgroundCompute
+                || MainWindow.ShouldRunFilterSortOnBackground(sourceMovies.Length);
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"{resolvedTraceName} refresh start: revision={requestRevision} sort={resolvedSortId} keyword='{searchKeyword}' source={sourceMovies.Length} changed_paths={changedMovies?.Count ?? 0} snapshot_ms={snapshotElapsedMs}"
+                $"{resolvedTraceName} refresh start: revision={requestRevision} sort={resolvedSortId} keyword='{searchKeyword}' source={sourceMovies.Length} changed_paths={changedMovies?.Count ?? 0} background={runOnBackground} snapshot_ms={snapshotElapsedMs}"
             );
 
             Stopwatch filterSortStopwatch = Stopwatch.StartNew();
@@ -315,10 +319,12 @@ namespace IndigoMovieManager
             MovieViewReadModelResult readModelResult;
             try
             {
-                readModelResult = await Task.Run(
-                    () => MovieViewReadModelBuilder.Build(readModelRequest),
-                    refreshCancellationToken
-                );
+                readModelResult = runOnBackground
+                    ? await Task.Run(
+                        () => MovieViewReadModelBuilder.Build(readModelRequest),
+                        refreshCancellationToken
+                    )
+                    : MovieViewReadModelBuilder.Build(readModelRequest);
             }
             catch (OperationCanceledException)
                 when (refreshCancellationToken.IsCancellationRequested)
