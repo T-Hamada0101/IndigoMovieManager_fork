@@ -337,16 +337,61 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(beginMethod, Does.Contain("QueuePlayerThumbnailScrollRenderMeasure();"));
         Assert.That(queueMethod, Does.Contain("DispatcherPriority.Render"));
         Assert.That(queueMethod, Does.Contain("_playerThumbnailScrollRenderMeasureOperation != null"));
-        Assert.That(
-            releaseMethod,
-            Does.Contain("player thumbnail scroll render: release_reason=")
-        );
-        Assert.That(releaseMethod, Does.Contain("input_count={_playerThumbnailScrollInputCount}"));
-        Assert.That(
-            releaseMethod,
-            Does.Contain("first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds}")
-        );
+        Assert.That(releaseMethod, Does.Contain("EndPlayerThumbnailScrollBurstMetrics("));
         Assert.That(queueMethod, Does.Not.Contain("DebugRuntimeLog.Write("));
+    }
+
+    [Test]
+    public void PlayerスクロールburstだけWPF描画イベントを購読しidle終了時に1行へ集約する()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string beginMethod = GetMethodBlock(
+            source,
+            "private void BeginPlayerThumbnailScrollBurstMetrics()"
+        );
+        string endMethod = GetMethodBlock(
+            source,
+            "private void EndPlayerThumbnailScrollBurstMetrics("
+        );
+        string detachMethod = GetMethodBlock(
+            source,
+            "private void DetachPlayerThumbnailScrollBurstMetricsHandlers()"
+        );
+
+        Assert.That(beginMethod, Does.Contain("PlayerRightRailImageBurstMetrics.Begin(sessionId);"));
+        Assert.That(beginMethod, Does.Contain("ItemContainerGenerator.StatusChanged +="));
+        Assert.That(beginMethod, Does.Contain("PlayerThumbnailList.LayoutUpdated +="));
+        Assert.That(beginMethod, Does.Contain("CompositionTarget.Rendering +="));
+        Assert.That(endMethod, Does.Contain("PlayerRightRailImageBurstMetrics.End(sessionId"));
+        Assert.That(endMethod, Does.Contain("player thumbnail scroll burst: release_reason="));
+        Assert.That(endMethod, Does.Contain("converter_count={converterMetrics.ConvertCount}"));
+        Assert.That(endMethod, Does.Contain("generator_delta="));
+        Assert.That(endMethod, Does.Contain("layout_delta="));
+        Assert.That(endMethod, Does.Contain("render_delta="));
+        Assert.That(endMethod, Does.Contain("realized_delta="));
+        Assert.That(endMethod, Does.Contain("revision_delta="));
+        Assert.That(detachMethod, Does.Contain("ItemContainerGenerator.StatusChanged -="));
+        Assert.That(detachMethod, Does.Contain("PlayerThumbnailList.LayoutUpdated -="));
+        Assert.That(detachMethod, Does.Contain("CompositionTarget.Rendering -="));
+    }
+
+    [Test]
+    public void Playerスクロールburst計測は全件走査せず古いburstをguardする()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string realizedMethod = GetMethodBlock(
+            source,
+            "private int GetPlayerThumbnailRealizedCount()"
+        );
+        string generatorMethod = GetMethodBlock(
+            source,
+            "private void RecordPlayerThumbnailScrollGeneratorStatusChanged("
+        );
+
+        Assert.That(realizedMethod, Does.Contain("Children.Count"));
+        Assert.That(realizedMethod, Does.Not.Contain("Items.Count"));
+        Assert.That(realizedMethod, Does.Not.Contain("foreach"));
+        Assert.That(generatorMethod, Does.Contain("sessionId == _playerThumbnailScrollBurstSessionId"));
     }
 
     [Test]

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using IndigoMovieManager.UpperTabs.Common;
 using IndigoMovieManager.UpperTabs.Player;
@@ -56,6 +57,16 @@ namespace IndigoMovieManager
         private long _playerThumbnailScrollStartedTimestamp;
         private long _playerThumbnailScrollFirstRenderElapsedMilliseconds = -1;
         private int _playerThumbnailScrollInputCount;
+        private long _playerThumbnailScrollBurstSessionSequence;
+        private long _playerThumbnailScrollBurstSessionId;
+        private int _playerThumbnailScrollGeneratorStatusChangedCount;
+        private int _playerThumbnailScrollLayoutUpdatedCount;
+        private int _playerThumbnailScrollRenderingCount;
+        private int _playerThumbnailScrollRealizedCountBefore;
+        private int _playerThumbnailScrollRevisionBefore;
+        private EventHandler _playerThumbnailScrollGeneratorStatusChangedHandler;
+        private EventHandler _playerThumbnailScrollLayoutUpdatedHandler;
+        private EventHandler _playerThumbnailScrollRenderingHandler;
         private bool _playerRightRailWarmCompletionHooked;
         private readonly HashSet<string> _playerRightRailWarmCompletedMoviePathKeys = new(
             StringComparer.OrdinalIgnoreCase
@@ -467,6 +478,7 @@ namespace IndigoMovieManager
                 _playerThumbnailScrollFirstRenderElapsedMilliseconds = -1;
                 _playerThumbnailScrollInputCount = 0;
                 BeginUserPriorityWork("player-thumbnail-scroll");
+                BeginPlayerThumbnailScrollBurstMetrics();
                 DebugRuntimeLog.Write(
                     "ui-priority",
                     $"player thumbnail scroll priority begin: trigger_reason={triggerReason}"
@@ -516,6 +528,7 @@ namespace IndigoMovieManager
             );
             if (!_isPlayerThumbnailScrollUserPriorityActive)
             {
+                DetachPlayerThumbnailScrollBurstMetricsHandlers();
                 return;
             }
 
@@ -528,16 +541,114 @@ namespace IndigoMovieManager
                 "ui-priority",
                 $"player thumbnail scroll priority end: release_reason={releaseReason}"
             );
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"player thumbnail scroll render: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} total_ms={totalElapsedMilliseconds}"
-            );
+            EndPlayerThumbnailScrollBurstMetrics(releaseReason, totalElapsedMilliseconds);
             _playerThumbnailScrollStartedTimestamp = 0;
             _playerThumbnailScrollFirstRenderElapsedMilliseconds = -1;
             _playerThumbnailScrollInputCount = 0;
             if (string.Equals(releaseReason, "idle", StringComparison.Ordinal))
             {
                 QueuePlayerRightRailWarmRefresh();
+            }
+        }
+
+        // Playerスクロール中だけWPF描画イベントを観測し、通常時のUI経路へ負荷を残さない。
+        private void BeginPlayerThumbnailScrollBurstMetrics()
+        {
+            DetachPlayerThumbnailScrollBurstMetricsHandlers();
+            long sessionId = Interlocked.Increment(
+                ref _playerThumbnailScrollBurstSessionSequence
+            );
+            _playerThumbnailScrollBurstSessionId = sessionId;
+            _playerThumbnailScrollGeneratorStatusChangedCount = 0;
+            _playerThumbnailScrollLayoutUpdatedCount = 0;
+            _playerThumbnailScrollRenderingCount = 0;
+            _playerThumbnailScrollRealizedCountBefore = GetPlayerThumbnailRealizedCount();
+            _playerThumbnailScrollRevisionBefore = PlayerRightRailImageRevision;
+            PlayerRightRailImageBurstMetrics.Begin(sessionId);
+
+            _playerThumbnailScrollGeneratorStatusChangedHandler = (_, _) =>
+                RecordPlayerThumbnailScrollGeneratorStatusChanged(sessionId);
+            _playerThumbnailScrollLayoutUpdatedHandler = (_, _) =>
+                RecordPlayerThumbnailScrollLayoutUpdated(sessionId);
+            _playerThumbnailScrollRenderingHandler = (_, _) =>
+                RecordPlayerThumbnailScrollRendering(sessionId);
+            PlayerThumbnailList.ItemContainerGenerator.StatusChanged +=
+                _playerThumbnailScrollGeneratorStatusChangedHandler;
+            PlayerThumbnailList.LayoutUpdated += _playerThumbnailScrollLayoutUpdatedHandler;
+            CompositionTarget.Rendering += _playerThumbnailScrollRenderingHandler;
+        }
+
+        private void RecordPlayerThumbnailScrollGeneratorStatusChanged(long sessionId)
+        {
+            if (sessionId == _playerThumbnailScrollBurstSessionId)
+            {
+                _playerThumbnailScrollGeneratorStatusChangedCount++;
+            }
+        }
+
+        private void RecordPlayerThumbnailScrollLayoutUpdated(long sessionId)
+        {
+            if (sessionId == _playerThumbnailScrollBurstSessionId)
+            {
+                _playerThumbnailScrollLayoutUpdatedCount++;
+            }
+        }
+
+        private void RecordPlayerThumbnailScrollRendering(long sessionId)
+        {
+            if (sessionId == _playerThumbnailScrollBurstSessionId)
+            {
+                _playerThumbnailScrollRenderingCount++;
+            }
+        }
+
+        private void EndPlayerThumbnailScrollBurstMetrics(
+            string releaseReason,
+            long totalElapsedMilliseconds
+        )
+        {
+            long sessionId = _playerThumbnailScrollBurstSessionId;
+            int realizedCountAfter = GetPlayerThumbnailRealizedCount();
+            int revisionAfter = PlayerRightRailImageRevision;
+            DetachPlayerThumbnailScrollBurstMetricsHandlers();
+            _playerThumbnailScrollBurstSessionId = 0;
+
+            if (!PlayerRightRailImageBurstMetrics.End(sessionId, out var converterMetrics))
+            {
+                return;
+            }
+
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"player thumbnail scroll burst: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore}"
+            );
+        }
+
+        private int GetPlayerThumbnailRealizedCount()
+        {
+            // 全itemは走査せず、仮想化items hostが現在持つ子数だけを読む。
+            return GetUpperTabItemsHostPanel(PlayerThumbnailList)?.Children.Count ?? 0;
+        }
+
+        private void DetachPlayerThumbnailScrollBurstMetricsHandlers()
+        {
+            if (_playerThumbnailScrollGeneratorStatusChangedHandler != null)
+            {
+                PlayerThumbnailList.ItemContainerGenerator.StatusChanged -=
+                    _playerThumbnailScrollGeneratorStatusChangedHandler;
+                _playerThumbnailScrollGeneratorStatusChangedHandler = null;
+            }
+
+            if (_playerThumbnailScrollLayoutUpdatedHandler != null)
+            {
+                PlayerThumbnailList.LayoutUpdated -= _playerThumbnailScrollLayoutUpdatedHandler;
+                _playerThumbnailScrollLayoutUpdatedHandler = null;
+            }
+
+            if (_playerThumbnailScrollRenderingHandler != null)
+            {
+                CompositionTarget.Rendering -= _playerThumbnailScrollRenderingHandler;
+                _playerThumbnailScrollRenderingHandler = null;
             }
         }
 
