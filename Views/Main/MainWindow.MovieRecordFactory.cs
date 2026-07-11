@@ -34,6 +34,12 @@ namespace IndigoMovieManager
             public required HashSet<string> DetailThumbnailFileNames { get; init; }
         }
 
+        private sealed class MovieRecordBulkBuildMetrics
+        {
+            public int SourceImageProbeCount { get; set; }
+            public int SourceImageCacheHitCount { get; set; }
+        }
+
         /// <summary>
         /// DBから拾った無骨なレコード1件を、キラキラな表示用（MovieRecords）へ変換する。
         /// 単発追加でもファイル存在確認は背景へ逃がし、UIは表示反映だけに集中する。
@@ -97,6 +103,7 @@ namespace IndigoMovieManager
             DataRow row,
             MovieRecordBulkBuildContext? bulkContext = null,
             MovieRecordBulkBuildCache bulkCache = null,
+            MovieRecordBulkBuildMetrics bulkMetrics = null,
             bool resolveMovieExists = true
         )
         {
@@ -119,6 +126,10 @@ namespace IndigoMovieManager
             string movieName = row["movie_name"]?.ToString() ?? "";
             string imagesDirectoryPath = bulkContext?.ImagesDirectoryPath
                 ?? Path.Combine(AppContext.BaseDirectory, "Images");
+            LazyThumbnailSourceImagePathResolver sourceImageResolver =
+                bulkContext.HasValue && bulkCache != null
+                    ? new LazyThumbnailSourceImagePathResolver(movieFullPath)
+                    : null;
 
             for (int i = 0; i < thumbErrorPath.Length; i++)
             {
@@ -131,7 +142,8 @@ namespace IndigoMovieManager
                         movieFullPath,
                         movieName,
                         hash,
-                        fallbackPath
+                        fallbackPath,
+                        sourceImageResolver
                     );
                     continue;
                 }
@@ -155,7 +167,8 @@ namespace IndigoMovieManager
                     movieFullPath,
                     movieName,
                     hash,
-                    Path.Combine(imagesDirectoryPath, thumbErrorPath[2])
+                    Path.Combine(imagesDirectoryPath, thumbErrorPath[2]),
+                    sourceImageResolver
                 );
             }
             else
@@ -170,6 +183,12 @@ namespace IndigoMovieManager
                 thumbPathDetail = Path.Exists(tempPathExtensionDetail)
                     ? tempPathExtensionDetail
                     : Path.Combine(imagesDirectoryPath, thumbErrorPath[2]);
+            }
+
+            if (bulkMetrics != null && sourceImageResolver != null)
+            {
+                bulkMetrics.SourceImageProbeCount += sourceImageResolver.ProbeCount;
+                bulkMetrics.SourceImageCacheHitCount += sourceImageResolver.CacheHitCount;
             }
 
             string tags = row["tag"]?.ToString() ?? "";
@@ -290,13 +309,14 @@ namespace IndigoMovieManager
         /// HashSet キャッシュを使って最速でサムネイル表示パスを解決する。
         /// 現在の命名規則 → 旧命名規則 → 同名画像 fallback の順で探索する。
         /// </summary>
-        private static string ResolveThumbnailDisplayPath(
+        internal static string ResolveThumbnailDisplayPath(
             string thumbnailOutPath,
             HashSet<string> existingFileNames,
             string movieFullPath,
             string movieName,
             string hash,
-            string fallbackPath
+            string fallbackPath,
+            LazyThumbnailSourceImagePathResolver sourceImageResolver = null
         )
         {
             if (!string.IsNullOrWhiteSpace(thumbnailOutPath) && existingFileNames != null)
@@ -317,12 +337,20 @@ namespace IndigoMovieManager
                 }
             }
 
-            if (
+            string sourceImagePath;
+            if (sourceImageResolver != null)
+            {
+                sourceImagePath = sourceImageResolver.Resolve();
+            }
+            else
+            {
+                // 既存の単発呼び出しは、従来どおりこの場で探索して返却パスを維持する。
                 ThumbnailSourceImagePathResolver.TryResolveSameNameThumbnailSourceImagePath(
                     movieFullPath,
-                    out string sourceImagePath
-                )
-            )
+                    out sourceImagePath
+                );
+            }
+            if (!string.IsNullOrWhiteSpace(sourceImagePath))
             {
                 return sourceImagePath;
             }
@@ -348,6 +376,7 @@ namespace IndigoMovieManager
             MovieRecords[] items = await Task.Run(() =>
             {
                 MovieRecordBulkBuildCache bulkCache = BuildMovieRecordBulkBuildCache(bulkContext);
+                MovieRecordBulkBuildMetrics bulkMetrics = new();
                 MovieRecords[] loadedItems = new MovieRecords[rowCount];
                 for (int index = 0; index < rowCount; index++)
                 {
@@ -355,9 +384,16 @@ namespace IndigoMovieManager
                         targetData.Rows[index],
                         bulkContext,
                         bulkCache,
+                        bulkMetrics,
                         resolveMovieExists: false
                     );
                 }
+
+
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"movie record bulk build: rows={rowCount} source_image_probe_count={bulkMetrics.SourceImageProbeCount} source_image_cache_hit_count={bulkMetrics.SourceImageCacheHitCount}"
+                );
 
                 return loadedItems;
             });
