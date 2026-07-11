@@ -75,6 +75,20 @@ namespace IndigoMovieManager
             private set => SetValue(UpperTabPreferredMoviePathKeysRevisionProperty, value);
         }
 
+        public static readonly DependencyProperty PlayerRightRailImageRevisionProperty =
+            DependencyProperty.Register(
+                nameof(PlayerRightRailImageRevision),
+                typeof(int),
+                typeof(MainWindow),
+                new PropertyMetadata(0)
+            );
+
+        public int PlayerRightRailImageRevision
+        {
+            get => (int)GetValue(PlayerRightRailImageRevisionProperty);
+            private set => SetValue(PlayerRightRailImageRevisionProperty, value);
+        }
+
         // 上側タブの visible 範囲追跡を初期化する。
         private void InitializeUpperTabViewportSupport()
         {
@@ -248,7 +262,7 @@ namespace IndigoMovieManager
             if (_isUpperTabPreferredMoviePathKeysSnapshotPublished)
             {
                 _isUpperTabPreferredMoviePathKeysSnapshotPublished = false;
-                RefreshUpperTabPreferredMoviePathKeysRevision();
+                RefreshActiveUpperTabImageRevision();
             }
 
             _activeUpperTabVisibleErrorMoviePathKeysSnapshot = Array.Empty<string>();
@@ -650,17 +664,17 @@ namespace IndigoMovieManager
             }
 
             _playerRightRailWarmCompletedMoviePathKeys.Clear();
-            int revisionBefore = UpperTabPreferredMoviePathKeysRevision;
+            int playerRevisionBefore = PlayerRightRailImageRevision;
             if (visibleCompletionCount > 0)
             {
-                RefreshUpperTabPreferredMoviePathKeysRevision();
+                RefreshPlayerRightRailImageRevision();
             }
 
-            bool revisionUpdated = UpperTabPreferredMoviePathKeysRevision != revisionBefore;
+            bool playerRevisionUpdated = PlayerRightRailImageRevision != playerRevisionBefore;
             stopwatch.Stop();
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player right rail warm refresh: visible_completions={visibleCompletionCount} revision_updated={revisionUpdated} elapsed_ms={stopwatch.ElapsedMilliseconds} scroll_priority_active={scrollPriorityActive}"
+                $"player right rail warm refresh: visible_completions={visibleCompletionCount} shared_revision_updated=False player_revision_updated={playerRevisionUpdated} elapsed_ms={stopwatch.ElapsedMilliseconds} scroll_priority_active={scrollPriorityActive}"
             );
         }
 
@@ -1081,7 +1095,7 @@ namespace IndigoMovieManager
                     UpperTabActivationGate.UpdatePreferredMoviePathKeys(nextPreferredMoviePathKeys);
                 if (publishStateChanged || preferredMoviePathKeysGateChanged)
                 {
-                    RefreshUpperTabPreferredMoviePathKeysRevision();
+                    RefreshActiveUpperTabImageRevision();
                 }
 
                 return;
@@ -1091,16 +1105,52 @@ namespace IndigoMovieManager
             UpperTabActivationGate.ClearPreferredMoviePathKeys();
             if (publishStateChanged)
             {
-                RefreshUpperTabPreferredMoviePathKeysRevision();
+                RefreshActiveUpperTabImageRevision();
             }
         }
 
+        // viewport由来の更新はactiveタブだけへ通知し、非表示側の画像再評価を起こさない。
+        private void RefreshActiveUpperTabImageRevision()
+        {
+            bool playerActive = TabPlayer?.IsSelected == true;
+            if (playerActive)
+            {
+                RefreshPlayerRightRailImageRevision();
+            }
+            else
+            {
+                RefreshSharedUpperTabImageRevision();
+            }
+
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"upper tab image revision refreshed: shared_revision_updated={!playerActive} player_revision_updated={playerActive}"
+            );
+        }
+
+        // サムネ実体変更など外部更新は、通常タブとPlayerの両方を確実に再評価する。
         private void RefreshUpperTabPreferredMoviePathKeysRevision()
+        {
+            RefreshSharedUpperTabImageRevision();
+            RefreshPlayerRightRailImageRevision();
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                "upper tab image revision refreshed: shared_revision_updated=True player_revision_updated=True"
+            );
+        }
+
+        private void RefreshSharedUpperTabImageRevision()
         {
             // binding の軽い再評価だけを起こし、画像 decode そのものは converter の gate に任せる。
             UpperTabPreferredMoviePathKeysRevision = unchecked(
                 UpperTabPreferredMoviePathKeysRevision + 1
             );
+        }
+
+        private void RefreshPlayerRightRailImageRevision()
+        {
+            // Player右レールだけを再評価し、通常タブの画像bindingを巻き込まない。
+            PlayerRightRailImageRevision = unchecked(PlayerRightRailImageRevision + 1);
         }
 
         // viewport 計測不能時の後始末とログを 1 か所へ寄せ、早期 return を読みやすくする。
