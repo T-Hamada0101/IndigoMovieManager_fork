@@ -119,57 +119,6 @@ namespace IndigoMovieManager.DB
             return null;
         }
 
-        /// <summary>
-        /// 読み取り中の要求取消をSQLite commandへ伝え、不要になった全件取得を途中で止める。
-        /// </summary>
-        public static DataTable GetData(
-            string dbFullPath,
-            string sql,
-            CancellationToken cancellationToken
-        )
-        {
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                DataTable dt = new();
-                using SQLiteConnection connection = CreateReadOnlyConnection(dbFullPath);
-                connection.Open();
-
-                using SQLiteCommand cmd = connection.CreateCommand();
-                cmd.CommandText = sql;
-                using CancellationTokenRegistration cancellationRegistration =
-                    cancellationToken.Register(
-                        static state =>
-                        {
-                            try
-                            {
-                                ((SQLiteCommand)state).Cancel();
-                            }
-                            catch (Exception)
-                            {
-                                // 読み取り完了と取消が競合した時は、完了側の後始末を優先する。
-                            }
-                        },
-                        cmd
-                    );
-                using SQLiteDataAdapter adapter = new(cmd);
-                adapter.Fill(dt);
-                cancellationToken.ThrowIfCancellationRequested();
-                return dt;
-            }
-            catch (Exception) when (cancellationToken.IsCancellationRequested)
-            {
-                throw new OperationCanceledException(cancellationToken);
-            }
-            catch (Exception e)
-            {
-                var title =
-                    $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                ReportDbError(e, title);
-                return null;
-            }
-        }
-
         private static void ReportDbError(Exception exception, string title)
         {
             string errorType = exception?.GetType().Name ?? nameof(Exception);

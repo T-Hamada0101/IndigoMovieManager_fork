@@ -1,9 +1,7 @@
 using System.Data;
 using System.Data.SQLite;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using System.Threading;
 using IndigoMovieManager.Data;
 
 namespace IndigoMovieManager.Tests;
@@ -67,69 +65,6 @@ public sealed class MainDbMovieReadFacadeTests
 
             long[] movieIds = movieTable.AsEnumerable().Select(row => (long)row["movie_id"]).ToArray();
             Assert.That(movieIds, Is.EqualTo(new long[] { 2, 3, 1, 4 }));
-        }
-        finally
-        {
-            TryDeleteFile(dbPath);
-        }
-    }
-
-    [Test]
-    public void LoadMovieTableForSort_取消済みtokenならDB読込を開始しない()
-    {
-        string dbPath = CreateTempMainDb();
-
-        try
-        {
-            SeedMovieRows(dbPath);
-            MainDbMovieReadFacade facade = new();
-            using CancellationTokenSource cancellation = new();
-            cancellation.Cancel();
-
-            Assert.Throws<OperationCanceledException>(() =>
-                facade.LoadMovieTableForSort(dbPath, "16", cancellation.Token)
-            );
-        }
-        finally
-        {
-            TryDeleteFile(dbPath);
-        }
-    }
-
-    [Test]
-    public void GetData_長い読込中の取消をSQLiteへ伝えて終了する()
-    {
-        string dbPath = CreateTempMainDb();
-
-        try
-        {
-            using CancellationTokenSource cancellation = new();
-            using ManualResetEventSlim started = new();
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            Task<DataTable> readTask = Task.Run(() =>
-            {
-                started.Set();
-                return IndigoMovieManager.DB.SQLite.GetData(
-                    dbPath,
-                    @"WITH RECURSIVE rows(value) AS (
-                          SELECT 1
-                          UNION ALL
-                          SELECT value + 1 FROM rows WHERE value < 1000000
-                      )
-                      SELECT value, randomblob(4096) AS payload FROM rows",
-                    cancellation.Token
-                );
-            });
-
-            Assert.That(started.Wait(TimeSpan.FromSeconds(2)), Is.True);
-            Thread.Sleep(30);
-            cancellation.Cancel();
-
-            Assert.That(
-                Assert.ThrowsAsync<OperationCanceledException>(async () => await readTask),
-                Is.Not.Null
-            );
-            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)));
         }
         finally
         {
