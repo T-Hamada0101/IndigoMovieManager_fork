@@ -120,15 +120,45 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
     }
 
     [Test]
-    public void UserPriority中はprobeを延期して解除後だけ再予約する()
+    public void UserPriority中は単一workerが最新要求だけ保持して解除後一度だけflushする()
     {
         string source = GetVisibleSourceImageProbeSource();
 
         Assert.Multiple(() =>
         {
+            Assert.That(source, Does.Contain("_visibleSourceImageProbePendingRequest"));
+            Assert.That(source, Does.Contain("_visibleSourceImageProbeWorkerRunning"));
+            Assert.That(source, Does.Contain("Interlocked.CompareExchange"));
+            Assert.That(source, Does.Contain("Interlocked.Exchange"));
             Assert.That(source, Does.Contain("while (IsUserPriorityWorkActive())"));
             Assert.That(source, Does.Contain("await Task.Delay(120)"));
             Assert.That(source, Does.Contain("IsVisibleSourceImageProbeRequestCurrent("));
+            Assert.That(
+                CountOccurrences(source, "RunVisibleSourceImageProbeWorkerAsync("),
+                Is.EqualTo(2),
+                "定義と単一worker起動の1箇所以外からprobe workerを増やさない"
+            );
+            Assert.That(
+                source,
+                Does.Not.Contain("_ = RunVisibleSourceImageProbeAsync(")
+            );
+        });
+    }
+
+    [Test]
+    public void Pending要求はrevision付きsnapshotで保持し古い要求をflushしない()
+    {
+        string source = GetVisibleSourceImageProbeSource();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("VisibleSourceImageProbeRequest"));
+            Assert.That(source, Does.Contain("ProbeRevision"));
+            Assert.That(source, Does.Contain("FilterRevision"));
+            Assert.That(source, Does.Contain("DbFullPath"));
+            Assert.That(source, Does.Contain("Targets"));
+            Assert.That(source, Does.Contain("IsVisibleSourceImageProbeRequestCurrent("));
+            Assert.That(source, Does.Contain("Volatile.Read(ref _visibleSourceImageProbePendingRequest)"));
         });
     }
 
@@ -152,6 +182,10 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
             Assert.That(
                 source,
                 Does.Not.Contain("foreach (MovieRecords item in MainVM.MovieRecs)")
+            );
+            Assert.That(
+                source,
+                Does.Not.Contain("MainVM.FilteredMovieRecs.ToArray()")
             );
         });
     }
