@@ -43,6 +43,7 @@ namespace IndigoMovieManager
             IReadOnlyDictionary<long, RescuedThumbnailUiApplyResult> ResultsByFailureId,
             int MatchedCount,
             long ApplyMilliseconds,
+            long DispatchWaitMilliseconds,
             int DeferredCount
         );
 
@@ -375,7 +376,7 @@ namespace IndigoMovieManager
                         .Task.ConfigureAwait(false);
                     DebugRuntimeLog.Write(
                         "thumbnail-sync",
-                        $"rescued sync completed: trigger={trigger} batch_count={reflectableRecords.Count} matched_count={batchApplyResult.MatchedCount} apply_ms={batchApplyResult.ApplyMilliseconds} deferred={batchApplyResult.DeferredCount} reflected={reflectedCount} requeued={requeuedCount} recovered_stale={recoveredStaleCount} cleaned_error_markers={cleanedErrorMarkerCount} cleaned_failure_records={cleanedFailureRecordCount}"
+                        $"rescued sync completed: trigger={trigger} batch_count={reflectableRecords.Count} matched_count={batchApplyResult.MatchedCount} apply_ms={batchApplyResult.ApplyMilliseconds} dispatch_wait_ms={batchApplyResult.DispatchWaitMilliseconds} deferred={batchApplyResult.DeferredCount} reflected={reflectedCount} requeued={requeuedCount} recovered_stale={recoveredStaleCount} cleaned_error_markers={cleanedErrorMarkerCount} cleaned_failure_records={cleanedFailureRecordCount}"
                     );
                 }
             }
@@ -615,7 +616,8 @@ namespace IndigoMovieManager
             Dictionary<long, RescuedThumbnailUiApplyResult> results = [];
             List<(MovieRecords Movie, int TabIndex)> skinUpdates = [];
             int matchedCount = 0;
-            Stopwatch applyStopwatch = Stopwatch.StartNew();
+            long applyMilliseconds = 0;
+            Stopwatch dispatchWaitStopwatch = Stopwatch.StartNew();
             bool applied = false;
             while (!applied)
             {
@@ -641,6 +643,7 @@ namespace IndigoMovieManager
                         }
 
                         applied = true;
+                        Stopwatch applyStopwatch = Stopwatch.StartNew();
                         MovieRecords selectedMovie = GetSelectedItemByTabIndex();
                         Dictionary<long, List<MovieRecords>> moviesById = [];
                         Dictionary<string, List<MovieRecords>> moviesByPath = new(
@@ -689,6 +692,8 @@ namespace IndigoMovieManager
                                 skinUpdates.Add((updatedMovie, record.TabIndex));
                             }
                         }
+                        applyStopwatch.Stop();
+                        applyMilliseconds = applyStopwatch.ElapsedMilliseconds;
                     }, DispatcherPriority.Normal, cts)
                     .Task.ConfigureAwait(false);
 
@@ -703,7 +708,7 @@ namespace IndigoMovieManager
                     }
                 }
             }
-            applyStopwatch.Stop();
+            dispatchWaitStopwatch.Stop();
 
             foreach ((MovieRecords movie, int tabIndex) in skinUpdates)
             {
@@ -717,7 +722,8 @@ namespace IndigoMovieManager
             return new RescuedThumbnailBatchUiApplyResult(
                 results,
                 matchedCount,
-                applyStopwatch.ElapsedMilliseconds,
+                applyMilliseconds,
+                dispatchWaitStopwatch.ElapsedMilliseconds,
                 deferredCount
             );
         }
