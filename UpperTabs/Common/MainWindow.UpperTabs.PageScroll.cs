@@ -36,6 +36,11 @@ namespace IndigoMovieManager
                 ? resolvedTabIndex
                 : -1;
             string triggerReason = scrollForward.Value ? "page-down" : "page-up";
+            if (ReferenceEquals(activeItemsControl, PlayerThumbnailList))
+            {
+                BeginOrExtendPlayerThumbnailScrollUserPriority(triggerReason);
+            }
+
             Stopwatch stopwatch = Stopwatch.StartNew();
             DebugRuntimeLog.Write(
                 "ui-tempo",

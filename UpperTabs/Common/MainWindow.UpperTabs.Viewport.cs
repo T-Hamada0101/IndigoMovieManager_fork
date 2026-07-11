@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
 using IndigoMovieManager.UpperTabs.Common;
 using IndigoMovieManager.Thumbnail.QueueDb;
@@ -31,12 +32,14 @@ namespace IndigoMovieManager
         private const int UpperTabFollowupScrollRefreshSuppressMs = 120;
         private const int UpperTabStartupAppendSuppressAfterPageScrollMs = 200;
         private const int UiOperationRecentViewportInteractionWindowMs = 250;
+        private const int PlayerThumbnailScrollUserPriorityWindowMs = 250;
 
         private readonly HashSet<ScrollViewer> _upperTabViewportAttachedScrollViewers = [];
         private readonly Dictionary<ItemsControl, Panel> _upperTabViewportItemsHostPanels = [];
         private readonly Dictionary<ItemsControl, ScrollViewer> _upperTabViewportScrollViewers = [];
         private DispatcherTimer _upperTabStartupAppendRetryTimer;
         private DispatcherTimer _upperTabViewportRefreshTimer;
+        private DispatcherTimer _playerThumbnailScrollUserPriorityTimer;
         private UpperTabVisibleRange _activeUpperTabVisibleRange = UpperTabVisibleRange.Empty;
         private IReadOnlyList<string> _preferredVisibleMoviePathKeysSnapshot = Array.Empty<string>();
         private bool _isUpperTabPreferredMoviePathKeysSnapshotPublished;
@@ -46,6 +49,8 @@ namespace IndigoMovieManager
         private long _upperTabFollowupScrollRefreshSuppressUntilUtcTicks;
         private long _upperTabStartupAppendSuppressUntilUtcTicks;
         private long _recentViewportInteractionUntilUtcTicks;
+        private bool _isPlayerThumbnailScrollUserPriorityActive;
+        private bool _playerThumbnailScrollShutdownHooked;
 
         public static readonly DependencyProperty UpperTabPreferredMoviePathKeysRevisionProperty =
             DependencyProperty.Register(
@@ -76,6 +81,12 @@ namespace IndigoMovieManager
             _upperTabViewportRefreshTimer.Tick += UpperTabViewportRefreshTimer_Tick;
             _upperTabStartupAppendRetryTimer = new DispatcherTimer();
             _upperTabStartupAppendRetryTimer.Tick += UpperTabStartupAppendRetryTimer_Tick;
+            _playerThumbnailScrollUserPriorityTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(PlayerThumbnailScrollUserPriorityWindowMs),
+            };
+            _playerThumbnailScrollUserPriorityTimer.Tick +=
+                PlayerThumbnailScrollUserPriorityTimer_Tick;
 
             Loaded += (_, _) =>
             {
@@ -400,6 +411,81 @@ namespace IndigoMovieManager
             }
 
             scrollViewer.ScrollChanged += UpperTabScrollViewer_ScrollChanged;
+            if (ReferenceEquals(itemsControl, PlayerThumbnailList))
+            {
+                scrollViewer.PreviewMouseWheel += PlayerThumbnailScrollViewer_PreviewMouseWheel;
+            }
+        }
+
+        // Playerのサムネ操作は描画前に優先区間へ入り、背後の新規仕事を先に譲らせる。
+        private void PlayerThumbnailScrollViewer_PreviewMouseWheel(
+            object sender,
+            MouseWheelEventArgs e
+        )
+        {
+            BeginOrExtendPlayerThumbnailScrollUserPriority("mouse-wheel");
+        }
+
+        private void BeginOrExtendPlayerThumbnailScrollUserPriority(string triggerReason)
+        {
+            if (TabPlayer?.IsSelected != true || _playerThumbnailScrollUserPriorityTimer == null)
+            {
+                return;
+            }
+
+            if (!_isPlayerThumbnailScrollUserPriorityActive)
+            {
+                _isPlayerThumbnailScrollUserPriorityActive = true;
+                BeginUserPriorityWork("player-thumbnail-scroll");
+                DebugRuntimeLog.Write(
+                    "ui-priority",
+                    $"player thumbnail scroll priority begin: trigger_reason={triggerReason}"
+                );
+            }
+
+            if (!_playerThumbnailScrollShutdownHooked && Dispatcher != null)
+            {
+                Dispatcher.ShutdownStarted += PlayerThumbnailScrollDispatcher_ShutdownStarted;
+                _playerThumbnailScrollShutdownHooked = true;
+            }
+
+            StopDispatcherTimerSafely(
+                _playerThumbnailScrollUserPriorityTimer,
+                nameof(_playerThumbnailScrollUserPriorityTimer)
+            );
+            TryStartDispatcherTimer(
+                _playerThumbnailScrollUserPriorityTimer,
+                nameof(_playerThumbnailScrollUserPriorityTimer)
+            );
+        }
+
+        private void PlayerThumbnailScrollUserPriorityTimer_Tick(object sender, EventArgs e)
+        {
+            ReleasePlayerThumbnailScrollUserPriority("idle");
+        }
+
+        private void PlayerThumbnailScrollDispatcher_ShutdownStarted(object sender, EventArgs e)
+        {
+            ReleasePlayerThumbnailScrollUserPriority("shutdown");
+        }
+
+        private void ReleasePlayerThumbnailScrollUserPriority(string releaseReason)
+        {
+            StopDispatcherTimerSafely(
+                _playerThumbnailScrollUserPriorityTimer,
+                nameof(_playerThumbnailScrollUserPriorityTimer)
+            );
+            if (!_isPlayerThumbnailScrollUserPriorityActive)
+            {
+                return;
+            }
+
+            _isPlayerThumbnailScrollUserPriorityActive = false;
+            EndUserPriorityWork("player-thumbnail-scroll");
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                $"player thumbnail scroll priority end: release_reason={releaseReason}"
+            );
         }
 
         private ScrollViewer GetUpperTabViewportScrollViewer(ItemsControl itemsControl)

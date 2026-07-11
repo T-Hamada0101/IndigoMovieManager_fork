@@ -213,7 +213,7 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
-    public void スクロールはuser_priorityではなくrecent_viewportだけを使う()
+    public void 通常タブのスクロールはrecent_viewportだけを使いPlayerだけuser_priorityを使う()
     {
         string viewportSource = GetRepoText(
             "UpperTabs",
@@ -240,8 +240,61 @@ public sealed class UpperTabViewportRefreshTests
 
         Assert.That(requestMethod, Does.Contain("MarkRecentViewportInteraction(reason);"));
         Assert.That(scrollChangedMethod, Does.Not.Contain("BeginUserPriorityWork("));
-        Assert.That(pageScrollMethod, Does.Not.Contain("BeginUserPriorityWork("));
+        Assert.That(
+            pageScrollMethod,
+            Does.Contain("ReferenceEquals(activeItemsControl, PlayerThumbnailList)")
+        );
+        Assert.That(
+            pageScrollMethod,
+            Does.Contain("BeginOrExtendPlayerThumbnailScrollUserPriority(triggerReason);")
+        );
         Assert.That(viewportSource, Does.Contain("UiOperationRecentViewportInteractionWindowMs = 250"));
+        Assert.That(
+            viewportSource,
+            Does.Contain("PlayerThumbnailScrollUserPriorityWindowMs = 250")
+        );
+    }
+
+    [Test]
+    public void Playerサムネホイールは描画前に優先区間を開始しidleとshutdownで解放する()
+    {
+        string viewportSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.Viewport.cs"
+        );
+        string attachMethod = GetMethodBlock(
+            viewportSource,
+            "private void AttachUpperTabScrollViewer("
+        );
+        string beginMethod = GetMethodBlock(
+            viewportSource,
+            "private void BeginOrExtendPlayerThumbnailScrollUserPriority("
+        );
+        string releaseMethod = GetMethodBlock(
+            viewportSource,
+            "private void ReleasePlayerThumbnailScrollUserPriority("
+        );
+
+        Assert.That(
+            attachMethod,
+            Does.Contain("scrollViewer.PreviewMouseWheel += PlayerThumbnailScrollViewer_PreviewMouseWheel;")
+        );
+        Assert.That(beginMethod, Does.Contain("BeginUserPriorityWork(\"player-thumbnail-scroll\");"));
+        Assert.That(beginMethod, Does.Contain("_isPlayerThumbnailScrollUserPriorityActive"));
+        Assert.That(
+            beginMethod,
+            Does.Contain("Dispatcher.ShutdownStarted += PlayerThumbnailScrollDispatcher_ShutdownStarted;")
+        );
+        Assert.That(releaseMethod, Does.Contain("EndUserPriorityWork(\"player-thumbnail-scroll\");"));
+        Assert.That(
+            viewportSource,
+            Does.Contain("ReleasePlayerThumbnailScrollUserPriority(\"idle\");")
+        );
+        Assert.That(
+            viewportSource,
+            Does.Contain("ReleasePlayerThumbnailScrollUserPriority(\"shutdown\");")
+        );
     }
 
     [Test]
