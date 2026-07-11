@@ -170,9 +170,13 @@ public sealed class UpperTabViewportRefreshTests
         string applySnapshotMethod = GetMethodBlock(source, "private void ApplyUpperTabViewportSnapshot(");
         string clearMethod = GetMethodBlock(source, "private void ClearUpperTabVisibleRange()");
         string unavailableMethod = GetMethodBlock(source, "private void HandleUnavailableUpperTabViewport(");
-        string refreshMethod = GetMethodBlock(
+        string refreshSharedMethod = GetMethodBlock(
             source,
-            "private void RefreshUpperTabPreferredMoviePathKeysRevision()"
+            "private void RefreshSharedUpperTabImageRevision()"
+        );
+        string refreshPlayerMethod = GetMethodBlock(
+            source,
+            "private void RefreshPlayerRightRailImageRevision()"
         );
 
         // preferred key は static gate だけでは Binding を起こせないため、Window DP の revision を軽く進める。
@@ -181,6 +185,11 @@ public sealed class UpperTabViewportRefreshTests
             Does.Contain("public static readonly DependencyProperty UpperTabPreferredMoviePathKeysRevisionProperty")
         );
         Assert.That(source, Does.Contain("public int UpperTabPreferredMoviePathKeysRevision"));
+        Assert.That(
+            source,
+            Does.Contain("public static readonly DependencyProperty PlayerRightRailImageRevisionProperty")
+        );
+        Assert.That(source, Does.Contain("public int PlayerRightRailImageRevision"));
         Assert.That(source, Does.Contain("private bool _isUpperTabPreferredMoviePathKeysSnapshotPublished;"));
         Assert.That(source, Does.Contain("private int _preferredVisibleMoviePathKeysTabIndex = -1;"));
         Assert.That(applySnapshotMethod, Does.Contain("bool preferredMoviePathKeysChanged"));
@@ -199,7 +208,7 @@ public sealed class UpperTabViewportRefreshTests
             applySnapshotMethod,
             Does.Not.Contain("if (publishStateChanged || preferredMoviePathKeysChanged)")
         );
-        Assert.That(applySnapshotMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(applySnapshotMethod, Does.Contain("RefreshActiveUpperTabImageRevision();"));
         Assert.That(
             unavailableMethod,
             Does.Contain("ShouldPreservePreferredMoviePathKeysOnUnavailableViewport(")
@@ -207,9 +216,11 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(unavailableMethod, Does.Contain("if (!shouldPreservePreferredMoviePathKeys)"));
         Assert.That(clearMethod, Does.Contain("if (_isUpperTabPreferredMoviePathKeysSnapshotPublished)"));
         Assert.That(clearMethod, Does.Contain("_preferredVisibleMoviePathKeysTabIndex = -1;"));
-        Assert.That(clearMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
-        Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision = unchecked("));
-        Assert.That(refreshMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision + 1"));
+        Assert.That(clearMethod, Does.Contain("RefreshActiveUpperTabImageRevision();"));
+        Assert.That(refreshSharedMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision = unchecked("));
+        Assert.That(refreshSharedMethod, Does.Contain("UpperTabPreferredMoviePathKeysRevision + 1"));
+        Assert.That(refreshPlayerMethod, Does.Contain("PlayerRightRailImageRevision = unchecked("));
+        Assert.That(refreshPlayerMethod, Does.Contain("PlayerRightRailImageRevision + 1"));
     }
 
     [Test]
@@ -402,12 +413,14 @@ public sealed class UpperTabViewportRefreshTests
         );
         Assert.That(applyMethod, Does.Contain("Stopwatch.StartNew();"));
         Assert.That(applyMethod, Does.Contain("visibleCompletionCount++"));
-        Assert.That(applyMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(applyMethod, Does.Contain("RefreshPlayerRightRailImageRevision();"));
+        Assert.That(applyMethod, Does.Not.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
         Assert.That(
             applyMethod,
             Does.Contain("player right rail warm refresh: visible_completions=")
         );
-        Assert.That(applyMethod, Does.Contain("revision_updated={revisionUpdated}"));
+        Assert.That(applyMethod, Does.Contain("shared_revision_updated=False"));
+        Assert.That(applyMethod, Does.Contain("player_revision_updated={playerRevisionUpdated}"));
         Assert.That(applyMethod, Does.Contain("elapsed_ms={stopwatch.ElapsedMilliseconds}"));
         Assert.That(
             applyMethod,
@@ -548,7 +561,7 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
-    public void Player右レール画像MultiBindingはpreferredキーrevisionをtriggerとして渡す()
+    public void Player右レール画像MultiBindingはPlayer専用revisionをtriggerとして渡す()
     {
         string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         string playerThumbnailImageBinding = GetPlayerThumbnailImageBinding(mainWindowXaml);
@@ -572,7 +585,11 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(playerThumbnailImageBinding, Does.Contain("<Binding Path=\"Movie_Path\" />"));
         Assert.That(
             playerThumbnailImageBinding,
-            Does.Contain("<Binding Source=\"{x:Reference window}\" Path=\"UpperTabPreferredMoviePathKeysRevision\" />")
+            Does.Contain("<Binding Source=\"{x:Reference window}\" Path=\"PlayerRightRailImageRevision\" />")
+        );
+        Assert.That(
+            playerThumbnailImageBinding,
+            Does.Not.Contain("Path=\"UpperTabPreferredMoviePathKeysRevision\"")
         );
         Assert.That(converterSource, Does.Contain("object moviePathValue = values.Length > 3 ? values[3] : null;"));
         Assert.That(converterSource, Does.Contain("object revisionValue = values.Length > 4 ? values[4] : null;"));
@@ -603,6 +620,29 @@ public sealed class UpperTabViewportRefreshTests
             imageBinding,
             Does.Contain("<Binding Source=\"{x:Reference window}\" Path=\"UpperTabPreferredMoviePathKeysRevision\" />")
         );
+        Assert.That(imageBinding, Does.Not.Contain("Path=\"PlayerRightRailImageRevision\""));
+    }
+
+    [Test]
+    public void viewport更新はPlayerだけ専用revisionを進め通常タブは共有revisionを進める()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string routeMethod = GetMethodBlock(source, "private void RefreshActiveUpperTabImageRevision()");
+
+        Assert.That(routeMethod, Does.Contain("bool playerActive = TabPlayer?.IsSelected == true;"));
+        Assert.That(routeMethod, Does.Contain("RefreshPlayerRightRailImageRevision();"));
+        Assert.That(routeMethod, Does.Contain("RefreshSharedUpperTabImageRevision();"));
+        Assert.That(routeMethod, Does.Not.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+    }
+
+    [Test]
+    public void 外部サムネ実体変更helperは通常タブとPlayerのrevisionを両方進める()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string helper = GetMethodBlock(source, "private void RefreshUpperTabPreferredMoviePathKeysRevision()");
+
+        Assert.That(helper, Does.Contain("RefreshSharedUpperTabImageRevision();"));
+        Assert.That(helper, Does.Contain("RefreshPlayerRightRailImageRevision();"));
     }
 
     private static string GetPlayerThumbnailImageBinding(string mainWindowXaml)
