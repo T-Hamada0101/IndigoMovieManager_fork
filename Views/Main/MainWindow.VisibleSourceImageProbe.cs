@@ -42,10 +42,6 @@ namespace IndigoMovieManager
             int filterRevision = _filterAndSortRequestRevision;
             string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
             VisibleSourceImageProbeTarget[] targets = CaptureVisibleSourceImageProbeTargets();
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"source image probe: reason={reason} revision={probeRevision} filter_revision={filterRevision} requested={targets.Length} resolved=0 stale=false apply_ms=0 stage=requested"
-            );
             if (targets.Length == 0)
             {
                 return;

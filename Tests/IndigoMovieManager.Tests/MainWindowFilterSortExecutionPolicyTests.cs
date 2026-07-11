@@ -746,7 +746,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
-    public void MovieRecordFactory_同名画像probeキャッシュは行を跨いで共有しない()
+    public void MovieRecordFactory_bulkだけprobeを延期し単発追加は維持する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
         string createMethod = GetMethodBlock(
@@ -754,10 +754,8 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "private MovieRecords CreateMovieRecordFromDataRow("
         );
 
-        Assert.That(
-            createMethod,
-            Does.Contain("? new LazyThumbnailSourceImagePathResolver(movieFullPath)")
-        );
+        Assert.That(createMethod, Does.Contain("bool deferSourceImageProbe = bulkMetrics != null;"));
+        Assert.That(createMethod, Does.Contain("allowSourceImageProbe: !deferSourceImageProbe"));
         Assert.That(source, Does.Not.Contain("static LazyThumbnailSourceImagePathResolver"));
         Assert.That(source, Does.Not.Contain("required LazyThumbnailSourceImagePathResolver"));
     }

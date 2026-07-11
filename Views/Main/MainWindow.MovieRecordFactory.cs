@@ -144,6 +144,7 @@ namespace IndigoMovieManager
             string imagesDirectoryPath =
                 bulkContext?.ImagesDirectoryPath
                 ?? Path.Combine(AppContext.BaseDirectory, "Images");
+            bool deferSourceImageProbe = bulkMetrics != null;
             // bulk変換では同名source画像を探索せず、可視範囲確定後の背景probeへ譲る。
             LazyThumbnailSourceImagePathResolver sourceImageResolver = null;
 
@@ -160,7 +161,7 @@ namespace IndigoMovieManager
                         hash,
                         fallbackPath,
                         sourceImageResolver,
-                        allowSourceImageProbe: false
+                        allowSourceImageProbe: !deferSourceImageProbe
                     );
                     continue;
                 }
@@ -186,7 +187,7 @@ namespace IndigoMovieManager
                     hash,
                     Path.Combine(imagesDirectoryPath, thumbErrorPath[2]),
                     sourceImageResolver,
-                    allowSourceImageProbe: false
+                    allowSourceImageProbe: !deferSourceImageProbe
                 );
             }
             else

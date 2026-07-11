@@ -13,7 +13,8 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(factorySource, Does.Contain("allowSourceImageProbe: false"));
+            Assert.That(factorySource, Does.Contain("bool deferSourceImageProbe = bulkMetrics != null;"));
+            Assert.That(factorySource, Does.Contain("allowSourceImageProbe: !deferSourceImageProbe"));
             Assert.That(factorySource, Does.Contain("return fallbackPath;"));
             Assert.That(probeSource, Does.Contain("if (targets.Length == 0)"));
             Assert.That(probeSource, Does.Contain("catch (Exception ex)"));
