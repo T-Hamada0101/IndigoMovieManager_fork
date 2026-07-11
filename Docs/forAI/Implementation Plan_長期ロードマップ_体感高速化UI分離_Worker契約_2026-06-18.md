@@ -23,6 +23,7 @@
 - Reset更新の複数選択も、主選択を先頭にしたstable key一覧として捕捉し、曖昧な重複keyを除いて現行レコードへ復元するようにした。
 - Reset更新のscrollも、先頭可視項目のstable keyとviewport内top offsetを捕捉し、同じ項目が残る時だけReset後の表示位置を補正するようにした。
 - Reset更新のkeyboard focusも、直前に現在一覧内へfocusがあった場合だけstable keyで捕捉し、同一タブの実現済みcontainerへ戻すようにした。
+- 検索・sort・Player準備が250 msを超えた時だけ、操作を無効化せずヘッダーへ進行中表示を出し、短時間完了と後着tickでは表示しないようにした。
 
 ## 0. 結論
 
@@ -239,7 +240,7 @@ scorecardとrun metricsの自動要約は実装済みである。残る成果物
 
 ### Phase 1. UI Shellと操作連続性
 
-状態: 接続中
+状態: 実機確認待ち
 
 目的: UI event handlerを、入力受付とvisual state更新へ限定する。
 
@@ -258,7 +259,9 @@ scorecardとrun metricsの自動要約は実装済みである。残る成果物
 - サブエージェント検証はscroll anchor policy 20件、WPF接続92件が成功した。親レビューではscroll、viewport、ReadModel、選択の関連113件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
 - `2b64fa8` で一覧内focus項目のstable keyを捕捉・一意解決するfocus anchor policyを追加した。`daabc6a` でReset前に現在標準タブ内へkeyboard focusがある場合だけanchorを捕捉し、選択・scroll・互換詳細更新後に、同一タブかつactive windowの実現済みcontainerへfocusを戻す。SearchBox、別ペイン、別タブ、非active window、未実現itemではfocusを奪わない。
 - サブエージェント検証はfocus anchor policy 13件、WPF接続2件が成功した。親レビューではfocus、scroll、選択、ReadModelの関連124件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
-- Phase 1は `接続中` のまま維持する。選択・scroll anchor・一覧内keyboard focusの静的接続は進んだが、250 ms超操作の継続利用可能表示と実機Behavior証跡が未達である。VirtualizingWrapPanelのoffset単位、同期 `UpdateLayout()` の所要時間、Reset時のちらつき、複数SelectionChanged、実際のfocus位置は実機で確認するまで完了扱いにしない。
+- `7588ddf` で250 ms遅延、検索 / sort / Player準備の文言、revision stale guardを持つfeedback policyを追加した。`aa81017` でuser-priorityの最初のBeginと最後のEndへ接続し、250 msを超えた時だけヘッダーのDB path領域へcompactなindeterminate表示を出す。ボタン、一覧、入力は無効化せず、終了時は即座にpath表示へ戻す。親レビューでnullable警告を修正し、最新コミットへamendした。
+- サブエージェント検証はfeedback policy 14件、WPF接続49件が成功した。親レビューではfeedback、user-priority、検索、sort、Playerの関連128件が成功し、Release x64全体buildは警告0、エラー0だった。
+- Phase 1は静的Behavior接続とRegression Guardが揃ったため `実機確認待ち` へ進める。VirtualizingWrapPanelのoffset単位、同期 `UpdateLayout()` の所要時間、Reset時のちらつき、複数SelectionChanged、実際のfocus位置、250 ms表示中も操作継続できることを同一Release runで確認するまで完了扱いにしない。
 
 実装項目:
 
@@ -544,7 +547,7 @@ sidecar判断ゲート:
 
 監査summaryには `phase0_scenario_log_evidence`、`phase0_scenario_scorecard`、`phase0_manual_visual_review`、`phase0_run_metrics` が出る。次回採取では、この4行と実表示の記録を同じrunへ揃える。
 
-シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
+シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、250 ms未満では表示せず、超えた時はヘッダー表示中も入力とscrollを続けられることを確認する。シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
 その結果から最上位1件だけを選び、Phase 1からPhase 5の該当境界へ最小変更を入れる。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
