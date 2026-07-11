@@ -146,7 +146,7 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
     }
 
     [Test]
-    public void Pending要求はrevision付きsnapshotで保持し古い要求をflushしない()
+    public void Pending中は旧revisionをstale化し解除後に最新snapshotを作り直す()
     {
         string source = GetVisibleSourceImageProbeSource();
 
@@ -159,6 +159,14 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
             Assert.That(source, Does.Contain("Targets"));
             Assert.That(source, Does.Contain("IsVisibleSourceImageProbeRequestCurrent("));
             Assert.That(source, Does.Contain("Volatile.Read(ref _visibleSourceImageProbePendingRequest)"));
+            Assert.That(
+                source,
+                Does.Contain("Interlocked.Increment(ref _visibleSourceImageProbeRevision);")
+            );
+            Assert.That(
+                source,
+                Does.Contain("QueueVisibleSourceImageProbe(latestReason);")
+            );
         });
     }
 

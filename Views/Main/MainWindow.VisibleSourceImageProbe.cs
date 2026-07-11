@@ -50,6 +50,8 @@ namespace IndigoMovieManager
 
             if (IsUserPriorityWorkActive())
             {
+                // 操作前に開始済みの旧viewport探索もstale化し、解除後の最新範囲だけを採る。
+                Interlocked.Increment(ref _visibleSourceImageProbeRevision);
                 Interlocked.Exchange(ref _visibleSourceImageProbePendingRequest, reason);
                 if (
                     Interlocked.CompareExchange(
