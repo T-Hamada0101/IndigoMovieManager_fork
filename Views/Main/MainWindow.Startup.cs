@@ -724,6 +724,8 @@ namespace IndigoMovieManager
                     $"count={page.Items.Length} has_more={page.HasMore}"
                 );
             }
+
+            QueueStartupAsciiSearchPrewarm(revision, request.DbPath);
         }
 
         private void ApplyStartupAppendPage(StartupFeedPage page, int revision)
