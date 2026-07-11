@@ -2365,6 +2365,37 @@ public sealed class WatchDeferredUiReloadPolicyTests
     }
 
     [Test]
+    public void ApplyDeferredWatchUiReloadOnUiThread_Player操作中は最新要求を消費せず延期する()
+    {
+        const string dbFullPath = @"D:\Db\Main.wb";
+        MainWindow window = CreateMainWindowForDeferredReloadTests(dbFullPath, "28");
+        SetPrivateField(window, "_userPriorityWorkSync", new object());
+        SetPrivateField(window, "_userPriorityWorkCount", 1);
+        SetPrivateField(window, "_watchUiSuppressionSync", new object());
+        SetPrivateField(window, "_watchDeferredUiReloadSync", new object());
+        var canceledCts = new CancellationTokenSource();
+        canceledCts.Cancel();
+        SetPrivateField(window, "_watchDeferredUiReloadCts", canceledCts);
+        SetPrivateField(window, "_watchDeferredUiReloadRevision", 4);
+        SetPrivateField(window, "_watchDeferredUiReloadPending", true);
+
+        int filterAndSortCount = 0;
+        window.FilterAndSortForTesting = (_, _) => filterAndSortCount++;
+
+        InvokeVoid(
+            window,
+            "ApplyDeferredWatchUiReloadOnUiThread",
+            dbFullPath,
+            4,
+            "watch-test"
+        );
+
+        Assert.That(filterAndSortCount, Is.EqualTo(0));
+        Assert.That((bool)GetPrivateField(window, "_watchDeferredUiReloadPending"), Is.True);
+        Assert.That((int)GetPrivateField(window, "_watchDeferredUiReloadRevision"), Is.EqualTo(4));
+    }
+
+    [Test]
     public void InvalidateWatchScanScope_同一DBでもold_reloadはapplyされない()
     {
         const string dbFullPath = @"D:\Db\Main.wb";

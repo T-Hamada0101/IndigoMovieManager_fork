@@ -623,6 +623,27 @@ namespace IndigoMovieManager
             string recoveryReason
         )
         {
+            // Player の連続スクロール中は要求を消費せず、最新 revision のまま次の遅延窓へ戻す。
+            if (
+                ShouldDeferBackgroundWorkForUserPriority(
+                    IsUserPriorityWorkActive(),
+                    isManualMode: false
+                )
+                && TryRescheduleDeferredWatchUiReload(
+                    snapshotDbFullPath,
+                    requestRevision,
+                    reason,
+                    recoveryReason
+                )
+            )
+            {
+                DebugRuntimeLog.Write(
+                    "watch-check",
+                    $"deferred ui reload postponed by user priority: db='{snapshotDbFullPath}' revision={requestRevision} reason={reason} delay_ms={WatchDeferredUiReloadDelayMs}"
+                );
+                return;
+            }
+
             if (
                 !TryConsumeDeferredWatchUiReload(
                     requestRevision,
@@ -682,6 +703,38 @@ namespace IndigoMovieManager
                 changedMovies,
                 recoveryReason
             );
+        }
+
+        // consume 前の最新要求だけを同じ token で再予約し、新しい watch 要求との latest-only 契約を守る。
+        private bool TryRescheduleDeferredWatchUiReload(
+            string snapshotDbFullPath,
+            int requestRevision,
+            string reason,
+            string recoveryReason
+        )
+        {
+            CancellationToken cancellationToken;
+            lock (GetWatchDeferredUiReloadSyncRoot())
+            {
+                if (
+                    !_watchDeferredUiReloadPending
+                    || requestRevision != _watchDeferredUiReloadRevision
+                )
+                {
+                    return false;
+                }
+
+                cancellationToken = _watchDeferredUiReloadCts?.Token ?? CancellationToken.None;
+            }
+
+            _ = RunDeferredWatchUiReloadAsync(
+                snapshotDbFullPath,
+                requestRevision,
+                reason,
+                recoveryReason,
+                cancellationToken
+            );
+            return true;
         }
 
         // watch本流の reload 方針はここだけで決め、scan 本体から分岐密度を追い出す。
