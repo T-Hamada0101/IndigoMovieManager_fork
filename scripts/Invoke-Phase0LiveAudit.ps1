@@ -264,42 +264,95 @@ function Get-Phase0ManualReviewValidation
     }
 }
 
+function Get-Phase0AuditLogSnapshotSources
+{
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CurrentLogPath,
+        [string]$SessionStartedLocal,
+        [switch]$IncludeRotationArchives
+    )
+
+    if (-not $IncludeRotationArchives -or [string]::IsNullOrWhiteSpace($SessionStartedLocal))
+    {
+        return @($CurrentLogPath)
+    }
+
+    $sessionStarted = [DateTime]::ParseExact(
+        $SessionStartedLocal,
+        'yyyy-MM-dd HH:mm:ss.fff',
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::None
+    )
+    $directoryPath = [System.IO.Path]::GetDirectoryName($CurrentLogPath)
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($CurrentLogPath)
+    $extension = [System.IO.Path]::GetExtension($CurrentLogPath)
+    $archivePattern = '^{0}_\d{{8}}(?:_\d{{2}})?{1}$' -f [regex]::Escape($baseName), [regex]::Escape($extension)
+
+    # session開始後に更新された同basenameのrotationだけを、退避順で現行ログの前へ置く。
+    $archives = @(
+        Get-ChildItem -LiteralPath $directoryPath -File -ErrorAction Stop |
+            Where-Object {
+                $_.Name -cmatch $archivePattern -and
+                $_.LastWriteTime -ge $sessionStarted
+            } |
+            Sort-Object LastWriteTime, Name |
+            Select-Object -ExpandProperty FullName
+    )
+
+    return @($archives + $CurrentLogPath)
+}
+
 function Copy-Phase0AuditLogSnapshot
 {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$SourcePath,
+        [string[]]$SourcePaths,
         [Parameter(Mandatory = $true)]
         [string]$DestinationPath
     )
 
-    # 本体が追記中でも、その時点までのbyte列を固定した監査入力として退避する。
-    $sourceStream = [System.IO.File]::Open(
-        $SourcePath,
-        [System.IO.FileMode]::Open,
-        [System.IO.FileAccess]::Read,
-        [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+    $destinationStream = [System.IO.File]::Open(
+        $DestinationPath,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::Read
     )
     try
     {
-        $destinationStream = [System.IO.File]::Open(
-            $DestinationPath,
-            [System.IO.FileMode]::CreateNew,
-            [System.IO.FileAccess]::Write,
-            [System.IO.FileShare]::Read
-        )
-        try
+        foreach ($sourcePath in $SourcePaths)
         {
-            $sourceStream.CopyTo($destinationStream)
-        }
-        finally
-        {
-            $destinationStream.Dispose()
+            # 本体が追記・rotation中でも、その時点までのbyte列を固定する。
+            $sourceStream = [System.IO.File]::Open(
+                $sourcePath,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+            )
+            try
+            {
+                if ($destinationStream.Position -gt 0)
+                {
+                    $destinationStream.Position--
+                    $lastByte = $destinationStream.ReadByte()
+                    $destinationStream.Position = $destinationStream.Length
+                    if ($lastByte -ne 10)
+                    {
+                        $destinationStream.WriteByte(10)
+                    }
+                }
+
+                $sourceStream.CopyTo($destinationStream)
+            }
+            finally
+            {
+                $sourceStream.Dispose()
+            }
         }
     }
     finally
     {
-        $sourceStream.Dispose()
+        $destinationStream.Dispose()
     }
 }
 
@@ -307,7 +360,8 @@ function Copy-Phase0AuditLogSnapshot
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $repoRoot 'Tests/IndigoMovieManager.Tests/IndigoMovieManager.Tests.csproj'
 
-if ([string]::IsNullOrWhiteSpace($LogPath))
+$usesDefaultLogPath = [string]::IsNullOrWhiteSpace($LogPath)
+if ($usesDefaultLogPath)
 {
     $LogPath = Join-Path $env:LOCALAPPDATA 'IndigoMovieManager\logs\debug-runtime.log'
 }
@@ -381,7 +435,8 @@ $exitCode = 1
 try
 {
     # 監査開始時点のログを固定し、子テスト自身のログは別sinkへ隔離する。
-    Copy-Phase0AuditLogSnapshot -SourcePath $resolvedLogPath -DestinationPath $auditSnapshotPath
+    $auditLogSourcePaths = Get-Phase0AuditLogSnapshotSources -CurrentLogPath $resolvedLogPath -SessionStartedLocal $manualReviewSessionStartedLocal -IncludeRotationArchives:$usesDefaultLogPath
+    Copy-Phase0AuditLogSnapshot -SourcePaths $auditLogSourcePaths -DestinationPath $auditSnapshotPath
     Set-Item -Path "Env:$enabledEnvironmentName" -Value '1'
     Set-Item -Path "Env:$pathEnvironmentName" -Value $auditSnapshotPath
     Set-Item -Path "Env:$runtimeLogPathEnvironmentName" -Value $childRuntimeLogSinkPath

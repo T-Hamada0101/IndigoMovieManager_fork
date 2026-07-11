@@ -43,6 +43,39 @@ public sealed class Phase0LiveAuditScriptPolicyTests
     }
 
     [Test]
+    public void session指定時だけ同basenameの新しいrotationを時系列連結する()
+    {
+        string source = GetTargetSource();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("Get-Phase0AuditLogSnapshotSources"));
+            Assert.That(source, Does.Contain("-not $IncludeRotationArchives -or [string]::IsNullOrWhiteSpace($SessionStartedLocal)"));
+            Assert.That(source, Does.Contain("$archivePattern = '^{0}_\\d{{8}}(?:_\\d{{2}})?{1}$'"));
+            Assert.That(source, Does.Contain("$_.LastWriteTime -ge $sessionStarted"));
+            Assert.That(source, Does.Contain("Sort-Object LastWriteTime, Name"));
+            Assert.That(source, Does.Contain("return @($archives + $CurrentLogPath)"));
+            Assert.That(source, Does.Contain("-IncludeRotationArchives:$usesDefaultLogPath"));
+            Assert.That(source, Does.Not.Contain("Get-ChildItem -Recurse"));
+        });
+    }
+
+    [Test]
+    public void 複数snapshotは共有読み取りし境界改行を補って一つのTEMPへ書く()
+    {
+        string source = GetTargetSource();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("[string[]]$SourcePaths"));
+            Assert.That(source, Does.Contain("foreach ($sourcePath in $SourcePaths)"));
+            Assert.That(source, Does.Contain("$destinationStream.WriteByte(10)"));
+            Assert.That(source, Does.Contain("[System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete"));
+            Assert.That(source, Does.Contain("Copy-Phase0AuditLogSnapshot -SourcePaths $auditLogSourcePaths"));
+        });
+    }
+
+    [Test]
     public void dotnet_testはRelease_x64の対象1件だけを引数配列で実行する()
     {
         string source = GetTargetSource();
