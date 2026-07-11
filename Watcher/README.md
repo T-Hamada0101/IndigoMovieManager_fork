@@ -57,7 +57,6 @@
 ## 障害対応・補足資料
 
 - [../Docs/forAI/DB_Switch_Safety_Design_2026-03-01.md](../Docs/forAI/DB_Switch_Safety_Design_2026-03-01.md)
-- [DB_Switch_Safety_Design_2026-03-01_ドラフト.md](../Docs/forAI/DB_Switch_Safety_Design_2026-03-01_ドラフト.md)
 - [../Docs/Gemini/タブ別サムネ未生成バグ_完全決着編_2026-03-01.md](../Docs/Gemini/タブ別サムネ未生成バグ_完全決着編_2026-03-01.md)
 - [Gemini向け_タブ別サムネ未生成バグ_原因対策_2026-03-01.md](../Docs/forAI/Gemini向け_タブ別サムネ未生成バグ_原因対策_2026-03-01.md)
 - [Architecture_Evaluation_Everything_Diff_2026-02-28.md](../Docs/forAI/Architecture_Evaluation_Everything_Diff_2026-02-28.md)
