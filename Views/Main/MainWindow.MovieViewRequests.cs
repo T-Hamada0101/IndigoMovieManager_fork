@@ -22,14 +22,26 @@ namespace IndigoMovieManager
             _ = FilterAndSortAsync(id, IsGetNew);
         }
 
-        private async Task FilterAndSortAsync(string id, bool isGetNew)
+        private async Task FilterAndSortAsync(
+            string id,
+            bool isGetNew,
+            CancellationToken externalCancellationToken = default
+        )
         {
             using IDisposable uiHangScope = TrackUiHangActivity(UiHangActivityKind.Database);
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
             using CancellationTokenSource filterAndSortCancellation =
                 BeginFilterAndSortCancellation();
-            CancellationToken filterAndSortCancellationToken = filterAndSortCancellation.Token;
+            using CancellationTokenSource linkedFilterAndSortCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    filterAndSortCancellation.Token,
+                    externalCancellationToken
+                );
+            CancellationToken filterAndSortCancellationToken =
+                linkedFilterAndSortCancellation.Token;
+            bool deferUiApplyForExternalCancellation =
+                externalCancellationToken.CanBeCanceled;
             DataTable latestMovieData = movieData;
             MovieRecords[] latestMovieRecords = null;
             long dbLoadElapsedMs = 0;
@@ -109,10 +121,27 @@ namespace IndigoMovieManager
                     $"filter stage begin: revision={requestRevision} stage=source-apply rows={latestMovieData.Rows.Count}"
                 );
                 Stopwatch sourceApplyStopwatch = Stopwatch.StartNew();
-                MovieRecordSourceApplyResult sourceApplyResult = await SetRecordsToSource(
-                    latestMovieData,
-                    requestRevision
-                );
+                MovieRecordSourceApplyResult sourceApplyResult;
+                try
+                {
+                    sourceApplyResult = await SetRecordsToSource(
+                        latestMovieData,
+                        requestRevision,
+                        filterAndSortCancellationToken,
+                        deferUiApplyForExternalCancellation
+                    );
+                }
+                catch (OperationCanceledException)
+                    when (filterAndSortCancellationToken.IsCancellationRequested)
+                {
+                    movieData = null;
+                    sourceApplyStopwatch.Stop();
+                    DebugRuntimeLog.Write(
+                        "ui-tempo",
+                        $"filter canceled: revision={requestRevision} stage=source-apply elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
+                    );
+                    return;
+                }
                 latestMovieRecords = sourceApplyResult.Items;
                 // DB読み込みと変換が完了したので、rawなDataTable参照を残さずに解放する。
                 movieData = null;
@@ -215,6 +244,42 @@ namespace IndigoMovieManager
             filterSortStopwatch.Stop();
             filterSortElapsedMs = filterSortStopwatch.ElapsedMilliseconds;
             MovieViewReadModelApplyResult applyResult;
+            if (
+                deferUiApplyForExternalCancellation
+                && Dispatcher != null
+                && !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished
+            )
+            {
+                // partial全件整合のUI反映前にInputを通し、Playerスクロールを必ず先行させる。
+                try
+                {
+                    await Dispatcher.InvokeAsync(
+                        () => { },
+                        DispatcherPriority.Background,
+                        filterAndSortCancellationToken
+                    );
+                }
+                catch (OperationCanceledException)
+                    when (filterAndSortCancellationToken.IsCancellationRequested)
+                {
+                    DebugRuntimeLog.Write(
+                        "ui-tempo",
+                        $"filter canceled: revision={requestRevision} stage=apply-dispatch elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
+                    );
+                    return;
+                }
+            }
+
+            if (filterAndSortCancellationToken.IsCancellationRequested)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"filter canceled: revision={requestRevision} stage=apply elapsed_ms={totalStopwatch.ElapsedMilliseconds}"
+                );
+                return;
+            }
+
             if (
                 !TryApplyMovieViewReadModelResultOnUiThread(
                     requestRevision,

@@ -534,7 +534,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "private void MarkStartupSourceCompleteAfterFullReload("
         );
         int sourceApplyIndex = method.IndexOf(
-            "MovieRecordSourceApplyResult sourceApplyResult = await SetRecordsToSource(",
+            "sourceApplyResult = await SetRecordsToSource(",
             StringComparison.Ordinal
         );
         int staleGuardIndex = method.IndexOf(

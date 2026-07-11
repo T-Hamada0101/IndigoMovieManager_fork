@@ -233,7 +233,21 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
                 sourceApplyMethod.LastIndexOf("ThrowIfCancellationRequested()", replace, StringComparison.Ordinal),
                 Is.GreaterThan(rowLoop)
             );
-            Assert.That(sourceApplyMethod, Does.Contain("cancellationToken.CanBeCanceled"));
+            Assert.That(
+                movieViewMethod,
+                Does.Contain(
+                    "deferUiApplyForExternalCancellation =\n                externalCancellationToken.CanBeCanceled"
+                )
+            );
+            Assert.That(
+                sourceApplyMethod,
+                Does.Contain("bool deferUiApplyForExternalCancellation = false")
+            );
+            Assert.That(
+                sourceApplyMethod,
+                Does.Contain("deferUiApplyForExternalCancellation")
+            );
+            Assert.That(sourceApplyMethod, Does.Not.Contain("cancellationToken.CanBeCanceled"));
             Assert.That(sourceYield, Is.GreaterThan(rowLoop));
             Assert.That(sourceYield, Is.LessThan(replace));
             Assert.That(

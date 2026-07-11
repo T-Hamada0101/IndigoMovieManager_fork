@@ -32,6 +32,9 @@ namespace IndigoMovieManager
 
             if (activated)
             {
+                // 新しいユーザー操作を最優先し、実行中の全件検索整合は解除後へ戻す。
+                DeferPartialSearchFullCompletionForUserPriority();
+
                 UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(
                     isUserPriorityActive: true,
                     isManualMode: false
@@ -122,6 +125,7 @@ namespace IndigoMovieManager
             if (!isStillActive)
             {
                 CompleteUiOperationFeedback();
+                TryQueuePartialSearchFullCompletionAfterUserPriority();
             }
         }
 

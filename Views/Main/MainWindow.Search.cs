@@ -20,6 +20,12 @@ namespace IndigoMovieManager
         private long _pendingSearchInputId;
         private long _pendingSearchInputAcceptedTimestamp;
         private int _searchRefreshRequestRevision;
+        private readonly object _partialSearchFullCompletionSync = new();
+        private CancellationTokenSource _partialSearchFullCompletionCancellation;
+        private string _pendingPartialSearchFullCompletionSortId;
+        private string _pendingPartialSearchFullCompletionDbPath;
+        private int _pendingPartialSearchFullCompletionRevision;
+        private bool _partialSearchFullCompletionQueued;
         private bool _searchInputPriorityActive;
         private bool _searchInputShutdownHooked;
 
@@ -610,22 +616,160 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _ = CompletePartialSearchFromFullSourceAsync(sortId, searchRefreshRevision);
+            QueuePartialSearchFullCompletion(sortId, searchRefreshRevision);
         }
 
-        private async Task CompletePartialSearchFromFullSourceAsync(
-            string sortId,
-            int searchRefreshRevision
-        )
+        // partial結果はそのまま残し、全件整合だけを最新1件へ畳んで操作後へ送る。
+        private void QueuePartialSearchFullCompletion(string sortId, int searchRefreshRevision)
         {
-            try
+            string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+            lock (_partialSearchFullCompletionSync)
             {
-                if (searchRefreshRevision != Volatile.Read(ref _searchRefreshRequestRevision))
+                _pendingPartialSearchFullCompletionSortId = sortId ?? "";
+                _pendingPartialSearchFullCompletionDbPath = dbFullPath;
+                _pendingPartialSearchFullCompletionRevision = searchRefreshRevision;
+            }
+
+            TryQueuePartialSearchFullCompletionAfterUserPriority();
+        }
+
+        private void TryQueuePartialSearchFullCompletionAfterUserPriority()
+        {
+            if (
+                IsUserPriorityWorkActive()
+                || Dispatcher == null
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+            )
+            {
+                return;
+            }
+
+            lock (_partialSearchFullCompletionSync)
+            {
+                if (
+                    _partialSearchFullCompletionQueued
+                    || _pendingPartialSearchFullCompletionRevision == 0
+                )
                 {
                     return;
                 }
 
-                await FilterAndSortAsync(sortId, true);
+                _partialSearchFullCompletionQueued = true;
+            }
+
+            _ = Dispatcher.InvokeAsync(
+                StartPendingPartialSearchFullCompletion,
+                DispatcherPriority.ApplicationIdle
+            );
+        }
+
+        private void StartPendingPartialSearchFullCompletion()
+        {
+            lock (_partialSearchFullCompletionSync)
+            {
+                _partialSearchFullCompletionQueued = false;
+            }
+
+            if (IsUserPriorityWorkActive())
+            {
+                return;
+            }
+
+            string sortId;
+            string dbFullPath;
+            int searchRefreshRevision;
+            CancellationToken cancellationToken;
+            lock (_partialSearchFullCompletionSync)
+            {
+                if (_pendingPartialSearchFullCompletionRevision == 0)
+                {
+                    return;
+                }
+
+                sortId = _pendingPartialSearchFullCompletionSortId;
+                dbFullPath = _pendingPartialSearchFullCompletionDbPath;
+                searchRefreshRevision = _pendingPartialSearchFullCompletionRevision;
+                _partialSearchFullCompletionCancellation = new CancellationTokenSource();
+                cancellationToken = _partialSearchFullCompletionCancellation.Token;
+            }
+
+            // 判定直後に新しい操作が始まる競合も、作成済みtokenを通じて止める。
+            if (IsUserPriorityWorkActive())
+            {
+                DeferPartialSearchFullCompletionForUserPriority();
+                return;
+            }
+
+            _ = CompletePartialSearchFromFullSourceAsync(
+                sortId,
+                dbFullPath,
+                searchRefreshRevision,
+                cancellationToken
+            );
+        }
+
+        // Playerスクロール開始時は計算・UI applyを後着キャンセルし、解除後の再開へ回す。
+        private void DeferPartialSearchFullCompletionForUserPriority()
+        {
+            lock (_partialSearchFullCompletionSync)
+            {
+                if (_pendingPartialSearchFullCompletionRevision == 0)
+                {
+                    return;
+                }
+
+                try
+                {
+                    _partialSearchFullCompletionCancellation?.Cancel();
+                }
+                catch (ObjectDisposedException) { }
+            }
+        }
+
+        private async Task CompletePartialSearchFromFullSourceAsync(
+            string sortId,
+            string dbFullPath,
+            int searchRefreshRevision,
+            CancellationToken cancellationToken
+        )
+        {
+            try
+            {
+                if (
+                    cancellationToken.IsCancellationRequested
+                    || searchRefreshRevision != Volatile.Read(ref _searchRefreshRequestRevision)
+                    || !AreSameMainDbPath(dbFullPath, MainVM?.DbInfo?.DBFullPath ?? "")
+                    || Dispatcher == null
+                    || Dispatcher.HasShutdownStarted
+                    || Dispatcher.HasShutdownFinished
+                )
+                {
+                    return;
+                }
+
+                await FilterAndSortAsync(sortId, true, cancellationToken);
+
+                lock (_partialSearchFullCompletionSync)
+                {
+                    if (
+                        !cancellationToken.IsCancellationRequested
+                        && searchRefreshRevision == _pendingPartialSearchFullCompletionRevision
+                        && !IsStartupFeedPartialActive
+                    )
+                    {
+                        _pendingPartialSearchFullCompletionRevision = 0;
+                        _pendingPartialSearchFullCompletionSortId = null;
+                        _pendingPartialSearchFullCompletionDbPath = null;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"search partial full reload deferred: revision={searchRefreshRevision} reason=user-priority"
+                );
             }
             catch (Exception ex)
             {
@@ -633,6 +777,22 @@ namespace IndigoMovieManager
                     "ui-tempo",
                     $"search partial full reload failed: revision={searchRefreshRevision} error_type={ex.GetType().Name} message='{ex.Message}'"
                 );
+            }
+            finally
+            {
+                lock (_partialSearchFullCompletionSync)
+                {
+                    if (_partialSearchFullCompletionCancellation?.Token == cancellationToken)
+                    {
+                        _partialSearchFullCompletionCancellation.Dispose();
+                        _partialSearchFullCompletionCancellation = null;
+                    }
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    TryQueuePartialSearchFullCompletionAfterUserPriority();
+                }
             }
         }
 

@@ -399,7 +399,9 @@ namespace IndigoMovieManager
         /// </summary>
         private async Task<MovieRecordSourceApplyResult> SetRecordsToSource(
             DataTable sourceData,
-            int requestRevision
+            int requestRevision,
+            CancellationToken cancellationToken = default,
+            bool deferUiApplyForExternalCancellation = false
         )
         {
             DataTable targetData = sourceData ?? movieData;
@@ -412,6 +414,7 @@ namespace IndigoMovieManager
             MovieRecordBulkBuildContext bulkContext = CaptureMovieRecordBulkBuildContext();
             MovieRecordSourceApplyResult result = await Task.Run(() =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 Stopwatch backgroundStopwatch = Stopwatch.StartNew();
                 Stopwatch bulkCacheStopwatch = Stopwatch.StartNew();
                 MovieRecordBulkBuildCache bulkCache = BuildMovieRecordBulkBuildCache(bulkContext);
@@ -421,6 +424,11 @@ namespace IndigoMovieManager
                 Stopwatch rowConvertStopwatch = Stopwatch.StartNew();
                 for (int index = 0; index < rowCount; index++)
                 {
+                    if ((index & 63) == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+
                     loadedItems[index] = CreateMovieRecordFromDataRow(
                         targetData.Rows[index],
                         bulkContext,
@@ -445,14 +453,31 @@ namespace IndigoMovieManager
                     0,
                     backgroundStopwatch.ElapsedMilliseconds
                 );
-            });
+            }, cancellationToken);
 
+            if (
+                deferUiApplyForExternalCancellation
+                && Dispatcher != null
+                && !Dispatcher.HasShutdownStarted
+                && !Dispatcher.HasShutdownFinished
+            )
+            {
+                // partial全件整合だけは未処理Inputへ先を譲り、スクロール開始をtokenへ反映させる。
+                await Dispatcher.InvokeAsync(
+                    () => { },
+                    DispatcherPriority.Background,
+                    cancellationToken
+                );
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
             if (requestRevision != _filterAndSortRequestRevision)
             {
                 return result;
             }
 
             Stopwatch replaceStopwatch = Stopwatch.StartNew();
+            cancellationToken.ThrowIfCancellationRequested();
             MainVM.ReplaceMovieRecs(result.Items);
             replaceStopwatch.Stop();
             Stopwatch queueStopwatch = Stopwatch.StartNew();
