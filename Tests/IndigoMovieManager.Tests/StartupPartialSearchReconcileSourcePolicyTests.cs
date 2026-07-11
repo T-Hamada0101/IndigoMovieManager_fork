@@ -21,7 +21,7 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
             StringComparison.Ordinal
         );
         int fullReconcile = method.IndexOf(
-            "_ = CompletePartialSearchFromFullSourceAsync(sortId, searchRefreshRevision);",
+            "QueuePartialSearchFullCompletion(sortId, searchRefreshRevision);",
             StringComparison.Ordinal
         );
 
@@ -101,7 +101,7 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
                 reconcileMethod,
                 Does.Contain("Volatile.Read(ref _searchRefreshRequestRevision)")
             );
-            Assert.That(reconcileMethod, Does.Contain("await FilterAndSortAsync(sortId, true);"));
+            Assert.That(reconcileMethod, Does.Contain("await FilterAndSortAsync(sortId, true,"));
             Assert.That(fullReloadMethod, Does.Contain("BeginFilterAndSortCancellation()"));
             Assert.That(fullReloadMethod, Does.Contain("filterAndSortCancellationToken"));
             Assert.That(
@@ -126,6 +126,137 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
             Assert.That(method, Does.Contain("DebugRuntimeLog.Write("));
             Assert.That(method, Does.Contain("search partial full reload failed"));
             Assert.That(method, Does.Contain("error_type={ex.GetType().Name}"));
+        });
+    }
+
+    [Test]
+    public void UserPriority中はfull整合を開始も適用もせず解除後に最新要求だけ1回再開する()
+    {
+        string source = GetSearchSource();
+        string queueMethod = GetMethodBlock(
+            source,
+            "private void TryQueuePartialSearchFullCompletionAfterUserPriority("
+        );
+        string startMethod = GetMethodBlock(
+            source,
+            "private void StartPendingPartialSearchFullCompletion("
+        );
+
+        Assert.Multiple(() =>
+        {
+            // Player scroll を含む user-priority の間は、full DB 読取り自体を始めない。
+            Assert.That(queueMethod, Does.Contain("IsUserPriorityWorkActive()"));
+            Assert.That(startMethod, Does.Contain("IsUserPriorityWorkActive()"));
+            Assert.That(source, Does.Contain("DeferPartialSearchFullCompletionForUserPriority"));
+            Assert.That(source, Does.Contain("_partialSearchFullCompletionCancellation?.Cancel()"));
+
+            // pending revision を上書きし、queued guard で解除後の起動を1回に畳む。
+            Assert.That(source, Does.Contain("_pendingPartialSearchFullCompletionRevision = searchRefreshRevision"));
+            Assert.That(source, Does.Contain("_partialSearchFullCompletionQueued"));
+            Assert.That(source, Does.Contain("TryQueuePartialSearchFullCompletionAfterUserPriority();"));
+        });
+    }
+
+    [Test]
+    public void Partial整合lock内からUserPriority判定を呼ばずlock順逆転を防ぐ()
+    {
+        string source = GetSearchSource();
+        IReadOnlyList<string> lockBlocks = GetBlocks(source, "lock (_partialSearchFullCompletionSync)");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(lockBlocks, Is.Not.Empty);
+            Assert.That(lockBlocks, Has.None.Contains("IsUserPriorityWorkActive()"));
+        });
+    }
+
+    [Test]
+    public void Full整合はDB切替shutdown検索revisionの古い結果を反映しない()
+    {
+        string method = GetMethodBlock(
+            GetSearchSource(),
+            "private async Task CompletePartialSearchFromFullSourceAsync("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(method, Does.Contain("dbFullPath"));
+            Assert.That(method, Does.Contain("AreSameMainDbPath("));
+            Assert.That(method, Does.Contain("Dispatcher.HasShutdownStarted"));
+            Assert.That(method, Does.Contain("Dispatcher.HasShutdownFinished"));
+            Assert.That(
+                method,
+                Does.Contain("searchRefreshRevision != Volatile.Read(ref _searchRefreshRequestRevision)")
+            );
+            Assert.That(method, Does.Contain("cancellationToken.IsCancellationRequested"));
+        });
+    }
+
+    [Test]
+    public void ExternalCancellationは全件変換ループとReplaceMovieRecs直前まで届きキャンセルをfailed扱いしない()
+    {
+        string movieViewMethod = GetMethodBlock(
+            GetMovieViewRequestsSource(),
+            "private async Task FilterAndSortAsync("
+        );
+        string sourceApplyMethod = GetMethodBlock(
+            GetMovieRecordFactorySource(),
+            "private async Task<MovieRecordSourceApplyResult> SetRecordsToSource("
+        );
+        string reconcileMethod = GetMethodBlock(
+            GetSearchSource(),
+            "private async Task CompletePartialSearchFromFullSourceAsync("
+        );
+        int rowLoop = sourceApplyMethod.IndexOf("for (int index = 0; index < rowCount; index++)");
+        int replace = sourceApplyMethod.IndexOf("MainVM.ReplaceMovieRecs(result.Items)");
+        int sourceYield = sourceApplyMethod.IndexOf("Dispatcher.InvokeAsync(", rowLoop);
+        int finalApplyYield = movieViewMethod.LastIndexOf("Dispatcher.InvokeAsync(", StringComparison.Ordinal);
+        int finalApply = movieViewMethod.IndexOf(
+            "TryApplyMovieViewReadModelResultOnUiThread(",
+            finalApplyYield,
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(movieViewMethod, Does.Contain("externalCancellationToken"));
+            Assert.That(movieViewMethod, Does.Contain("CreateLinkedTokenSource("));
+            Assert.That(movieViewMethod, Does.Contain("SetRecordsToSource("));
+            Assert.That(sourceApplyMethod, Does.Contain("CancellationToken"));
+            Assert.That(rowLoop, Is.GreaterThanOrEqualTo(0));
+            Assert.That(replace, Is.GreaterThan(rowLoop));
+            Assert.That(
+                sourceApplyMethod.IndexOf("ThrowIfCancellationRequested()", rowLoop, StringComparison.Ordinal),
+                Is.GreaterThan(rowLoop)
+            );
+            Assert.That(
+                sourceApplyMethod.LastIndexOf("ThrowIfCancellationRequested()", replace, StringComparison.Ordinal),
+                Is.GreaterThan(rowLoop)
+            );
+            Assert.That(sourceApplyMethod, Does.Contain("cancellationToken.CanBeCanceled"));
+            Assert.That(sourceYield, Is.GreaterThan(rowLoop));
+            Assert.That(sourceYield, Is.LessThan(replace));
+            Assert.That(
+                sourceApplyMethod.IndexOf("DispatcherPriority.Background", sourceYield, StringComparison.Ordinal),
+                Is.LessThan(replace)
+            );
+            Assert.That(movieViewMethod, Does.Contain("externalCancellationToken.CanBeCanceled"));
+            Assert.That(finalApplyYield, Is.GreaterThanOrEqualTo(0));
+            Assert.That(finalApply, Is.GreaterThan(finalApplyYield));
+            Assert.That(
+                movieViewMethod.IndexOf(
+                    "filterAndSortCancellationToken.IsCancellationRequested",
+                    finalApplyYield,
+                    StringComparison.Ordinal
+                ),
+                Is.LessThan(finalApply)
+            );
+            Assert.That(movieViewMethod, Does.Contain("catch (OperationCanceledException)"));
+            Assert.That(reconcileMethod, Does.Contain("catch (OperationCanceledException)"));
+            Assert.That(
+                reconcileMethod.IndexOf("catch (OperationCanceledException)", StringComparison.Ordinal),
+                Is.LessThan(reconcileMethod.IndexOf("catch (Exception ex)", StringComparison.Ordinal))
+            );
         });
     }
 
@@ -169,6 +300,11 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
         return GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
     }
 
+    private static string GetMovieRecordFactorySource()
+    {
+        return GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
+    }
+
     private static string GetMethodBlock(string source, string signature)
     {
         int start = source.IndexOf(signature, StringComparison.Ordinal);
@@ -190,6 +326,20 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
         }
 
         throw new AssertionException($"メソッド終端が見つかりません: {signature}");
+    }
+
+    private static IReadOnlyList<string> GetBlocks(string source, string signature)
+    {
+        List<string> blocks = [];
+        int searchStart = 0;
+        while ((searchStart = source.IndexOf(signature, searchStart, StringComparison.Ordinal)) >= 0)
+        {
+            string remaining = source[searchStart..];
+            blocks.Add(GetMethodBlock(remaining, signature));
+            searchStart += signature.Length;
+        }
+
+        return blocks;
     }
 
     private static string GetRepoText(
