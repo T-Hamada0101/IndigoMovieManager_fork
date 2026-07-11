@@ -72,7 +72,8 @@ Write-Host @'
 7. コピーDB + no-persistでskin通常切り替えとHeader Reloadを行う。
 8. 設定変更、bookmark / score / tag保存後に終了する。
 
-操作終了後は scripts/Invoke-Phase0LiveAudit.ps1 を実行してログを監査してください。
+操作前に scripts/New-Phase0ManualReview.ps1 で目視記録JSONを作成してください。
+操作終了後は scripts/Invoke-Phase0LiveAudit.ps1 -ManualReviewPath <目視記録.json> でログと目視記録を監査してください。
 '@
 
 if ($Wait) {

@@ -132,7 +132,9 @@ public sealed class Phase0DiagnosticRunScriptPolicyTests
                 source,
                 Does.Contain("8. 設定変更、bookmark / score / tag保存後に終了する。")
             );
+            Assert.That(source, Does.Contain("scripts/New-Phase0ManualReview.ps1"));
             Assert.That(source, Does.Contain("scripts/Invoke-Phase0LiveAudit.ps1"));
+            Assert.That(source, Does.Contain("-ManualReviewPath <目視記録.json>"));
             Assert.That(source, Does.Contain("$process.Id"));
             Assert.That(source, Does.Contain("$resolvedDbPath"));
         });

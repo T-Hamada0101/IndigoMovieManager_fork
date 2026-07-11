@@ -16,6 +16,7 @@
 - Phase 0からPhase 7を、操作シナリオ、成果物、完了ゲート、次フェーズへの接続が読める形へ再構築した。
 - 直近の最優先を、同一Release runの実機証跡採取と、検索・sort・scroll・watch小差分の体感ボトルネック特定に固定した。
 - 主要8シナリオのlog evidenceと目視確認を分離したscorecardを追加し、scorecardだけではPhase 0を完了扱いにしない判断を固定した。
+- 主要8シナリオ36項目の目視確認をJSONへ記録し、log evidenceと合わせて監査できる診断導線を追加した。
 - 最新runからUI停止delayのp50 / p95 / max、最大queue深さ、stale破棄行数、full fallback行数を要約できるようにした。runtimeログ契約は増やしていない。
 - 通常UIと外部skinのインメモリsort後に先頭選択へ戻していた後処理を除き、既存の差分Moveが選択とscrollを維持できる経路を塞がないようにした。起動partialの全件復旧だけは従来互換を維持する。
 - 検索結果更新後と上側タブ往復時も、既存選択が残る時は維持し、未選択時だけ先頭へ戻すようにした。
@@ -199,6 +200,10 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 - `55bd5e0` で、コピー済み `.wb` の明示指定と確認フラグを必須にしたPhase 0診断起動スクリプトを追加した。DBの自動コピーや変更は行わず、起動した子プロセスだけへno-persist、コピーDB、Releaseログ設定を渡す。
 - `4d32338` で、live auditの対象ログをliteral pathで解決し、監査用環境変数を実行後に復元して終了コードをそのまま返す監査スクリプトを追加した。終了コード1はスクリプト異常ではなく、現行ログの必須証跡不足を表す。
 - サブエージェント検証は診断起動7件、live audit 5件のRelease x64 focused testが成功した。親レビューでも両方をまとめた12件が成功し、監査スクリプトの実行結果はscenario log evidence `1/8` のため想定どおり終了コード1だった。
+- `8fb1ed5` で、診断ランチャーとscorecardへPhase 1の主選択、複数選択、scroll anchor、focus、250 ms操作表示、表示中の継続入力を目視項目として接続した。既存のscroll / PageUp / PageDown操作束は維持した。
+- `af871c2` で、`phase0-manual-review-v1` の8シナリオ36項目をBOMなしUTF-8 + LFで生成するスクリプトと、schema、過不足、重複、statusを検証するlive audit連携を追加した。全項目が`pass`の時だけ目視確認を完了とし、log auditと目視確認のどちらかが未完なら非0を返す。
+- サブエージェント検証はランチャー / scorecard 14件、目視記録 / live audit 8件がRelease x64で成功した。親レビューでは4テスト群22件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
+- 親の実行検証では、生成直後のJSONは`pending=36`、全項目passは`manual review: complete`、不正JSONは`invalid-json`になった。全項目passでも現行ログの必須evidenceが不足しているため終了コード1を維持し、目視だけでPhase 0を誤完了にしないことを確認した。
 - Phase 0は `実機確認待ち` のまま維持する。次は新しいログfieldを足さず、主要8シナリオと目視項目を同一Release runで採取する。
 
 実行シナリオ:
@@ -215,21 +220,22 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 安全な採取手順:
 
 ```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\New-Phase0ManualReview.ps1 -OutputPath "<目視記録.json>"
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Start-Phase0DiagnosticRun.ps1 -CopiedDbPath "<コピー済み.wb>" -AcknowledgeCopiedDb -Wait
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Invoke-Phase0LiveAudit.ps1 -NoBuild
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Invoke-Phase0LiveAudit.ps1 -ManualReviewPath "<目視記録.json>" -NoBuild
 ```
 
-1本目はユーザーが事前に用意したコピーDBだけを受け付け、主要8シナリオを画面へ表示してRelease x64アプリを起動する。2本目は採取後の最新ログを監査する。監査の終了コードが0になることに加え、目視項目を人間が確認するまでPhase 0は完了にしない。
+1本目は目視記録JSONを作成する。2本目はユーザーが事前に用意したコピーDBだけを受け付け、主要8シナリオを画面へ表示してRelease x64アプリを起動する。操作結果をJSONへ記録し、3本目で採取後の最新ログと目視記録をまとめて監査する。監査の終了コードが0になるまでPhase 0は完了にしない。
 
 成果物:
 
 - 同一Release runの `debug-runtime.log`。
-- 操作時刻と視覚結果を対応させたscenario scorecard。
+- 操作時刻と視覚結果を対応させた`phase0-manual-review-v1` JSON。
 - `phase0_audit_complete` と不足evidence一覧。
 - p50 / p95、最大停止、stale discard、full fallback、queue depthの要約。
 - 次に直す支配要因を最大3件に絞った判断。
 
-scorecardとrun metricsの自動要約は実装済みである。残る成果物は、主要8シナリオを通した同一runと、人間の目で確認したselection / focus / scroll / blankの記録である。
+scorecard、run metrics、目視記録テンプレートと監査は実装済みである。残る成果物は、主要8シナリオを通した同一runと、人間が判定したselection / focus / scroll / blankを含む36項目の実記録である。
 
 完了ゲート:
 
@@ -261,6 +267,7 @@ scorecardとrun metricsの自動要約は実装済みである。残る成果物
 - サブエージェント検証はfocus anchor policy 13件、WPF接続2件が成功した。親レビューではfocus、scroll、選択、ReadModelの関連124件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
 - `7588ddf` で250 ms遅延、検索 / sort / Player準備の文言、revision stale guardを持つfeedback policyを追加した。`aa81017` でuser-priorityの最初のBeginと最後のEndへ接続し、250 msを超えた時だけヘッダーのDB path領域へcompactなindeterminate表示を出す。ボタン、一覧、入力は無効化せず、終了時は即座にpath表示へ戻す。親レビューでnullable警告を修正し、最新コミットへamendした。
 - サブエージェント検証はfeedback policy 14件、WPF接続49件が成功した。親レビューではfeedback、user-priority、検索、sort、Playerの関連128件が成功し、Release x64全体buildは警告0、エラー0だった。
+- `8fb1ed5` と `af871c2` で、Phase 1の実機確認項目を主要シナリオと36項目の目視JSONへ接続した。静的Behaviorだけで完了にせず、同一runの操作継続性を記録できる状態になった。
 - Phase 1は静的Behavior接続とRegression Guardが揃ったため `実機確認待ち` へ進める。VirtualizingWrapPanelのoffset単位、同期 `UpdateLayout()` の所要時間、Reset時のちらつき、複数SelectionChanged、実際のfocus位置、250 ms表示中も操作継続できることを同一Release runで確認するまで完了扱いにしない。
 
 実装項目:
@@ -546,6 +553,8 @@ sidecar判断ゲート:
 3. full fallback、queue競合、同期I/O、decode、navigateのどれが支配要因か。
 
 監査summaryには `phase0_scenario_log_evidence`、`phase0_scenario_scorecard`、`phase0_manual_visual_review`、`phase0_run_metrics` が出る。次回採取では、この4行と実表示の記録を同じrunへ揃える。
+
+次回採取は `New-Phase0ManualReview.ps1` で36項目の記録を作成してから診断アプリを起動し、操作後に `Invoke-Phase0LiveAudit.ps1 -ManualReviewPath` でlog evidenceと目視記録を同時に閉じる。
 
 シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、250 ms未満では表示せず、超えた時はヘッダー表示中も入力とscrollを続けられることを確認する。シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
