@@ -827,6 +827,10 @@ namespace IndigoMovieManager
             );
             ShowPlayerSurface();
             UpdateManualPlayerViewport();
+            ReleasePendingPlayerUserPriorityWork(
+                "media-opened",
+                _pendingPlayerUserPriorityRevision
+            );
             _ = ApplyPendingPlayerPlaybackRequestAsync();
         }
 
@@ -835,7 +839,10 @@ namespace IndigoMovieManager
             // ロード失敗時も user-priority を解放し、背後監視を永久停止させない。
             SetPlayerPlaybackActive(false, "media-failed");
             _hasPendingPlayerPlaybackRequest = false;
-            ReleasePendingPlayerUserPriorityWork();
+            ReleasePendingPlayerUserPriorityWork(
+                "media-failed",
+                _pendingPlayerUserPriorityRevision
+            );
             StopDispatcherTimerSafely(timer, nameof(timer));
             DebugRuntimeLog.Write(
                 "ui-tempo",

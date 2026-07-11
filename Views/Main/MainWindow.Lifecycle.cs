@@ -230,6 +230,7 @@ namespace IndigoMovieManager
             }
 
             Volatile.Write(ref _mainWindowClosingStarted, 1);
+            ReleasePendingPlayerUserPriorityWork("shutdown");
             bool skipProcessWideShutdownSideEffects =
                 SkipMainWindowClosingSideEffectsForTesting || App.IsDiagnosticNoPersistEnabled();
 

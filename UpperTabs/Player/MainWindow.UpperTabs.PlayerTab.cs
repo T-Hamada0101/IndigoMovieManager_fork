@@ -14,6 +14,7 @@ namespace IndigoMovieManager
     {
         private const int PlayerTabIndex = 7;
         private const int PlayerTabActivationAutoOpenMaxDelayMs = 250;
+        private const int PlayerUserPriorityMaxDurationMs = 250;
         private static readonly HashSet<string> WebViewPreferredPlayerExtensions = new(
             System.StringComparer.OrdinalIgnoreCase
         )
@@ -38,6 +39,10 @@ namespace IndigoMovieManager
         private bool _isWebViewPlayerActive;
         private bool _isWebViewPlayerBridgeRegistered;
         private bool _isPlayerUserPriorityReleasePending;
+        private bool _preservePlayerUserPriorityDuringWebViewReset;
+        private int _playerUserPriorityRevision;
+        private int _pendingPlayerUserPriorityRevision;
+        private DispatcherTimer _playerUserPriorityReleaseTimer;
         private bool _isHandlingWebViewNativeFullscreenRequest;
         private bool _isSyncingDetachedWindowDomFullscreen;
         private Task<CoreWebView2Environment> _playerWebViewEnvironmentTask;
@@ -359,15 +364,24 @@ namespace IndigoMovieManager
             if (
                 Dispatcher?.HasShutdownStarted == true
                 || Dispatcher?.HasShutdownFinished == true
-                || uxVideoPlayer == null
+            )
+            {
+                ReleasePendingPlayerUserPriorityWork("shutdown");
+                return;
+            }
+
+            if (
+                uxVideoPlayer == null
                 || !IsPlayerTabMoviePathStillCurrent(movie, moviePath)
             )
             {
                 return;
             }
 
-            ReleasePendingPlayerUserPriorityWork();
+            ReleasePendingPlayerUserPriorityWork("superseded");
             BeginUserPriorityWork("player");
+            int playerUserPriorityRevision = ++_playerUserPriorityRevision;
+            MarkPlayerUserPriorityReleasePending(playerUserPriorityRevision);
             bool releaseUserPriorityOnExit = true;
             try
             {
@@ -416,14 +430,23 @@ namespace IndigoMovieManager
                         moviePath,
                         startMilliseconds,
                         playImmediately,
-                        mute
+                        mute,
+                        playerUserPriorityRevision
                     );
                     return;
                 }
 
                 if (_isWebViewPlayerActive)
                 {
-                    ResetWebViewPlayerSurface();
+                    _preservePlayerUserPriorityDuringWebViewReset = true;
+                    try
+                    {
+                        ResetWebViewPlayerSurface();
+                    }
+                    finally
+                    {
+                        _preservePlayerUserPriorityDuringWebViewReset = false;
+                    }
                 }
 
                 ShowPlayerSurface();
@@ -447,7 +470,6 @@ namespace IndigoMovieManager
                     uxVideoPlayer.Stop();
                     uxVideoPlayer.Source = new System.Uri(moviePath);
                     _currentPlayerMoviePath = moviePath;
-                    MarkPlayerUserPriorityReleasePending();
                     releaseUserPriorityOnExit = false;
                     return;
                 }
@@ -458,7 +480,10 @@ namespace IndigoMovieManager
             {
                 if (releaseUserPriorityOnExit)
                 {
-                    EndUserPriorityWork("player");
+                    ReleasePendingPlayerUserPriorityWork(
+                        "request-exit",
+                        playerUserPriorityRevision
+                    );
                 }
             }
         }
@@ -500,7 +525,8 @@ namespace IndigoMovieManager
             string moviePath,
             int startMilliseconds,
             bool playImmediately,
-            bool mute
+            bool mute,
+            int playerUserPriorityRevision
         )
         {
             if (
@@ -552,7 +578,6 @@ namespace IndigoMovieManager
             {
                 uxWebVideoPlayer.Source = new System.Uri(moviePath);
                 _currentWebViewPlayerPath = moviePath;
-                MarkPlayerUserPriorityReleasePending();
                 return true;
             }
 
@@ -560,20 +585,52 @@ namespace IndigoMovieManager
             return false;
         }
 
-        private void MarkPlayerUserPriorityReleasePending()
+        private void MarkPlayerUserPriorityReleasePending(int revision)
         {
-            _isPlayerUserPriorityReleasePending = true;
-        }
-
-        private void ReleasePendingPlayerUserPriorityWork()
-        {
-            if (!_isPlayerUserPriorityReleasePending)
+            if (revision != _playerUserPriorityRevision)
             {
                 return;
             }
 
+            _isPlayerUserPriorityReleasePending = true;
+            _pendingPlayerUserPriorityRevision = revision;
+            _playerUserPriorityReleaseTimer ??= new DispatcherTimer(DispatcherPriority.Input)
+            {
+                Interval = System.TimeSpan.FromMilliseconds(PlayerUserPriorityMaxDurationMs),
+            };
+            _playerUserPriorityReleaseTimer.Tick -= PlayerUserPriorityReleaseTimer_Tick;
+            _playerUserPriorityReleaseTimer.Tick += PlayerUserPriorityReleaseTimer_Tick;
+            _playerUserPriorityReleaseTimer.Stop();
+            _playerUserPriorityReleaseTimer.Start();
+        }
+
+        private void PlayerUserPriorityReleaseTimer_Tick(object sender, System.EventArgs e)
+        {
+            ReleasePendingPlayerUserPriorityWork("timeout", _pendingPlayerUserPriorityRevision);
+        }
+
+        private void ReleasePendingPlayerUserPriorityWork(
+            string releaseReason = "completed",
+            int expectedRevision = 0
+        )
+        {
+            if (
+                !_isPlayerUserPriorityReleasePending
+                || (expectedRevision != 0 && expectedRevision != _pendingPlayerUserPriorityRevision)
+            )
+            {
+                return;
+            }
+
+            _playerUserPriorityReleaseTimer?.Stop();
+            int releasedRevision = _pendingPlayerUserPriorityRevision;
             _isPlayerUserPriorityReleasePending = false;
+            _pendingPlayerUserPriorityRevision = 0;
             EndUserPriorityWork("player");
+            DebugRuntimeLog.Write(
+                "ui-priority",
+                $"player user priority released: revision={releasedRevision} release_reason={releaseReason}"
+            );
         }
 
         // 同一タイミングの no-op Dispatcher 待機は1本へ畳み、選択連打時の積み過ぎを抑える。
@@ -1043,7 +1100,10 @@ namespace IndigoMovieManager
             {
                 _hasPendingWebViewPlaybackRequest = false;
                 SetPlayerPlaybackActive(false, "webview-navigation-failed");
-                ReleasePendingPlayerUserPriorityWork();
+                ReleasePendingPlayerUserPriorityWork(
+                    "webview-navigation-failed",
+                    _pendingPlayerUserPriorityRevision
+                );
                 return;
             }
 
@@ -1458,8 +1518,11 @@ namespace IndigoMovieManager
             _isWebViewPlayerActive = false;
             _currentWebViewPlayerPath = "";
             _pendingWebViewNavigationId = 0;
-            // WebView停止・切替では NavigationCompleted が後着するため、ここでユーザー優先区間を畳む。
-            ReleasePendingPlayerUserPriorityWork();
+            // 単独停止では旧Navigation待ちを畳み、新しいMediaElement要求のrevisionは維持する。
+            if (!_preservePlayerUserPriorityDuringWebViewReset)
+            {
+                ReleasePendingPlayerUserPriorityWork("webview-reset");
+            }
 
             if (uxWebVideoPlayer == null)
             {
