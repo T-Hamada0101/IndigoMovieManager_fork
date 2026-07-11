@@ -17,6 +17,7 @@
 - 直近の最優先を、同一Release runの実機証跡採取と、検索・sort・scroll・watch小差分の体感ボトルネック特定に固定した。
 - 主要8シナリオのlog evidenceと目視確認を分離したscorecardを追加し、scorecardだけではPhase 0を完了扱いにしない判断を固定した。
 - 主要8シナリオ36項目の目視確認をJSONへ記録し、log evidenceと合わせて監査できる診断導線を追加した。
+- 目視確認JSONを診断起動時のsession IDと開始ローカル時刻へ一度だけ束縛し、最新ログrunの開始時刻とsequence=1を照合して同一runを機械判定するようにした。
 - 最新runからUI停止delayのp50 / p95 / max、最大queue深さ、stale破棄行数、full fallback行数を要約できるようにした。runtimeログ契約は増やしていない。
 - 通常UIと外部skinのインメモリsort後に先頭選択へ戻していた後処理を除き、既存の差分Moveが選択とscrollを維持できる経路を塞がないようにした。起動partialの全件復旧だけは従来互換を維持する。
 - 検索結果更新後と上側タブ往復時も、既存選択が残る時は維持し、未選択時だけ先頭へ戻すようにした。
@@ -204,6 +205,10 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 - `af871c2` で、`phase0-manual-review-v1` の8シナリオ36項目をBOMなしUTF-8 + LFで生成するスクリプトと、schema、過不足、重複、statusを検証するlive audit連携を追加した。全項目が`pass`の時だけ目視確認を完了とし、log auditと目視確認のどちらかが未完なら非0を返す。
 - サブエージェント検証はランチャー / scorecard 14件、目視記録 / live audit 8件がRelease x64で成功した。親レビューでは4テスト群22件とRelease x64全体buildが成功し、警告0、エラー0を確認した。
 - 親の実行検証では、生成直後のJSONは`pending=36`、全項目passは`manual review: complete`、不正JSONは`invalid-json`になった。全項目passでも現行ログの必須evidenceが不足しているため終了コード1を維持し、目視だけでPhase 0を誤完了にしないことを確認した。
+- `768b8f1` で、目視session開始ローカル時刻と最新runの先頭timestamp、sequence有無、開始sequence=1を照合する純粋policyを追加した。session境界env未指定時は従来のlog-only監査を維持し、指定時の境界未達は既存summary付きで失敗する。
+- `642c692` で、目視JSONへ空sessionを追加し、診断起動直前にGUIDと開始ローカル時刻を一度だけ束縛するようにした。未使用36項目だけを起動へ通し、起動失敗時は元byte列へ復元する。live auditは構造不正・未束縛だけをdotnet前に拒否し、pending / fail / not_observedではlog auditを継続して最終結果だけ非0へ統合する。
+- サブエージェント検証はsession boundary 17件成功 / opt-in 1件skip、script側21件成功だった。親レビューでは関連39件中38件成功 / opt-in 1件skipとRelease x64全体buildを確認し、警告0、エラー0だった。
+- 親スモークでは、起動失敗時のJSONが元byte列と完全一致、成功時だけGUID / started_localが束縛、未束縛JSONはdotnet前拒否、pendingはlog audit継続、古いログは`run-before-session`、all-pass + 過去開始時刻は境界通過後に既存evidence不足で非0となることを確認した。manual未指定時はambient session envを子監査から外し、親環境へ元値を復元する。
 - Phase 0は `実機確認待ち` のまま維持する。次は新しいログfieldを足さず、主要8シナリオと目視項目を同一Release runで採取する。
 
 実行シナリオ:
@@ -221,16 +226,17 @@ full reload / full recomputeは次に限定し、必ずreasonを残す。
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\New-Phase0ManualReview.ps1 -OutputPath "<目視記録.json>"
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Start-Phase0DiagnosticRun.ps1 -CopiedDbPath "<コピー済み.wb>" -AcknowledgeCopiedDb -Wait
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Start-Phase0DiagnosticRun.ps1 -CopiedDbPath "<コピー済み.wb>" -ManualReviewPath "<目視記録.json>" -AcknowledgeCopiedDb -Wait
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\Invoke-Phase0LiveAudit.ps1 -ManualReviewPath "<目視記録.json>" -NoBuild
 ```
 
-1本目は目視記録JSONを作成する。2本目はユーザーが事前に用意したコピーDBだけを受け付け、主要8シナリオを画面へ表示してRelease x64アプリを起動する。操作結果をJSONへ記録し、3本目で採取後の最新ログと目視記録をまとめて監査する。監査の終了コードが0になるまでPhase 0は完了にしない。
+1本目は未使用の目視記録JSONを作成する。2本目はユーザーが事前に用意したコピーDBと未使用JSONだけを受け付け、JSONを診断sessionへ束縛してRelease x64アプリを起動する。操作結果を同じJSONへ記録し、3本目で最新ログrunと目視sessionの境界を照合してまとめて監査する。監査の終了コードが0になるまでPhase 0は完了にしない。
 
 成果物:
 
 - 同一Release runの `debug-runtime.log`。
 - 操作時刻と視覚結果を対応させた`phase0-manual-review-v1` JSON。
+- 目視JSONのsession ID / started_localと、最新ログrunの先頭timestamp / sequence=1が一致する同一run境界。
 - `phase0_audit_complete` と不足evidence一覧。
 - p50 / p95、最大停止、stale discard、full fallback、queue depthの要約。
 - 次に直す支配要因を最大3件に絞った判断。
@@ -554,7 +560,7 @@ sidecar判断ゲート:
 
 監査summaryには `phase0_scenario_log_evidence`、`phase0_scenario_scorecard`、`phase0_manual_visual_review`、`phase0_run_metrics` が出る。次回採取では、この4行と実表示の記録を同じrunへ揃える。
 
-次回採取は `New-Phase0ManualReview.ps1` で36項目の記録を作成してから診断アプリを起動し、操作後に `Invoke-Phase0LiveAudit.ps1 -ManualReviewPath` でlog evidenceと目視記録を同時に閉じる。
+次回採取は `New-Phase0ManualReview.ps1` で36項目の記録を作成し、同じpathを `Start-Phase0DiagnosticRun.ps1 -ManualReviewPath` へ渡してsessionを束縛する。操作後に同じpathを `Invoke-Phase0LiveAudit.ps1 -ManualReviewPath` へ渡し、log evidence、目視記録、同一run境界をまとめて閉じる。
 
 シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、250 ms未満では表示せず、超えた時はヘッダー表示中も入力とscrollを続けられることを確認する。シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
