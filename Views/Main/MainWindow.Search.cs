@@ -693,11 +693,6 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            if (IsStartupFeedPartialActive)
-            {
-                return false;
-            }
-
             int openIdx = text.IndexOf('{');
             int closeIdx = text.IndexOf('}');
             if (openIdx >= 0 && (closeIdx < 0 || closeIdx < openIdx))
@@ -750,11 +745,9 @@ namespace IndigoMovieManager
             string text = SearchBox.Text ?? "";
             if (!CanRunIncrementalSearch(text))
             {
-                string skipReason = IsStartupFeedPartialActive
-                    ? "startup-feed-partial"
-                    : string.IsNullOrEmpty(text)
-                        ? "empty-text"
-                        : "incomplete-syntax";
+                string skipReason = string.IsNullOrEmpty(text)
+                    ? "empty-text"
+                    : "incomplete-syntax";
                 DebugRuntimeLog.Write(
                     "search-input",
                     $"debounce skipped: search_input_id={searchInputId} text_length={text.Length} debounce_ms={debounceMilliseconds} reason={skipReason}"

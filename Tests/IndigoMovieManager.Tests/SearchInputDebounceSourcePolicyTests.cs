@@ -19,7 +19,7 @@ public sealed class SearchInputDebounceSourcePolicyTests
     }
 
     [Test]
-    public void DebounceはIME未完成構文startupの既存guardを維持する()
+    public void DebounceはIMEと未完成構文のguardを維持し部分ロード中も検索する()
     {
         string source = GetSearchSource();
         string textChangedMethod = GetMethodBlock(source, "private void SearchBox_TextChanged(");
@@ -34,7 +34,8 @@ public sealed class SearchInputDebounceSourcePolicyTests
         Assert.That(tickMethod, Does.Contain("if (_imeFlag)"));
         Assert.That(tickMethod, Does.Contain("if (SearchBox == null)"));
         Assert.That(tickMethod, Does.Contain("if (!CanRunIncrementalSearch(text))"));
-        Assert.That(canRunMethod, Does.Contain("IsStartupFeedPartialActive"));
+        Assert.That(canRunMethod, Does.Not.Contain("IsStartupFeedPartialActive"));
+        Assert.That(tickMethod, Does.Not.Contain("startup-feed-partial"));
         Assert.That(canRunMethod, Does.Contain("text.IndexOf('{')"));
         Assert.That(canRunMethod, Does.Contain("text.IndexOf('}')"));
         Assert.That(canRunMethod, Does.Contain("lastChar != '-'"));
