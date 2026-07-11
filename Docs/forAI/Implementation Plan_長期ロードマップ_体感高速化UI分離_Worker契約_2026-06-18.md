@@ -596,6 +596,10 @@ Player内の1バースト集約計測を追加した結果、8回PageDownで `re
 
 さらにカーソル位置のnative window handleが本体handleと一致することを確認してOSホイール入力を送り、12送信中8入力の1バーストで `first_render_ms=6 first_layout_ms=5 converter_count=8 generator_delta=36 max_layout_gap_ms=637 revision_delta=0` を採取した。旧物理ホイールrunの最大1249 ms停止より改善し、同バースト中にWarning停止は記録されなかった。自動入力上のBehavior / Evidence / Regression Guardは揃ったが、人間の物理ホイール操作感は未確認なのでPlayer scrollフェーズは実機確認待ちのままとする。
 
+次のユーザー報告である検索Textbox無反応を監査し、Editable ComboBoxのBindingが `DbInfo.SearchKeyword` を先に更新した後、debounce側が同値を理由に検索を捨てる経路を修正した。TextChanged hot pathはIDと時刻のメモリ更新だけにし、ログはdebounce時1回へ集約する。部分ロード中の `startup-feed-partial` skipも廃止し、500 ms確定後は検索正本へ進める。Release x64コピーDB実機ではEnterなしの `movie` 入力が `search_input_id=1` でdebounce発火後14 msにfilter開始し、357件へ絞り込まれた。
+
+初回検索全体は7868 msで、`db_reload_ms=1144 source_apply_ms=6643 filter_sort_ms=50 apply_ms=23` だった。入力が黙って捨てられるBehaviorは閉じたが、部分ロードからの初回full reloadは依然遅い。次の最上位はDB readではなく全件source変換の6.6秒であり、source snapshot / MovieRecords生成を検索要求ごとに繰り返さない境界を調査する。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。

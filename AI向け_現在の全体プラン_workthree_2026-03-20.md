@@ -3,6 +3,7 @@
 最終更新日: 2026-07-11
 
 変更概要:
+- 2026-07-12、検索TextboxのdebounceがBinding済み`SearchKeyword`との同値を理由に検索を捨てる不具合と、部分ロード中の無言skipを修正した。TextChanged hot pathはID/時刻更新だけ、ログはdebounce時1回。Release x64でEnterなし入力が14ms後にfilter開始し357件へ絞り込まれた。初回full reloadは7868ms、支配要因はsource apply 6643msのため次順位は全件source変換の再利用である。
 - 2026-07-12、Player固定高行の画像ラッパーをLabelからBorderへ軽量化し、タイトルToolTip Bindingを外した。OSホイール入力の本体handle一致を確認したRelease runでは、8入力で `first render=6ms / converter=8 / generator=36 / max layout gap=637ms / revision=0`、バースト中Warning停止なし。旧物理ホイール最大1249msから改善したが、人間の操作感確認までは実機確認待ちとする。
 - 2026-07-12、Playerスクロールの1バースト計測を追加し、8回PageDownで `revision=7 / converter=227 / generator=194 / max layout gap=944ms` を観測した。viewport revisionをscroll中pending、idle warmと最大1回へ合流してconverterを104まで減らしたが、generatorと約0.9秒gapは残った。仮想化cache `0` はgeneratorを228へ悪化させたため `0.5 Page` へ戻した。次順位は固定高行templateの軽量化とする。
 - 2026-07-12、Player右レールの画像revisionを通常5タブから分離した。Player viewport / warmは専用revision、通常タブviewportは共有revision、サムネ実体変更は両方を更新する。Release x64では `shared_revision_updated=False player_revision_updated=True` を確認したが、UI停止は最大1249 ms残ったため主因解消とは扱わない。次順位はPlayer内のBinding / converter呼出数とWPF layoutの実測である。
