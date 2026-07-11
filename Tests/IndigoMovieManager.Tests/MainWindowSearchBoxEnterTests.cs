@@ -19,6 +19,58 @@ namespace IndigoMovieManager.Tests;
 [NonParallelizable]
 public sealed class MainWindowSearchBoxEnterTests
 {
+    [Test]
+    public void Search入力優先区間は検索本体へ引き継ぎ各終了経路で解放する()
+    {
+        string source = File.ReadAllText(
+            Path.GetFullPath(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    @"..\..\..\..\..\..\Views\Main\MainWindow.Search.cs"
+                )
+            )
+        );
+        string ensureMethod = ExtractSourceMethod(
+            source,
+            "private void EnsureSearchInputPriority()"
+        );
+        string releaseMethod = ExtractSourceMethod(
+            source,
+            "private void ReleaseSearchInputPriority()"
+        );
+        string transferMethod = ExtractSourceMethod(
+            source,
+            "private async Task<bool> ExecuteSearchKeywordFromInputAsync(string text)"
+        );
+        string shutdownMethod = ExtractSourceMethod(
+            source,
+            "private void SearchInputDispatcher_ShutdownStarted(object sender, EventArgs e)"
+        );
+        string lostFocusMethod = ExtractSourceMethod(
+            source,
+            "private void SearchBox_LostFocus(object sender, RoutedEventArgs e)"
+        );
+
+        Assert.That(ensureMethod, Does.Contain("if (_searchInputPriorityActive)"));
+        Assert.That(ensureMethod, Does.Contain("BeginUserPriorityWork(\"search-input\")"));
+        Assert.That(releaseMethod, Does.Contain("if (!_searchInputPriorityActive)"));
+        Assert.That(releaseMethod, Does.Contain("EndUserPriorityWork(\"search-input\")"));
+        Assert.That(
+            transferMethod.IndexOf("ExecuteSearchKeywordAsync(", StringComparison.Ordinal),
+            Is.LessThan(
+                transferMethod.IndexOf("ReleaseSearchInputPriority();", StringComparison.Ordinal)
+            )
+        );
+        Assert.That(transferMethod, Does.Contain("finally"));
+        Assert.That(shutdownMethod, Does.Contain("ReleaseSearchInputPriority();"));
+        Assert.That(
+            source,
+            Does.Contain("CancelIncrementalSearchDebounce(releaseInputPriority: false)")
+        );
+        Assert.That(lostFocusMethod, Does.Contain("ReleaseSearchInputPriority();"));
+        Assert.That(lostFocusMethod, Does.Not.Contain("CancelIncrementalSearchDebounce("));
+    }
+
     private static readonly object UiThreadSync = new();
     private static Thread? uiThread;
     private static Dispatcher? uiDispatcher;
@@ -1757,6 +1809,29 @@ VALUES (
         )!;
         Assert.That(field, Is.Not.Null, fieldName);
         field.SetValue(window, value);
+    }
+
+    private static string ExtractSourceMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), signature);
+        int openingBrace = source.IndexOf('{', start);
+        Assert.That(openingBrace, Is.GreaterThan(start), signature);
+
+        int depth = 0;
+        for (int i = openingBrace; i < source.Length; i++)
+        {
+            if (source[i] == '{')
+            {
+                depth++;
+            }
+            else if (source[i] == '}' && --depth == 0)
+            {
+                return source[start..(i + 1)];
+            }
+        }
+
+        throw new AssertionException($"メソッド終端が見つかりません: {signature}");
     }
 
     private static T GetPrivateField<T>(MainWindow window, string fieldName)

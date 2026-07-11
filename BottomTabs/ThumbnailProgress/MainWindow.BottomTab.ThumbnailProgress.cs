@@ -2094,6 +2094,15 @@ namespace IndigoMovieManager
             }
 
             _ = Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshRequested, 1);
+            if (IsUserPriorityWorkActive())
+            {
+                QueueDelayedThumbnailProgressSnapshotRefresh(
+                    TimeSpan.FromMilliseconds(ThumbnailProgressSnapshotVisibleCoalesceMs),
+                    request
+                );
+                return;
+            }
+
             bool isVisibleOrSelected = _thumbnailProgressTabPresenter?.IsVisibleOrSelectedCached() == true;
             if (!isVisibleOrSelected)
             {
@@ -2186,6 +2195,15 @@ namespace IndigoMovieManager
             bool updated = false;
             try
             {
+                if (IsUserPriorityWorkActive())
+                {
+                    QueueDelayedThumbnailProgressSnapshotRefresh(
+                        TimeSpan.FromMilliseconds(ThumbnailProgressSnapshotVisibleCoalesceMs),
+                        request
+                    );
+                    return;
+                }
+
                 if (Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshRequested, 0) == 1)
                 {
                     UpdateThumbnailProgressSnapshotUi(requireVisibleSelection: false);

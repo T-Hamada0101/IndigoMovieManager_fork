@@ -15,6 +15,8 @@ namespace IndigoMovieManager
         private bool _suppressSearchBoxTextChangedHandling = false;
         private SearchExecutionController _searchExecutor;
         private long _searchHistoryRefreshStamp;
+        private bool _searchInputPriorityActive;
+        private bool _searchInputShutdownHooked;
 
         // =================================================================================
         // 検索に関する UI イベント処理 (View層のロジック)
@@ -78,6 +80,9 @@ namespace IndigoMovieManager
         /// </summary>
         private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
         {
+            // フォーカス移動後も保留中の検索は維持し、入力中だけの優先参照を手放す。
+            ReleaseSearchInputPriority();
+
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
                 return;
@@ -126,6 +131,7 @@ namespace IndigoMovieManager
             if (e.Source is ComboBox combo)
             {
                 var text = combo.Text;
+                EnsureSearchInputPriority();
 
                 // [MVVM移行メモ]
                 // 以前搭載されていた1文字ごとのインクリメンタルサーチ処理。
@@ -166,7 +172,7 @@ namespace IndigoMovieManager
                 {
                     CancelIncrementalSearchDebounce();
                     // 検索解除も検索正本へ合流し、一覧反映を先に返してからサムネ常駐を再起動する。
-                    _ = ExecuteSearchKeywordAsync(text, false);
+                    _ = ExecuteSearchKeywordFromInputAsync(text);
                     return;
                 }
 
@@ -250,7 +256,7 @@ namespace IndigoMovieManager
                 if (e.Key == Key.Enter)
                 {
                     // Enter は既定ボタンへ流さず、検索ボックス起点の共通入口へ揃える。
-                    CancelIncrementalSearchDebounce();
+                    CancelIncrementalSearchDebounce(releaseInputPriority: false);
                     _searchBoxItemSelectedByUser = false;
                     if (combo.IsDropDownOpen)
                     {
@@ -260,7 +266,7 @@ namespace IndigoMovieManager
                     e.Handled = true;
 
                     string enteredText = combo.Text ?? "";
-                    bool searchExecuted = await ExecuteSearchKeywordAsync(enteredText, false);
+                    bool searchExecuted = await ExecuteSearchKeywordFromInputAsync(enteredText);
                     if (!searchExecuted)
                     {
                         return;
@@ -279,8 +285,8 @@ namespace IndigoMovieManager
         /// </summary>
         private void DoSearchBoxSearch()
         {
-            CancelIncrementalSearchDebounce();
-            _ = ExecuteSearchKeywordAsync(SearchBox?.Text ?? "", false);
+            CancelIncrementalSearchDebounce(releaseInputPriority: false);
+            _ = ExecuteSearchKeywordFromInputAsync(SearchBox?.Text ?? "");
         }
 
         // Enter 確定後だけ履歴保存をまとめ、検索結果ゼロや空白入力は静かに流す。
@@ -613,9 +619,63 @@ namespace IndigoMovieManager
         }
 
         // Enter や履歴選択と二重発火しないよう、保留中の debounce 検索を止める。
-        private void CancelIncrementalSearchDebounce()
+        private void CancelIncrementalSearchDebounce(bool releaseInputPriority = true)
         {
             StopDispatcherTimerSafely(_searchInputDebounceTimer, nameof(_searchInputDebounceTimer));
+            if (releaseInputPriority)
+            {
+                ReleaseSearchInputPriority();
+            }
+        }
+
+        // タイピング開始から検索本体開始まで背後のUI更新を後ろへ送り、入力描画を優先する。
+        private void EnsureSearchInputPriority()
+        {
+            if (_searchInputPriorityActive)
+            {
+                return;
+            }
+
+            _searchInputPriorityActive = true;
+            BeginUserPriorityWork("search-input");
+            if (!_searchInputShutdownHooked && Dispatcher != null)
+            {
+                Dispatcher.ShutdownStarted += SearchInputDispatcher_ShutdownStarted;
+                _searchInputShutdownHooked = true;
+            }
+        }
+
+        private void ReleaseSearchInputPriority()
+        {
+            if (!_searchInputPriorityActive)
+            {
+                return;
+            }
+
+            _searchInputPriorityActive = false;
+            EndUserPriorityWork("search-input");
+        }
+
+        private void SearchInputDispatcher_ShutdownStarted(object sender, EventArgs e)
+        {
+            StopDispatcherTimerSafely(_searchInputDebounceTimer, nameof(_searchInputDebounceTimer));
+            ReleaseSearchInputPriority();
+        }
+
+        // 検索本体がuser-priorityを取得してから入力中の1参照を渡し、抑止の隙間を作らない。
+        private async Task<bool> ExecuteSearchKeywordFromInputAsync(string text)
+        {
+            Task<bool> searchTask;
+            try
+            {
+                searchTask = ExecuteSearchKeywordAsync(text, false);
+            }
+            finally
+            {
+                ReleaseSearchInputPriority();
+            }
+
+            return await searchTask;
         }
 
         // 起動直後の full reload 連打と、未完成な特殊構文の途中評価を避ける。
@@ -645,25 +705,28 @@ namespace IndigoMovieManager
         // タイピングが一段落した時だけ、現在テキストを query-only 検索へ流す。
         private async void SearchInputDebounceTimer_Tick(object sender, EventArgs e)
         {
-            CancelIncrementalSearchDebounce();
+            CancelIncrementalSearchDebounce(releaseInputPriority: false);
 
             if (_imeFlag || SearchBox == null)
             {
+                ReleaseSearchInputPriority();
                 return;
             }
 
             string text = SearchBox.Text ?? "";
             if (!CanRunIncrementalSearch(text))
             {
+                ReleaseSearchInputPriority();
                 return;
             }
 
             if (string.Equals(MainVM.DbInfo.SearchKeyword ?? "", text, StringComparison.Ordinal))
             {
+                ReleaseSearchInputPriority();
                 return;
             }
 
-            await ExecuteSearchKeywordAsync(text, false);
+            await ExecuteSearchKeywordFromInputAsync(text);
         }
     }
 }

@@ -343,6 +343,51 @@ public sealed class ThumbnailProgressSourceTests
     }
 
     [Test]
+    public void SnapshotRefreshは入力優先中の受付時と実行直前の双方で後送りする()
+    {
+        string source = GetThumbnailProgressSource();
+        string requestMethod = ExtractMethod(
+            source,
+            "private void RequestThumbnailProgressSnapshotRefresh()"
+        );
+        string processMethod = ExtractMethod(
+            source,
+            "private void ProcessThumbnailProgressSnapshotRefreshQueue(UiWorkRequest request)"
+        );
+        const string priorityGuard = "if (IsUserPriorityWorkActive())";
+        const string latestOnlyFlag =
+            "Interlocked.Exchange(ref _thumbnailProgressSnapshotRefreshRequested, 1)";
+        const string delayed = "QueueDelayedThumbnailProgressSnapshotRefresh(";
+
+        Assert.That(requestMethod, Does.Contain(priorityGuard));
+        Assert.That(
+            requestMethod.IndexOf(latestOnlyFlag, StringComparison.Ordinal),
+            Is.LessThan(requestMethod.IndexOf(priorityGuard, StringComparison.Ordinal))
+        );
+        Assert.That(requestMethod, Does.Contain(delayed));
+        Assert.That(
+            requestMethod.IndexOf(priorityGuard, StringComparison.Ordinal),
+            Is.LessThan(requestMethod.IndexOf("Dispatcher.BeginInvoke(", StringComparison.Ordinal))
+        );
+
+        Assert.That(processMethod, Does.Contain(priorityGuard));
+        Assert.That(processMethod, Does.Contain(delayed));
+        Assert.That(
+            processMethod.IndexOf(priorityGuard, StringComparison.Ordinal),
+            Is.LessThan(
+                processMethod.IndexOf(
+                    "UpdateThumbnailProgressSnapshotUi(requireVisibleSelection: false)",
+                    StringComparison.Ordinal
+                )
+            )
+        );
+        Assert.That(
+            processMethod,
+            Does.Contain("ThumbnailProgressSnapshotVisibleCoalesceMs")
+        );
+    }
+
+    [Test]
     public void SnapshotRefresh予約はShutdownまたはDispatcher未使用時に積み増さない()
     {
         string source = GetThumbnailProgressSource();
