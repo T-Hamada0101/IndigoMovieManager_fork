@@ -26,8 +26,13 @@ namespace IndigoMovieManager
         private string _pendingPartialSearchFullCompletionDbPath;
         private int _pendingPartialSearchFullCompletionRevision;
         private bool _partialSearchFullCompletionQueued;
+        private long _partialSearchFullCompletionQuietUntilTimestamp;
+        private bool _partialSearchFullCompletionQuietWindowArmed;
+        private bool _partialSearchFullCompletionReleasePending;
         private bool _searchInputPriorityActive;
         private bool _searchInputShutdownHooked;
+        private static readonly TimeSpan PartialSearchFullCompletionQuietWindow =
+            TimeSpan.FromMilliseconds(1500);
 
         // =================================================================================
         // 検索に関する UI イベント処理 (View層のロジック)
@@ -635,8 +640,9 @@ namespace IndigoMovieManager
 
         private void TryQueuePartialSearchFullCompletionAfterUserPriority()
         {
+            bool isUserPriorityActive = IsUserPriorityWorkActive();
             if (
-                IsUserPriorityWorkActive()
+                isUserPriorityActive
                 || Dispatcher == null
                 || Dispatcher.HasShutdownStarted
                 || Dispatcher.HasShutdownFinished
@@ -645,6 +651,7 @@ namespace IndigoMovieManager
                 return;
             }
 
+            bool waitForQuietWindow;
             lock (_partialSearchFullCompletionSync)
             {
                 if (
@@ -656,7 +663,62 @@ namespace IndigoMovieManager
                     return;
                 }
 
+                // EndUser と active処理の finally が競合しても、解除時刻の更新は最初の1回だけにする。
+                if (
+                    _partialSearchFullCompletionQuietWindowArmed
+                    && _partialSearchFullCompletionReleasePending
+                )
+                {
+                    ExtendPartialSearchFullCompletionQuietWindowUnsafe();
+                    _partialSearchFullCompletionReleasePending = false;
+                }
+
                 _partialSearchFullCompletionQueued = true;
+                waitForQuietWindow = _partialSearchFullCompletionQuietWindowArmed;
+            }
+
+            if (waitForQuietWindow)
+            {
+                _ = WaitForPartialSearchFullCompletionQuietWindowAsync();
+                return;
+            }
+
+            _ = Dispatcher.InvokeAsync(
+                StartPendingPartialSearchFullCompletion,
+                DispatcherPriority.ApplicationIdle
+            );
+        }
+
+        private async Task WaitForPartialSearchFullCompletionQuietWindowAsync()
+        {
+            while (true)
+            {
+                TimeSpan remaining;
+                lock (_partialSearchFullCompletionSync)
+                {
+                    remaining = GetPartialSearchFullCompletionQuietWindowRemainingUnsafe();
+                }
+
+                if (remaining <= TimeSpan.Zero)
+                {
+                    break;
+                }
+
+                // 連続操作で期限が延びても待機Taskは増やさず、同じ1本で残時間だけ待ち直す。
+                await Task.Delay(remaining);
+            }
+
+            if (
+                Dispatcher == null
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+            )
+            {
+                lock (_partialSearchFullCompletionSync)
+                {
+                    _partialSearchFullCompletionQueued = false;
+                }
+                return;
             }
 
             _ = Dispatcher.InvokeAsync(
@@ -677,6 +739,21 @@ namespace IndigoMovieManager
                 return;
             }
 
+            bool waitForQuietWindow;
+            lock (_partialSearchFullCompletionSync)
+            {
+                waitForQuietWindow =
+                    _partialSearchFullCompletionQuietWindowArmed
+                    && GetPartialSearchFullCompletionQuietWindowRemainingUnsafe() > TimeSpan.Zero;
+            }
+
+            if (waitForQuietWindow)
+            {
+                // 先に積まれたApplicationIdle要求も、操作開始後は同じ単一quiet待機へ合流させる。
+                TryQueuePartialSearchFullCompletionAfterUserPriority();
+                return;
+            }
+
             string sortId;
             string dbFullPath;
             int searchRefreshRevision;
@@ -691,6 +768,9 @@ namespace IndigoMovieManager
                 sortId = _pendingPartialSearchFullCompletionSortId;
                 dbFullPath = _pendingPartialSearchFullCompletionDbPath;
                 searchRefreshRevision = _pendingPartialSearchFullCompletionRevision;
+                _partialSearchFullCompletionQuietWindowArmed = false;
+                _partialSearchFullCompletionReleasePending = false;
+                _partialSearchFullCompletionQuietUntilTimestamp = 0;
                 _partialSearchFullCompletionCancellation = new CancellationTokenSource();
                 cancellationToken = _partialSearchFullCompletionCancellation.Token;
             }
@@ -720,12 +800,34 @@ namespace IndigoMovieManager
                     return;
                 }
 
+                // pending整合がある状態で始まった操作だけをquiet windowの起点にする。
+                _partialSearchFullCompletionQuietWindowArmed = true;
+                _partialSearchFullCompletionReleasePending = true;
+                ExtendPartialSearchFullCompletionQuietWindowUnsafe();
+
                 try
                 {
                     _partialSearchFullCompletionCancellation?.Cancel();
                 }
                 catch (ObjectDisposedException) { }
             }
+        }
+
+        private void ExtendPartialSearchFullCompletionQuietWindowUnsafe()
+        {
+            long quietTicks = (long)(
+                PartialSearchFullCompletionQuietWindow.TotalSeconds * Stopwatch.Frequency
+            );
+            _partialSearchFullCompletionQuietUntilTimestamp = Stopwatch.GetTimestamp() + quietTicks;
+        }
+
+        private TimeSpan GetPartialSearchFullCompletionQuietWindowRemainingUnsafe()
+        {
+            long remainingTicks =
+                _partialSearchFullCompletionQuietUntilTimestamp - Stopwatch.GetTimestamp();
+            return remainingTicks <= 0
+                ? TimeSpan.Zero
+                : TimeSpan.FromSeconds((double)remainingTicks / Stopwatch.Frequency);
         }
 
         private async Task CompletePartialSearchFromFullSourceAsync(
