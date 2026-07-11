@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using IndigoMovieManager.UpperTabs.Common;
+using IndigoMovieManager.UpperTabs.Player;
 using IndigoMovieManager.Thumbnail.QueueDb;
 using IndigoMovieManager.ViewModels;
 
@@ -40,6 +41,7 @@ namespace IndigoMovieManager
         private DispatcherTimer _upperTabStartupAppendRetryTimer;
         private DispatcherTimer _upperTabViewportRefreshTimer;
         private DispatcherTimer _playerThumbnailScrollUserPriorityTimer;
+        private DispatcherOperation _playerRightRailWarmRefreshOperation;
         private UpperTabVisibleRange _activeUpperTabVisibleRange = UpperTabVisibleRange.Empty;
         private IReadOnlyList<string> _preferredVisibleMoviePathKeysSnapshot = Array.Empty<string>();
         private bool _isUpperTabPreferredMoviePathKeysSnapshotPublished;
@@ -50,7 +52,10 @@ namespace IndigoMovieManager
         private long _upperTabStartupAppendSuppressUntilUtcTicks;
         private long _recentViewportInteractionUntilUtcTicks;
         private bool _isPlayerThumbnailScrollUserPriorityActive;
-        private bool _playerThumbnailScrollShutdownHooked;
+        private bool _playerRightRailWarmCompletionHooked;
+        private readonly HashSet<string> _playerRightRailWarmCompletedMoviePathKeys = new(
+            StringComparer.OrdinalIgnoreCase
+        );
 
         public static readonly DependencyProperty UpperTabPreferredMoviePathKeysRevisionProperty =
             DependencyProperty.Register(
@@ -87,6 +92,10 @@ namespace IndigoMovieManager
             };
             _playerThumbnailScrollUserPriorityTimer.Tick +=
                 PlayerThumbnailScrollUserPriorityTimer_Tick;
+            PlayerRightRailImageSourceConverter.ImageWarmCompleted +=
+                PlayerRightRailImageSourceConverter_ImageWarmCompleted;
+            _playerRightRailWarmCompletionHooked = true;
+            Dispatcher.ShutdownStarted += PlayerThumbnailScrollDispatcher_ShutdownStarted;
 
             Loaded += (_, _) =>
             {
@@ -443,12 +452,6 @@ namespace IndigoMovieManager
                 );
             }
 
-            if (!_playerThumbnailScrollShutdownHooked && Dispatcher != null)
-            {
-                Dispatcher.ShutdownStarted += PlayerThumbnailScrollDispatcher_ShutdownStarted;
-                _playerThumbnailScrollShutdownHooked = true;
-            }
-
             StopDispatcherTimerSafely(
                 _playerThumbnailScrollUserPriorityTimer,
                 nameof(_playerThumbnailScrollUserPriorityTimer)
@@ -467,6 +470,16 @@ namespace IndigoMovieManager
         private void PlayerThumbnailScrollDispatcher_ShutdownStarted(object sender, EventArgs e)
         {
             ReleasePlayerThumbnailScrollUserPriority("shutdown");
+            if (_playerRightRailWarmCompletionHooked)
+            {
+                PlayerRightRailImageSourceConverter.ImageWarmCompleted -=
+                    PlayerRightRailImageSourceConverter_ImageWarmCompleted;
+                _playerRightRailWarmCompletionHooked = false;
+            }
+
+            _playerRightRailWarmCompletedMoviePathKeys.Clear();
+            _playerRightRailWarmRefreshOperation?.Abort();
+            _playerRightRailWarmRefreshOperation = null;
         }
 
         private void ReleasePlayerThumbnailScrollUserPriority(string releaseReason)
@@ -486,6 +499,125 @@ namespace IndigoMovieManager
                 "ui-priority",
                 $"player thumbnail scroll priority end: release_reason={releaseReason}"
             );
+            if (string.Equals(releaseReason, "idle", StringComparison.Ordinal))
+            {
+                QueuePlayerRightRailWarmRefresh();
+            }
+        }
+
+        // 背景warm完了はUIへ戻し、現在のPlayer visible項目だけを再評価候補にする。
+        private void PlayerRightRailImageSourceConverter_ImageWarmCompleted(
+            object sender,
+            ImageRequest request
+        )
+        {
+            if (
+                Dispatcher == null
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+            )
+            {
+                return;
+            }
+
+            _ = Dispatcher.InvokeAsync(
+                () => HandlePlayerRightRailImageWarmCompleted(request),
+                DispatcherPriority.Background
+            );
+        }
+
+        private void HandlePlayerRightRailImageWarmCompleted(ImageRequest request)
+        {
+            if (
+                TabPlayer?.IsSelected != true
+                || request.ThumbnailRole != ImageRequestThumbnailRole.PlayerRightRail
+                || !ContainsMoviePathKey(
+                    _preferredVisibleMoviePathKeysSnapshot,
+                    request.MoviePathKey
+                )
+            )
+            {
+                return;
+            }
+
+            _playerRightRailWarmCompletedMoviePathKeys.Add(request.MoviePathKey);
+            if (!_isPlayerThumbnailScrollUserPriorityActive)
+            {
+                QueuePlayerRightRailWarmRefresh();
+            }
+        }
+
+        private void QueuePlayerRightRailWarmRefresh()
+        {
+            if (
+                _playerRightRailWarmCompletedMoviePathKeys.Count == 0
+                || Dispatcher == null
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+                || (
+                    _playerRightRailWarmRefreshOperation != null
+                    && _playerRightRailWarmRefreshOperation.Status == DispatcherOperationStatus.Pending
+                )
+            )
+            {
+                return;
+            }
+
+            _playerRightRailWarmRefreshOperation = Dispatcher.InvokeAsync(
+                ApplyPlayerRightRailWarmRefresh,
+                DispatcherPriority.Background
+            );
+        }
+
+        private void ApplyPlayerRightRailWarmRefresh()
+        {
+            _playerRightRailWarmRefreshOperation = null;
+            if (_isPlayerThumbnailScrollUserPriorityActive)
+            {
+                return;
+            }
+
+            if (TabPlayer?.IsSelected != true)
+            {
+                _playerRightRailWarmCompletedMoviePathKeys.Clear();
+                return;
+            }
+
+            bool hasVisibleCompletion = _playerRightRailWarmCompletedMoviePathKeys.Any(moviePathKey =>
+                ContainsMoviePathKey(_preferredVisibleMoviePathKeysSnapshot, moviePathKey)
+            );
+            _playerRightRailWarmCompletedMoviePathKeys.Clear();
+            if (hasVisibleCompletion)
+            {
+                RefreshUpperTabPreferredMoviePathKeysRevision();
+            }
+        }
+
+        internal static bool ContainsMoviePathKey(
+            IReadOnlyList<string> moviePathKeys,
+            string moviePathKey
+        )
+        {
+            if (moviePathKeys == null || string.IsNullOrWhiteSpace(moviePathKey))
+            {
+                return false;
+            }
+
+            for (int index = 0; index < moviePathKeys.Count; index++)
+            {
+                if (
+                    string.Equals(
+                        moviePathKeys[index],
+                        moviePathKey,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private ScrollViewer GetUpperTabViewportScrollViewer(ItemsControl itemsControl)

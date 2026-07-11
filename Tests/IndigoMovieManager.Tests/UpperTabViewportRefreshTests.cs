@@ -271,6 +271,10 @@ public sealed class UpperTabViewportRefreshTests
             viewportSource,
             "private void BeginOrExtendPlayerThumbnailScrollUserPriority("
         );
+        string initializeMethod = GetMethodBlock(
+            viewportSource,
+            "private void InitializeUpperTabViewportSupport()"
+        );
         string releaseMethod = GetMethodBlock(
             viewportSource,
             "private void ReleasePlayerThumbnailScrollUserPriority("
@@ -283,7 +287,7 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(beginMethod, Does.Contain("BeginUserPriorityWork(\"player-thumbnail-scroll\");"));
         Assert.That(beginMethod, Does.Contain("_isPlayerThumbnailScrollUserPriorityActive"));
         Assert.That(
-            beginMethod,
+            initializeMethod,
             Does.Contain("Dispatcher.ShutdownStarted += PlayerThumbnailScrollDispatcher_ShutdownStarted;")
         );
         Assert.That(releaseMethod, Does.Contain("EndUserPriorityWork(\"player-thumbnail-scroll\");"));
@@ -295,6 +299,70 @@ public sealed class UpperTabViewportRefreshTests
             viewportSource,
             Does.Contain("ReleasePlayerThumbnailScrollUserPriority(\"shutdown\");")
         );
+    }
+
+    [Test]
+    public void Player右レールwarm完了はスクロールidle後にlatest_onlyで再評価する()
+    {
+        string viewportSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.Viewport.cs"
+        );
+        string completionMethod = GetMethodBlock(
+            viewportSource,
+            "private void HandlePlayerRightRailImageWarmCompleted("
+        );
+        string queueMethod = GetMethodBlock(
+            viewportSource,
+            "private void QueuePlayerRightRailWarmRefresh()"
+        );
+        string applyMethod = GetMethodBlock(
+            viewportSource,
+            "private void ApplyPlayerRightRailWarmRefresh()"
+        );
+
+        Assert.That(
+            viewportSource,
+            Does.Contain("PlayerRightRailImageSourceConverter.ImageWarmCompleted +=")
+        );
+        Assert.That(
+            viewportSource,
+            Does.Contain("PlayerRightRailImageSourceConverter.ImageWarmCompleted -=")
+        );
+        Assert.That(completionMethod, Does.Contain("ContainsMoviePathKey("));
+        Assert.That(
+            completionMethod,
+            Does.Contain("if (!_isPlayerThumbnailScrollUserPriorityActive)")
+        );
+        Assert.That(
+            queueMethod,
+            Does.Contain("_playerRightRailWarmRefreshOperation.Status == DispatcherOperationStatus.Pending")
+        );
+        Assert.That(applyMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(applyMethod, Does.Not.Contain("SelectedItem"));
+        Assert.That(applyMethod, Does.Not.Contain("ScrollTo"));
+        Assert.That(
+            viewportSource,
+            Does.Contain("QueuePlayerRightRailWarmRefresh();")
+        );
+    }
+
+    [TestCase("movie-key", "MOVIE-KEY", true)]
+    [TestCase("movie-key", "other-key", false)]
+    [TestCase("movie-key", "", false)]
+    public void Player右レールwarm完了はvisibleキーだけを対象にする(
+        string visibleKey,
+        string completedKey,
+        bool expected
+    )
+    {
+        bool actual = IndigoMovieManager.MainWindow.ContainsMoviePathKey(
+            [visibleKey],
+            completedKey
+        );
+
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
