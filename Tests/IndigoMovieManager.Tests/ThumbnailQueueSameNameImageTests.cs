@@ -75,6 +75,60 @@ public sealed class ThumbnailQueueSameNameImageTests
         }
     }
 
+    [TestCase(".jpg")]
+    [TestCase(".jpeg")]
+    [TestCase(".png")]
+    public void TryResolveSameNameThumbnailSourceImagePath_対応する同名画像を従来どおり返す(
+        string imageExtension
+    )
+    {
+        string tempRoot = CreateTempRoot();
+
+        try
+        {
+            string moviePath = Path.Combine(tempRoot, "movie.mp4");
+            string imagePath = Path.ChangeExtension(moviePath, imageExtension);
+            File.WriteAllBytes(moviePath, []);
+            File.WriteAllBytes(imagePath, [0x01]);
+
+            bool actual = ThumbnailSourceImagePathResolver.TryResolveSameNameThumbnailSourceImagePath(
+                moviePath,
+                out string resolvedPath
+            );
+
+            Assert.That(actual, Is.True);
+            Assert.That(resolvedPath, Is.EqualTo(imagePath));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public void TryResolveSameNameThumbnailSourceImagePath_全拡張子欠損ならFalseと空文字を返す()
+    {
+        string tempRoot = CreateTempRoot();
+
+        try
+        {
+            string moviePath = Path.Combine(tempRoot, "movie.mp4");
+            File.WriteAllBytes(moviePath, []);
+
+            bool actual = ThumbnailSourceImagePathResolver.TryResolveSameNameThumbnailSourceImagePath(
+                moviePath,
+                out string resolvedPath
+            );
+
+            Assert.That(actual, Is.False);
+            Assert.That(resolvedPath, Is.Empty);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
     [Test]
     public void HasSameNameThumbnailSourceImage_画像が無ければFalseを返す()
     {
@@ -101,5 +155,16 @@ public sealed class ThumbnailQueueSameNameImageTests
                 Directory.Delete(tempRoot, recursive: true);
             }
         }
+    }
+
+    private static string CreateTempRoot()
+    {
+        string tempRoot = Path.Combine(
+            Path.GetTempPath(),
+            "IndigoMovieManager.Tests",
+            Guid.NewGuid().ToString("N")
+        );
+        Directory.CreateDirectory(tempRoot);
+        return tempRoot;
     }
 }

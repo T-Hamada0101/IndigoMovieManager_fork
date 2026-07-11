@@ -550,6 +550,83 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void MovieRecordFactory_同名画像probeは行単位で最大1回だけ共有する()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
+        string createMethod = GetMethodBlock(
+            source,
+            "private MovieRecords CreateMovieRecordFromDataRow("
+        );
+        string resolveMethod = GetMethodBlock(
+            source,
+            "internal static string ResolveThumbnailDisplayPath("
+        );
+
+        Assert.That(
+            CountOccurrences(
+                source,
+                "ThumbnailSourceImagePathResolver.TryResolveSameNameThumbnailSourceImagePath("
+            ),
+            Is.EqualTo(1),
+            "1行の6用途から同名画像resolverを直接呼び分けないこと。"
+        );
+        Assert.That(createMethod, Does.Contain("LazyThumbnailSourceImagePathResolver"));
+        Assert.That(createMethod, Does.Contain("sourceImageResolver"));
+        Assert.That(
+            CountOccurrences(createMethod, "ResolveThumbnailDisplayPath("),
+            Is.EqualTo(2),
+            "5タブはループ内の1箇所、詳細は1箇所から同じ行キャッシュを渡すこと。"
+        );
+        Assert.That(resolveMethod, Does.Contain("sourceImageResolver"));
+        Assert.That(resolveMethod, Does.Contain("sourceImageResolver.Resolve()"));
+    }
+
+    [Test]
+    public void MovieRecordFactory_管理サムネ命中時は同名画像probeへ進まない()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
+        string resolveMethod = GetMethodBlock(
+            source,
+            "internal static string ResolveThumbnailDisplayPath("
+        );
+        int currentThumbnailReturn = resolveMethod.IndexOf(
+            "return Path.Combine(thumbnailOutPath, currentFileName);",
+            StringComparison.Ordinal
+        );
+        int legacyThumbnailReturn = resolveMethod.IndexOf(
+            "return Path.Combine(thumbnailOutPath, legacyFileName);",
+            StringComparison.Ordinal
+        );
+        int sameNameImageProbe = resolveMethod.IndexOf(
+            "sourceImageResolver.Resolve()",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(currentThumbnailReturn, Is.GreaterThanOrEqualTo(0));
+        Assert.That(legacyThumbnailReturn, Is.GreaterThan(currentThumbnailReturn));
+        Assert.That(sameNameImageProbe, Is.GreaterThan(legacyThumbnailReturn));
+    }
+
+    [Test]
+    public void MovieRecordFactory_同名画像probeキャッシュは行を跨いで共有しない()
+    {
+        string source = GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
+        string createMethod = GetMethodBlock(
+            source,
+            "private MovieRecords CreateMovieRecordFromDataRow("
+        );
+
+        Assert.That(
+            createMethod,
+            Does.Contain(
+                "? new LazyThumbnailSourceImagePathResolver(movieFullPath)"
+            )
+        );
+        Assert.That(source, Does.Not.Contain("static LazyThumbnailSourceImagePathResolver"));
+        Assert.That(source, Does.Not.Contain("required LazyThumbnailSourceImagePathResolver"));
+    }
+
+    [Test]
     public void SortDataAsync_大件数sortはbackgroundとrevision_guardへ寄せる()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
@@ -1422,6 +1499,19 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         return Path.GetRelativePath(repoRoot.FullName, filePath)
             .Replace(Path.DirectorySeparatorChar, '/')
             .Replace(Path.AltDirectorySeparatorChar, '/');
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        int count = 0;
+        int startIndex = 0;
+        while ((startIndex = source.IndexOf(value, startIndex, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            startIndex += value.Length;
+        }
+
+        return count;
     }
 
     private static string GetMethodBlock(string source, string signature)
