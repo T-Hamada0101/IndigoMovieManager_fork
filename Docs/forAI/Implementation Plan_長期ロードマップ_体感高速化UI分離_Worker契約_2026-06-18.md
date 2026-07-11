@@ -622,6 +622,20 @@ Release x64コピーDBのEnterなし `movie` 検索では43,548件級の全件pr
 
 Release x64の関連111テストは成功した。コピーDBのPlayer PageDown 8回では `first_render_ms=28 first_layout_ms=26 max_layout_gap_ms=355 total_ms=658 revision_delta=0` となり、旧runでスクロール中に7件出ていたvisible probeのstale完了は0件になった。解除後は最新63件のprobeが完了したが、warm / viewport更新由来とみられる同一63件probeが約1秒後にもう1回完了した。また同区間のUI監視には `activity=None delay_ms=1238` が残る一方、描画側最大gapは355 msだった。次の最優先は同一DB / filter revision / preferred key snapshotの短時間重複probeを省き、UI hang監視値が実描画停止か監視上の遅延かを同じburst IDで照合することである。人間の物理ホイール体感確認は未達のまま残す。
 
+次フェーズでは、visible source image probeのDB path、filter revision、順序付きplaceholder対象keyからfingerprintを作り、正常完了後2秒以内の同一要求を省いた。stale / failedは完了cacheへ入れず、placeholder対象が変われば同じviewportでも再探索する。Player scroll burstには単調な `burst_id` を発行し、priority begin / end / burst集約とUI hang detected / updatedを同じIDで結んだ。親レビューでは、一度scrollした後もactive扱いが残る誤りを修正し、実priorityフラグをvolatile snapshotへ渡した。
+
+Release x64コピーDBでは `burst_id=1` のUI hangが `delay_ms=1007`、同burstの `first_render_ms=28 max_layout_gap_ms=332 total_ms=559` となり、Background heartbeatの待ちと描画gapに差があることを確認した。heartbeat予約を `DispatcherPriority.Input` へ変更して入力応答基準に揃えた次runでは、`delay_ms=1129 max_layout_gap_ms=999 total_ms=1556` と一致して実停止を観測した。同runの未warm領域では `cache_miss_count=104 queue_enqueued_count=104` だったため、scroll中のwarm enqueueを次の比較対象に選んだ。
+
+warm queueへ軽量suspension providerを接続し、scroll priority中のmissは `Suppressed` としてキューへ入れず、idle時の既存viewport revision flushで再評価するようにした。通常enqueue / duplicate / capacity 64 / single workerとUI thread decode禁止は維持した。親統合74テストとRelease x64 buildは成功し、警告0、エラー0だった。実機では `cache_miss_count=40 queue_enqueued_count=0 suppressed_count=40` と抑止自体は効いたが、同じPageDown 8回は `first_render_ms=22 max_layout_gap_ms=2053 total_ms=3583` となり改善しなかった。したがってwarm decode投入はscroll中から除去できたものの主因ではない。次の最優先は、user-priority開始前から実行中のthumbnail worker / 外部decodeによるCPU競合と、WPF container生成約200件のどちらがlayout gapを作るかを同一burstで分離することである。自動PageDownは物理wheelの代替完了条件にせず、人間の物理ホイール体感確認を残す。
+
+同一probeはDB path、filter revision、順序付きplaceholder対象keyのfingerprintで識別し、正常完了または解決0件だけを2秒間省略する。stale / failedはcacheせず、重複skipではprobe revisionを進めないため、進行中の正しい探索を後着要求がstale化しない。UI hang heartbeatは単一pendingと250 ms間隔を維持したまま `DispatcherPriority.Input`へ上げ、Playerのburst IDとscroll activeをhang detected / updatedへ接続した。
+
+次に、Player右レールのconverter missがscroll中にもwarm queueへ入り、画像decodeを背景で開始していた経路を閉じた。WarmQueue内部へ例外安全なsuspension providerを1本だけ接続し、user-priority中はpending keyやcapacityを変更する前に `Suppressed` を返す。idle時は既存のviewport revision pending flushでBindingを再評価するため、現在のrealized / visible要求だけが通常queueへ戻る。staticな判断状態をWarmQueue外へ増やさず、判定例外時は抑止しない。
+
+Release x64の関連71テストと本体buildは成功し、警告0、エラー0だった。コピーDBのPageDown 8回では `converter_count=104 cache_hit_count=64 cache_miss_count=40 queue_enqueued_count=0 queue_duplicate_count=0 suppressed_count=40 revision_delta=0 viewport_revision_pending=True` を確認した。解除直後はpending revisionを1回更新し、その後 `visible_completions=18` の現在可視要求だけが通常warmへ戻った。未warm 40件が操作中にdecode queueへ入る問題はBehavior / Evidence / Regression Guardまで閉じた。
+
+同runの `first_render_ms=22 first_layout_ms=21` は良好だが、`max_layout_gap_ms=2053 total_ms=3583` とUI監視の遅延は残った。このrunでは事前のUI Automation全探索が対象UIへ負荷を与えたため、停止値を製品単独の回帰とは判定しない。次の最優先はUIAを使わない実OSホイールrunで同じburst相関を採り、container生成、heartbeat、Watch / thumbnail activityのどれが残る長いgapと一致するかを1件へ絞ることである。人間の物理ホイール体感確認は完了ゲートに残す。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
