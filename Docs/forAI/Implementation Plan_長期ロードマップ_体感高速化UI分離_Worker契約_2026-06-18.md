@@ -592,6 +592,10 @@ Player内の1バースト集約計測を追加した結果、8回PageDownで `re
 
 仮想化先読みを `0.5 Page` から `0` へ下げる比較も行ったが、`generator_delta=228 max_layout_gap_ms=883`、UI停止最大1203 msとなり、container再生成が増えて改善しなかったため同日中に `0.5 Page` へ戻した。次順位は固定高56 px行のtemplate軽量化で、`Label` / itemごとのContextMenu / ToolTipがcontainer生成へ与えるコストを小さく比較する。cache `0` は再採用しない。ユーザー自身の物理ホイール確認まではPlayer scrollフェーズを完了扱いにしない。
 
+固定高行は画像ラッパーを `Label` から `Border` へ変え、タイトルの行ごとのToolTip Bindingを外した。クリック処理は `FrameworkElement.DataContext` 基準へ寄せ、既存Label senderとPlayer Border senderを同じ経路で扱う。8回PageDown比較ではgenerator数は198で不変だが、最大layout gapは903 msから846 msへ低下し、スクロール中のWarning停止は出なかった。
+
+さらにカーソル位置のnative window handleが本体handleと一致することを確認してOSホイール入力を送り、12送信中8入力の1バーストで `first_render_ms=6 first_layout_ms=5 converter_count=8 generator_delta=36 max_layout_gap_ms=637 revision_delta=0` を採取した。旧物理ホイールrunの最大1249 ms停止より改善し、同バースト中にWarning停止は記録されなかった。自動入力上のBehavior / Evidence / Regression Guardは揃ったが、人間の物理ホイール操作感は未確認なのでPlayer scrollフェーズは実機確認待ちのままとする。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
