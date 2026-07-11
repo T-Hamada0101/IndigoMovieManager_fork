@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -17,6 +18,7 @@ namespace IndigoMovieManager
         private long _searchHistoryRefreshStamp;
         private long _searchInputSequence;
         private long _pendingSearchInputId;
+        private long _pendingSearchInputAcceptedTimestamp;
         private bool _searchInputPriorityActive;
         private bool _searchInputShutdownHooked;
 
@@ -136,10 +138,7 @@ namespace IndigoMovieManager
                 long searchInputId = Interlocked.Increment(ref _searchInputSequence);
                 int textLength = text?.Length ?? 0;
                 long debounceMilliseconds = (long)_searchInputDebounceTimer.Interval.TotalMilliseconds;
-                DebugRuntimeLog.Write(
-                    "search-input",
-                    $"text changed accepted: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds}"
-                );
+                _pendingSearchInputAcceptedTimestamp = Stopwatch.GetTimestamp();
                 EnsureSearchInputPriority();
 
                 // [MVVM移行メモ]
@@ -715,12 +714,17 @@ namespace IndigoMovieManager
         {
             long searchInputId = _pendingSearchInputId;
             long debounceMilliseconds = (long)_searchInputDebounceTimer.Interval.TotalMilliseconds;
+            long acceptedToDebounceMilliseconds = _pendingSearchInputAcceptedTimestamp > 0
+                ? (long)Stopwatch
+                    .GetElapsedTime(_pendingSearchInputAcceptedTimestamp)
+                    .TotalMilliseconds
+                : -1;
             CancelIncrementalSearchDebounce(releaseInputPriority: false);
 
             int textLength = SearchBox?.Text?.Length ?? 0;
             DebugRuntimeLog.Write(
                 "search-input",
-                $"debounce fired: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds}"
+                $"debounce fired: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds} accepted_to_debounce_ms={acceptedToDebounceMilliseconds}"
             );
 
             if (_imeFlag)

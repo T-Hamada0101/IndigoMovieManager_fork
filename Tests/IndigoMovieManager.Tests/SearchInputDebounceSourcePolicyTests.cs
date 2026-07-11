@@ -34,7 +34,7 @@ public sealed class SearchInputDebounceSourcePolicyTests
         Assert.That(tickMethod, Does.Contain("if (_imeFlag)"));
         Assert.That(tickMethod, Does.Contain("if (SearchBox == null)"));
         Assert.That(tickMethod, Does.Contain("if (!CanRunIncrementalSearch(text))"));
-        Assert.That(canRunMethod, Does.Contain("!_startupFeedLoadedAllPages"));
+        Assert.That(canRunMethod, Does.Contain("IsStartupFeedPartialActive"));
         Assert.That(canRunMethod, Does.Contain("text.IndexOf('{')"));
         Assert.That(canRunMethod, Does.Contain("text.IndexOf('}')"));
         Assert.That(canRunMethod, Does.Contain("lastChar != '-'"));
@@ -57,7 +57,7 @@ public sealed class SearchInputDebounceSourcePolicyTests
         Assert.That(debounceFlow, Does.Contain("text_length"));
         Assert.That(debounceFlow, Does.Contain("debounce_ms"));
         Assert.That(debounceFlow, Does.Not.Match(@"DebugRuntimeLog\.Write\([\s\S]*?\{text\}"));
-        Assert.That(debounceFlow, Does.Not.Match(@"DebugRuntimeLog\.Write\([\s\S]*?SearchKeyword"));
+        Assert.That(debounceFlow, Does.Not.Contain("$\"{text}"));
         Assert.That(debounceFlow, Does.Not.Contain("keyword='"));
         Assert.That(debounceFlow, Does.Not.Contain("text='"));
     }
