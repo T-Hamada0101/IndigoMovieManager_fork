@@ -28,12 +28,14 @@ namespace IndigoMovieManager
             int ProbeRevision,
             int FilterRevision,
             string DbFullPath,
+            string Fingerprint,
             VisibleSourceImageProbeTarget[] Targets
         );
 
         private int _visibleSourceImageProbeRevision;
         private string _visibleSourceImageProbePendingRequest;
         private int _visibleSourceImageProbeWorkerRunning;
+        private string _visibleSourceImageProbeInFlightFingerprint;
         private string _visibleSourceImageProbeLastCompletedFingerprint;
         private long _visibleSourceImageProbeLastCompletedTimestamp;
         private static readonly long VisibleSourceImageProbeDuplicateWindowTicks =
@@ -88,12 +90,39 @@ namespace IndigoMovieManager
                 return;
             }
 
+            // 同じ範囲の探索は進行中の1本へ任せ、異なる範囲だけ旧結果をstale化する。
+            while (true)
+            {
+                string currentFingerprint = Volatile.Read(
+                    ref _visibleSourceImageProbeInFlightFingerprint
+                );
+                if (string.Equals(currentFingerprint, fingerprint, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                if (
+                    ReferenceEquals(
+                        Interlocked.CompareExchange(
+                            ref _visibleSourceImageProbeInFlightFingerprint,
+                            fingerprint,
+                            currentFingerprint
+                        ),
+                        currentFingerprint
+                    )
+                )
+                {
+                    break;
+                }
+            }
+
             int probeRevision = Interlocked.Increment(ref _visibleSourceImageProbeRevision);
             VisibleSourceImageProbeRequest request = new(
                 reason,
                 probeRevision,
                 filterRevision,
                 dbFullPath,
+                fingerprint,
                 targets
             );
             _ = ExecuteVisibleSourceImageProbeAsync(request);
@@ -353,7 +382,7 @@ namespace IndigoMovieManager
                     applyStopwatch.ElapsedMilliseconds
                 );
                 _visibleSourceImageProbeLastCompletedFingerprint =
-                    BuildVisibleSourceImageProbeFingerprint(dbFullPath, filterRevision, targets);
+                    request.Fingerprint;
                 _visibleSourceImageProbeLastCompletedTimestamp = Stopwatch.GetTimestamp();
             }
             catch (Exception ex)
@@ -361,6 +390,15 @@ namespace IndigoMovieManager
                 DebugRuntimeLog.Write(
                     "ui-tempo",
                     $"source image probe failed: reason={reason} revision={probeRevision} filter_revision={filterRevision} requested={targets.Length} err='{ex.GetType().Name}: {ex.Message}'"
+                );
+            }
+            finally
+            {
+                // 後着要求の登録は消さず、自分が登録したfingerprintだけを解除する。
+                Interlocked.CompareExchange(
+                    ref _visibleSourceImageProbeInFlightFingerprint,
+                    null,
+                    request.Fingerprint
                 );
             }
         }
