@@ -580,7 +580,9 @@ sidecar判断ゲート:
 
 シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、250 ms未満では表示せず、超えた時はヘッダー表示中も入力とscrollを続けられることを確認する。シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
-2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化、入力中のサムネイル表示延期と新規lease延期、live監査のrun分離とrotation跨ぎ復元、Player右レールのscroll中decode分離をRelease実機で確認した。次の最優先は、ユーザー自身のホイール操作でPlayer右レールの改善を判定し、128MB診断runでplayer-core / image-pipelineを揃えること。実表示が滑らかならPlayer scrollフェーズを閉じ、引っ掛かりが残るなら同時刻のUI停止activityを基に次の1件だけを選ぶ。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
+2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化、入力中のサムネイル表示延期と新規lease延期、live監査のrun分離とrotation跨ぎ復元、Player右レールのscroll中decode分離をRelease実機で確認した。旧3列 `VirtualizingWrapPanel` では物理ホイール中に `activity=None` のUI停止が最大1249 ms残ったため、Player右レールだけを標準 `VirtualizingStackPanel` の固定高56 px縦リストへ変更した。選択、クリック、context menu、Recycling、item scroll、0.5 Page cacheは維持し、他タブのwrap表示は変更していない。
+
+同日Release x64のコピーDB + no-persist診断では、Player PageDownの一覧処理が3 ms / 7 ms、入力開始から最初のRenderが6 msだった。標準縦リスト化によってPlayerスクロールの初動は短くなったと判断する。一方、同じバースト中に `activity=None` のUI監視停止が最大1103 ms残っており、Playerレイアウトだけで全停止が解消したとは扱わない。次はユーザー自身の物理ホイールで操作感を判定し、引っ掛かりが残る場合は同時刻の背景処理とUI停止を別件として切り分ける。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
 ## 11. 前提
 
