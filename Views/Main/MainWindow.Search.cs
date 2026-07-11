@@ -15,6 +15,8 @@ namespace IndigoMovieManager
         private bool _suppressSearchBoxTextChangedHandling = false;
         private SearchExecutionController _searchExecutor;
         private long _searchHistoryRefreshStamp;
+        private long _searchInputSequence;
+        private long _pendingSearchInputId;
         private bool _searchInputPriorityActive;
         private bool _searchInputShutdownHooked;
 
@@ -131,6 +133,13 @@ namespace IndigoMovieManager
             if (e.Source is ComboBox combo)
             {
                 var text = combo.Text;
+                long searchInputId = Interlocked.Increment(ref _searchInputSequence);
+                int textLength = text?.Length ?? 0;
+                long debounceMilliseconds = (long)_searchInputDebounceTimer.Interval.TotalMilliseconds;
+                DebugRuntimeLog.Write(
+                    "search-input",
+                    $"text changed accepted: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds}"
+                );
                 EnsureSearchInputPriority();
 
                 // [MVVM移行メモ]
@@ -172,12 +181,16 @@ namespace IndigoMovieManager
                 {
                     CancelIncrementalSearchDebounce();
                     // 検索解除も検索正本へ合流し、一覧反映を先に返してからサムネ常駐を再起動する。
+                    DebugRuntimeLog.Write(
+                        "search-input",
+                        $"search execute: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds} reason=empty-text"
+                    );
                     _ = ExecuteSearchKeywordFromInputAsync(text);
                     return;
                 }
 
                 // 通常時だけ debounce で検索確定し、連打入力でも UI を詰まらせにくくする。
-                QueueIncrementalSearch();
+                QueueIncrementalSearch(searchInputId);
             }
         }
 
@@ -606,8 +619,9 @@ namespace IndigoMovieManager
         }
 
         // 検索可否に関係なく入力停止を待ち、その間は背後のUI更新より文字入力を優先する。
-        private void QueueIncrementalSearch()
+        private void QueueIncrementalSearch(long searchInputId)
         {
+            _pendingSearchInputId = searchInputId;
             StopDispatcherTimerSafely(_searchInputDebounceTimer, nameof(_searchInputDebounceTimer));
             TryStartDispatcherTimer(_searchInputDebounceTimer, nameof(_searchInputDebounceTimer));
         }
@@ -699,10 +713,32 @@ namespace IndigoMovieManager
         // タイピングが一段落した時だけ、現在テキストを query-only 検索へ流す。
         private async void SearchInputDebounceTimer_Tick(object sender, EventArgs e)
         {
+            long searchInputId = _pendingSearchInputId;
+            long debounceMilliseconds = (long)_searchInputDebounceTimer.Interval.TotalMilliseconds;
             CancelIncrementalSearchDebounce(releaseInputPriority: false);
 
-            if (_imeFlag || SearchBox == null)
+            int textLength = SearchBox?.Text?.Length ?? 0;
+            DebugRuntimeLog.Write(
+                "search-input",
+                $"debounce fired: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds}"
+            );
+
+            if (_imeFlag)
             {
+                DebugRuntimeLog.Write(
+                    "search-input",
+                    $"debounce skipped: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds} reason=ime-active"
+                );
+                ReleaseSearchInputPriority();
+                return;
+            }
+
+            if (SearchBox == null)
+            {
+                DebugRuntimeLog.Write(
+                    "search-input",
+                    $"debounce skipped: search_input_id={searchInputId} text_length={textLength} debounce_ms={debounceMilliseconds} reason=search-box-unavailable"
+                );
                 ReleaseSearchInputPriority();
                 return;
             }
@@ -710,16 +746,23 @@ namespace IndigoMovieManager
             string text = SearchBox.Text ?? "";
             if (!CanRunIncrementalSearch(text))
             {
+                string skipReason = IsStartupFeedPartialActive
+                    ? "startup-feed-partial"
+                    : string.IsNullOrEmpty(text)
+                        ? "empty-text"
+                        : "incomplete-syntax";
+                DebugRuntimeLog.Write(
+                    "search-input",
+                    $"debounce skipped: search_input_id={searchInputId} text_length={text.Length} debounce_ms={debounceMilliseconds} reason={skipReason}"
+                );
                 ReleaseSearchInputPriority();
                 return;
             }
 
-            if (string.Equals(MainVM.DbInfo.SearchKeyword ?? "", text, StringComparison.Ordinal))
-            {
-                ReleaseSearchInputPriority();
-                return;
-            }
-
+            DebugRuntimeLog.Write(
+                "search-input",
+                $"search execute: search_input_id={searchInputId} text_length={text.Length} debounce_ms={debounceMilliseconds} reason=debounce"
+            );
             await ExecuteSearchKeywordFromInputAsync(text);
         }
     }
