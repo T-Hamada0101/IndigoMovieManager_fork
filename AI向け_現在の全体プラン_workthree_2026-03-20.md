@@ -3,6 +3,7 @@
 最終更新日: 2026-07-12
 
 変更概要:
+- 2026-07-12、startup partial表示後の全件整合をlatest-onlyでApplicationIdleへ送り、user-priority開始時は外部tokenでDB後段・43k変換・UI applyを中断し、解除後に最新1件だけ再開するようにした。Player PageDown 1回目の間はfull開始0件、解除後に始まったrevision 2は二度目のPageDownで `stage=db-reload` cancel、revision 3だけが完了した。親60テスト成功。ただしDB facade自体は協調キャンセル非対応で読込完了まで1509ms走り、二度目burstは `max_layout_gap_ms=893`。次順位はDB読込の真の中断または十分なscroll quiet windowである。
 - 2026-07-12、ASCII fast prewarm後の同条件実測でstartup partial検索は `filter_sort_ms=101 apply_ms=47 total_ms=104` となり、導入前1434msから短縮して300ms目標を達成した。prewarmと検索は同じ200レコード参照・同じcacheを再利用し、更新時invalidateを含む親関連78テストも成功。次順位はpartial表示直後に続く全件整合2806msがPlayer scrollへ割り込まないことの確認である。
 - 2026-07-12、startup partialの先頭最大200件について、入力可能になった後にASCII fast検索投影だけを単一background taskで事前生成するようにした。16件ごとにuser-priority / startup session / DB / shutdownを確認し、操作時は中断する。Release x64コピーDBでは200件を10msで完了し、Player scroll時間帯へ残らなかった。次は同じ条件で初回partial検索を再測定する。
 - 2026-07-12、Player右レールの未warm画像はscroll user-priority中にdecode queueへ積まず、`Suppressed`としてburst集約するようにした。Release x64コピーDBのPageDown 8回で `cache_miss_count=40 queue_enqueued_count=0 suppressed_count=40`、解除時はpending revisionを1回flushし、その後の現在可視18件だけが通常warmへ戻った。UI hot pathのログI/Oは増やしていない。
