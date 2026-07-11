@@ -29,6 +29,59 @@ public sealed class DebugRuntimeLogPhase0LiveAuditSourcePolicyTests
     }
 
     [Test]
+    public void session境界はenv指定時だけ最新runのsummaryから検証する()
+    {
+        string source = GetTargetSource();
+        string liveTest = GetMethodBlock(source, "public void OptIn_live_audit");
+        string boundaryMethod = GetMethodBlock(
+            source,
+            "private static void AssertSessionBoundaryIsSatisfied("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                source,
+                Does.Contain(
+                    "private const string SessionStartedLocalEnvName = \"IMM_PHASE0_LOG_AUDIT_SESSION_STARTED_LOCAL\";"
+                )
+            );
+            Assert.That(
+                liveTest,
+                Does.Contain("Environment.GetEnvironmentVariable(SessionStartedLocalEnvName)")
+            );
+            Assert.That(boundaryMethod, Does.Contain("sessionStartedLocalText is null"));
+            Assert.That(
+                boundaryMethod,
+                Does.Contain("DebugRuntimeLogPhase0SessionBoundaryPolicy.Evaluate(")
+            );
+            Assert.That(boundaryMethod, Does.Contain("auditSummary.RunWindow"));
+            Assert.That(boundaryMethod, Does.Contain("auditSummary.RunSlice"));
+            Assert.That(boundaryMethod, Does.Contain("boundary.Reason"));
+        });
+    }
+
+    [Test]
+    public void session開始時刻はUTC変換なしの厳密ローカル形式で読む()
+    {
+        string policySource = GetRepoText(
+            "Infrastructure",
+            "DebugRuntimeLogPhase0SessionBoundaryPolicy.cs"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                policySource,
+                Does.Contain("SessionStartedLocalTimestampFormat = \"yyyy-MM-dd HH:mm:ss.fff\"")
+            );
+            Assert.That(policySource, Does.Contain("DateTimeStyles.None"));
+            Assert.That(policySource, Does.Not.Contain("ToUniversalTime"));
+            Assert.That(policySource, Does.Not.Contain("ToLocalTime"));
+        });
+    }
+
+    [Test]
     public void ログパスはenv_overrideとLOCALAPPDATA既定だけを使う()
     {
         string source = GetTargetSource();
@@ -85,12 +138,12 @@ public sealed class DebugRuntimeLogPhase0LiveAuditSourcePolicyTests
         string liveTest = GetMethodBlock(source, "public void OptIn_live_audit");
         string auditMethod = GetMethodBlock(
             source,
-            "private static DebugRuntimeLogAuditSummary AssertLiveAuditIsComplete("
+            "private static DebugRuntimeLogAuditSummary AssertLiveAuditIsComplete(\n        string logPath,\n        IReadOnlyCollection<string> lines,\n        string? sessionStartedLocalText"
         );
 
         Assert.Multiple(() =>
         {
-            Assert.That(liveTest, Does.Contain("AssertLiveAuditIsComplete(logPath, lines)"));
+            Assert.That(liveTest, Does.Contain("AssertLiveAuditIsComplete("));
             Assert.That(
                 auditMethod,
                 Does.Contain("DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines)")

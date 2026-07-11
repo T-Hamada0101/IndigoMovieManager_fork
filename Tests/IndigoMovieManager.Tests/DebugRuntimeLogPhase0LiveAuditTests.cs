@@ -9,6 +9,7 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
 {
     private const string EnabledEnvName = "IMM_PHASE0_LOG_AUDIT_LIVE";
     private const string LogPathEnvName = "IMM_PHASE0_LOG_AUDIT_PATH";
+    private const string SessionStartedLocalEnvName = "IMM_PHASE0_LOG_AUDIT_SESSION_STARTED_LOCAL";
 
     [Test]
     public void OptIn_live_auditは実機採取済みdebug_runtime_logを検証するだけで実機採取の代替にしない()
@@ -31,7 +32,11 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         }
 
         string[] lines = ReadAllLinesAllowingWriter(logPath);
-        DebugRuntimeLogAuditSummary auditSummary = AssertLiveAuditIsComplete(logPath, lines);
+        DebugRuntimeLogAuditSummary auditSummary = AssertLiveAuditIsComplete(
+            logPath,
+            lines,
+            Environment.GetEnvironmentVariable(SessionStartedLocalEnvName)
+        );
 
         TestContext.Out.WriteLine(auditSummary.BuildSummaryText());
     }
@@ -101,6 +106,40 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         });
     }
 
+    [Test]
+    public void 合成ログでsession開始envなしなら従来の完了判定を維持する()
+    {
+        DebugRuntimeLogAuditSummary summary = AssertLiveAuditIsComplete(
+            "%LOCALAPPDATA%\\IndigoMovieManager\\logs\\debug-runtime.log",
+            BuildSequencedLines(AllEvidenceMessages())
+        );
+
+        Assert.That(summary.IsComplete, Is.True);
+    }
+
+    [Test]
+    public void 合成ログでsession境界未達はsummary付きで失敗する()
+    {
+        string logPath = "%LOCALAPPDATA%\\IndigoMovieManager\\logs\\debug-runtime.log";
+        string[] lines = BuildSequencedLines(AllEvidenceMessages());
+        DebugRuntimeLogAuditSummary summary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines);
+
+        NUnit.Framework.AssertionException? ex = Assert.Throws<NUnit.Framework.AssertionException>(
+            () =>
+                AssertLiveAuditIsComplete(
+                    logPath,
+                    lines,
+                    "2026-06-25 10:00:00.002"
+                )
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex?.Message, Does.Contain("session boundary が未達です: run-before-session"));
+            Assert.That(ex?.Message, Does.Contain(summary.BuildSummaryText()));
+        });
+    }
+
     private static string ResolveLogPath()
     {
         string explicitPath = Environment.GetEnvironmentVariable(LogPathEnvName)?.Trim().Trim('"') ?? "";
@@ -146,6 +185,15 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         IReadOnlyCollection<string> lines
     )
     {
+        return AssertLiveAuditIsComplete(logPath, lines, sessionStartedLocalText: null);
+    }
+
+    private static DebugRuntimeLogAuditSummary AssertLiveAuditIsComplete(
+        string logPath,
+        IReadOnlyCollection<string> lines,
+        string? sessionStartedLocalText
+    )
+    {
         DebugRuntimeLogAuditSummary auditSummary = DebugRuntimeLogAuditSummaryPolicy.Evaluate(lines);
 
         // live監査の完了条件をここへ集め、opt-in実行と合成ログテストで同じ順に検査する。
@@ -153,6 +201,8 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         {
             FailWithSummary($"ログファイルが空です: {logPath}", auditSummary);
         }
+
+        AssertSessionBoundaryIsSatisfied(sessionStartedLocalText, auditSummary);
 
         if (!auditSummary.RunWindow.HasTimestamp)
         {
@@ -170,6 +220,44 @@ public sealed class DebugRuntimeLogPhase0LiveAuditTests
         }
 
         return auditSummary;
+    }
+
+    private static void AssertSessionBoundaryIsSatisfied(
+        string? sessionStartedLocalText,
+        DebugRuntimeLogAuditSummary auditSummary
+    )
+    {
+        if (sessionStartedLocalText is null)
+        {
+            return;
+        }
+
+        if (
+            !DebugRuntimeLogPhase0SessionBoundaryPolicy.TryParseSessionStartedLocal(
+                sessionStartedLocalText,
+                out DateTime sessionStartedLocal
+            )
+        )
+        {
+            FailWithSummary(
+                $"{SessionStartedLocalEnvName} は {DebugRuntimeLogPhase0SessionBoundaryPolicy.SessionStartedLocalTimestampFormat} 形式のローカル時刻で指定してください。",
+                auditSummary
+            );
+        }
+
+        DebugRuntimeLogPhase0SessionBoundaryResult boundary =
+            DebugRuntimeLogPhase0SessionBoundaryPolicy.Evaluate(
+                auditSummary.RunWindow,
+                auditSummary.RunSlice,
+                sessionStartedLocal
+            );
+        if (!boundary.IsSatisfied)
+        {
+            FailWithSummary(
+                $"session boundary が未達です: {boundary.Reason}",
+                auditSummary
+            );
+        }
     }
 
     private static void FailWithSummary(string reason, DebugRuntimeLogAuditSummary summary)
