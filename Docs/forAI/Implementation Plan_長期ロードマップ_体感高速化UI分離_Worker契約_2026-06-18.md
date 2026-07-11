@@ -37,6 +37,8 @@
 - 同一runへsearch / sort / scrollの実UI入力を追加し、3操作のログ証拠を完了した。監査は `phase0_log_evidence=8/12` まで進み、次の不足はplayer / watch / image / persistenceである。
 - このrunのUI停止はp95 1249 ms、最大1495 msで、activity内訳はThumbnail 70件、Watch 4件だった。user-priority中もサムネイルconsumerが8件ずつ新規leaseを取得していたため、表示反映だけでなく新規lease取得も入力へ譲ることを次の支配要因とした。
 - サムネイルqueueへuser-priority lease gateを追加した。取得済みjobは中断せず、新規取得と補充だけを延期し、解除後に自動再開する。更新版Releaseでは入力開始23 ms後にdeferし、2817 msの入力優先区間内は新規lease 0件、解除後にresumeしたことを確認した。
+- Phase 0診断runはサムネイル大量ログで数分以内に既定20MBへ達し、同一run前半のstartup証拠がrotation先へ退避されることを実機で確認した。通常起動の20MBは維持し、診断プロセスだけ128MBへ拡張した。
+- live監査はManualReview session開始後に更新された同basenameのrotation片と現行logを時系列snapshotへ連結する。既存rotation済みrunで `log_run_lines=51675 sequence=1-51699` を復元し、startup / watch小差分 / skin / persistenceの証拠が再び完了扱いになることを確認した。
 
 ## 0. 結論
 
@@ -575,7 +577,7 @@ sidecar判断ゲート:
 
 シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、250 ms未満では表示せず、超えた時はヘッダー表示中も入力とscrollを続けられることを確認する。シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
-2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化、入力中のサムネイル表示延期と新規lease延期、live監査のrun分離、search / sort / scrollのログ証拠をRelease実機で確認した。次の最優先は、実表示の入力追従とサムネイル再開を人間の目で判定し、続いてplayer、watch小差分、image、persistenceを同一runへ採取すること。実表示が滑らかなら入力フェーズを閉じ、引っ掛かりが残るなら同時刻のUI停止activityを基に次の1件だけを選ぶ。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
+2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化、入力中のサムネイル表示延期と新規lease延期、live監査のrun分離とrotation跨ぎ復元をRelease実機で確認した。次の最優先は、128MB診断runでsort / scroll / player-core / image-pipelineを揃え、実表示の入力追従とサムネイル再開を人間の目で判定すること。実表示が滑らかなら入力フェーズを閉じ、引っ掛かりが残るなら同時刻のUI停止activityを基に次の1件だけを選ぶ。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
 ## 11. 前提
 
