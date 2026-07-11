@@ -744,7 +744,10 @@ namespace IndigoMovieManager
             {
                 waitForQuietWindow =
                     _partialSearchFullCompletionQuietWindowArmed
-                    && GetPartialSearchFullCompletionQuietWindowRemainingUnsafe() > TimeSpan.Zero;
+                    && (
+                        _partialSearchFullCompletionReleasePending
+                        || GetPartialSearchFullCompletionQuietWindowRemainingUnsafe() > TimeSpan.Zero
+                    );
             }
 
             if (waitForQuietWindow)
