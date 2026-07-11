@@ -30,7 +30,6 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
             Assert.That(method, Does.Contain("if (!IsStartupFeedPartialActive)"));
             Assert.That(method, Does.Contain("\"search-partial-first\""));
             Assert.That(method, Does.Contain("UiHangActivityKind.Database"));
-            Assert.That(method, Does.Contain("forceBackgroundCompute: true"));
             Assert.That(partialRefresh, Is.GreaterThanOrEqualTo(0));
             Assert.That(staleGuard, Is.GreaterThan(partialRefresh));
             Assert.That(fullReconcile, Is.GreaterThan(staleGuard));
@@ -38,37 +37,6 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
                 method,
                 Does.Not.Contain("await CompletePartialSearchFromFullSourceAsync("),
                 "partial結果を返す入口でfull reload完了を待たない"
-            );
-        });
-    }
-
-    [Test]
-    public void PartialFirstだけbackground計算を強制し通常経路は既存件数判定を使う()
-    {
-        string searchMethod = GetMethodBlock(
-            GetSearchSource(),
-            "private async Task RefreshSearchResultsAsync("
-        );
-        string refreshMethod = GetMethodBlock(
-            GetMovieViewRequestsSource(),
-            "private async Task RefreshMovieViewFromCurrentSourceAsync("
-        );
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(refreshMethod, Does.Contain("bool forceBackgroundCompute = false"));
-            Assert.That(
-                refreshMethod,
-                Does.Contain(
-                    "forceBackgroundCompute\n                || MainWindow.ShouldRunFilterSortOnBackground(sourceMovies.Length)"
-                )
-            );
-            Assert.That(refreshMethod, Does.Contain("readModelResult = runOnBackground"));
-            Assert.That(refreshMethod, Does.Contain("background={runOnBackground}"));
-            Assert.That(searchMethod, Does.Contain("forceBackgroundCompute: true"));
-            Assert.That(
-                searchMethod.Split("forceBackgroundCompute: true").Length - 1,
-                Is.EqualTo(1)
             );
         });
     }

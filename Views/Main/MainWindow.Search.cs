@@ -602,8 +602,7 @@ namespace IndigoMovieManager
             await RefreshMovieViewFromCurrentSourceAsync(
                 sortId,
                 "search-partial-first",
-                UiHangActivityKind.Database,
-                forceBackgroundCompute: true
+                UiHangActivityKind.Database
             );
 
             if (searchRefreshRevision != Volatile.Read(ref _searchRefreshRequestRevision))
