@@ -649,6 +649,7 @@ namespace IndigoMovieManager
             {
                 if (
                     _partialSearchFullCompletionQueued
+                    || _partialSearchFullCompletionCancellation != null
                     || _pendingPartialSearchFullCompletionRevision == 0
                 )
                 {

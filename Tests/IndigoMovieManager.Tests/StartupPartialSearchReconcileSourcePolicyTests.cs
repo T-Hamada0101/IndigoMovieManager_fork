@@ -153,7 +153,89 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
             // pending revision を上書きし、queued guard で解除後の起動を1回に畳む。
             Assert.That(source, Does.Contain("_pendingPartialSearchFullCompletionRevision = searchRefreshRevision"));
             Assert.That(source, Does.Contain("_partialSearchFullCompletionQueued"));
+            Assert.That(
+                queueMethod,
+                Does.Contain("_partialSearchFullCompletionCancellation != null"),
+                "active処理のfinallyだけがCTS解放後に再queueし、EndUserとの二重起動を防ぐ"
+            );
             Assert.That(source, Does.Contain("TryQueuePartialSearchFullCompletionAfterUserPriority();"));
+        });
+    }
+
+    [Test]
+    public void Activeなfull整合CTSがある間は再queueせずsingleFlightを守る()
+    {
+        string method = GetMethodBlock(
+            GetSearchSource(),
+            "private void TryQueuePartialSearchFullCompletionAfterUserPriority("
+        );
+        int lockStart = method.IndexOf(
+            "lock (_partialSearchFullCompletionSync)",
+            StringComparison.Ordinal
+        );
+        int activeCancellationGuard = method.IndexOf(
+            "_partialSearchFullCompletionCancellation != null",
+            lockStart,
+            StringComparison.Ordinal
+        );
+        int markQueued = method.IndexOf(
+            "_partialSearchFullCompletionQueued = true",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            // Cancel要求後もDB読込が残るため、CTSの寿命中は次のfullを起動キューへ積まない。
+            Assert.That(lockStart, Is.GreaterThanOrEqualTo(0));
+            Assert.That(activeCancellationGuard, Is.GreaterThan(lockStart));
+            Assert.That(activeCancellationGuard, Is.LessThan(markQueued));
+        });
+    }
+
+    [Test]
+    public void Cancelされたfull整合はfinallyでCTSを閉じた後だけ1回再queueする()
+    {
+        string method = GetMethodBlock(
+            GetSearchSource(),
+            "private async Task CompletePartialSearchFromFullSourceAsync("
+        );
+        int finallyStart = method.IndexOf("finally", StringComparison.Ordinal);
+        int dispose = method.IndexOf(
+            "_partialSearchFullCompletionCancellation.Dispose()",
+            finallyStart,
+            StringComparison.Ordinal
+        );
+        int clearActiveCancellation = method.IndexOf(
+            "_partialSearchFullCompletionCancellation = null",
+            dispose,
+            StringComparison.Ordinal
+        );
+        int canceledGuard = method.IndexOf(
+            "if (cancellationToken.IsCancellationRequested)",
+            clearActiveCancellation,
+            StringComparison.Ordinal
+        );
+        int requeue = method.IndexOf(
+            "TryQueuePartialSearchFullCompletionAfterUserPriority();",
+            canceledGuard,
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            // active CTSを先に外し、その完了を境界として最新pendingだけを再開可能にする。
+            Assert.That(finallyStart, Is.GreaterThanOrEqualTo(0));
+            Assert.That(dispose, Is.GreaterThan(finallyStart));
+            Assert.That(clearActiveCancellation, Is.GreaterThan(dispose));
+            Assert.That(canceledGuard, Is.GreaterThan(clearActiveCancellation));
+            Assert.That(requeue, Is.GreaterThan(canceledGuard));
+            Assert.That(
+                CountOccurrences(
+                    method[finallyStart..],
+                    "TryQueuePartialSearchFullCompletionAfterUserPriority();"
+                ),
+                Is.EqualTo(1)
+            );
         });
     }
 
@@ -354,6 +436,19 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
         }
 
         return blocks;
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 
     private static string GetRepoText(
