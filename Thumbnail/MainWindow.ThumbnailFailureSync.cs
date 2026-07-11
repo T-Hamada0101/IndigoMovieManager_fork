@@ -305,9 +305,10 @@ namespace IndigoMovieManager
                         return;
                     }
 
-                    batchApplyResult.ResultsByFailureId.TryGetValue(
+                    RescuedThumbnailUiApplyResult applyResult = default;
+                    _ = batchApplyResult.ResultsByFailureId?.TryGetValue(
                         rescuedRecord.FailureId,
-                        out RescuedThumbnailUiApplyResult applyResult
+                        out applyResult
                     );
                     bool appliedToUi = applyResult.AppliedToUi;
                     rescuedAppliedToSelectedRecord |= applyResult.AppliedToSelectedRecord;
