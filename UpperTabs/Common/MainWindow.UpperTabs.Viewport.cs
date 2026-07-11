@@ -724,7 +724,8 @@ namespace IndigoMovieManager
         {
             long burstId = Volatile.Read(ref _playerThumbnailScrollBurstSessionId);
             bool isActive = Volatile.Read(ref _isPlayerThumbnailScrollUserPriorityActive);
-            return new PlayerScrollBurstSnapshot(burstId, isActive);
+            long startedTimestamp = Volatile.Read(ref _playerThumbnailScrollStartedTimestamp);
+            return new PlayerScrollBurstSnapshot(burstId, isActive, startedTimestamp);
         }
 
         private int GetPlayerThumbnailRealizedCount()

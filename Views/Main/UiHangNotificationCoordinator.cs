@@ -2,9 +2,13 @@ using System.Windows.Threading;
 
 namespace IndigoMovieManager
 {
-    internal readonly record struct PlayerScrollBurstSnapshot(long BurstId, bool IsActive)
+    internal readonly record struct PlayerScrollBurstSnapshot(
+        long BurstId,
+        bool IsActive,
+        long StartedTimestamp = 0
+    )
     {
-        internal static PlayerScrollBurstSnapshot Inactive => new(0, false);
+        internal static PlayerScrollBurstSnapshot Inactive => new(0, false, 0);
     }
 
     internal enum UiHangNotificationLevel
@@ -333,7 +337,7 @@ namespace IndigoMovieManager
 
             if (shouldShow)
             {
-                PlayerScrollBurstSnapshot scrollSnapshot = GetPlayerScrollBurstSnapshot();
+                PlayerScrollBurstSnapshot scrollSnapshot = GetPlayerScrollBurstSnapshot(sample);
                 DebugRuntimeLog.Write(
                     "ui-tempo",
                     $"ui hang detected: level={nextLevel} activity={activitySnapshot.Kind} delay_ms={sample.DelayMs} pending={sample.IsPending} danger={isDangerState} foreground_only={nextLevel != UiHangNotificationLevel.Critical} burst_id={scrollSnapshot.BurstId} scroll_active={scrollSnapshot.IsActive.ToString().ToLowerInvariant()}"
@@ -344,7 +348,7 @@ namespace IndigoMovieManager
 
             if (shouldUpdate)
             {
-                PlayerScrollBurstSnapshot scrollSnapshot = GetPlayerScrollBurstSnapshot();
+                PlayerScrollBurstSnapshot scrollSnapshot = GetPlayerScrollBurstSnapshot(sample);
                 DebugRuntimeLog.Write(
                     "ui-tempo",
                     $"ui hang updated: level={nextLevel} activity={activitySnapshot.Kind} delay_ms={sample.DelayMs} pending={sample.IsPending} danger={isDangerState} burst_id={scrollSnapshot.BurstId} scroll_active={scrollSnapshot.IsActive.ToString().ToLowerInvariant()}"
@@ -365,12 +369,17 @@ namespace IndigoMovieManager
             }
         }
 
-        private PlayerScrollBurstSnapshot GetPlayerScrollBurstSnapshot()
+        private PlayerScrollBurstSnapshot GetPlayerScrollBurstSnapshot(UiHangHeartbeatSample sample)
         {
             Func<PlayerScrollBurstSnapshot> provider = Volatile.Read(
                 ref _playerScrollBurstSnapshotProvider
             );
-            return provider();
+            PlayerScrollBurstSnapshot snapshot = provider();
+            return snapshot.IsActive
+                && snapshot.StartedTimestamp > 0
+                && sample.PostedTimestamp >= snapshot.StartedTimestamp
+                ? snapshot
+                : PlayerScrollBurstSnapshot.Inactive;
         }
 
         internal static UiHangNotificationLevel ResolveLevel(long delayMs, bool isDangerState)

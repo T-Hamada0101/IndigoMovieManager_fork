@@ -3,7 +3,11 @@ using System.Windows.Threading;
 
 namespace IndigoMovieManager
 {
-    internal readonly record struct UiHangHeartbeatSample(long DelayMs, bool IsPending);
+    internal readonly record struct UiHangHeartbeatSample(
+        long DelayMs,
+        bool IsPending,
+        long PostedTimestamp = 0
+    );
 
     internal sealed class UiHangHeartbeatMonitor : IDisposable
     {
@@ -113,7 +117,13 @@ namespace IndigoMovieManager
                 postedTimestamp = _pendingPostedTimestamp;
             }
 
-            RaiseSampleObserved(new UiHangHeartbeatSample(GetElapsedMilliseconds(postedTimestamp), true));
+            RaiseSampleObserved(
+                new UiHangHeartbeatSample(
+                    GetElapsedMilliseconds(postedTimestamp),
+                    true,
+                    postedTimestamp
+                )
+            );
         }
 
         // 未処理の probe が無い時だけ 1 件投げ、UI キューを無駄に膨らませない。
@@ -170,7 +180,13 @@ namespace IndigoMovieManager
                 _pendingPostedTimestamp = 0;
             }
 
-            RaiseSampleObserved(new UiHangHeartbeatSample(GetElapsedMilliseconds(postedTimestamp), false));
+            RaiseSampleObserved(
+                new UiHangHeartbeatSample(
+                    GetElapsedMilliseconds(postedTimestamp),
+                    false,
+                    postedTimestamp
+                )
+            );
         }
 
         private void RaiseSampleObserved(UiHangHeartbeatSample sample)
