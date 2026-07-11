@@ -75,4 +75,38 @@ public sealed class DebugRuntimeLogPathOverrideTests
             Has.Length.EqualTo(1)
         );
     }
+
+    [Test]
+    public void Write_並列追記でもファイル上の連番は厳密昇順になる()
+    {
+        string overridePath = Path.Combine(_temporaryDirectory, "parallel", "audit.log");
+        Environment.SetEnvironmentVariable(LogPathEnvironmentVariable, overridePath);
+        const int writeCount = 500;
+
+        Parallel.For(
+            0,
+            writeCount,
+            index => DebugRuntimeLog.Write("path-override-test", $"parallel write index={index}")
+        );
+
+        long[] sequences = File.ReadAllLines(overridePath, Encoding.UTF8)
+            .Select(ParseSequence)
+            .ToArray();
+
+        Assert.That(sequences, Has.Length.EqualTo(writeCount));
+        Assert.That(
+            sequences,
+            Is.EqualTo(Enumerable.Range(1, writeCount).Select(value => (long)value))
+        );
+    }
+
+    private static long ParseSequence(string line)
+    {
+        int markerIndex = line.IndexOf(" #", StringComparison.Ordinal);
+        int categoryIndex = line.IndexOf(" [", markerIndex + 2, StringComparison.Ordinal);
+
+        Assert.That(markerIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(categoryIndex, Is.GreaterThan(markerIndex));
+        return long.Parse(line.AsSpan(markerIndex + 2, categoryIndex - markerIndex - 2));
+    }
 }

@@ -53,14 +53,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            string line = BuildLineForTesting(
-                DateTime.Now,
-                category,
-                message,
-                Interlocked.Increment(ref _logSequence),
-                AmbientScopeText.Value
-            );
-            Debug.WriteLine(line);
+            string line = null;
 
             try
             {
@@ -73,16 +66,24 @@ namespace IndigoMovieManager
                     LogPathOverrideEnvironmentVariable
                 );
                 string resolvedLogPath = ResolveLogPath(requestedLogPath, defaultLogPath);
-                string logDir =
-                    Path.GetDirectoryName(resolvedLogPath) ?? AppLocalDataPaths.LogsPath;
-                Directory.CreateDirectory(logDir);
-                string logPath = IndigoMovieManager.Thumbnail.LogFileTimeWindowSeparator.PrepareForWrite(
-                    resolvedLogPath,
-                    MaxLogFileBytes
-                );
-
                 lock (LogLock)
                 {
+                    // 採番から追記までを直列化し、ファイル上の連番を必ず単調増加に保つ。
+                    line = BuildLineForTesting(
+                        DateTime.Now,
+                        category,
+                        message,
+                        ++_logSequence,
+                        AmbientScopeText.Value
+                    );
+                    string logDir =
+                        Path.GetDirectoryName(resolvedLogPath) ?? AppLocalDataPaths.LogsPath;
+                    Directory.CreateDirectory(logDir);
+                    string logPath = IndigoMovieManager.Thumbnail.LogFileTimeWindowSeparator.PrepareForWrite(
+                        resolvedLogPath,
+                        MaxLogFileBytes
+                    );
+
                     // 上限超過時は同日でも退避して、次の追記を継続できるようにする。
                     File.AppendAllText(logPath, line + Environment.NewLine);
                 }
@@ -90,6 +91,12 @@ namespace IndigoMovieManager
             catch
             {
                 // ログ失敗で本体処理を止めない。
+            }
+
+            // デバッガ出力はファイル順序の契約外とし、重い出力をロック内へ持ち込まない。
+            if (line != null)
+            {
+                Debug.WriteLine(line);
             }
         }
 
@@ -132,7 +139,10 @@ namespace IndigoMovieManager
                 AlwaysThrottleLastWriteUtcByEvent.Clear();
             }
 
-            Interlocked.Exchange(ref _logSequence, 0);
+            lock (LogLock)
+            {
+                _logSequence = 0;
+            }
             AmbientScopeText.Value = "";
             AmbientScopeMetrics.Value = null;
         }
