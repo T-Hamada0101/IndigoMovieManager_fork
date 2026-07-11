@@ -66,6 +66,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
     [TestCase(63, false)]
     [TestCase(64, true)]
+    [TestCase(200, true)]
     public void ShouldUseFastAsciiSearchProjection_大件数だけ読み仮名fallbackを省く(
         int sourceCount,
         bool expected

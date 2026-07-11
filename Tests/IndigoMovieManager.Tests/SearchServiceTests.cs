@@ -293,6 +293,43 @@ public sealed class SearchServiceTests
     }
 
     [Test]
+    public void FilterMovies_ASCII高速投影の事前生成後も検索対象更新を反映する()
+    {
+        MovieRecords target = CreateMovie("target", comment1: "before-word");
+
+        // startup prewarm と同じ軽量投影を先に作り、更新後に古いキャッシュを残さない。
+        MovieRecords[] first = SearchService
+            .FilterMovies(
+                [target],
+                "before-word",
+                CancellationToken.None,
+                allowExpensiveAsciiPhoneticFallback: false
+            )
+            .ToArray();
+        target.Comment1 = "after-word";
+        MovieRecords[] stale = SearchService
+            .FilterMovies(
+                [target],
+                "before-word",
+                CancellationToken.None,
+                allowExpensiveAsciiPhoneticFallback: false
+            )
+            .ToArray();
+        MovieRecords[] updated = SearchService
+            .FilterMovies(
+                [target],
+                "after-word",
+                CancellationToken.None,
+                allowExpensiveAsciiPhoneticFallback: false
+            )
+            .ToArray();
+
+        Assert.That(first, Is.EqualTo([target]));
+        Assert.That(stale, Is.Empty);
+        Assert.That(updated, Is.EqualTo([target]));
+    }
+
+    [Test]
     public void FilterMovies_タグ更新後は古いタグキャッシュを使わない()
     {
         MovieRecords target = CreateMovie("target", tags: "犬");

@@ -9,7 +9,20 @@ public sealed class StartupPartialAsciiProjectionPrewarmSourcePolicyTests
     public void 予約はpartial時の現在MovieRecsだけを最大200件snapshot化する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.StartupAsciiSearchPrewarm.cs");
+        string startupSource = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
         string method = GetMethodBlock(source, "private void QueueStartupAsciiSearchPrewarm(");
+        string applyFirstPageMethod = GetMethodBlock(
+            startupSource,
+            "private void ApplyStartupFirstPage("
+        );
+        int inputReady = applyFirstPageMethod.IndexOf(
+            "\"input ready\"",
+            StringComparison.Ordinal
+        );
+        int queuePrewarm = applyFirstPageMethod.IndexOf(
+            "QueueStartupAsciiSearchPrewarm(",
+            StringComparison.Ordinal
+        );
 
         Assert.Multiple(() =>
         {
@@ -22,6 +35,8 @@ public sealed class StartupPartialAsciiProjectionPrewarmSourcePolicyTests
             Assert.That(method, Does.Not.Contain("LoadMovie"));
             Assert.That(method, Does.Not.Contain("DataTable"));
             Assert.That(method, Does.Not.Contain("SQLite"));
+            Assert.That(inputReady, Is.GreaterThanOrEqualTo(0));
+            Assert.That(queuePrewarm, Is.GreaterThan(inputReady));
         });
     }
 
