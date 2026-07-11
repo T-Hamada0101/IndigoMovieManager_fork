@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Tasks;
 using IndigoMovieManager.Thumbnail;
 
@@ -14,24 +12,37 @@ namespace IndigoMovieManager.BottomTabs.ThumbnailProgress
     );
 
     /// <summary>
-    /// 進捗UIの計測値を受付順に背景保存し、UIスレッドからディスクI/Oを外す。
+    /// 進捗UIの最新計測値だけを背景保存し、遅い診断I/Oでメモリを増やさない。
     /// </summary>
     internal sealed class ThumbnailProgressSnapshotMetricsQueue
     {
-        private readonly ConcurrentQueue<ThumbnailProgressSnapshotApplyMetric> pending = new();
-        private int drainRunning;
+        private readonly object syncRoot = new();
+        private readonly Action<ThumbnailProgressSnapshotApplyMetric> writeMetric;
+        private ThumbnailProgressSnapshotApplyMetric? latestPending;
+        private bool drainRunning;
+
+        public ThumbnailProgressSnapshotMetricsQueue()
+            : this(WriteMetric) { }
+
+        internal ThumbnailProgressSnapshotMetricsQueue(
+            Action<ThumbnailProgressSnapshotApplyMetric> writeMetric
+        )
+        {
+            this.writeMetric = writeMetric ?? throw new ArgumentNullException(nameof(writeMetric));
+        }
 
         public void Enqueue(ThumbnailProgressSnapshotApplyMetric metric)
         {
-            pending.Enqueue(metric);
-            StartDrainIfNeeded();
-        }
-
-        private void StartDrainIfNeeded()
-        {
-            if (Interlocked.CompareExchange(ref drainRunning, 1, 0) != 0)
+            lock (syncRoot)
             {
-                return;
+                // 保存が遅れている間は未保存の旧値を捨て、最新1件だけを保持する。
+                latestPending = metric;
+                if (drainRunning)
+                {
+                    return;
+                }
+
+                drainRunning = true;
             }
 
             _ = Task.Run(Drain);
@@ -39,27 +50,41 @@ namespace IndigoMovieManager.BottomTabs.ThumbnailProgress
 
         private void Drain()
         {
-            try
+            while (true)
             {
-                while (pending.TryDequeue(out ThumbnailProgressSnapshotApplyMetric metric))
+                ThumbnailProgressSnapshotApplyMetric metric;
+                lock (syncRoot)
                 {
-                    ThumbnailProgressUiMetricsLogger.RecordSnapshotApply(
-                        metric.SnapshotVersion,
-                        metric.DbPendingCount,
-                        metric.DbTotalCount,
-                        metric.WorkerCount,
-                        metric.ApplyDurationMs
-                    );
+                    if (!latestPending.HasValue)
+                    {
+                        drainRunning = false;
+                        return;
+                    }
+
+                    metric = latestPending.Value;
+                    latestPending = null;
+                }
+
+                try
+                {
+                    writeMetric(metric);
+                }
+                catch
+                {
+                    // 診断ログ失敗は本体へ伝播させず、次の最新値を処理する。
                 }
             }
-            finally
-            {
-                Interlocked.Exchange(ref drainRunning, 0);
-                if (!pending.IsEmpty)
-                {
-                    StartDrainIfNeeded();
-                }
-            }
+        }
+
+        private static void WriteMetric(ThumbnailProgressSnapshotApplyMetric metric)
+        {
+            ThumbnailProgressUiMetricsLogger.RecordSnapshotApply(
+                metric.SnapshotVersion,
+                metric.DbPendingCount,
+                metric.DbTotalCount,
+                metric.WorkerCount,
+                metric.ApplyDurationMs
+            );
         }
     }
 }

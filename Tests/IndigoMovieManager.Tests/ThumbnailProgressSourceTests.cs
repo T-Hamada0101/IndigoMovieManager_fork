@@ -1,4 +1,5 @@
 using System.IO;
+using IndigoMovieManager.BottomTabs.ThumbnailProgress;
 
 namespace IndigoMovieManager.Tests;
 
@@ -21,10 +22,82 @@ public sealed class ThumbnailProgressSourceTests
 
         Assert.That(method, Does.Contain("_thumbnailProgressSnapshotMetricsQueue.Enqueue("));
         Assert.That(method, Does.Not.Contain("ThumbnailProgressUiMetricsLogger.RecordSnapshotApply("));
-        Assert.That(queueSource, Does.Contain("ConcurrentQueue<ThumbnailProgressSnapshotApplyMetric>"));
-        Assert.That(queueSource, Does.Contain("Interlocked.CompareExchange(ref drainRunning, 1, 0)"));
+        Assert.That(queueSource, Does.Contain("latestPending = metric;"));
         Assert.That(queueSource, Does.Contain("Task.Run(Drain)"));
         Assert.That(queueSource, Does.Contain("ThumbnailProgressUiMetricsLogger.RecordSnapshotApply("));
+    }
+
+    [Test]
+    public void Snapshot計測キューは保存中の未処理値を最新1件へ集約する()
+    {
+        using ManualResetEventSlim firstWriteStarted = new(false);
+        using ManualResetEventSlim releaseFirstWrite = new(false);
+        using ManualResetEventSlim latestWriteCompleted = new(false);
+        List<long> writtenVersions = [];
+        object writtenSyncRoot = new();
+        ThumbnailProgressSnapshotMetricsQueue queue = new(metric =>
+        {
+            lock (writtenSyncRoot)
+            {
+                writtenVersions.Add(metric.SnapshotVersion);
+            }
+
+            if (metric.SnapshotVersion == 1)
+            {
+                firstWriteStarted.Set();
+                _ = releaseFirstWrite.Wait(TimeSpan.FromSeconds(5));
+            }
+            else if (metric.SnapshotVersion == 3)
+            {
+                latestWriteCompleted.Set();
+            }
+        });
+
+        queue.Enqueue(CreateMetric(1));
+        Assert.That(firstWriteStarted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        queue.Enqueue(CreateMetric(2));
+        queue.Enqueue(CreateMetric(3));
+        releaseFirstWrite.Set();
+
+        Assert.That(latestWriteCompleted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        lock (writtenSyncRoot)
+        {
+            Assert.That(writtenVersions, Is.EqualTo(new long[] { 1, 3 }));
+        }
+    }
+
+    [Test]
+    public void Snapshot計測キューはWriter例外後も次の最新値を処理する()
+    {
+        using ManualResetEventSlim firstWriteStarted = new(false);
+        using ManualResetEventSlim releaseFirstWrite = new(false);
+        using ManualResetEventSlim secondWriteCompleted = new(false);
+        ThumbnailProgressSnapshotMetricsQueue queue = new(metric =>
+        {
+            if (metric.SnapshotVersion == 1)
+            {
+                firstWriteStarted.Set();
+                _ = releaseFirstWrite.Wait(TimeSpan.FromSeconds(5));
+                throw new IOException("diagnostic write failed");
+            }
+
+            if (metric.SnapshotVersion == 2)
+            {
+                secondWriteCompleted.Set();
+            }
+        });
+
+        queue.Enqueue(CreateMetric(1));
+        Assert.That(firstWriteStarted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        queue.Enqueue(CreateMetric(2));
+        releaseFirstWrite.Set();
+
+        Assert.That(secondWriteCompleted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+    }
+
+    private static ThumbnailProgressSnapshotApplyMetric CreateMetric(long version)
+    {
+        return new ThumbnailProgressSnapshotApplyMetric(version, 0, 0, 0, 0);
     }
 
     [Test]
