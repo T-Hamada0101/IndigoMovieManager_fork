@@ -464,7 +464,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string method = GetMethodBlock(requestSource, "private async Task FilterAndSortAsync(");
         string compactMethod = string.Concat(method.Where(c => !char.IsWhiteSpace(c)));
         int loadIndex = method.IndexOf(
-            "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id)",
+            "_mainDbMovieReadFacade.LoadMovieTableForSort(",
             StringComparison.Ordinal
         );
         int computeStageIndex = method.IndexOf(
@@ -472,7 +472,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             StringComparison.Ordinal
         );
         int compactLoadIndex = compactMethod.IndexOf(
-            "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath,id)",
+            "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath,id,filterAndSortCancellationToken)",
             StringComparison.Ordinal
         );
         int dbReloadCancelCatchIndex = compactMethod.IndexOf(

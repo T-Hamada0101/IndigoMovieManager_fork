@@ -78,7 +78,12 @@ namespace IndigoMovieManager
                 {
                     filterAndSortCancellationToken.ThrowIfCancellationRequested();
                     latestMovieData = await Task.Run(
-                        () => _mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id),
+                        () =>
+                            _mainDbMovieReadFacade.LoadMovieTableForSort(
+                                dbFullPath,
+                                id,
+                                filterAndSortCancellationToken
+                            ),
                         filterAndSortCancellationToken
                     );
                     filterAndSortCancellationToken.ThrowIfCancellationRequested();

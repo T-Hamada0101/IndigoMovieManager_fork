@@ -1,6 +1,7 @@
 using System;
 using System.Data;
 using System.Data.SQLite;
+using System.Threading;
 using static IndigoMovieManager.DB.SQLite;
 
 namespace IndigoMovieManager.Data
@@ -10,6 +11,11 @@ namespace IndigoMovieManager.Data
         int ReadRegisteredMovieCount(string dbFullPath);
         DataTable LoadSystemTable(string dbPath);
         DataTable LoadMovieTableForSort(string dbPath, string sortId);
+        DataTable LoadMovieTableForSort(
+            string dbPath,
+            string sortId,
+            CancellationToken cancellationToken
+        );
         MainDbMovieReadPageResult ReadStartupPage(MainDbMovieReadRequest request, int pageIndex);
         bool TryReadRenameBridgeOwnerCounts(
             string dbFullPath,
@@ -61,6 +67,19 @@ namespace IndigoMovieManager.Data
                 ? "SELECT * FROM movie"
                 : $"SELECT * FROM movie order by {orderBySql}";
             return GetData(dbPath, sql);
+        }
+
+        public DataTable LoadMovieTableForSort(
+            string dbPath,
+            string sortId,
+            CancellationToken cancellationToken
+        )
+        {
+            string orderBySql = BuildMovieTableOrderBySql(sortId);
+            string sql = string.IsNullOrWhiteSpace(orderBySql)
+                ? "SELECT * FROM movie"
+                : $"SELECT * FROM movie order by {orderBySql}";
+            return GetData(dbPath, sql, cancellationToken);
         }
 
         public MainDbMovieReadPageResult ReadStartupPage(
