@@ -710,8 +710,13 @@ public sealed class ManualPlayerResizeHookPolicyTests
         string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
 
         Assert.That(upperTabPlayerSource, Does.Contain("BeginUserPriorityWork(\"player\");"));
-        Assert.That(upperTabPlayerSource, Does.Contain("MarkPlayerUserPriorityReleasePending();"));
+        Assert.That(upperTabPlayerSource, Does.Contain("MarkPlayerUserPriorityReleasePending("));
         Assert.That(upperTabPlayerSource, Does.Contain("ReleasePendingPlayerUserPriorityWork();"));
+        Assert.That(upperTabPlayerSource, Does.Contain("PlayerUserPriorityMaxDurationMs = 250"));
+        Assert.That(upperTabPlayerSource, Does.Contain("revision != _playerUserPriorityRevision"));
+        Assert.That(upperTabPlayerSource, Does.Contain("expectedRevision != _pendingPlayerUserPriorityRevision"));
+        Assert.That(upperTabPlayerSource, Does.Contain("PlayerUserPriorityReleaseTimer_Tick"));
+        Assert.That(upperTabPlayerSource, Does.Contain("\"timeout\""));
         Assert.That(upperTabPlayerSource, Does.Contain("if (!e.IsSuccess)"));
         Assert.That(mainWindowXaml, Does.Contain("MediaEnded=\"UxVideoPlayer_MediaEnded\""));
         Assert.That(upperTabPlayerSource, Does.Contain("_hasPendingWebViewPlaybackRequest = false;"));
@@ -719,12 +724,197 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(upperTabPlayerSource, Does.Contain("e.NavigationId != _pendingWebViewNavigationId"));
         Assert.That(mainWindowXaml, Does.Contain("MediaFailed=\"UxVideoPlayer_MediaFailed\""));
         Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaFailed("));
+        Assert.That(mainWindowPlayerSource, Does.Contain("\"media-opened\""));
+        Assert.That(mainWindowPlayerSource, Does.Contain("\"media-failed\""));
         Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaEnded("));
         Assert.That(mainWindowPlayerSource, Does.Contain("SetPlayerPlaybackActive(false,"));
         Assert.That(mainWindowPlayerSource, Does.Contain("_hasPendingPlayerPlaybackRequest = false;"));
         Assert.That(upperTabPlayerSource, Does.Contain("try"));
         Assert.That(upperTabPlayerSource, Does.Contain("finally"));
         Assert.That(upperTabPlayerSource, Does.Contain("EndUserPriorityWork(\"player\");"));
+    }
+
+    [Test]
+    public void PlayerUserPriority_MediaElementのSource変更はMediaOpenedまたはtimeoutで解除する()
+    {
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string playerSource = GetMainWindowPlayerSourceText();
+        string openMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private async Task OpenMovieInPlayerTabAsync("
+        );
+        string openedMethod = GetMethodBlock(
+            playerSource,
+            "private void UxVideoPlayer_MediaOpened(object sender, RoutedEventArgs e)"
+        );
+        string applyMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private async Task ApplyPendingPlayerPlaybackRequestAsync()"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(openMethod, Does.Contain("uxVideoPlayer.Source = new System.Uri(moviePath);"));
+            Assert.That(openMethod, Does.Contain("MarkPlayerUserPriorityReleasePending(playerUserPriorityRevision);"));
+            Assert.That(openMethod, Does.Contain("releaseUserPriorityOnExit = false;"));
+            Assert.That(openedMethod, Does.Contain("\"media-opened\""));
+            Assert.That(openedMethod, Does.Contain("ApplyPendingPlayerPlaybackRequestAsync();"));
+            Assert.That(applyMethod, Does.Contain("finally"));
+            Assert.That(applyMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork();"));
+        });
+    }
+
+    [Test]
+    public void PlayerUserPriority_WebViewのSource変更は同じNavigationまたはtimeoutで解除する()
+    {
+        string source = GetUpperTabPlayerSourceText();
+        string openMethod = GetMethodBlock(source, "private async Task<bool> OpenMovieInWebViewPlayerAsync(");
+        string startingMethod = GetMethodBlock(
+            source,
+            "private void UxWebVideoPlayer_NavigationStarting("
+        );
+        string completedMethod = GetMethodBlock(
+            source,
+            "private async void UxWebVideoPlayer_NavigationCompleted("
+        );
+        string applyMethod = GetMethodBlock(
+            source,
+            "private async Task ApplyPendingWebViewPlaybackRequestAsync()"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(openMethod, Does.Contain("uxWebVideoPlayer.Source = new System.Uri(moviePath);"));
+            Assert.That(source, Does.Contain("PlayerUserPriorityReleaseTimer_Tick"));
+            Assert.That(openMethod, Does.Contain("return true;"));
+            Assert.That(startingMethod, Does.Contain("_pendingWebViewNavigationId = e.NavigationId;"));
+            Assert.That(completedMethod, Does.Contain("e.NavigationId != _pendingWebViewNavigationId"));
+            Assert.That(completedMethod, Does.Contain("await ApplyPendingWebViewPlaybackRequestAsync();"));
+            Assert.That(applyMethod, Does.Contain("finally"));
+            Assert.That(applyMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork();"));
+        });
+    }
+
+    [Test]
+    public void PlayerUserPriority_失敗とstaleイベントは現在要求だけを正しく解除する()
+    {
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string playerSource = GetMainWindowPlayerSourceText();
+        string mediaFailedMethod = GetMethodBlock(
+            playerSource,
+            "private void UxVideoPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e)"
+        );
+        string navigationCompletedMethod = GetMethodBlock(
+            upperTabPlayerSource,
+            "private async void UxWebVideoPlayer_NavigationCompleted("
+        );
+
+        int staleGuardIndex = navigationCompletedMethod.IndexOf(
+            "e.NavigationId != _pendingWebViewNavigationId",
+            StringComparison.Ordinal
+        );
+        int failureIndex = navigationCompletedMethod.IndexOf("if (!e.IsSuccess)", StringComparison.Ordinal);
+        int releaseIndex = navigationCompletedMethod.IndexOf(
+            "ReleasePendingPlayerUserPriorityWork(",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mediaFailedMethod, Does.Contain("_hasPendingPlayerPlaybackRequest = false;"));
+            Assert.That(mediaFailedMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork("));
+            Assert.That(staleGuardIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(failureIndex, Is.GreaterThan(staleGuardIndex));
+            Assert.That(releaseIndex, Is.GreaterThan(failureIndex));
+            Assert.That(
+                navigationCompletedMethod.Substring(staleGuardIndex, failureIndex - staleGuardIndex),
+                Does.Not.Contain("ReleasePendingPlayerUserPriorityWork(")
+            );
+        });
+    }
+
+    [Test]
+    public void PlayerUserPriority_連続選択は前要求を解除してから次要求をBeginする()
+    {
+        string source = GetUpperTabPlayerSourceText();
+        string openMethod = GetMethodBlock(source, "private async Task OpenMovieInPlayerTabAsync(");
+
+        int releaseIndex = openMethod.IndexOf(
+            "ReleasePendingPlayerUserPriorityWork(\"superseded\");",
+            StringComparison.Ordinal
+        );
+        int beginIndex = openMethod.IndexOf("BeginUserPriorityWork(\"player\");", StringComparison.Ordinal);
+
+        Assert.That(releaseIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(beginIndex, Is.GreaterThan(releaseIndex));
+    }
+
+    [Test]
+    public void PlayerUserPriority_shutdownはpendingを解除してBeginしない()
+    {
+        string source = GetUpperTabPlayerSourceText();
+        string lifecycleSource = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
+        string openMethod = GetMethodBlock(source, "private async Task OpenMovieInPlayerTabAsync(");
+        string closingMethod = GetMethodBlock(
+            lifecycleSource,
+            "private void MainWindow_Closing(object sender, CancelEventArgs e)"
+        );
+        int shutdownGuardIndex = openMethod.IndexOf(
+            "Dispatcher?.HasShutdownStarted == true",
+            StringComparison.Ordinal
+        );
+        int beginIndex = openMethod.IndexOf("BeginUserPriorityWork(\"player\");", StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(shutdownGuardIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(beginIndex, Is.GreaterThan(shutdownGuardIndex));
+            Assert.That(closingMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork(\"shutdown\");"));
+        });
+    }
+
+    [Test]
+    public void PlayerUserPriority_timeoutは再生を止めずpriorityだけを解除する()
+    {
+        string source = GetUpperTabPlayerSourceText();
+        string timeoutMethod = GetMethodBlock(
+            source,
+            "private void PlayerUserPriorityReleaseTimer_Tick(object sender, System.EventArgs e)"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(timeoutMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork("));
+            Assert.That(timeoutMethod, Does.Contain("timeout"));
+            Assert.That(timeoutMethod, Does.Not.Contain("uxVideoPlayer.Stop("));
+            Assert.That(timeoutMethod, Does.Not.Contain("uxVideoPlayer.Pause("));
+            Assert.That(timeoutMethod, Does.Not.Contain("ResetWebViewPlayerSurface("));
+            Assert.That(timeoutMethod, Does.Not.Contain("SetPlayerPlaybackActive(false"));
+        });
+    }
+
+    [Test]
+    public void PlayerUserPriority_revisionGuardはstale解除を無視して現在要求だけを解除する()
+    {
+        MainWindow window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        SetPrivateField(window, "_isPlayerUserPriorityReleasePending", true);
+        SetPrivateField(window, "_pendingPlayerUserPriorityRevision", 12);
+
+        InvokePrivateMethod(window, "ReleasePendingPlayerUserPriorityWork", "completed", 11);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(GetPrivateField<bool>(window, "_isPlayerUserPriorityReleasePending"), Is.True);
+            Assert.That(GetPrivateField<int>(window, "_pendingPlayerUserPriorityRevision"), Is.EqualTo(12));
+        });
+
+        InvokePrivateMethod(window, "ReleasePendingPlayerUserPriorityWork", "timeout", 12);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(GetPrivateField<bool>(window, "_isPlayerUserPriorityReleasePending"), Is.False);
+            Assert.That(GetPrivateField<int>(window, "_pendingPlayerUserPriorityRevision"), Is.Zero);
+        });
     }
 
     [Test]
@@ -1004,9 +1194,9 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(resetMethod, Does.Contain("_hasPendingWebViewPlaybackRequest = false;"));
         Assert.That(resetMethod, Does.Contain("_isWebViewPlayerActive = false;"));
         Assert.That(resetMethod, Does.Contain("_pendingWebViewNavigationId = 0;"));
-        Assert.That(resetMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork();"));
+        Assert.That(resetMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork(\"webview-reset\");"));
         Assert.That(
-            resetMethod.IndexOf("ReleasePendingPlayerUserPriorityWork();", StringComparison.Ordinal),
+            resetMethod.IndexOf("ReleasePendingPlayerUserPriorityWork(\"webview-reset\");", StringComparison.Ordinal),
             Is.LessThan(resetMethod.IndexOf("if (uxWebVideoPlayer == null)", StringComparison.Ordinal))
         );
     }
@@ -1024,6 +1214,36 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(method, Is.Not.Null);
 
         return (string)method!.Invoke(window, [isActive, reason])!;
+    }
+
+    private static void InvokePrivateMethod(MainWindow window, string methodName, params object[] args)
+    {
+        MethodInfo? method = typeof(MainWindow).GetMethod(
+            methodName,
+            BindingFlags.Instance | BindingFlags.NonPublic
+        );
+        Assert.That(method, Is.Not.Null, $"{methodName} が見つかりません。");
+        method!.Invoke(window, args);
+    }
+
+    private static void SetPrivateField<T>(MainWindow window, string fieldName, T value)
+    {
+        FieldInfo? field = typeof(MainWindow).GetField(
+            fieldName,
+            BindingFlags.Instance | BindingFlags.NonPublic
+        );
+        Assert.That(field, Is.Not.Null, $"{fieldName} が見つかりません。");
+        field!.SetValue(window, value);
+    }
+
+    private static T GetPrivateField<T>(MainWindow window, string fieldName)
+    {
+        FieldInfo? field = typeof(MainWindow).GetField(
+            fieldName,
+            BindingFlags.Instance | BindingFlags.NonPublic
+        );
+        Assert.That(field, Is.Not.Null, $"{fieldName} が見つかりません。");
+        return (T)field!.GetValue(window)!;
     }
 
     private static string GetMainWindowPlayerSourceText()
