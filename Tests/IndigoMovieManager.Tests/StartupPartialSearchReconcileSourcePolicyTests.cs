@@ -251,6 +251,11 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
             quietArmedGuard,
             StringComparison.Ordinal
         );
+        int releasePendingGuard = method.IndexOf(
+            "_partialSearchFullCompletionReleasePending",
+            quietArmedGuard,
+            StringComparison.Ordinal
+        );
         int requeue = method.IndexOf(
             "TryQueuePartialSearchFullCompletionAfterUserPriority();",
             quietRemainingGuard,
@@ -272,6 +277,8 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
             Assert.That(clearQueued, Is.GreaterThanOrEqualTo(0));
             Assert.That(userPriorityGuard, Is.GreaterThan(clearQueued));
             Assert.That(quietArmedGuard, Is.GreaterThan(userPriorityGuard));
+            Assert.That(releasePendingGuard, Is.GreaterThan(quietArmedGuard));
+            Assert.That(releasePendingGuard, Is.LessThan(quietRemainingGuard));
             Assert.That(quietRemainingGuard, Is.GreaterThan(quietArmedGuard));
             Assert.That(requeue, Is.GreaterThan(quietRemainingGuard));
             Assert.That(readPending, Is.GreaterThan(requeue));
@@ -281,6 +288,69 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
                 Is.LessThan(readPending),
                 "quiet armedのApplicationIdle要求はactive CTSを作らずdelayへ合流する"
             );
+        });
+    }
+
+    [Test]
+    public void ApplicationIdle到達時にreleasePendingなら最終release基準1500msへ延長して再queueする()
+    {
+        string source = GetSearchSource();
+        string startMethod = GetMethodBlock(
+            source,
+            "private void StartPendingPartialSearchFullCompletion("
+        );
+        string queueMethod = GetMethodBlock(
+            source,
+            "private void TryQueuePartialSearchFullCompletionAfterUserPriority("
+        );
+        int releasePendingGuard = startMethod.IndexOf(
+            "_partialSearchFullCompletionReleasePending",
+            StringComparison.Ordinal
+        );
+        int requeue = startMethod.IndexOf(
+            "TryQueuePartialSearchFullCompletionAfterUserPriority();",
+            releasePendingGuard,
+            StringComparison.Ordinal
+        );
+        int createCts = startMethod.IndexOf(
+            "_partialSearchFullCompletionCancellation = new CancellationTokenSource()",
+            requeue,
+            StringComparison.Ordinal
+        );
+        int queueReleasePendingGuard = queueMethod.IndexOf(
+            "_partialSearchFullCompletionReleasePending",
+            StringComparison.Ordinal
+        );
+        int extendFromRelease = queueMethod.IndexOf(
+            "ExtendPartialSearchFullCompletionQuietWindowUnsafe();",
+            queueReleasePendingGuard,
+            StringComparison.Ordinal
+        );
+        int clearReleasePending = queueMethod.IndexOf(
+            "_partialSearchFullCompletionReleasePending = false",
+            extendFromRelease,
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                source,
+                Does.Contain(
+                    "PartialSearchFullCompletionQuietWindow =\n            TimeSpan.FromMilliseconds(1500)"
+                )
+            );
+            Assert.That(releasePendingGuard, Is.GreaterThanOrEqualTo(0));
+            Assert.That(requeue, Is.GreaterThan(releasePendingGuard));
+            Assert.That(createCts, Is.GreaterThan(requeue));
+            Assert.That(
+                startMethod.IndexOf("return;", requeue, StringComparison.Ordinal),
+                Is.LessThan(createCts),
+                "begin基準の期限切れ後でもreleasePendingならfullを開始しない"
+            );
+            Assert.That(queueReleasePendingGuard, Is.GreaterThanOrEqualTo(0));
+            Assert.That(extendFromRelease, Is.GreaterThan(queueReleasePendingGuard));
+            Assert.That(clearReleasePending, Is.GreaterThan(extendFromRelease));
         });
     }
 
