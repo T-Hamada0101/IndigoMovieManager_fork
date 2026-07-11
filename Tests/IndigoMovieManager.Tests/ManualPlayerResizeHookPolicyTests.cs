@@ -288,15 +288,15 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void PlayerThumbnailRail_Grid風1系統で切替と二重同期を持たない()
+    public void PlayerThumbnailRail_標準縦リスト1系統で切替と二重同期を持たない()
     {
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
         string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         string viewportSource = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
 
         Assert.That(mainWindowXaml, Does.Contain("x:Name=\"PlayerThumbnailList\""));
-        Assert.That(mainWindowXaml, Does.Contain("<vwp:VirtualizingWrapPanel"));
-        Assert.That(mainWindowXaml, Does.Contain("右レールはGrid風の固定幅だけにして"));
+        Assert.That(mainWindowXaml, Does.Contain("<VirtualizingStackPanel"));
+        Assert.That(mainWindowXaml, Does.Contain("右レールは固定高の縦1行に限定し"));
         Assert.That(
             upperTabPlayerSource,
             Does.Contain("return PlayerThumbnailList;")

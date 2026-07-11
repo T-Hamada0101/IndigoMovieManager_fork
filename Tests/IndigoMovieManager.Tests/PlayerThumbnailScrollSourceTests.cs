@@ -5,7 +5,7 @@ namespace IndigoMovieManager.Tests;
 public sealed class PlayerThumbnailScrollSourceTests
 {
     [Test]
-    public void Player右レールは行単位スクロールと半ページcacheで実現数を抑える()
+    public void Player右レールは標準縦リストと半ページcacheで実現数を抑える()
     {
         string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         int listStart = mainWindowXaml.IndexOf(
@@ -21,6 +21,14 @@ public sealed class PlayerThumbnailScrollSourceTests
         Assert.That(playerThumbnailList, Does.Contain("VirtualizingPanel.ScrollUnit=\"Item\""));
         Assert.That(playerThumbnailList, Does.Contain("VirtualizingPanel.CacheLength=\"0.5\""));
         Assert.That(playerThumbnailList, Does.Contain("VirtualizingPanel.CacheLengthUnit=\"Page\""));
+        Assert.That(playerThumbnailList, Does.Contain("<VirtualizingStackPanel"));
+        Assert.That(playerThumbnailList, Does.Contain("Orientation=\"Vertical\""));
+        Assert.That(playerThumbnailList, Does.Contain("<Setter Property=\"Height\" Value=\"56\" />"));
+        Assert.That(playerThumbnailList, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
+        Assert.That(playerThumbnailList, Does.Contain("SelectionChanged=\"PlayerThumbnailList_SelectionChanged\""));
+        Assert.That(playerThumbnailList, Does.Contain("ContextMenu=\"{StaticResource menuContext}\""));
+        Assert.That(playerThumbnailList, Does.Contain("MouseDown=\"Label_MouseDown\""));
+        Assert.That(playerThumbnailList, Does.Not.Contain("<vwp:VirtualizingWrapPanel"));
         Assert.That(playerThumbnailList, Does.Not.Contain("VirtualizingPanel.ScrollUnit=\"Pixel\""));
     }
 

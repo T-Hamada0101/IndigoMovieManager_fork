@@ -971,10 +971,8 @@
                           >
                             <ListView.ItemsPanel>
                               <ItemsPanelTemplate>
-                                <vwp:VirtualizingWrapPanel
-                                  Orientation="Horizontal"
-                                  SpacingMode="None"
-                                  StretchItems="False"
+                                <VirtualizingStackPanel
+                                  Orientation="Vertical"
                                   VirtualizingPanel.CacheLength="0.5"
                                   VirtualizingPanel.CacheLengthUnit="Page"
                                   VirtualizingPanel.IsVirtualizing="True"
@@ -986,9 +984,9 @@
 
                             <ListView.ItemContainerStyle>
                               <Style TargetType="ListViewItem">
-                                <!--  右レールはGrid風の固定幅だけにして、切替と再計算を持ち込まない。  -->
-                                <Setter Property="Width" Value="74" />
-                                <Setter Property="Margin" Value="0,0,4,8" />
+                                <!--  右レールは固定高の縦1行に限定し、大件数でも配置計算を増やさない。  -->
+                                <Setter Property="Height" Value="56" />
+                                <Setter Property="Margin" Value="0" />
                                 <Setter Property="Padding" Value="0" />
                                 <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="BorderBrush" Value="Transparent" />
@@ -1030,51 +1028,48 @@
 
                             <ListView.ItemTemplate>
                               <DataTemplate>
-                                <Border
-                                  Width="70"
-                                  Padding="3"
-                                  Background="{DynamicResource MaterialDesignCardBackground}"
-                                  BorderBrush="{DynamicResource MaterialDesignDivider}"
-                                  BorderThickness="1"
-                                  CornerRadius="4"
-                                  SnapsToDevicePixels="True"
-                                >
-                                  <StackPanel>
-                                    <Label
-                                      Width="62"
-                                      HorizontalAlignment="Stretch"
-                                      Height="42"
-                                      Padding="0"
-                                      BorderThickness="0"
-                                      Background="{DynamicResource ThumbImageBackground}"
-                                      ContextMenu="{StaticResource menuContext}"
-                                      MouseDown="Label_MouseDown"
-                                    >
-                                      <Image SnapsToDevicePixels="True" Stretch="UniformToFill">
-                                        <Image.Source>
-                                          <MultiBinding
-                                            Converter="{StaticResource playerRightRailImageSourceConverter}"
-                                            ConverterParameter="{x:Static upperTabsCommon:UpperTabDecodeProfile.GridDecodePixelHeight}"
-                                          >
-                                            <Binding Path="ThumbPathGrid" />
-                                            <Binding Path="IsExists" />
-                                            <Binding Source="{x:Reference PlayerThumbnailList}" Path="IsVisible" />
-                                            <Binding Path="Movie_Path" />
-                                            <Binding Source="{x:Reference window}" Path="UpperTabPreferredMoviePathKeysRevision" />
-                                          </MultiBinding>
-                                        </Image.Source>
-                                      </Image>
-                                    </Label>
-                                    <TextBlock
-                                      Margin="0,4,0,0"
-                                      FontSize="10"
-                                      Foreground="{DynamicResource MaterialDesignBody}"
-                                      Text="{Binding Movie_Name, UpdateSourceTrigger=PropertyChanged}"
-                                      TextAlignment="Center"
-                                      TextTrimming="CharacterEllipsis"
-                                    />
-                                  </StackPanel>
-                                </Border>
+                                <Grid Height="56" SnapsToDevicePixels="True">
+                                  <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="76" />
+                                    <ColumnDefinition Width="*" />
+                                  </Grid.ColumnDefinitions>
+                                  <Label
+                                    Grid.Column="0"
+                                    Width="70"
+                                    Height="48"
+                                    Margin="3,4"
+                                    Padding="0"
+                                    BorderThickness="0"
+                                    Background="{DynamicResource ThumbImageBackground}"
+                                    ContextMenu="{StaticResource menuContext}"
+                                    MouseDown="Label_MouseDown"
+                                  >
+                                    <Image SnapsToDevicePixels="True" Stretch="UniformToFill">
+                                      <Image.Source>
+                                        <MultiBinding
+                                          Converter="{StaticResource playerRightRailImageSourceConverter}"
+                                          ConverterParameter="{x:Static upperTabsCommon:UpperTabDecodeProfile.GridDecodePixelHeight}"
+                                        >
+                                          <Binding Path="ThumbPathGrid" />
+                                          <Binding Path="IsExists" />
+                                          <Binding Source="{x:Reference PlayerThumbnailList}" Path="IsVisible" />
+                                          <Binding Path="Movie_Path" />
+                                          <Binding Source="{x:Reference window}" Path="UpperTabPreferredMoviePathKeysRevision" />
+                                        </MultiBinding>
+                                      </Image.Source>
+                                    </Image>
+                                  </Label>
+                                  <TextBlock
+                                    Grid.Column="1"
+                                    Margin="4,0,8,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="11"
+                                    Foreground="{DynamicResource MaterialDesignBody}"
+                                    Text="{Binding Movie_Name, UpdateSourceTrigger=PropertyChanged}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTip="{Binding Movie_Name}"
+                                  />
+                                </Grid>
                               </DataTemplate>
                             </ListView.ItemTemplate>
                           </ListView>
