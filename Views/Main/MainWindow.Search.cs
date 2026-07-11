@@ -19,6 +19,7 @@ namespace IndigoMovieManager
         private long _searchInputSequence;
         private long _pendingSearchInputId;
         private long _pendingSearchInputAcceptedTimestamp;
+        private int _searchRefreshRequestRevision;
         private bool _searchInputPriorityActive;
         private bool _searchInputShutdownHooked;
 
@@ -588,11 +589,51 @@ namespace IndigoMovieManager
             return selectedItem == null;
         }
 
-        // 検索確定は通常時は query-only で軽く流し、起動直後の部分ロード中だけ full reload を維持する。
-        private Task RefreshSearchResultsAsync(string sortId)
+        // partial feed 中は現在の一覧を先に返し、全件結果は後段で最新要求だけに追従させる。
+        private async Task RefreshSearchResultsAsync(string sortId)
         {
-            bool shouldReload = IsStartupFeedPartialActive;
-            return FilterAndSortAsync(sortId, shouldReload);
+            int searchRefreshRevision = Interlocked.Increment(ref _searchRefreshRequestRevision);
+            if (!IsStartupFeedPartialActive)
+            {
+                await FilterAndSortAsync(sortId, false);
+                return;
+            }
+
+            await RefreshMovieViewFromCurrentSourceAsync(
+                sortId,
+                "search-partial-first",
+                UiHangActivityKind.Database
+            );
+
+            if (searchRefreshRevision != Volatile.Read(ref _searchRefreshRequestRevision))
+            {
+                return;
+            }
+
+            _ = CompletePartialSearchFromFullSourceAsync(sortId, searchRefreshRevision);
+        }
+
+        private async Task CompletePartialSearchFromFullSourceAsync(
+            string sortId,
+            int searchRefreshRevision
+        )
+        {
+            try
+            {
+                if (searchRefreshRevision != Volatile.Read(ref _searchRefreshRequestRevision))
+                {
+                    return;
+                }
+
+                await FilterAndSortAsync(sortId, true);
+            }
+            catch (Exception ex)
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"search partial full reload failed: revision={searchRefreshRevision} error_type={ex.GetType().Name} message='{ex.Message}'"
+                );
+            }
         }
 
         public async Task ApplySearchKeywordFromLinkAsync(string keyword)

@@ -63,6 +63,42 @@ public sealed class SearchInputDebounceSourcePolicyTests
         Assert.That(debounceFlow, Does.Not.Contain("text='"));
     }
 
+    [Test]
+    public void Partial検索は現在sourceをawaitしてから全件reloadを後段へ送る()
+    {
+        string source = GetSearchSource();
+        string refreshMethod = GetMethodBlock(
+            source,
+            "private async Task RefreshSearchResultsAsync("
+        );
+        string completionMethod = GetMethodBlock(
+            source,
+            "private async Task CompletePartialSearchFromFullSourceAsync("
+        );
+
+        int memoryRefresh = refreshMethod.IndexOf(
+            "await RefreshMovieViewFromCurrentSourceAsync(",
+            StringComparison.Ordinal
+        );
+        int fullReloadQueue = refreshMethod.IndexOf(
+            "_ = CompletePartialSearchFromFullSourceAsync(",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refreshMethod, Does.Contain("if (!IsStartupFeedPartialActive)"));
+            Assert.That(refreshMethod, Does.Contain("await FilterAndSortAsync(sortId, false);"));
+            Assert.That(memoryRefresh, Is.GreaterThanOrEqualTo(0));
+            Assert.That(fullReloadQueue, Is.GreaterThan(memoryRefresh));
+            Assert.That(refreshMethod, Does.Contain("_searchRefreshRequestRevision"));
+            Assert.That(completionMethod, Does.Contain("await FilterAndSortAsync(sortId, true);"));
+            Assert.That(completionMethod, Does.Contain("_searchRefreshRequestRevision"));
+            Assert.That(completionMethod, Does.Contain("catch (Exception ex)"));
+            Assert.That(completionMethod, Does.Contain("search partial full reload failed"));
+        });
+    }
+
     private static string GetSearchSource()
     {
         return File.ReadAllText(
