@@ -284,6 +284,54 @@ public class ThumbnailProgressRuntimeTests
     }
 
     [Test]
+    public void CreateWorkerLoadSnapshot_UI一覧を作らず実行中負荷だけ返す()
+    {
+        ThumbnailProgressRuntime runtime = new();
+        QueueObj activeJob = new()
+        {
+            MovieFullPath = @"C:\videos\active.mp4",
+            Tabindex = 0,
+        };
+        QueueObj completedJob = new()
+        {
+            MovieFullPath = @"C:\videos\completed.mp4",
+            Tabindex = 0,
+        };
+
+        runtime.MarkJobStarted(activeJob);
+        runtime.MarkJobStarted(completedJob);
+        runtime.MarkJobCompleted(completedJob);
+        runtime.UpdateSessionProgress(3, 10, 2, 6);
+
+        ThumbnailWorkerLoadSnapshot snapshot = runtime.CreateWorkerLoadSnapshot();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshot.ActiveWorkerCount, Is.EqualTo(1));
+            Assert.That(snapshot.CurrentParallelism, Is.EqualTo(2));
+            Assert.That(snapshot.ConfiguredParallelism, Is.EqualTo(6));
+            Assert.That(snapshot.StateVersion, Is.EqualTo(runtime.CurrentVersion));
+        });
+    }
+
+    [Test]
+    public void ThumbnailWorkerLoadSnapshot_readonly値型として公開する()
+    {
+        Type snapshotType = typeof(ThumbnailWorkerLoadSnapshot);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshotType.IsValueType, Is.True);
+            Assert.That(
+                snapshotType.CustomAttributes.Any(
+                    x => x.AttributeType.FullName == "System.Runtime.CompilerServices.IsReadOnlyAttribute"
+                ),
+                Is.True
+            );
+        });
+    }
+
+    [Test]
     public void ViewStateApply_GPUHDD未取得時はNA表示になる()
     {
         ThumbnailProgressViewState viewState = new();

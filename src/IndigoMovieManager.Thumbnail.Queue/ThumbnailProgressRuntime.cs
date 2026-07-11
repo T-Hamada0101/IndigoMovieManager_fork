@@ -358,6 +358,29 @@ namespace IndigoMovieManager.Thumbnail
             }
         }
 
+        // Player操作中の負荷観測では、UI用の一覧を組み立てず数値だけを返す。
+        public ThumbnailWorkerLoadSnapshot CreateWorkerLoadSnapshot()
+        {
+            lock (stateLock)
+            {
+                int activeWorkerCount = 0;
+                foreach (WorkerState worker in activeWorkers.Values)
+                {
+                    if (worker.IsActive)
+                    {
+                        activeWorkerCount++;
+                    }
+                }
+
+                return new ThumbnailWorkerLoadSnapshot(
+                    activeWorkerCount,
+                    currentParallelism,
+                    configuredParallelism,
+                    stateVersion
+                );
+            }
+        }
+
         public static string CreateWorkerKey(QueueObj queueObj)
         {
             return CreateWorkerKey(queueObj?.ToThumbnailRequest());
@@ -509,6 +532,13 @@ namespace IndigoMovieManager.Thumbnail
             public DateTime CompletedAtUtc { get; set; } = DateTime.MinValue;
         }
     }
+
+    public readonly record struct ThumbnailWorkerLoadSnapshot(
+        int ActiveWorkerCount,
+        int CurrentParallelism,
+        int ConfiguredParallelism,
+        long StateVersion
+    );
 
     public sealed class ThumbnailProgressRuntimeSnapshot
     {
