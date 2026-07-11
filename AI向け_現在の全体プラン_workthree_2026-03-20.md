@@ -3,6 +3,7 @@
 最終更新日: 2026-07-11
 
 変更概要:
+- 2026-07-12、full reloadのMovieRecords生成で同じ行から最大6回行っていた同名source image探索を、行内lazy resolverの1回へ共有した。43,433行のRelease実機でprobe 43,433、行内hit 173,792、初回source applyは6643msから3300ms、後続2345msまで短縮。次順位は残るDataRow型変換・タグ処理・allocation・collection replaceの区間分解である。
 - 2026-07-12、検索TextboxのdebounceがBinding済み`SearchKeyword`との同値を理由に検索を捨てる不具合と、部分ロード中の無言skipを修正した。TextChanged hot pathはID/時刻更新だけ、ログはdebounce時1回。Release x64でEnterなし入力が14ms後にfilter開始し357件へ絞り込まれた。初回full reloadは7868ms、支配要因はsource apply 6643msのため次順位は全件source変換の再利用である。
 - 2026-07-12、Player固定高行の画像ラッパーをLabelからBorderへ軽量化し、タイトルToolTip Bindingを外した。OSホイール入力の本体handle一致を確認したRelease runでは、8入力で `first render=6ms / converter=8 / generator=36 / max layout gap=637ms / revision=0`、バースト中Warning停止なし。旧物理ホイール最大1249msから改善したが、人間の操作感確認までは実機確認待ちとする。
 - 2026-07-12、Playerスクロールの1バースト計測を追加し、8回PageDownで `revision=7 / converter=227 / generator=194 / max layout gap=944ms` を観測した。viewport revisionをscroll中pending、idle warmと最大1回へ合流してconverterを104まで減らしたが、generatorと約0.9秒gapは残った。仮想化cache `0` はgeneratorを228へ悪化させたため `0.5 Page` へ戻した。次順位は固定高行templateの軽量化とする。

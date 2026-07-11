@@ -600,6 +600,10 @@ Player内の1バースト集約計測を追加した結果、8回PageDownで `re
 
 初回検索全体は7868 msで、`db_reload_ms=1144 source_apply_ms=6643 filter_sort_ms=50 apply_ms=23` だった。入力が黙って捨てられるBehaviorは閉じたが、部分ロードからの初回full reloadは依然遅い。次の最上位はDB readではなく全件source変換の6.6秒であり、source snapshot / MovieRecords生成を検索要求ごとに繰り返さない境界を調査する。
 
+source変換監査では、管理サムネ欠損時の同名source image探索がSmall / Big / Grid / List / Big10 / Detailの各用途から同じ行で繰り返され、43k件では最大77万回級のファイル確認になり得ることを確認した。グローバルcacheは作らず、1行内だけのlazy resolverで探索結果を共有し、管理サムネが見つかる行ではprobeを起動しない。
+
+Release x64コピーDBの同じEnterなし検索では43,433行に対し `source_image_probe_count=43433 source_image_cache_hit_count=173792`、初回 `source_apply_ms=3300 total_ms=4987`、後続 `source_apply_ms=2345 total_ms=4080` だった。修正前の `source_apply_ms=6643 total_ms=7868` から初回source変換を約50%短縮した。次順位は残る2.3〜3.3秒のDataRow型変換、タグsplit / Regex、MovieRecords allocation、collection replaceを区間分解し、効果の大きい1件だけを選ぶ。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
