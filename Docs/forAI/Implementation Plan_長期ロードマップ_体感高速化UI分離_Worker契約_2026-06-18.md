@@ -586,6 +586,8 @@ sidecar判断ゲート:
 
 同日の次フェーズでは、rescued thumbnail 反映が1件ごとに `DispatcherPriority.Normal` へ入り、`MainVM.MovieRecs` を毎回全走査していた経路を最上位1件として修正した。最大16件のbatchをDispatcher 1回へ畳み、UI-bound collectionの索引もbatchごとに1回だけ作る。user-priority中は120 ms単位で延期し、DB session / path / shutdownをapply直前にも確認する。Release x64の新しいコピーDB + no-persist runでは、rescued sync 4回の `apply_ms=0〜3`、`dispatch_wait_ms=0〜5` で、同時刻に新しいUI hangは記録されなかった。次順位は、Player scroll中の `UpperTabPreferredMoviePathKeysRevision` 更新と画像Binding再評価をRender単位または短いlatest-onlyへ合流すること。ただし、ユーザー自身の物理ホイール確認前にPlayer scrollフェーズを完了扱いにはしない。
 
+続くrevision監査では、Player warm / viewport更新が共有revisionを通じて通常5タブのMultiBindingも再評価していたため、`PlayerRightRailImageRevision` を専用化した。Player由来のviewportとwarmは専用revisionだけ、通常タブviewportは共有revisionだけ、サムネ実体変更は両方を進める。Release x64実機ではPlayer操作中とwarm反映の双方で `shared_revision_updated=False player_revision_updated=True` を確認した。一方、同じrunのUI停止は最大1249 ms残り、最初のRenderは22 msだった。したがって他タブへのrevision波及は削減できたが主因ではない。次の最上位候補はPlayer内で実現された行のBinding / converter呼出数とWPF layoutであり、物理ホイールの目視結果と同時刻の実測を揃えてから1件へ絞る。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
