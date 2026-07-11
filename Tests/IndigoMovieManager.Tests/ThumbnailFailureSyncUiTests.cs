@@ -312,6 +312,72 @@ public sealed class ThumbnailFailureSyncUiTests
     }
 
     [Test]
+    public void RescuedSyncはbatch単位で索引を作りDispatcherへ一度だけ渡す()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
+            .Replace("\r\n", "\n");
+        string applyMethod = ExtractMethod(
+            source,
+            "private async Task<RescuedThumbnailBatchUiApplyResult> ApplyRescuedThumbnailRecordsToUiAsync("
+        );
+
+        Assert.That(CountOccurrences(applyMethod, "Dispatcher.InvokeAsync("), Is.EqualTo(1));
+        Assert.That(
+            CountOccurrences(
+                applyMethod,
+                "foreach (MovieRecords movie in MainVM?.MovieRecs ?? [])"
+            ),
+            Is.EqualTo(1)
+        );
+        Assert.That(applyMethod, Does.Not.Contain(".Where("));
+        Assert.That(applyMethod, Does.Not.Contain("ApplyRescuedThumbnailRecordToUiAsync("));
+    }
+
+    [Test]
+    public void RescuedSyncはuser_priorityを入口とapply直前で確認しbounded延期する()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
+            .Replace("\r\n", "\n");
+        string applyMethod = ExtractMethod(
+            source,
+            "private async Task<RescuedThumbnailBatchUiApplyResult> ApplyRescuedThumbnailRecordsToUiAsync("
+        );
+
+        int requestBuildIndex = applyMethod.IndexOf(
+            "List<(ThumbnailFailureRecord Record, long MovieId)> requests",
+            StringComparison.Ordinal
+        );
+        int dispatcherIndex = applyMethod.IndexOf("Dispatcher.InvokeAsync(", StringComparison.Ordinal);
+        int firstGateIndex = applyMethod.IndexOf("IsUserPriorityWorkActive()", StringComparison.Ordinal);
+        int lastGateIndex = applyMethod.LastIndexOf("IsUserPriorityWorkActive()", StringComparison.Ordinal);
+
+        Assert.That(firstGateIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(firstGateIndex, Is.LessThan(requestBuildIndex));
+        Assert.That(lastGateIndex, Is.GreaterThan(requestBuildIndex));
+        Assert.That(lastGateIndex, Is.GreaterThan(dispatcherIndex));
+        Assert.That(applyMethod, Does.Contain("Task.Delay("));
+        Assert.That(applyMethod, Does.Contain("ThumbnailFailureSyncUserPriorityDelayMs"));
+    }
+
+    [Test]
+    public void RescuedSyncのbatch反映ログは件数と延期状態を観測できる()
+    {
+        string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
+            .Replace("\r\n", "\n");
+        string syncMethod = ExtractMethod(
+            source,
+            "private async Task TrySyncRescuedThumbnailRecordsAsync("
+        );
+
+        Assert.That(syncMethod, Does.Contain("rescued sync completed:"));
+        Assert.That(syncMethod, Does.Contain("trigger="));
+        Assert.That(syncMethod, Does.Contain("batch_count="));
+        Assert.That(syncMethod, Does.Contain("matched_count="));
+        Assert.That(syncMethod, Does.Contain("apply_ms="));
+        Assert.That(syncMethod, Does.Contain("deferred="));
+    }
+
+    [Test]
     public void サムネ成功後段はDB再読込ではなく局所refreshへ寄せる()
     {
         string source = GetRepoText("Thumbnail", "MainWindow.ThumbnailFailureSync.cs")
@@ -382,5 +448,18 @@ public sealed class ThumbnailFailureSyncUiTests
 
         Assert.Fail($"{signature} の終端を解決できませんでした。");
         return string.Empty;
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        int count = 0;
+        int startIndex = 0;
+        while ((startIndex = source.IndexOf(value, startIndex, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            startIndex += value.Length;
+        }
+
+        return count;
     }
 }
