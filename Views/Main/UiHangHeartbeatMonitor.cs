@@ -136,7 +136,7 @@ namespace IndigoMovieManager
             try
             {
                 _ = _dispatcher.BeginInvoke(
-                    DispatcherPriority.Background,
+                    DispatcherPriority.Input,
                     new Action(() => CompleteProbe(sequence))
                 );
             }
