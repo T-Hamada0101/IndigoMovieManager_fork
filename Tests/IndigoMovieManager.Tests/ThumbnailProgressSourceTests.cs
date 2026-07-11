@@ -6,6 +6,28 @@ namespace IndigoMovieManager.Tests;
 public sealed class ThumbnailProgressSourceTests
 {
     [Test]
+    public void Snapshot計測CSVはUI更新から背景キューへ引き渡す()
+    {
+        string source = GetThumbnailProgressSource();
+        string method = ExtractMethod(
+            source,
+            "private void UpdateThumbnailProgressSnapshotUi(bool requireVisibleSelection = true)"
+        );
+        string queueSource = GetRepoText(
+            "BottomTabs",
+            "ThumbnailProgress",
+            "ThumbnailProgressSnapshotMetricsQueue.cs"
+        ).Replace("\r\n", "\n");
+
+        Assert.That(method, Does.Contain("_thumbnailProgressSnapshotMetricsQueue.Enqueue("));
+        Assert.That(method, Does.Not.Contain("ThumbnailProgressUiMetricsLogger.RecordSnapshotApply("));
+        Assert.That(queueSource, Does.Contain("ConcurrentQueue<ThumbnailProgressSnapshotApplyMetric>"));
+        Assert.That(queueSource, Does.Contain("Interlocked.CompareExchange(ref drainRunning, 1, 0)"));
+        Assert.That(queueSource, Does.Contain("Task.Run(Drain)"));
+        Assert.That(queueSource, Does.Contain("ThumbnailProgressUiMetricsLogger.RecordSnapshotApply("));
+    }
+
+    [Test]
     public void UpdateThumbnailProgressSnapshotUi_救済Worker用の同期IOを持たない()
     {
         string source = GetThumbnailProgressSource();

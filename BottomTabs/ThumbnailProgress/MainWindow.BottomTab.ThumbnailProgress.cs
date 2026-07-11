@@ -34,6 +34,8 @@ namespace IndigoMovieManager
                 ? NoOpThumbnailQueueProgressPresenter.Instance
                 : new AppThumbnailQueueProgressPresenter();
         private readonly ThumbnailProgressRuntime _thumbnailProgressRuntime = new();
+        private readonly ThumbnailProgressSnapshotMetricsQueue _thumbnailProgressSnapshotMetricsQueue =
+            new();
         private readonly object _uiWorkSchedulerRuntimeSyncRoot = new();
         private readonly UiWorkSchedulerRuntime _uiWorkSchedulerRuntime =
             new(UiWorkRequestPolicy.ExistingReservationQueueCapacity);
@@ -1016,12 +1018,15 @@ namespace IndigoMovieManager
                 _thumbnailProgressTabPresenter?.ClearDirtyWhileHidden();
             }
 
-            ThumbnailProgressUiMetricsLogger.RecordSnapshotApply(
-                runtimeSnapshot.Version,
-                dbPendingCount,
-                dbTotalCount,
-                runtimeSnapshot.ActiveWorkers.Count,
-                applyStopwatch.Elapsed.TotalMilliseconds
+            // 計測CSVのディスク書き込みはUIスレッドから外し、入力描画を待たせない。
+            _thumbnailProgressSnapshotMetricsQueue.Enqueue(
+                new ThumbnailProgressSnapshotApplyMetric(
+                    runtimeSnapshot.Version,
+                    dbPendingCount,
+                    dbTotalCount,
+                    runtimeSnapshot.ActiveWorkers.Count,
+                    applyStopwatch.Elapsed.TotalMilliseconds
+                )
             );
         }
 
