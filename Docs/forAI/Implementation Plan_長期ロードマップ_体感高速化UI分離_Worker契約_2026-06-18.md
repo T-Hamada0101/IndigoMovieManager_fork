@@ -618,6 +618,10 @@ Release x64コピーDBのEnterなし `movie` 検索では43,548件級の全件pr
 
 新しいRelease x64コピーDB runのPlayer PageDown 8回は `first_render_ms=27 first_layout_ms=25 max_layout_gap_ms=203 total_ms=507 revision_delta=0` だった。旧同条件の `max_layout_gap_ms=846` から短縮したが、今回のrunではWatch UI applyやサムネ成功反映そのものがスクロール区間へ重ならず、延期ログの実機観測は未達である。また同区間に `activity=None delay_ms=1163` が1件残り、viewport更新ごとのvisible source image probeがrevision 3〜9でstale完了を連続記録した。次の最優先はscroll user-priority中のvisible source probe予約を起動せず最新1件へ畳み、解除後1回だけ探索して、残るUI監視停止との因果を再測定することである。人間の物理ホイール体感確認も引き続き完了ゲートに残す。
 
+次フェーズでは、visible source image probeをuser-priority中に毎回起動せず、最新reasonだけを保持する単一deferred workerへ集約した。解除後は `DispatcherPriority.Background` から通常Queueへ1回戻り、その時点のDB / filter revision / near-visible targetsを新しくsnapshot化する。親レビューでは延期受付時にprobe revisionを進め、操作開始前から待っていた旧viewport探索も解除直後に実行されないよう補強した。管理サムネイル保護、placeholder限定反映、全件走査禁止は維持している。
+
+Release x64の関連111テストは成功した。コピーDBのPlayer PageDown 8回では `first_render_ms=28 first_layout_ms=26 max_layout_gap_ms=355 total_ms=658 revision_delta=0` となり、旧runでスクロール中に7件出ていたvisible probeのstale完了は0件になった。解除後は最新63件のprobeが完了したが、warm / viewport更新由来とみられる同一63件probeが約1秒後にもう1回完了した。また同区間のUI監視には `activity=None delay_ms=1238` が残る一方、描画側最大gapは355 msだった。次の最優先は同一DB / filter revision / preferred key snapshotの短時間重複probeを省き、UI hang監視値が実描画停止か監視上の遅延かを同じburst IDで照合することである。人間の物理ホイール体感確認は未達のまま残す。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
