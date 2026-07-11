@@ -121,6 +121,11 @@ namespace IndigoMovieManager
                     );
                     return;
                 }
+                MarkStartupSourceCompleteAfterFullReload(
+                    requestRevision,
+                    latestMovieRecords?.Length ?? 0,
+                    fullReloadReason
+                );
                 InvalidateThumbnailErrorRecords(refreshIfVisible: true);
                 sourceApplyStopwatch.Stop();
                 sourceApplyElapsedMs = sourceApplyStopwatch.ElapsedMilliseconds;

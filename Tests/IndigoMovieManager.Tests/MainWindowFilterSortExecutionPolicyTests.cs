@@ -449,6 +449,44 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void FilterAndSortAsync_現行revisionの全件source再構築成功後だけstartupをcompleteにする()
+    {
+        string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
+        string startupSource = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
+        string method = GetMethodBlock(requestSource, "private async Task FilterAndSortAsync(");
+        string completeHelper = GetMethodBlock(
+            startupSource,
+            "private void MarkStartupSourceCompleteAfterFullReload("
+        );
+        int sourceApplyIndex = method.IndexOf(
+            "latestMovieRecords = await SetRecordsToSource(latestMovieData, requestRevision);",
+            StringComparison.Ordinal
+        );
+        int staleGuardIndex = method.IndexOf(
+            "if (requestRevision != _filterAndSortRequestRevision)",
+            sourceApplyIndex,
+            StringComparison.Ordinal
+        );
+        int completeIndex = method.IndexOf(
+            "MarkStartupSourceCompleteAfterFullReload(",
+            sourceApplyIndex,
+            StringComparison.Ordinal
+        );
+
+        Assert.That(sourceApplyIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(staleGuardIndex, Is.GreaterThan(sourceApplyIndex));
+        Assert.That(completeIndex, Is.GreaterThan(staleGuardIndex));
+        Assert.That(
+            method.IndexOf("if (latestMovieData == null)", StringComparison.Ordinal),
+            Is.LessThan(sourceApplyIndex)
+        );
+        Assert.That(completeHelper, Does.Contain("Volatile.Read(ref _filterAndSortRequestRevision)"));
+        Assert.That(completeHelper, Does.Contain("_startupFeedLoadedAllPages = true;"));
+        Assert.That(completeHelper, Does.Contain("ClearStartupContinuationState();"));
+        Assert.That(completeHelper, Does.Contain("startup source completed by full reload"));
+    }
+
+    [Test]
     public void DataRowToViewData_単発追加の存在確認は背景bulk経路と後追い更新へ逃がす()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");

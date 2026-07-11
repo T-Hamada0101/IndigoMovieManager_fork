@@ -1025,6 +1025,30 @@ namespace IndigoMovieManager
             }
         }
 
+        /// <summary>
+        /// 検索側で全件 source の再構築まで成功した時だけ、段階ロードの未完了状態を閉じる。
+        /// </summary>
+        private void MarkStartupSourceCompleteAfterFullReload(
+            int requestRevision,
+            int sourceCount,
+            string fullReloadReason
+        )
+        {
+            if (requestRevision != Volatile.Read(ref _filterAndSortRequestRevision))
+            {
+                return;
+            }
+
+            _startupFeedIsPartialActive = false;
+            _startupFeedLoadedAllPages = true;
+            ClearStartupContinuationState();
+
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"startup source completed by full reload: filter_revision={requestRevision} source_count={sourceCount} full_reload_reason={fullReloadReason}"
+            );
+        }
+
         private MovieRecords CreateStartupMovieRecordFromSource(
             MainDbMovieReadItemResult source,
             MovieRecordBulkBuildContext bulkContext,
