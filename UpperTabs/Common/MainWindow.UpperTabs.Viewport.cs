@@ -130,6 +130,9 @@ namespace IndigoMovieManager
                 PlayerThumbnailScrollUserPriorityTimer_Tick;
             PlayerRightRailImageSourceConverter.ImageWarmCompleted +=
                 PlayerRightRailImageSourceConverter_ImageWarmCompleted;
+            PlayerRightRailImageWarmQueue.SetSuspensionProvider(
+                () => _isPlayerThumbnailScrollUserPriorityActive
+            );
             _playerRightRailWarmCompletionHooked = true;
             Dispatcher.ShutdownStarted += PlayerThumbnailScrollDispatcher_ShutdownStarted;
             _uiHangNotificationCoordinator?.SetPlayerScrollBurstSnapshotProvider(
@@ -522,6 +525,7 @@ namespace IndigoMovieManager
             {
                 PlayerRightRailImageSourceConverter.ImageWarmCompleted -=
                     PlayerRightRailImageSourceConverter_ImageWarmCompleted;
+                PlayerRightRailImageWarmQueue.SetSuspensionProvider(null);
                 _playerRightRailWarmCompletionHooked = false;
             }
 
@@ -672,7 +676,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player thumbnail scroll burst: burst_id={sessionId} release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_flush_state={(_playerRightRailViewportRevisionPending ? "pending-before-idle-flush" : "not-pending")}"
+                $"player thumbnail scroll burst: burst_id={sessionId} release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} suppressed_count={converterMetrics.QueueSuppressedCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_flush_state={(_playerRightRailViewportRevisionPending ? "pending-before-idle-flush" : "not-pending")}"
             );
         }
 

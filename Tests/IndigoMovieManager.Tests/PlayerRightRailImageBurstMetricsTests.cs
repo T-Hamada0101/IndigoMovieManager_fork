@@ -1,4 +1,5 @@
 using IndigoMovieManager.UpperTabs.Player;
+using IndigoMovieManager.UpperTabs.Common;
 
 namespace IndigoMovieManager.Tests;
 
@@ -15,6 +16,7 @@ public sealed class PlayerRightRailImageBurstMetricsTests
     public void TearDown()
     {
         PlayerRightRailImageBurstMetrics.ResetForTesting();
+        PlayerRightRailImageWarmQueue.SetSuspensionProvider(null);
     }
 
     [Test]
@@ -44,6 +46,9 @@ public sealed class PlayerRightRailImageBurstMetricsTests
         PlayerRightRailImageBurstMetrics.RecordQueueResult(
             PlayerRightRailImageWarmQueueResult.Duplicate
         );
+        PlayerRightRailImageBurstMetrics.RecordQueueResult(
+            PlayerRightRailImageWarmQueueResult.Suppressed
+        );
 
         bool ended = PlayerRightRailImageBurstMetrics.End(10, out var snapshot);
 
@@ -56,6 +61,7 @@ public sealed class PlayerRightRailImageBurstMetricsTests
             Assert.That(snapshot.CacheMissCount, Is.EqualTo(1));
             Assert.That(snapshot.QueueEnqueuedCount, Is.EqualTo(1));
             Assert.That(snapshot.QueueDuplicateCount, Is.EqualTo(1));
+            Assert.That(snapshot.QueueSuppressedCount, Is.EqualTo(1));
             Assert.That(PlayerRightRailImageBurstMetrics.End(10, out _), Is.False);
         });
     }
@@ -109,5 +115,55 @@ public sealed class PlayerRightRailImageBurstMetricsTests
             Assert.That(snapshot.QueueEnqueuedCount, Is.EqualTo(count / 2));
             Assert.That(snapshot.QueueDuplicateCount, Is.EqualTo(count / 2));
         });
+    }
+
+    [Test]
+    public void WarmQueueはsuspension中にenqueueしない()
+    {
+        PlayerRightRailImageWarmQueue.SetSuspensionProvider(() => true);
+        ImageRequest request = ImageRequest.ForPlayerRightRail(
+            "thumb.jpg",
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 1
+        );
+        ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+            request,
+            decodePixelHeight: 96,
+            logReason: "test"
+        );
+
+        PlayerRightRailImageWarmQueueResult result = PlayerRightRailImageWarmQueue.Queue(
+            decodeRequest,
+            isExists: true,
+            _ => Assert.Fail("抑止中に完了通知してはならない")
+        );
+
+        Assert.That(result, Is.EqualTo(PlayerRightRailImageWarmQueueResult.Suppressed));
+    }
+
+    [Test]
+    public void WarmQueueはsuspension判定例外時に抑止しない()
+    {
+        PlayerRightRailImageWarmQueue.SetSuspensionProvider(() => throw new InvalidOperationException());
+        ImageRequest request = ImageRequest.ForPlayerRightRail(
+            "missing-test-thumb.jpg",
+            "exception-safe-key",
+            isVisiblePriority: true,
+            requestRevision: 1
+        );
+        ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+            request,
+            decodePixelHeight: 96,
+            logReason: "test"
+        );
+
+        PlayerRightRailImageWarmQueueResult result = PlayerRightRailImageWarmQueue.Queue(
+            decodeRequest,
+            isExists: false,
+            _ => { }
+        );
+
+        Assert.That(result, Is.EqualTo(PlayerRightRailImageWarmQueueResult.Enqueued));
     }
 }

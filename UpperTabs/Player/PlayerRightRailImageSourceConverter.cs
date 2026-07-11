@@ -146,6 +146,7 @@ namespace IndigoMovieManager.UpperTabs.Player
     {
         Enqueued,
         Duplicate,
+        Suppressed,
     }
 
     internal readonly record struct PlayerRightRailImageBurstMetricsSnapshot(
@@ -154,7 +155,8 @@ namespace IndigoMovieManager.UpperTabs.Player
         long CacheHitCount,
         long CacheMissCount,
         long QueueEnqueuedCount,
-        long QueueDuplicateCount
+        long QueueDuplicateCount,
+        long QueueSuppressedCount
     );
 
     internal static class PlayerRightRailImageBurstMetrics
@@ -235,6 +237,7 @@ namespace IndigoMovieManager.UpperTabs.Player
             private long _cacheMissCount;
             private long _queueEnqueuedCount;
             private long _queueDuplicateCount;
+            private long _queueSuppressedCount;
 
             internal BurstState(long sessionId)
             {
@@ -257,7 +260,13 @@ namespace IndigoMovieManager.UpperTabs.Player
                     return;
                 }
 
-                Interlocked.Increment(ref _queueDuplicateCount);
+                if (result == PlayerRightRailImageWarmQueueResult.Duplicate)
+                {
+                    Interlocked.Increment(ref _queueDuplicateCount);
+                    return;
+                }
+
+                Interlocked.Increment(ref _queueSuppressedCount);
             }
 
             internal PlayerRightRailImageBurstMetricsSnapshot CreateSnapshot()
@@ -268,7 +277,8 @@ namespace IndigoMovieManager.UpperTabs.Player
                     Interlocked.Read(ref _cacheHitCount),
                     Interlocked.Read(ref _cacheMissCount),
                     Interlocked.Read(ref _queueEnqueuedCount),
-                    Interlocked.Read(ref _queueDuplicateCount)
+                    Interlocked.Read(ref _queueDuplicateCount),
+                    Interlocked.Read(ref _queueSuppressedCount)
                 );
             }
         }
@@ -281,6 +291,15 @@ namespace IndigoMovieManager.UpperTabs.Player
         private static readonly Queue<WarmRequest> Pending = new();
         private static readonly HashSet<string> PendingKeys = new(StringComparer.OrdinalIgnoreCase);
         private static bool _workerActive;
+        private static Func<bool> _isSuspendedProvider;
+
+        internal static void SetSuspensionProvider(Func<bool> isSuspendedProvider)
+        {
+            lock (Gate)
+            {
+                _isSuspendedProvider = isSuspendedProvider;
+            }
+        }
 
         internal static PlayerRightRailImageWarmQueueResult Queue(
             ImageDecodeRequest decodeRequest,
@@ -288,9 +307,14 @@ namespace IndigoMovieManager.UpperTabs.Player
             Action<ImageRequest> completed
         )
         {
-            string key = BuildKey(decodeRequest, isExists);
             lock (Gate)
             {
+                if (IsSuspendedSafely())
+                {
+                    return PlayerRightRailImageWarmQueueResult.Suppressed;
+                }
+
+                string key = BuildKey(decodeRequest, isExists);
                 if (!PendingKeys.Add(key))
                 {
                     return PlayerRightRailImageWarmQueueResult.Duplicate;
@@ -311,6 +335,19 @@ namespace IndigoMovieManager.UpperTabs.Player
                 _workerActive = true;
                 _ = System.Threading.Tasks.Task.Run(ProcessAsync);
                 return PlayerRightRailImageWarmQueueResult.Enqueued;
+            }
+        }
+
+        private static bool IsSuspendedSafely()
+        {
+            try
+            {
+                return _isSuspendedProvider?.Invoke() == true;
+            }
+            catch
+            {
+                // 判定失敗時は画像要求を止めず、従来どおりwarmへ進める。
+                return false;
             }
         }
 
