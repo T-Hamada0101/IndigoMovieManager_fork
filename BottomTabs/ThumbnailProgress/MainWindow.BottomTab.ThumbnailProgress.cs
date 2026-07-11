@@ -891,6 +891,12 @@ namespace IndigoMovieManager
                 if (_thumbnailProgressUiTickAccumulatedMs >= ThumbnailProgressSnapshotFallbackIntervalMs)
                 {
                     _thumbnailProgressUiTickAccumulatedMs = 0;
+                    if (IsUserPriorityWorkActive())
+                    {
+                        RequestThumbnailProgressSnapshotRefresh();
+                        return;
+                    }
+
                     UpdateThumbnailProgressSnapshotUi();
                 }
             }

@@ -1170,6 +1170,16 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (IsUserPriorityWorkActive())
+            {
+                // 単一タイマーを再利用し、連続成功も最新理由1件へ畳む。
+                TryStartDispatcherTimer(
+                    _thumbnailSuccessMainTabReloadTimer,
+                    nameof(_thumbnailSuccessMainTabReloadTimer)
+                );
+                return;
+            }
+
             string sortId = MainVM?.DbInfo?.Sort ?? "0";
             DebugRuntimeLog.Write(
                 "thumbnail-sync",

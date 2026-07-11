@@ -573,7 +573,7 @@ namespace IndigoMovieManager
         private async Task<bool> TryInvokeThumbnailUiReflectionAsync(
             Action action,
             CancellationToken cts = default,
-            DispatcherPriority priority = DispatcherPriority.Normal
+            DispatcherPriority priority = DispatcherPriority.Background
         )
         {
             if (action == null)
@@ -586,16 +586,43 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            if (Dispatcher.CheckAccess())
-            {
-                action();
-                return true;
-            }
-
             try
             {
-                await Dispatcher.InvokeAsync(action, priority, cts).Task.ConfigureAwait(false);
-                return true;
+                while (!ShouldSkipThumbnailUiReflection(cts))
+                {
+                    // wheel / Page操作中は生成結果を失わず、UI適用だけを後ろへ送る。
+                    if (IsUserPriorityWorkActive())
+                    {
+                        await Task.Delay(120, cts).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    bool applied = await Dispatcher
+                        .InvokeAsync(
+                            () =>
+                            {
+                                // Dispatcher待ちの間に新しい操作が始まった場合も割り込まない。
+                                if (IsUserPriorityWorkActive())
+                                {
+                                    return false;
+                                }
+
+                                action();
+                                return true;
+                            },
+                            priority,
+                            cts
+                        )
+                        .Task.ConfigureAwait(false);
+                    if (applied)
+                    {
+                        return true;
+                    }
+
+                    await Task.Delay(120, cts).ConfigureAwait(false);
+                }
+
+                return false;
             }
             catch (OperationCanceledException) when (ShouldSkipThumbnailUiReflection(cts))
             {
