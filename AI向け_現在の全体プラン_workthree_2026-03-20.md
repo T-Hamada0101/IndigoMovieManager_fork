@@ -3,6 +3,7 @@
 最終更新日: 2026-07-11
 
 変更概要:
+- 2026-07-12、rescued thumbnailのUI反映を1件ごとのDispatcher往復と全件走査から、最大16件のbatchごとDispatcher 1回・MovieRecs索引1回へ変更した。user-priority中は120 ms単位で延期し、DB session / path / shutdownをapply直前にも確認する。Release x64のコピーDB + no-persist新規runでは4回の反映が `apply_ms=0〜3`、`dispatch_wait_ms=0〜5` で、次順位はPlayer scroll中の画像revision再評価の合流とする。
 - 長期ロードマップを「UIのスムーズ化とユーザーストレス最小化」の実装正本として再構築した。総合進捗率は使わず、Behavior / Evidence / Regression Guard の3条件とPhase状態で完了を判定する。直近最優先は、主要8シナリオを同一Release runで採取し、選択 / focus / scroll / blankを含む体感支配要因を最大3件へ絞ること。
 - watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定した。`plan_reason` と並べて実機ログで読める契約を source policy で守り、`dirty-fields-unsafe:*` の実頻度を見るまで Hash / MovieName などを安全扱いへ広げない。
 - `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。2026-06-18 の Release 実機ログでは `_Anime - コピー.wb` で `elapsed_ms=150`、`watch_table_load_ms=3`、`registration_ms=6`、`failed=0` だったため、このDBでは watcher 作成を削らない。

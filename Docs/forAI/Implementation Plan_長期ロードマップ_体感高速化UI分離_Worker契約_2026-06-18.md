@@ -584,6 +584,8 @@ sidecar判断ゲート:
 
 同日Release x64のコピーDB + no-persist診断では、Player PageDownの一覧処理が3 ms / 7 ms、入力開始から最初のRenderが6 msだった。標準縦リスト化によってPlayerスクロールの初動は短くなったと判断する。一方、同じバースト中に `activity=None` のUI監視停止が最大1103 ms残っており、Playerレイアウトだけで全停止が解消したとは扱わない。次はユーザー自身の物理ホイールで操作感を判定し、引っ掛かりが残る場合は同時刻の背景処理とUI停止を別件として切り分ける。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
+同日の次フェーズでは、rescued thumbnail 反映が1件ごとに `DispatcherPriority.Normal` へ入り、`MainVM.MovieRecs` を毎回全走査していた経路を最上位1件として修正した。最大16件のbatchをDispatcher 1回へ畳み、UI-bound collectionの索引もbatchごとに1回だけ作る。user-priority中は120 ms単位で延期し、DB session / path / shutdownをapply直前にも確認する。Release x64の新しいコピーDB + no-persist runでは、rescued sync 4回の `apply_ms=0〜3`、`dispatch_wait_ms=0〜5` で、同時刻に新しいUI hangは記録されなかった。次順位は、Player scroll中の `UpperTabPreferredMoviePathKeysRevision` 更新と画像Binding再評価をRender単位または短いlatest-onlyへ合流すること。ただし、ユーザー自身の物理ホイール確認前にPlayer scrollフェーズを完了扱いにはしない。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
