@@ -339,7 +339,20 @@ public sealed class UpperTabViewportRefreshTests
             queueMethod,
             Does.Contain("_playerRightRailWarmRefreshOperation.Status == DispatcherOperationStatus.Pending")
         );
+        Assert.That(applyMethod, Does.Contain("Stopwatch.StartNew();"));
+        Assert.That(applyMethod, Does.Contain("visibleCompletionCount++"));
         Assert.That(applyMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(
+            applyMethod,
+            Does.Contain("player right rail warm refresh: visible_completions=")
+        );
+        Assert.That(applyMethod, Does.Contain("revision_updated={revisionUpdated}"));
+        Assert.That(applyMethod, Does.Contain("elapsed_ms={stopwatch.ElapsedMilliseconds}"));
+        Assert.That(
+            applyMethod,
+            Does.Contain("scroll_priority_active={scrollPriorityActive}")
+        );
+        Assert.That(applyMethod, Does.Not.Contain(".Any("));
         Assert.That(applyMethod, Does.Not.Contain("SelectedItem"));
         Assert.That(applyMethod, Does.Not.Contain("ScrollTo"));
         Assert.That(

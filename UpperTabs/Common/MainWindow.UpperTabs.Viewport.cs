@@ -583,14 +583,30 @@ namespace IndigoMovieManager
                 return;
             }
 
-            bool hasVisibleCompletion = _playerRightRailWarmCompletedMoviePathKeys.Any(moviePathKey =>
-                ContainsMoviePathKey(_preferredVisibleMoviePathKeysSnapshot, moviePathKey)
-            );
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool scrollPriorityActive = _isPlayerThumbnailScrollUserPriorityActive;
+            int visibleCompletionCount = 0;
+            foreach (string moviePathKey in _playerRightRailWarmCompletedMoviePathKeys)
+            {
+                if (ContainsMoviePathKey(_preferredVisibleMoviePathKeysSnapshot, moviePathKey))
+                {
+                    visibleCompletionCount++;
+                }
+            }
+
             _playerRightRailWarmCompletedMoviePathKeys.Clear();
-            if (hasVisibleCompletion)
+            int revisionBefore = UpperTabPreferredMoviePathKeysRevision;
+            if (visibleCompletionCount > 0)
             {
                 RefreshUpperTabPreferredMoviePathKeysRevision();
             }
+
+            bool revisionUpdated = UpperTabPreferredMoviePathKeysRevision != revisionBefore;
+            stopwatch.Stop();
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"player right rail warm refresh: visible_completions={visibleCompletionCount} revision_updated={revisionUpdated} elapsed_ms={stopwatch.ElapsedMilliseconds} scroll_priority_active={scrollPriorityActive}"
+            );
         }
 
         internal static bool ContainsMoviePathKey(
