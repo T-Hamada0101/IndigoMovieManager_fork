@@ -196,7 +196,7 @@ public sealed class ImagePipelineSourcePolicyTests
     }
 
     [Test]
-    public void Player右レールconverterはImageRequestを作ってからdecodeへ進む()
+    public void Player右レールconverterはcache_only判定後に背景warmへ進む()
     {
         string converterSource = GetRepoText(
             "UpperTabs",
@@ -209,10 +209,14 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("ShouldApplyPlayerRightRailImageRequest("));
         Assert.That(convertMethod, Does.Contain("ResolveImageRequestRevision("));
         Assert.That(convertMethod, Does.Contain("BuildImageDecodeRequest("));
-        Assert.That(convertMethod, Does.Contain("ConvertDecodeRequest("));
-        Assert.That(convertMethod, Does.Contain("ImageDecodeResult"));
+        Assert.That(convertMethod, Does.Contain("TryGetCachedDecodeRequest("));
+        Assert.That(convertMethod, Does.Contain("PlayerRightRailImageWarmQueue.Queue("));
+        Assert.That(convertMethod, Does.Not.Contain("ConvertDecodeRequest("));
         Assert.That(convertMethod, Does.Not.Contain("ConvertImageRequest("));
-        Assert.That(convertMethod, Does.Contain("\"image.player-right-rail.sync-decode\""));
+        Assert.That(convertMethod, Does.Contain("\"image.player-right-rail.background-warm\""));
+        Assert.That(converterSource, Does.Contain("internal const int Capacity = 64"));
+        Assert.That(converterSource, Does.Contain("Task.Run(ProcessAsync)"));
+        Assert.That(converterSource, Does.Contain("ImageWarmCompleted?.Invoke"));
         Assert.That(converterSource, Does.Contain("ImageLoadResult.Canceled("));
         Assert.That(converterSource, Does.Contain("\"stale-player-right-rail\""));
         string staleMethod = ExtractMethod(

@@ -129,6 +129,53 @@ namespace IndigoMovieManager.Converter
             );
         }
 
+        /// <summary>
+        /// ファイル確認を行わず、既にdecode済みの画像だけを返す。
+        /// </summary>
+        internal static bool TryGetCachedDecodeRequest(
+            ImageDecodeRequest request,
+            bool isExists,
+            out ImageDecodeExecutionResult result
+        )
+        {
+            result = default;
+            string filePath = request.ImageRequest.ThumbnailPath;
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                string fullPath = Path.GetFullPath(filePath);
+                string cacheKey = BuildCacheKey(
+                    fullPath,
+                    useGray: !isExists,
+                    decodePixelHeight: request.DecodePixelHeight
+                );
+                if (!TryGetCachedImageWithoutFileAccess(cacheKey, out ImageSource cachedImage))
+                {
+                    return false;
+                }
+
+                ImageLoadResult loadResult = ImageLoadResult.Ready(
+                    request.ImageRequest,
+                    usesPlaceholder: !isExists,
+                    resultRevision: request.RequestRevision
+                );
+                result = new ImageDecodeExecutionResult(
+                    cachedImage,
+                    new ImageDecodeResult(loadResult, DecodeElapsedMilliseconds: 0, CacheHit: true)
+                );
+                return true;
+            }
+            catch
+            {
+                // cache-only入口なので、不正pathもUI側へ伝播させない。
+                return false;
+            }
+        }
+
         internal static int ResolveDecodePixelHeight(object parameter)
         {
             return TryReadDecodePixelHeight(parameter, out int decodePixelHeight)
@@ -402,6 +449,28 @@ namespace IndigoMovieManager.Converter
             }
 
             NoteCacheMetric(ref _imageCacheMissCount, "image cache miss");
+            image = null;
+            return false;
+        }
+
+        private static bool TryGetCachedImageWithoutFileAccess(
+            string cacheKey,
+            out ImageSource image
+        )
+        {
+            lock (CacheGate)
+            {
+                TrimImageCacheLocked();
+                if (Cache.TryGetValue(cacheKey, out CacheEntry entry))
+                {
+                    NoteCacheMetric(ref _imageCacheHitCount, "image cache-only hit");
+                    TouchCacheEntry(entry);
+                    image = entry.Image;
+                    return true;
+                }
+            }
+
+            NoteCacheMetric(ref _imageCacheMissCount, "image cache-only miss");
             image = null;
             return false;
         }

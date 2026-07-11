@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -11,6 +12,8 @@ namespace IndigoMovieManager.UpperTabs.Player
     /// </summary>
     public sealed class PlayerRightRailImageSourceConverter : IMultiValueConverter
     {
+        internal static event EventHandler<ImageRequest> ImageWarmCompleted;
+
         public object Convert(
             object[] values,
             Type targetType,
@@ -52,12 +55,24 @@ namespace IndigoMovieManager.UpperTabs.Player
             ImageDecodeRequest decodeRequest = NoLockImageConverter.BuildImageDecodeRequest(
                 request,
                 decodePixelHeight,
-                "image.player-right-rail.sync-decode"
+                "image.player-right-rail.background-warm"
             );
-            NoLockImageConverter.ImageDecodeExecutionResult executionResult =
-                NoLockImageConverter.ConvertDecodeRequest(decodeRequest, isExists);
-            ImageDecodeResult decodeResult = executionResult.DecodeResult;
-            return ResolvePlayerRightRailDecodeImage(executionResult.Image, decodeResult);
+            if (
+                NoLockImageConverter.TryGetCachedDecodeRequest(
+                    decodeRequest,
+                    isExists,
+                    out NoLockImageConverter.ImageDecodeExecutionResult executionResult
+                )
+            )
+            {
+                return ResolvePlayerRightRailDecodeImage(
+                    executionResult.Image,
+                    executionResult.DecodeResult
+                );
+            }
+
+            PlayerRightRailImageWarmQueue.Queue(decodeRequest, isExists, OnImageWarmCompleted);
+            return DependencyProperty.UnsetValue;
         }
 
         public object[] ConvertBack(
@@ -103,5 +118,111 @@ namespace IndigoMovieManager.UpperTabs.Player
                 ? image
                 : DependencyProperty.UnsetValue;
         }
+
+        private static void OnImageWarmCompleted(ImageRequest request)
+        {
+            try
+            {
+                ImageWarmCompleted?.Invoke(null, request);
+            }
+            catch
+            {
+                // 表示更新通知の失敗で背景warmを止めない。
+            }
+        }
+    }
+
+    internal static class PlayerRightRailImageWarmQueue
+    {
+        internal const int Capacity = 64;
+        private static readonly object Gate = new();
+        private static readonly Queue<WarmRequest> Pending = new();
+        private static readonly HashSet<string> PendingKeys = new(StringComparer.OrdinalIgnoreCase);
+        private static bool _workerActive;
+
+        internal static void Queue(
+            ImageDecodeRequest decodeRequest,
+            bool isExists,
+            Action<ImageRequest> completed
+        )
+        {
+            string key = BuildKey(decodeRequest, isExists);
+            lock (Gate)
+            {
+                if (!PendingKeys.Add(key))
+                {
+                    return;
+                }
+
+                while (Pending.Count >= Capacity)
+                {
+                    WarmRequest removed = Pending.Dequeue();
+                    PendingKeys.Remove(removed.Key);
+                }
+
+                Pending.Enqueue(new WarmRequest(key, decodeRequest, isExists, completed));
+                if (_workerActive)
+                {
+                    return;
+                }
+
+                _workerActive = true;
+                _ = System.Threading.Tasks.Task.Run(ProcessAsync);
+            }
+        }
+
+        private static void ProcessAsync()
+        {
+            while (true)
+            {
+                WarmRequest request;
+                lock (Gate)
+                {
+                    if (Pending.Count == 0)
+                    {
+                        _workerActive = false;
+                        return;
+                    }
+
+                    request = Pending.Dequeue();
+                }
+
+                try
+                {
+                    NoLockImageConverter.ImageDecodeExecutionResult result =
+                        NoLockImageConverter.ConvertDecodeRequest(
+                            request.DecodeRequest,
+                            request.IsExists
+                        );
+                    if (!ReferenceEquals(result.Image, Binding.DoNothing))
+                    {
+                        request.Completed(request.DecodeRequest.ImageRequest);
+                    }
+                }
+                catch
+                {
+                    // 個別画像の失敗は次の要求へ進める。
+                }
+                finally
+                {
+                    lock (Gate)
+                    {
+                        PendingKeys.Remove(request.Key);
+                    }
+                }
+            }
+        }
+
+        private static string BuildKey(ImageDecodeRequest request, bool isExists)
+        {
+            return $"{request.ImageRequest.ThumbnailPath}|{isExists}|{request.DecodePixelHeight}";
+        }
+
+        private readonly record struct WarmRequest(
+            string Key,
+            ImageDecodeRequest DecodeRequest,
+            bool IsExists,
+            Action<ImageRequest> Completed
+        );
     }
 }

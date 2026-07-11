@@ -50,6 +50,30 @@ public sealed class NoLockImageConverterTests
     }
 
     [Test]
+    public void cache_only入口は欠損pathでI_Oせずmissを返す()
+    {
+        ImageRequest request = ImageRequest.ForUpperTab(
+            Path.Combine("missing", Guid.NewGuid() + ".jpg"),
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 4
+        );
+        ImageDecodeRequest decodeRequest = NoLockImageConverter.BuildImageDecodeRequest(
+            request,
+            decodePixelHeight: 36,
+            logReason: "image.test.cache-only"
+        );
+
+        bool found = NoLockImageConverter.TryGetCachedDecodeRequest(
+            decodeRequest,
+            isExists: true,
+            out _
+        );
+
+        Assert.That(found, Is.False);
+    }
+
+    [Test]
     public void 同期decode入口はImageRequestからDecodeRequestを作る()
     {
         ImageRequest request = ImageRequest.ForUpperTab(
