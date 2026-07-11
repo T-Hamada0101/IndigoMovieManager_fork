@@ -40,7 +40,10 @@ public sealed class UiHangHeartbeatInputPrioritySourceTests
 
         Assert.That(sampleMethod, Does.Contain("burst_id={scrollSnapshot.BurstId}"));
         Assert.That(sampleMethod, Does.Contain("scroll_active={scrollSnapshot.IsActive"));
-        Assert.That(CountOccurrences(sampleMethod, "GetPlayerScrollBurstSnapshot();"), Is.EqualTo(2));
+        Assert.That(
+            CountOccurrences(sampleMethod, "GetPlayerScrollBurstSnapshot(sample);"),
+            Is.EqualTo(2)
+        );
     }
 
     private static int CountOccurrences(string source, string value)
