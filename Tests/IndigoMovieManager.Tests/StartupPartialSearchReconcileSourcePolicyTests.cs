@@ -163,6 +163,167 @@ public sealed class StartupPartialSearchReconcileSourcePolicyTests
     }
 
     [Test]
+    public void Pendingがある操作後だけ1500msのquietWindowを適用する()
+    {
+        string source = GetSearchSource();
+        string deferMethod = GetMethodBlock(
+            source,
+            "private void DeferPartialSearchFullCompletionForUserPriority("
+        );
+        int pendingGuard = deferMethod.IndexOf(
+            "_pendingPartialSearchFullCompletionRevision == 0",
+            StringComparison.Ordinal
+        );
+        int armQuietWindow = deferMethod.IndexOf(
+            "_partialSearchFullCompletionQuietWindowArmed = true",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                source,
+                Does.Contain(
+                    "PartialSearchFullCompletionQuietWindow =\n            TimeSpan.FromMilliseconds(1500)"
+                )
+            );
+            Assert.That(pendingGuard, Is.GreaterThanOrEqualTo(0));
+            Assert.That(armQuietWindow, Is.GreaterThan(pendingGuard));
+            Assert.That(
+                deferMethod.IndexOf("return;", pendingGuard, StringComparison.Ordinal),
+                Is.LessThan(armQuietWindow),
+                "pendingがない通常操作でquiet windowを起動しない"
+            );
+        });
+    }
+
+    [Test]
+    public void 操作なしの初回fullはDelayを経由せずApplicationIdleへ送る()
+    {
+        string method = GetMethodBlock(
+            GetSearchSource(),
+            "private void TryQueuePartialSearchFullCompletionAfterUserPriority("
+        );
+        int quietBranch = method.IndexOf("if (waitForQuietWindow)", StringComparison.Ordinal);
+        int quietWait = method.IndexOf(
+            "WaitForPartialSearchFullCompletionQuietWindowAsync()",
+            quietBranch,
+            StringComparison.Ordinal
+        );
+        int applicationIdle = method.IndexOf(
+            "DispatcherPriority.ApplicationIdle",
+            quietWait,
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(quietBranch, Is.GreaterThanOrEqualTo(0));
+            Assert.That(quietWait, Is.GreaterThan(quietBranch));
+            Assert.That(applicationIdle, Is.GreaterThan(quietWait));
+            Assert.That(method, Does.Not.Contain("Task.Delay("));
+        });
+    }
+
+    [Test]
+    public void ApplicationIdle待ち中に操作開始した要求はCTS生成前に単一quietDelayへ戻す()
+    {
+        string method = GetMethodBlock(
+            GetSearchSource(),
+            "private void StartPendingPartialSearchFullCompletion("
+        );
+        int clearQueued = method.IndexOf(
+            "_partialSearchFullCompletionQueued = false",
+            StringComparison.Ordinal
+        );
+        int userPriorityGuard = method.IndexOf(
+            "IsUserPriorityWorkActive()",
+            clearQueued,
+            StringComparison.Ordinal
+        );
+        int quietArmedGuard = method.IndexOf(
+            "_partialSearchFullCompletionQuietWindowArmed",
+            userPriorityGuard,
+            StringComparison.Ordinal
+        );
+        int quietRemainingGuard = method.IndexOf(
+            "GetPartialSearchFullCompletionQuietWindowRemainingUnsafe()",
+            quietArmedGuard,
+            StringComparison.Ordinal
+        );
+        int requeue = method.IndexOf(
+            "TryQueuePartialSearchFullCompletionAfterUserPriority();",
+            quietRemainingGuard,
+            StringComparison.Ordinal
+        );
+        int readPending = method.IndexOf(
+            "sortId = _pendingPartialSearchFullCompletionSortId",
+            requeue,
+            StringComparison.Ordinal
+        );
+        int createCts = method.IndexOf(
+            "_partialSearchFullCompletionCancellation = new CancellationTokenSource()",
+            readPending,
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(clearQueued, Is.GreaterThanOrEqualTo(0));
+            Assert.That(userPriorityGuard, Is.GreaterThan(clearQueued));
+            Assert.That(quietArmedGuard, Is.GreaterThan(userPriorityGuard));
+            Assert.That(quietRemainingGuard, Is.GreaterThan(quietArmedGuard));
+            Assert.That(requeue, Is.GreaterThan(quietRemainingGuard));
+            Assert.That(readPending, Is.GreaterThan(requeue));
+            Assert.That(createCts, Is.GreaterThan(readPending));
+            Assert.That(
+                method.IndexOf("return;", requeue, StringComparison.Ordinal),
+                Is.LessThan(readPending),
+                "quiet armedのApplicationIdle要求はactive CTSを作らずdelayへ合流する"
+            );
+        });
+    }
+
+    [Test]
+    public void 連続操作は期限を延長しDelayTaskはqueuedGuardで1本に畳む()
+    {
+        string source = GetSearchSource();
+        string queueMethod = GetMethodBlock(
+            source,
+            "private void TryQueuePartialSearchFullCompletionAfterUserPriority("
+        );
+        string waitMethod = GetMethodBlock(
+            source,
+            "private async Task WaitForPartialSearchFullCompletionQuietWindowAsync("
+        );
+        int queuedGuard = queueMethod.IndexOf(
+            "_partialSearchFullCompletionQueued",
+            StringComparison.Ordinal
+        );
+        int markQueued = queueMethod.IndexOf(
+            "_partialSearchFullCompletionQueued = true",
+            queuedGuard + 1,
+            StringComparison.Ordinal
+        );
+        int startDelayTask = queueMethod.IndexOf(
+            "WaitForPartialSearchFullCompletionQuietWindowAsync()",
+            markQueued,
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(queueMethod, Does.Contain("ExtendPartialSearchFullCompletionQuietWindowUnsafe()"));
+            Assert.That(waitMethod, Does.Contain("while (true)"));
+            Assert.That(waitMethod, Does.Contain("GetPartialSearchFullCompletionQuietWindowRemainingUnsafe()"));
+            Assert.That(CountOccurrences(waitMethod, "Task.Delay("), Is.EqualTo(1));
+            Assert.That(queuedGuard, Is.GreaterThanOrEqualTo(0));
+            Assert.That(markQueued, Is.GreaterThan(queuedGuard));
+            Assert.That(startDelayTask, Is.GreaterThan(markQueued));
+        });
+    }
+
+    [Test]
     public void Activeなfull整合CTSがある間は再queueせずsingleFlightを守る()
     {
         string method = GetMethodBlock(
