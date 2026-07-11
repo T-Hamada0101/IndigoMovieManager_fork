@@ -5,7 +5,7 @@ namespace IndigoMovieManager.Tests;
 public sealed class PlayerThumbnailScrollSourceTests
 {
     [Test]
-    public void Player右レールは標準縦リストと先読みなしで実現数を抑える()
+    public void Player右レールは標準縦リストと半ページcacheで再生成を抑える()
     {
         string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
         int listStart = mainWindowXaml.IndexOf(
@@ -19,7 +19,7 @@ public sealed class PlayerThumbnailScrollSourceTests
         string playerThumbnailList = mainWindowXaml.Substring(listStart, listEnd - listStart);
 
         Assert.That(playerThumbnailList, Does.Contain("VirtualizingPanel.ScrollUnit=\"Item\""));
-        Assert.That(playerThumbnailList, Does.Contain("VirtualizingPanel.CacheLength=\"0\""));
+        Assert.That(playerThumbnailList, Does.Contain("VirtualizingPanel.CacheLength=\"0.5\""));
         Assert.That(playerThumbnailList, Does.Contain("VirtualizingPanel.CacheLengthUnit=\"Page\""));
         Assert.That(playerThumbnailList, Does.Contain("<VirtualizingStackPanel"));
         Assert.That(playerThumbnailList, Does.Contain("Orientation=\"Vertical\""));

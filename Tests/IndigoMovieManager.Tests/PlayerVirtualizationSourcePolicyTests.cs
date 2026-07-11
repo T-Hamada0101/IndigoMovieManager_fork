@@ -12,10 +12,10 @@ public sealed class PlayerVirtualizationSourcePolicyTests
         string playerTab = GetTabBlock("TabPlayer", "TabList");
         string playerList = GetElementBlock(playerTab, "<ListView", "x:Name=\"PlayerThumbnailList\"", "</ListView>");
 
-        // Playerだけは先読みを止め、固定高のItem単位Recyclingで生成範囲を最小化する。
+        // 先読み0は再生成を増やしたため、半ページと固定高Recyclingの組み合わせを守る。
         Assert.Multiple(() =>
         {
-            Assert.That(playerList, Does.Contain("VirtualizingPanel.CacheLength=\"0\""));
+            Assert.That(playerList, Does.Contain("VirtualizingPanel.CacheLength=\"0.5\""));
             Assert.That(playerList, Does.Contain("VirtualizingPanel.IsVirtualizing=\"True\""));
             Assert.That(playerList, Does.Contain("VirtualizingPanel.ScrollUnit=\"Item\""));
             Assert.That(playerList, Does.Contain("VirtualizingPanel.VirtualizationMode=\"Recycling\""));
