@@ -23,7 +23,17 @@ namespace IndigoMovieManager
             string SourceImagePath
         );
 
+        private sealed record VisibleSourceImageProbeRequest(
+            string Reason,
+            int ProbeRevision,
+            int FilterRevision,
+            string DbFullPath,
+            VisibleSourceImageProbeTarget[] Targets
+        );
+
         private int _visibleSourceImageProbeRevision;
+        private string _visibleSourceImageProbePendingRequest;
+        private int _visibleSourceImageProbeWorkerRunning;
 
         // 最新viewportだけを対象にし、user-priority中は探索開始そのものを後ろへ送る。
         private void QueueVisibleSourceImageProbe(string reason)
@@ -38,6 +48,22 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (IsUserPriorityWorkActive())
+            {
+                Interlocked.Exchange(ref _visibleSourceImageProbePendingRequest, reason);
+                if (
+                    Interlocked.CompareExchange(
+                        ref _visibleSourceImageProbeWorkerRunning,
+                        1,
+                        0
+                    ) == 0
+                )
+                {
+                    _ = RunVisibleSourceImageProbeWorkerAsync();
+                }
+                return;
+            }
+
             int probeRevision = Interlocked.Increment(ref _visibleSourceImageProbeRevision);
             int filterRevision = _filterAndSortRequestRevision;
             string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
@@ -47,13 +73,14 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _ = RunVisibleSourceImageProbeAsync(
+            VisibleSourceImageProbeRequest request = new(
                 reason,
                 probeRevision,
                 filterRevision,
                 dbFullPath,
                 targets
             );
+            _ = ExecuteVisibleSourceImageProbeAsync(request);
         }
 
         // 現在のnear-visible範囲だけを読む。非filtered全件やMovieRecs全件は走査しない。
@@ -97,14 +124,85 @@ namespace IndigoMovieManager
             return targets.ToArray();
         }
 
-        private async Task RunVisibleSourceImageProbeAsync(
-            string reason,
-            int probeRevision,
-            int filterRevision,
-            string dbFullPath,
-            VisibleSourceImageProbeTarget[] targets
+        // 操作中は最新reasonだけを保持し、解除後に通常Queueへ一度だけ戻す。
+        private async Task RunVisibleSourceImageProbeWorkerAsync()
+        {
+            while (true)
+            {
+                while (IsUserPriorityWorkActive())
+                {
+                    await Task.Delay(120);
+                    if (
+                        Dispatcher == null
+                        || Dispatcher.HasShutdownStarted
+                        || Dispatcher.HasShutdownFinished
+                        || Volatile.Read(ref _mainWindowClosingStarted) != 0
+                    )
+                    {
+                        Interlocked.Exchange(ref _visibleSourceImageProbePendingRequest, null);
+                        Interlocked.Exchange(ref _visibleSourceImageProbeWorkerRunning, 0);
+                        return;
+                    }
+                }
+
+                try
+                {
+                    await Dispatcher.InvokeAsync(
+                        () =>
+                        {
+                            string latestReason = Interlocked.Exchange(
+                                ref _visibleSourceImageProbePendingRequest,
+                                null
+                            );
+                            if (!string.IsNullOrEmpty(latestReason))
+                            {
+                                QueueVisibleSourceImageProbe(latestReason);
+                            }
+                        },
+                        DispatcherPriority.Background
+                    );
+                }
+                catch (TaskCanceledException)
+                {
+                    Interlocked.Exchange(ref _visibleSourceImageProbePendingRequest, null);
+                    Interlocked.Exchange(ref _visibleSourceImageProbeWorkerRunning, 0);
+                    return;
+                }
+                catch (InvalidOperationException)
+                {
+                    Interlocked.Exchange(ref _visibleSourceImageProbePendingRequest, null);
+                    Interlocked.Exchange(ref _visibleSourceImageProbeWorkerRunning, 0);
+                    return;
+                }
+
+                Interlocked.Exchange(ref _visibleSourceImageProbeWorkerRunning, 0);
+                if (Volatile.Read(ref _visibleSourceImageProbePendingRequest) == null)
+                {
+                    return;
+                }
+
+                if (
+                    Interlocked.CompareExchange(
+                        ref _visibleSourceImageProbeWorkerRunning,
+                        1,
+                        0
+                    ) != 0
+                )
+                {
+                    return;
+                }
+            }
+        }
+
+        private async Task ExecuteVisibleSourceImageProbeAsync(
+            VisibleSourceImageProbeRequest request
         )
         {
+            string reason = request.Reason;
+            int probeRevision = request.ProbeRevision;
+            int filterRevision = request.FilterRevision;
+            string dbFullPath = request.DbFullPath;
+            VisibleSourceImageProbeTarget[] targets = request.Targets;
             try
             {
                 while (IsUserPriorityWorkActive())
