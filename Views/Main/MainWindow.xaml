@@ -963,8 +963,10 @@
                             ScrollViewer.IsDeferredScrollingEnabled="True"
                             SelectionChanged="PlayerThumbnailList_SelectionChanged"
                             SelectionMode="Extended"
+                            VirtualizingPanel.CacheLength="0.5"
+                            VirtualizingPanel.CacheLengthUnit="Page"
                             VirtualizingPanel.IsVirtualizing="True"
-                            VirtualizingPanel.ScrollUnit="Pixel"
+                            VirtualizingPanel.ScrollUnit="Item"
                             VirtualizingPanel.VirtualizationMode="Recycling"
                           >
                             <ListView.ItemsPanel>
@@ -973,8 +975,10 @@
                                   Orientation="Horizontal"
                                   SpacingMode="None"
                                   StretchItems="False"
+                                  VirtualizingPanel.CacheLength="0.5"
+                                  VirtualizingPanel.CacheLengthUnit="Page"
                                   VirtualizingPanel.IsVirtualizing="True"
-                                  VirtualizingPanel.ScrollUnit="Pixel"
+                                  VirtualizingPanel.ScrollUnit="Item"
                                   VirtualizingPanel.VirtualizationMode="Recycling"
                                 />
                               </ItemsPanelTemplate>
