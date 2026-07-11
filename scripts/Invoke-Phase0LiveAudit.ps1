@@ -264,6 +264,45 @@ function Get-Phase0ManualReviewValidation
     }
 }
 
+function Copy-Phase0AuditLogSnapshot
+{
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourcePath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath
+    )
+
+    # 本体が追記中でも、その時点までのbyte列を固定した監査入力として退避する。
+    $sourceStream = [System.IO.File]::Open(
+        $SourcePath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+    )
+    try
+    {
+        $destinationStream = [System.IO.File]::Open(
+            $DestinationPath,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::Read
+        )
+        try
+        {
+            $sourceStream.CopyTo($destinationStream)
+        }
+        finally
+        {
+            $destinationStream.Dispose()
+        }
+    }
+    finally
+    {
+        $sourceStream.Dispose()
+    }
+}
+
 # スクリプトの場所を基準に、監査対象のテストプロジェクトを解決する。
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $repoRoot 'Tests/IndigoMovieManager.Tests/IndigoMovieManager.Tests.csproj'
@@ -322,20 +361,30 @@ if ($NoBuild)
 {
     $dotnetArguments += '--no-build'
 }
+else
+{
+    Write-Host '実行中アプリによるbuild lockを避ける場合は、事前build後に -NoBuild を指定してください。プロセスは停止しません。'
+}
 
 $enabledEnvironmentName = 'IMM_PHASE0_LOG_AUDIT_LIVE'
 $pathEnvironmentName = 'IMM_PHASE0_LOG_AUDIT_PATH'
 $sessionStartedLocalEnvironmentName = 'IMM_PHASE0_LOG_AUDIT_SESSION_STARTED_LOCAL'
+$runtimeLogPathEnvironmentName = 'INDIGO_DEBUG_RUNTIME_LOG_PATH'
 $previousEnabledValue = [Environment]::GetEnvironmentVariable($enabledEnvironmentName, 'Process')
 $previousPathValue = [Environment]::GetEnvironmentVariable($pathEnvironmentName, 'Process')
 $previousSessionStartedLocalValue = [Environment]::GetEnvironmentVariable($sessionStartedLocalEnvironmentName, 'Process')
+$previousRuntimeLogPathValue = [Environment]::GetEnvironmentVariable($runtimeLogPathEnvironmentName, 'Process')
+$auditSnapshotPath = Join-Path ([System.IO.Path]::GetTempPath()) "indigo-phase0-audit-$([Guid]::NewGuid().ToString('N')).log"
+$childRuntimeLogSinkPath = Join-Path ([System.IO.Path]::GetTempPath()) "indigo-phase0-child-$([Guid]::NewGuid().ToString('N')).log"
 $exitCode = 1
 
 try
 {
-    # 監査用の環境変数は子プロセス実行中だけ設定し、親PowerShellへ残さない。
+    # 監査開始時点のログを固定し、子テスト自身のログは別sinkへ隔離する。
+    Copy-Phase0AuditLogSnapshot -SourcePath $resolvedLogPath -DestinationPath $auditSnapshotPath
     Set-Item -Path "Env:$enabledEnvironmentName" -Value '1'
-    Set-Item -Path "Env:$pathEnvironmentName" -Value $resolvedLogPath
+    Set-Item -Path "Env:$pathEnvironmentName" -Value $auditSnapshotPath
+    Set-Item -Path "Env:$runtimeLogPathEnvironmentName" -Value $childRuntimeLogSinkPath
     if (-not [string]::IsNullOrWhiteSpace($manualReviewSessionStartedLocal))
     {
         Set-Item -Path "Env:$sessionStartedLocalEnvironmentName" -Value $manualReviewSessionStartedLocal
@@ -381,6 +430,18 @@ finally
     {
         Set-Item -Path "Env:$sessionStartedLocalEnvironmentName" -Value $previousSessionStartedLocalValue
     }
+
+    if ($null -eq $previousRuntimeLogPathValue)
+    {
+        Remove-Item "Env:$runtimeLogPathEnvironmentName" -ErrorAction SilentlyContinue
+    }
+    else
+    {
+        Set-Item -Path "Env:$runtimeLogPathEnvironmentName" -Value $previousRuntimeLogPathValue
+    }
+
+    Remove-Item -LiteralPath $auditSnapshotPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $childRuntimeLogSinkPath -Force -ErrorAction SilentlyContinue
 }
 
 exit $exitCode

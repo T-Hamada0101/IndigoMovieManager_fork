@@ -23,7 +23,7 @@ public sealed class Phase0LiveAuditScriptPolicyTests
     }
 
     [Test]
-    public void ログは存在確認と解決だけを行い変更しない()
+    public void liveログは変更せず共有読み取りでsnapshotへ固定する()
     {
         string source = GetTargetSource();
 
@@ -31,7 +31,10 @@ public sealed class Phase0LiveAuditScriptPolicyTests
         {
             Assert.That(source, Does.Contain("Test-Path -LiteralPath $LogPath -PathType Leaf"));
             Assert.That(source, Does.Contain("Resolve-Path -LiteralPath $LogPath"));
-            Assert.That(source, Does.Not.Contain("Copy-Item"));
+            Assert.That(source, Does.Contain("Copy-Phase0AuditLogSnapshot"));
+            Assert.That(source, Does.Contain("[System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete"));
+            Assert.That(source, Does.Contain("$sourceStream.CopyTo($destinationStream)"));
+            Assert.That(source, Does.Contain("[System.IO.FileMode]::CreateNew"));
             Assert.That(source, Does.Not.Contain("Move-Item"));
             Assert.That(source, Does.Not.Contain("Set-Content"));
             Assert.That(source, Does.Not.Contain("Clear-Content"));
@@ -67,17 +70,50 @@ public sealed class Phase0LiveAuditScriptPolicyTests
             Assert.That(source, Does.Contain("IMM_PHASE0_LOG_AUDIT_LIVE"));
             Assert.That(source, Does.Contain("IMM_PHASE0_LOG_AUDIT_PATH"));
             Assert.That(source, Does.Contain("IMM_PHASE0_LOG_AUDIT_SESSION_STARTED_LOCAL"));
+            Assert.That(source, Does.Contain("INDIGO_DEBUG_RUNTIME_LOG_PATH"));
             Assert.That(source, Does.Contain("[Environment]::GetEnvironmentVariable($enabledEnvironmentName, 'Process')"));
             Assert.That(source, Does.Contain("[Environment]::GetEnvironmentVariable($pathEnvironmentName, 'Process')"));
             Assert.That(source, Does.Contain("$previousSessionStartedLocalValue = [Environment]::GetEnvironmentVariable($sessionStartedLocalEnvironmentName, 'Process')"));
             Assert.That(source, Does.Contain("try"));
             Assert.That(source, Does.Contain("finally"));
             Assert.That(source, Does.Contain("Set-Item -Path \"Env:$enabledEnvironmentName\" -Value '1'"));
-            Assert.That(source, Does.Contain("Set-Item -Path \"Env:$pathEnvironmentName\" -Value $resolvedLogPath"));
+            Assert.That(source, Does.Contain("Set-Item -Path \"Env:$pathEnvironmentName\" -Value $auditSnapshotPath"));
+            Assert.That(source, Does.Contain("Set-Item -Path \"Env:$runtimeLogPathEnvironmentName\" -Value $childRuntimeLogSinkPath"));
             Assert.That(source, Does.Contain("Set-Item -Path \"Env:$sessionStartedLocalEnvironmentName\" -Value $manualReviewSessionStartedLocal"));
             Assert.That(source, Does.Contain("Remove-Item \"Env:$enabledEnvironmentName\""));
             Assert.That(source, Does.Contain("Remove-Item \"Env:$pathEnvironmentName\""));
             Assert.That(source, Does.Contain("Remove-Item \"Env:$sessionStartedLocalEnvironmentName\""));
+            Assert.That(source, Does.Contain("Remove-Item \"Env:$runtimeLogPathEnvironmentName\""));
+            Assert.That(source, Does.Contain("Set-Item -Path \"Env:$runtimeLogPathEnvironmentName\" -Value $previousRuntimeLogPathValue"));
+        });
+    }
+
+    [Test]
+    public void snapshotと子テストsinkはTEMPに作成しfinallyで削除する()
+    {
+        string source = GetTargetSource();
+        int finallyBlock = source.IndexOf("finally", source.IndexOf("& dotnet @dotnetArguments", StringComparison.Ordinal), StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("[System.IO.Path]::GetTempPath()"));
+            Assert.That(source, Does.Contain("indigo-phase0-audit-"));
+            Assert.That(source, Does.Contain("indigo-phase0-child-"));
+            Assert.That(source.IndexOf("Remove-Item -LiteralPath $auditSnapshotPath", finallyBlock, StringComparison.Ordinal), Is.GreaterThan(finallyBlock));
+            Assert.That(source.IndexOf("Remove-Item -LiteralPath $childRuntimeLogSinkPath", finallyBlock, StringComparison.Ordinal), Is.GreaterThan(finallyBlock));
+        });
+    }
+
+    [Test]
+    public void build_lock時はNoBuildを案内しプロセスを停止しない()
+    {
+        string source = GetTargetSource();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("事前build後に -NoBuild を指定してください"));
+            Assert.That(source, Does.Not.Contain("Stop-Process"));
+            Assert.That(source, Does.Not.Contain("taskkill"));
         });
     }
 
