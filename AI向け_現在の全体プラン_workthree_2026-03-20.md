@@ -3,6 +3,7 @@
 最終更新日: 2026-07-12
 
 変更概要:
+- 2026-07-12、startup partialの先頭最大200件について、入力可能になった後にASCII fast検索投影だけを単一background taskで事前生成するようにした。16件ごとにuser-priority / startup session / DB / shutdownを確認し、操作時は中断する。Release x64コピーDBでは200件を10msで完了し、Player scroll時間帯へ残らなかった。次は同じ条件で初回partial検索を再測定する。
 - 2026-07-12、Player右レールの未warm画像はscroll user-priority中にdecode queueへ積まず、`Suppressed`としてburst集約するようにした。Release x64コピーDBのPageDown 8回で `cache_miss_count=40 queue_enqueued_count=0 suppressed_count=40`、解除時はpending revisionを1回flushし、その後の現在可視18件だけが通常warmへ戻った。UI hot pathのログI/Oは増やしていない。
 - 2026-07-12、visible source image probeはDB path・filter revision・順序付きplaceholder keyのfingerprintが同じ正常完了結果を2秒だけ再利用し、stale / failedは再利用しない。UI hang heartbeatは`DispatcherPriority.Input`へ上げ、Player burst IDとactive状態を同じ監視ログへ接続した。
 - 2026-07-12、startup partial中の初回検索を二段階化し、現在sourceの結果を先に表示して全件reloadを後続latest-onlyで整合するようにした。コピーDBのEnterなし `movie` はpartial 200件から5件を1434ms、全件43,573件から357件を3099msで表示し、最初の結果を約1.67秒前倒しした。in-memory refreshは元からbackgroundのため追加変更は親レビューで撤回。次順位はpartial 200件で1431msかかった初回ASCII検索投影のcold costである。
