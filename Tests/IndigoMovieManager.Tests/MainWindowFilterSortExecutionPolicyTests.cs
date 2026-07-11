@@ -533,7 +533,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(movieRecordFactorySource, Does.Contain("private sealed class MovieRecordBulkBuildCache"));
         Assert.That(movieRecordFactorySource, Does.Contain("private MovieRecordBulkBuildContext CaptureMovieRecordBulkBuildContext("));
         Assert.That(movieRecordFactorySource, Does.Contain("private static MovieRecordBulkBuildCache BuildMovieRecordBulkBuildCache("));
-        Assert.That(movieRecordFactorySource, Does.Contain("private static string ResolveThumbnailDisplayPath("));
+        Assert.That(movieRecordFactorySource, Does.Contain("internal static string ResolveThumbnailDisplayPath("));
         Assert.That(movieRecordFactorySource, Does.Contain("private async Task<MovieRecords[]> SetRecordsToSource("));
         Assert.That(movieRecordFactorySource, Does.Contain("private void QueueMovieExistsRefresh("));
         Assert.That(movieRecordFactorySource, Does.Contain("private Task ApplyMovieExistsRefreshBatchAsync("));
