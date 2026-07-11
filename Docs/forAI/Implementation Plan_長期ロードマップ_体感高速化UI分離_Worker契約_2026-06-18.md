@@ -608,6 +608,10 @@ Release x64コピーDBの同じEnterなし検索では43,433行に対し `source
 
 Release x64の43,488行実機では `source_apply_ms=2017`、内訳は `bulk_cache_ms=2 row_convert_ms=1868 source_image_probe_ms=1223 replace_movie_recs_ms=6 queue_movie_exists_ms=0 invalidate_thumbnail_error_ms=0` だった。UI差し替えは支配要因ではなく、row convertの約65%を実ファイルprobeが占める。検索全体は4349 msまで短縮した。次順位は43k件すべてをfilter前にprobeする順序を見直し、visible / filtered結果を先に返して同名source image解決を後段へ送れるかを設計する。
 
+同日、full reloadのbulk変換では同名source image探索を行わず、filtered結果とnear-visible範囲が確定した後だけ背景probeする経路へ移した。DB path、filter revision、probe revision、現在レコード参照で後着結果をguardし、user-priority中は開始を延期する。探索対象はplaceholderが残るnear-visible行だけで、完了時もplaceholder用途だけを書き換えるため、その間に生成された管理サムネイルを上書きしない。
+
+Release x64コピーDBのEnterなし `movie` 検索では43,548件級の全件probeが43,548回から0回となり、`row_convert_ms` は従来約2秒から575〜745msへ短縮した。`source_apply_ms` は実行競合により1081〜2596ms、検索全体は2729〜4070msだった。near-visible probeは40〜104件に限定され、今回のDBではsource画像解決0件だった。Player表示中にWatch full fallbackとサムネ生成が重なると `activity=None` / `Thumbnail` のUI遅延警告が残ったため、次の最優先はscroll user-priority中のWatch UI apply・サムネ進捗/生成後反映の延期契約を実測し、残る同期処理を一つずつ外すことである。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
