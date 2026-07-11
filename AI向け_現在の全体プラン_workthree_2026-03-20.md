@@ -3,7 +3,8 @@
 最終更新日: 2026-07-11
 
 変更概要:
-- 2026-07-12、full reload時の同名source image探索を全件変換から外し、filteredのnear-visible確定後だけ背景probeするvisible-first経路へ移した。管理サムネイルは上書きせずplaceholder用途だけを更新する。43,548件級のRelease実機で全件probeは43,548回から0回、row convertは約2秒から575〜745msへ短縮し、near-visible probeは40〜104件に限定された。次順位はPlayerスクロール中にWatch・サムネ生成が重なった時のUI遅延抑制である。
+- 2026-07-12、Playerスクロール中の後着Watch UI applyとサムネ生成後UI反映をuser-priority解除後へ延期した。Watch要求はconsume前に同じrevision/tokenで再予約し、サムネ進捗・成功反映は既存coalesce/latest-onlyへ戻す。親統合162テストとRelease x64 buildは成功。コピーDBのPageDown 8回は `first_render_ms=27 max_layout_gap_ms=203 total_ms=507` で、旧同条件846msから短縮した。一方、同時刻の `activity=None delay_ms=1163` とvisible source probeのstale連打が残る。次順位はscroll中のvisible source probe予約を1件へ畳み、なお残る停止と切り分けることである。
+- 2026-07-12、full reload時の同名source image探索を全件変換から外し、filteredのnear-visible確定後だけ背景probeするvisible-first経路へ移した。管理サムネイルは上書きせずplaceholder用途だけを更新する。43,548件級のRelease実機で全件probeは43,548回から0回、row convertは約2秒から575〜745msへ短縮し、near-visible probeは40〜104件に限定された。
 - 2026-07-12、source applyを背景/UI区間へ分解し、正規DB日時文字列を参照ごと返すfast pathを追加した。43,488行のRelease実機でsource apply 2017ms、bulk cache 2ms、row convert 1868ms、その内source image probe 1223ms、MovieRecs replace 6ms。検索全体は4349ms。この全件probeは後続のvisible-first化で解消済みである。
 - 2026-07-12、full reloadのMovieRecords生成で同じ行から最大6回行っていた同名source image探索を、行内lazy resolverの1回へ共有した。43,433行のRelease実機でprobe 43,433、行内hit 173,792、初回source applyは6643msから3300ms、後続2345msまで短縮。次順位は残るDataRow型変換・タグ処理・allocation・collection replaceの区間分解である。
 - 2026-07-12、検索TextboxのdebounceがBinding済み`SearchKeyword`との同値を理由に検索を捨てる不具合と、部分ロード中の無言skipを修正した。TextChanged hot pathはID/時刻更新だけ、ログはdebounce時1回。Release x64でEnterなし入力が14ms後にfilter開始し357件へ絞り込まれた。初回full reloadは7868ms、支配要因はsource apply 6643msのため次順位は全件source変換の再利用である。

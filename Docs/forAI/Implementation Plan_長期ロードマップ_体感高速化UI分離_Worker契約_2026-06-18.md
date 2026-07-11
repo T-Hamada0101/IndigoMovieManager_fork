@@ -612,6 +612,12 @@ Release x64の43,488行実機では `source_apply_ms=2017`、内訳は `bulk_cac
 
 Release x64コピーDBのEnterなし `movie` 検索では43,548件級の全件probeが43,548回から0回となり、`row_convert_ms` は従来約2秒から575〜745msへ短縮した。`source_apply_ms` は実行競合により1081〜2596ms、検索全体は2729〜4070msだった。near-visible probeは40〜104件に限定され、今回のDBではsource画像解決0件だった。Player表示中にWatch full fallbackとサムネ生成が重なると `activity=None` / `Thumbnail` のUI遅延警告が残ったため、次の最優先はscroll user-priority中のWatch UI apply・サムネ進捗/生成後反映の延期契約を実測し、残る同期処理を一つずつ外すことである。
 
+続くフェーズでは、Playerのwheel / Page操作開始前から走っていたWatch scanが操作中に完了する競合を塞いだ。遅延reloadは要求をconsumeする前にuser-priorityを確認し、同じrevisionとキャンセルtokenで次の遅延窓へ再予約する。新しいWatch要求が来た場合は従来どおり旧tokenがcancelされるため、解除後も最新1件だけがapplyへ進む。
+
+サムネイル側は、進捗fallback timerを操作中は既存snapshot coalesceへ戻し、生成後のMovieRecords反映を `DispatcherPriority.Background` へ下げた。受付時とDispatcher適用直前の双方でuser-priorityを確認し、成功結果は破棄せず120 ms単位で延期する。生成成功後の局所refreshも単一timerへ戻してlatest-onlyを維持する。親レビューではWatch、user-priority、Player、サムネ進捗・成功反映の関連162テストとRelease x64 buildが成功し、警告0、エラー0だった。
+
+新しいRelease x64コピーDB runのPlayer PageDown 8回は `first_render_ms=27 first_layout_ms=25 max_layout_gap_ms=203 total_ms=507 revision_delta=0` だった。旧同条件の `max_layout_gap_ms=846` から短縮したが、今回のrunではWatch UI applyやサムネ成功反映そのものがスクロール区間へ重ならず、延期ログの実機観測は未達である。また同区間に `activity=None delay_ms=1163` が1件残り、viewport更新ごとのvisible source image probeがrevision 3〜9でstale完了を連続記録した。次の最優先はscroll user-priority中のvisible source probe予約を起動せず最新1件へ畳み、解除後1回だけ探索して、残るUI監視停止との因果を再測定することである。人間の物理ホイール体感確認も引き続き完了ゲートに残す。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
