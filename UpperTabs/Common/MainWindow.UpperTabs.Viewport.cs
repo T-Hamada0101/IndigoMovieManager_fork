@@ -5,9 +5,11 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using IndigoMovieManager.Thumbnail;
 using IndigoMovieManager.UpperTabs.Common;
 using IndigoMovieManager.UpperTabs.Player;
 using IndigoMovieManager.Thumbnail.QueueDb;
@@ -60,6 +62,9 @@ namespace IndigoMovieManager
         private long _playerThumbnailScrollBurstSessionSequence;
         private long _playerThumbnailScrollBurstSessionId;
         private int _playerThumbnailScrollGeneratorStatusChangedCount;
+        private int _playerThumbnailScrollGeneratorCycleCount;
+        private long _playerThumbnailScrollGeneratorCycleStartedTimestamp;
+        private long _playerThumbnailScrollMaxGeneratorCycleMilliseconds;
         private int _playerThumbnailScrollLayoutUpdatedCount;
         private int _playerThumbnailScrollRenderingCount;
         private long _playerThumbnailScrollFirstLayoutMilliseconds = -1;
@@ -70,6 +75,7 @@ namespace IndigoMovieManager
         private long _playerThumbnailScrollMaxRenderingGapMilliseconds;
         private int _playerThumbnailScrollRealizedCountBefore;
         private int _playerThumbnailScrollRevisionBefore;
+        private ThumbnailWorkerLoadSnapshot _playerThumbnailScrollWorkerLoadBefore;
         private EventHandler _playerThumbnailScrollGeneratorStatusChangedHandler;
         private EventHandler _playerThumbnailScrollLayoutUpdatedHandler;
         private EventHandler _playerThumbnailScrollRenderingHandler;
@@ -575,6 +581,9 @@ namespace IndigoMovieManager
             );
             _playerThumbnailScrollBurstSessionId = sessionId;
             _playerThumbnailScrollGeneratorStatusChangedCount = 0;
+            _playerThumbnailScrollGeneratorCycleCount = 0;
+            _playerThumbnailScrollGeneratorCycleStartedTimestamp = 0;
+            _playerThumbnailScrollMaxGeneratorCycleMilliseconds = 0;
             _playerThumbnailScrollLayoutUpdatedCount = 0;
             _playerThumbnailScrollRenderingCount = 0;
             _playerThumbnailScrollFirstLayoutMilliseconds = -1;
@@ -585,6 +594,8 @@ namespace IndigoMovieManager
             _playerThumbnailScrollMaxRenderingGapMilliseconds = 0;
             _playerThumbnailScrollRealizedCountBefore = GetPlayerThumbnailRealizedCount();
             _playerThumbnailScrollRevisionBefore = PlayerRightRailImageRevision;
+            _playerThumbnailScrollWorkerLoadBefore =
+                _thumbnailProgressRuntime.CreateWorkerLoadSnapshot();
             PlayerRightRailImageBurstMetrics.Begin(sessionId);
 
             _playerThumbnailScrollGeneratorStatusChangedHandler = (_, _) =>
@@ -601,9 +612,36 @@ namespace IndigoMovieManager
 
         private void RecordPlayerThumbnailScrollGeneratorStatusChanged(long sessionId)
         {
-            if (sessionId == _playerThumbnailScrollBurstSessionId)
+            if (sessionId != _playerThumbnailScrollBurstSessionId)
             {
-                _playerThumbnailScrollGeneratorStatusChangedCount++;
+                return;
+            }
+
+            _playerThumbnailScrollGeneratorStatusChangedCount++;
+            GeneratorStatus status = PlayerThumbnailList.ItemContainerGenerator.Status;
+            if (
+                status == GeneratorStatus.GeneratingContainers
+                && _playerThumbnailScrollGeneratorCycleStartedTimestamp == 0
+            )
+            {
+                _playerThumbnailScrollGeneratorCycleStartedTimestamp = Stopwatch.GetTimestamp();
+                return;
+            }
+
+            if (
+                status == GeneratorStatus.ContainersGenerated
+                && _playerThumbnailScrollGeneratorCycleStartedTimestamp > 0
+            )
+            {
+                long elapsedMilliseconds = (long)Stopwatch
+                    .GetElapsedTime(_playerThumbnailScrollGeneratorCycleStartedTimestamp)
+                    .TotalMilliseconds;
+                _playerThumbnailScrollGeneratorCycleCount++;
+                _playerThumbnailScrollMaxGeneratorCycleMilliseconds = Math.Max(
+                    _playerThumbnailScrollMaxGeneratorCycleMilliseconds,
+                    elapsedMilliseconds
+                );
+                _playerThumbnailScrollGeneratorCycleStartedTimestamp = 0;
             }
         }
 
@@ -666,6 +704,8 @@ namespace IndigoMovieManager
             long sessionId = _playerThumbnailScrollBurstSessionId;
             int realizedCountAfter = GetPlayerThumbnailRealizedCount();
             int revisionAfter = PlayerRightRailImageRevision;
+            ThumbnailWorkerLoadSnapshot workerLoadAfter =
+                _thumbnailProgressRuntime.CreateWorkerLoadSnapshot();
             DetachPlayerThumbnailScrollBurstMetricsHandlers();
             _playerThumbnailScrollBurstSessionId = 0;
 
@@ -676,7 +716,7 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player thumbnail scroll burst: burst_id={sessionId} release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} suppressed_count={converterMetrics.QueueSuppressedCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_flush_state={(_playerRightRailViewportRevisionPending ? "pending-before-idle-flush" : "not-pending")}"
+                $"player thumbnail scroll burst: burst_id={sessionId} release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} worker_active_begin={_playerThumbnailScrollWorkerLoadBefore.ActiveWorkerCount} worker_active_end={workerLoadAfter.ActiveWorkerCount} parallelism_begin={_playerThumbnailScrollWorkerLoadBefore.CurrentParallelism} parallelism_end={workerLoadAfter.CurrentParallelism} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} suppressed_count={converterMetrics.QueueSuppressedCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} generator_cycle_count={_playerThumbnailScrollGeneratorCycleCount} max_generator_cycle_ms={_playerThumbnailScrollMaxGeneratorCycleMilliseconds} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_flush_state={(_playerRightRailViewportRevisionPending ? "pending-before-idle-flush" : "not-pending")}"
             );
         }
 

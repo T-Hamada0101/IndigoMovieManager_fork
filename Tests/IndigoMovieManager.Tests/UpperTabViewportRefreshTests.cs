@@ -428,7 +428,42 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(realizedMethod, Does.Contain("Children.Count"));
         Assert.That(realizedMethod, Does.Not.Contain("Items.Count"));
         Assert.That(realizedMethod, Does.Not.Contain("foreach"));
-        Assert.That(generatorMethod, Does.Contain("sessionId == _playerThumbnailScrollBurstSessionId"));
+        Assert.That(generatorMethod, Does.Contain("sessionId != _playerThumbnailScrollBurstSessionId"));
+        Assert.That(generatorMethod, Does.Contain("return;"));
+    }
+
+    [Test]
+    public void Playerスクロールburstはcontainer生成周期とworker負荷を既存集約ログへ載せる()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string beginMethod = GetMethodBlock(
+            source,
+            "private void BeginPlayerThumbnailScrollBurstMetrics()"
+        );
+        string generatorMethod = GetMethodBlock(
+            source,
+            "private void RecordPlayerThumbnailScrollGeneratorStatusChanged("
+        );
+        string endMethod = GetMethodBlock(
+            source,
+            "private void EndPlayerThumbnailScrollBurstMetrics("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(beginMethod, Does.Contain("CreateWorkerLoadSnapshot()"));
+            Assert.That(generatorMethod, Does.Contain("GeneratorStatus.GeneratingContainers"));
+            Assert.That(generatorMethod, Does.Contain("GeneratorStatus.ContainersGenerated"));
+            Assert.That(generatorMethod, Does.Contain(".GetElapsedTime("));
+            Assert.That(endMethod, Does.Contain("worker_active_begin="));
+            Assert.That(endMethod, Does.Contain("worker_active_end="));
+            Assert.That(endMethod, Does.Contain("parallelism_begin="));
+            Assert.That(endMethod, Does.Contain("parallelism_end="));
+            Assert.That(endMethod, Does.Contain("generator_cycle_count="));
+            Assert.That(endMethod, Does.Contain("max_generator_cycle_ms="));
+            Assert.That(endMethod, Does.Not.Contain("Process.GetProcesses"));
+            Assert.That(generatorMethod, Does.Not.Contain("DebugRuntimeLog.Write("));
+        });
     }
 
     [Test]
