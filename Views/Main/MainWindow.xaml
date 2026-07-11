@@ -1033,13 +1033,11 @@
                                     <ColumnDefinition Width="76" />
                                     <ColumnDefinition Width="*" />
                                   </Grid.ColumnDefinitions>
-                                  <Label
+                                  <Border
                                     Grid.Column="0"
                                     Width="70"
                                     Height="48"
                                     Margin="3,4"
-                                    Padding="0"
-                                    BorderThickness="0"
                                     Background="{DynamicResource ThumbImageBackground}"
                                     ContextMenu="{StaticResource menuContext}"
                                     MouseDown="Label_MouseDown"
@@ -1058,7 +1056,7 @@
                                         </MultiBinding>
                                       </Image.Source>
                                     </Image>
-                                  </Label>
+                                  </Border>
                                   <TextBlock
                                     Grid.Column="1"
                                     Margin="4,0,8,0"
@@ -1067,7 +1065,6 @@
                                     Foreground="{DynamicResource MaterialDesignBody}"
                                     Text="{Binding Movie_Name, UpdateSourceTrigger=PropertyChanged}"
                                     TextTrimming="CharacterEllipsis"
-                                    ToolTip="{Binding Movie_Name}"
                                   />
                                 </Grid>
                               </DataTemplate>

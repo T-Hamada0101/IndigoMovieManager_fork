@@ -24,10 +24,20 @@ public sealed class PlayerThumbnailScrollSourceTests
         Assert.That(playerThumbnailList, Does.Contain("<VirtualizingStackPanel"));
         Assert.That(playerThumbnailList, Does.Contain("Orientation=\"Vertical\""));
         Assert.That(playerThumbnailList, Does.Contain("<Setter Property=\"Height\" Value=\"56\" />"));
+        Assert.That(playerThumbnailList, Does.Contain("<Grid Height=\"56\""));
         Assert.That(playerThumbnailList, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
         Assert.That(playerThumbnailList, Does.Contain("SelectionChanged=\"PlayerThumbnailList_SelectionChanged\""));
+        Assert.That(playerThumbnailList, Does.Contain("<Border\n                                    Grid.Column=\"0\""));
+        Assert.That(playerThumbnailList, Does.Contain("Width=\"70\""));
+        Assert.That(playerThumbnailList, Does.Contain("Height=\"48\""));
+        Assert.That(playerThumbnailList, Does.Contain("Margin=\"3,4\""));
+        Assert.That(playerThumbnailList, Does.Contain("Background=\"{DynamicResource ThumbImageBackground}\""));
         Assert.That(playerThumbnailList, Does.Contain("ContextMenu=\"{StaticResource menuContext}\""));
         Assert.That(playerThumbnailList, Does.Contain("MouseDown=\"Label_MouseDown\""));
+        Assert.That(playerThumbnailList, Does.Contain("Converter=\"{StaticResource playerRightRailImageSourceConverter}\""));
+        Assert.That(playerThumbnailList, Does.Contain("Path=\"PlayerRightRailImageRevision\""));
+        Assert.That(playerThumbnailList, Does.Not.Contain("<Label"));
+        Assert.That(playerThumbnailList, Does.Not.Contain("ToolTip=\"{Binding Movie_Name}\""));
         Assert.That(playerThumbnailList, Does.Not.Contain("<vwp:VirtualizingWrapPanel"));
         Assert.That(playerThumbnailList, Does.Not.Contain("VirtualizingPanel.ScrollUnit=\"Pixel\""));
     }
