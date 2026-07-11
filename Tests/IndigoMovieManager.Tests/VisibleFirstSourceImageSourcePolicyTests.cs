@@ -273,6 +273,109 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
         });
     }
 
+    [Test]
+    public void 同一fingerprintの進行中probeはrevisionを増やさず実行へ進まない()
+    {
+        string source = GetVisibleSourceImageProbeSource();
+        int inFlightJoin = source.IndexOf(
+            "string.Equals(currentFingerprint, fingerprint, StringComparison.Ordinal)",
+            StringComparison.Ordinal
+        );
+        int revisionIssue = source.IndexOf(
+            "int probeRevision = Interlocked.Increment(ref _visibleSourceImageProbeRevision);",
+            StringComparison.Ordinal
+        );
+        int execute = source.IndexOf(
+            "ExecuteVisibleSourceImageProbeAsync(request)",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("_visibleSourceImageProbeInFlightFingerprint"));
+            Assert.That(
+                source,
+                Does.Contain(
+                    "string.Equals(currentFingerprint, fingerprint, StringComparison.Ordinal)"
+                )
+            );
+            Assert.That(inFlightJoin, Is.GreaterThanOrEqualTo(0));
+            Assert.That(inFlightJoin, Is.LessThan(revisionIssue));
+            Assert.That(inFlightJoin, Is.LessThan(execute));
+            Assert.That(
+                source,
+                Does.Contain(
+                    "if (string.Equals(currentFingerprint, fingerprint, StringComparison.Ordinal))\n                {\n                    return;"
+                )
+            );
+        });
+    }
+
+    [Test]
+    public void 異なるfingerprintは新revisionを発行して旧probeをstale化する()
+    {
+        string source = GetVisibleSourceImageProbeSource();
+        int inFlightJoin = source.IndexOf(
+            "string.Equals(currentFingerprint, fingerprint, StringComparison.Ordinal)",
+            StringComparison.Ordinal
+        );
+        int revisionIssue = source.IndexOf(
+            "int probeRevision = Interlocked.Increment(ref _visibleSourceImageProbeRevision);",
+            StringComparison.Ordinal
+        );
+        int inFlightRegister = source.IndexOf(
+            "ref _visibleSourceImageProbeInFlightFingerprint,\n                            fingerprint,\n                            currentFingerprint",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(inFlightJoin, Is.GreaterThanOrEqualTo(0));
+            Assert.That(inFlightRegister, Is.GreaterThan(inFlightJoin));
+            Assert.That(
+                revisionIssue,
+                Is.GreaterThan(inFlightRegister),
+                "異なるfingerprintの所有権をCASで確保してからrevisionを進める"
+            );
+            Assert.That(
+                source,
+                Does.Contain("probeRevision == Volatile.Read(ref _visibleSourceImageProbeRevision)")
+            );
+        });
+    }
+
+    [Test]
+    public void inFlight解除はfinallyで所有fingerprint一致時だけ行い失敗後も再試行できる()
+    {
+        string source = GetVisibleSourceImageProbeSource();
+        int executeMethod = source.IndexOf(
+            "private async Task ExecuteVisibleSourceImageProbeAsync(",
+            StringComparison.Ordinal
+        );
+        int catchBlock = source.IndexOf("catch (Exception ex)", executeMethod, StringComparison.Ordinal);
+        int finallyBlock = source.IndexOf("finally", catchBlock, StringComparison.Ordinal);
+        int compareGuard = source.IndexOf(
+            "Interlocked.CompareExchange(\n                    ref _visibleSourceImageProbeInFlightFingerprint,\n                    null,\n                    request.Fingerprint",
+            finallyBlock,
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("string Fingerprint"));
+            Assert.That(finallyBlock, Is.GreaterThan(catchBlock));
+            Assert.That(compareGuard, Is.GreaterThan(finallyBlock));
+            Assert.That(source, Does.Contain("StringComparison.Ordinal"));
+            Assert.That(
+                source,
+                Does.Contain(
+                    "finally\n            {\n                // 後着要求の登録は消さず、自分が登録したfingerprintだけを解除する。\n                Interlocked.CompareExchange("
+                ),
+                "失敗・staleを含む全経路で、所有するfingerprintだけを解除する"
+            );
+        });
+    }
+
     private static string GetMovieRecordFactorySource()
     {
         return GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
