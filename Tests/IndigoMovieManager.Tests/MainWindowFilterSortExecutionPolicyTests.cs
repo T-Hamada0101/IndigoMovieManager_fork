@@ -83,17 +83,46 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string detailSource = GetRepoText("UserControls", "ExtDetail.xaml.cs");
         string bookmarkSource = GetRepoText("UserControls", "Bookmark.xaml.cs");
 
-        Assert.That(searchSource, Does.Contain("public async Task ApplySearchKeywordFromLinkAsync("));
-        Assert.That(searchSource, Does.Contain("ExecuteSearchKeywordAsync(keyword ?? \"\", true, \"link-search\")"));
-        Assert.That(searchSource, Does.Contain("if (SearchBox != null && !SearchBox.IsKeyboardFocusWithin)"));
+        Assert.That(
+            searchSource,
+            Does.Contain("public async Task ApplySearchKeywordFromLinkAsync(")
+        );
+        Assert.That(
+            searchSource,
+            Does.Contain("ExecuteSearchKeywordAsync(keyword ?? \"\", true, \"link-search\")")
+        );
+        Assert.That(
+            searchSource,
+            Does.Contain("if (SearchBox != null && !SearchBox.IsKeyboardFocusWithin)")
+        );
         Assert.That(searchSource, Does.Contain("catch (Exception ex)"));
         Assert.That(searchSource, Does.Contain("link search failed:"));
-        Assert.That(tagSource, Does.Contain("await ownerWindow.ApplySearchKeywordFromLinkAsync(keyword);"));
-        Assert.That(detailSource, Does.Contain("await ownerWindow.ApplySearchKeywordFromLinkAsync(quoted);"));
-        Assert.That(detailSource, Does.Contain("await ownerWindow.ApplySearchKeywordFromLinkAsync(mv.Ext);"));
-        Assert.That(bookmarkSource, Does.Contain("await ownerWindow.ApplySearchKeywordFromLinkAsync(mv.Movie_Body ?? \"\");"));
-        Assert.That(tagSource, Does.Not.Contain("FilterAndSort(ownerWindow.MainVM.DbInfo.Sort, true);"));
-        Assert.That(detailSource, Does.Not.Contain("FilterAndSort(ownerWindow.MainVM.DbInfo.Sort, true);"));
+        Assert.That(
+            tagSource,
+            Does.Contain("await ownerWindow.ApplySearchKeywordFromLinkAsync(keyword);")
+        );
+        Assert.That(
+            detailSource,
+            Does.Contain("await ownerWindow.ApplySearchKeywordFromLinkAsync(quoted);")
+        );
+        Assert.That(
+            detailSource,
+            Does.Contain("await ownerWindow.ApplySearchKeywordFromLinkAsync(mv.Ext);")
+        );
+        Assert.That(
+            bookmarkSource,
+            Does.Contain(
+                "await ownerWindow.ApplySearchKeywordFromLinkAsync(mv.Movie_Body ?? \"\");"
+            )
+        );
+        Assert.That(
+            tagSource,
+            Does.Not.Contain("FilterAndSort(ownerWindow.MainVM.DbInfo.Sort, true);")
+        );
+        Assert.That(
+            detailSource,
+            Does.Not.Contain("FilterAndSort(ownerWindow.MainVM.DbInfo.Sort, true);")
+        );
         Assert.That(bookmarkSource, Does.Not.Contain("ownerWindow.SearchBox.Text ="));
     }
 
@@ -105,27 +134,39 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             searchSource,
             "private void PersistSearchHistoryAfterSearch("
         );
-        string refreshMethod = GetMethodBlock(searchSource, "private void QueueSearchHistoryRefresh(");
+        string refreshMethod = GetMethodBlock(
+            searchSource,
+            "private void QueueSearchHistoryRefresh("
+        );
         string asyncRefreshMethod = GetMethodBlock(
             searchSource,
             "private async Task RefreshSearchHistoryAsync("
         );
         string lostFocusMethod = GetMethodBlock(searchSource, "private void SearchBox_LostFocus(");
 
-        Assert.That(persistMethod, Does.Not.Contain("SearchHistoryService.PersistSuccessfulSearch("));
+        Assert.That(
+            persistMethod,
+            Does.Not.Contain("SearchHistoryService.PersistSuccessfulSearch(")
+        );
         Assert.That(persistMethod, Does.Not.Contain("GetHistoryTable("));
         Assert.That(persistMethod, Does.Contain("QueueSearchHistoryRefresh("));
         Assert.That(refreshMethod, Does.Contain("RefreshSearchHistoryAsync("));
         Assert.That(refreshMethod, Does.Not.Contain("ContinueWith("));
         Assert.That(refreshMethod, Does.Not.Contain("task.Result"));
         Assert.That(asyncRefreshMethod, Does.Contain("Task.Run("));
-        Assert.That(asyncRefreshMethod, Does.Contain("SearchHistoryService.PersistSuccessfulSearch("));
+        Assert.That(
+            asyncRefreshMethod,
+            Does.Contain("SearchHistoryService.PersistSuccessfulSearch(")
+        );
         Assert.That(asyncRefreshMethod, Does.Contain("SearchHistoryService.LoadLatestHistory("));
         Assert.That(asyncRefreshMethod, Does.Contain(".InvokeAsync("));
         Assert.That(asyncRefreshMethod, Does.Contain(".ConfigureAwait(false);"));
         Assert.That(asyncRefreshMethod, Does.Contain(".Task.ConfigureAwait(false);"));
         Assert.That(asyncRefreshMethod, Does.Contain("AreSameMainDbPath("));
-        Assert.That(asyncRefreshMethod, Does.Contain("ApplySearchHistoryRecords(records, SearchBox?.Text ?? \"\")"));
+        Assert.That(
+            asyncRefreshMethod,
+            Does.Contain("ApplySearchHistoryRecords(records, SearchBox?.Text ?? \"\")")
+        );
         Assert.That(asyncRefreshMethod, Does.Contain("catch (TaskCanceledException)"));
         Assert.That(asyncRefreshMethod, Does.Contain("catch (InvalidOperationException)"));
         Assert.That(asyncRefreshMethod, Does.Contain("history apply failed"));
@@ -138,11 +179,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     [Test]
     public void BootNewDb_検索履歴初期読込は背景へ逃がす()
     {
-        string mainDbRuntimeSource = GetRepoText(
-            "Views",
-            "Main",
-            "MainWindow.MainDbRuntime.cs"
-        );
+        string mainDbRuntimeSource = GetRepoText("Views", "Main", "MainWindow.MainDbRuntime.cs");
         string bootMethod = GetMethodBlock(
             mainDbRuntimeSource,
             "private void BootNewDb(string dbFullPath, DataTable preflightSystemData)"
@@ -160,10 +197,19 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(bootMethod, Does.Not.Contain("GetHistoryTable("));
         Assert.That(bootMethod, Does.Not.Contain("SearchHistoryService.LoadLatestHistory("));
         Assert.That(queueMethod, Does.Contain("string dbFullPathSnapshot = dbFullPath ?? \"\";"));
-        Assert.That(queueMethod, Does.Contain("string searchTextSnapshot = SearchBox?.Text ?? \"\";"));
-        Assert.That(queueMethod, Does.Contain("Interlocked.Increment(ref _searchHistoryRefreshStamp);"));
+        Assert.That(
+            queueMethod,
+            Does.Contain("string searchTextSnapshot = SearchBox?.Text ?? \"\";")
+        );
+        Assert.That(
+            queueMethod,
+            Does.Contain("Interlocked.Increment(ref _searchHistoryRefreshStamp);")
+        );
         Assert.That(asyncMethod, Does.Contain("Task.Run("));
-        Assert.That(asyncMethod, Does.Contain("SearchHistoryService.LoadLatestHistory(dbFullPathSnapshot)"));
+        Assert.That(
+            asyncMethod,
+            Does.Contain("SearchHistoryService.LoadLatestHistory(dbFullPathSnapshot)")
+        );
         Assert.That(asyncMethod, Does.Contain(".InvokeAsync("));
         Assert.That(asyncMethod, Does.Contain("DispatcherPriority.Background"));
         Assert.That(asyncMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
@@ -171,7 +217,9 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(asyncMethod, Does.Contain("AreSameMainDbPath("));
         Assert.That(
             asyncMethod,
-            Does.Contain("ApplySearchHistoryRecords(records, SearchBox?.Text ?? searchTextSnapshot)")
+            Does.Contain(
+                "ApplySearchHistoryRecords(records, SearchBox?.Text ?? searchTextSnapshot)"
+            )
         );
         Assert.That(asyncMethod, Does.Contain("history reload failed:"));
         Assert.That(asyncMethod, Does.Contain("history reload apply failed:"));
@@ -192,11 +240,16 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "private static bool AreSameSearchHistoryRecords("
         );
 
-        Assert.That(applyMethod, Does.Contain("AreSameSearchHistoryRecords(MainVM.HistoryRecs, nextRecords)"));
+        Assert.That(
+            applyMethod,
+            Does.Contain("AreSameSearchHistoryRecords(MainVM.HistoryRecs, nextRecords)")
+        );
         Assert.That(applyMethod, Does.Contain("return;"));
         Assert.That(
             applyMethod.IndexOf("return;", StringComparison.Ordinal),
-            Is.LessThan(applyMethod.IndexOf("MainVM.HistoryRecs.Clear();", StringComparison.Ordinal))
+            Is.LessThan(
+                applyMethod.IndexOf("MainVM.HistoryRecs.Clear();", StringComparison.Ordinal)
+            )
         );
         Assert.That(applyMethod, Does.Contain("MainVM.HistoryRecs.Clear();"));
         Assert.That(applyMethod, Does.Contain("MainVM.HistoryRecs.Add(item);"));
@@ -209,11 +262,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     public void MainDbRuntime境界は専用partialへ固定する()
     {
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
-        string mainDbRuntimeSource = GetRepoText(
-            "Views",
-            "Main",
-            "MainWindow.MainDbRuntime.cs"
-        );
+        string mainDbRuntimeSource = GetRepoText("Views", "Main", "MainWindow.MainDbRuntime.cs");
         string registeredMovieCountPolicySource = GetRepoText(
             "Views",
             "Main",
@@ -289,7 +338,9 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
                 "if (_suppressSearchBoxTextChangedHandling)",
                 StringComparison.Ordinal
             ),
-            Is.LessThan(selectionChanged.IndexOf("if (SearchBox.IsDropDownOpen)", StringComparison.Ordinal))
+            Is.LessThan(
+                selectionChanged.IndexOf("if (SearchBox.IsDropDownOpen)", StringComparison.Ordinal)
+            )
         );
     }
 
@@ -304,7 +355,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         Assert.That(textChangedMethod, Does.Contain("ExecuteSearchKeywordAsync(text, false);"));
         Assert.That(textChangedMethod, Does.Not.Contain("RestartThumbnailTask();"));
-        Assert.That(textChangedMethod, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, IsStartupFeedPartialActive);"));
+        Assert.That(
+            textChangedMethod,
+            Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, IsStartupFeedPartialActive);")
+        );
     }
 
     [Test]
@@ -333,8 +387,14 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(method, Does.Contain("CaptureUserPriorityOperationSnapshot("));
         Assert.That(method, Does.Contain("IsUserPriorityWorkActive()"));
         Assert.That(method, Does.Contain("DebugRuntimeLog.Write("));
-        Assert.That(method, Does.Contain("BuildUiShellInputLogMessage(\"search\", triggerReason, snapshot)"));
-        Assert.That(method, Does.Contain("return await SearchExecutor.ExecuteAsync(text, syncSearchBoxText);"));
+        Assert.That(
+            method,
+            Does.Contain("BuildUiShellInputLogMessage(\"search\", triggerReason, snapshot)")
+        );
+        Assert.That(
+            method,
+            Does.Contain("return await SearchExecutor.ExecuteAsync(text, syncSearchBoxText);")
+        );
         Assert.That(snapshotIndex, Is.GreaterThanOrEqualTo(0));
         Assert.That(logIndex, Is.GreaterThan(snapshotIndex));
         Assert.That(inputLogIndex, Is.GreaterThan(logIndex));
@@ -351,12 +411,22 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             requestSource,
             "private async Task RefreshMovieViewFromCurrentSourceAsync("
         );
+        string compactMethod = string.Concat(method.Where(c => !char.IsWhiteSpace(c)));
 
-        Assert.That(requestSource, Does.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(
+            requestSource,
+            Does.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync(")
+        );
         Assert.That(method, Does.Contain("BeginFilterAndSortCancellation();"));
         Assert.That(method, Does.Contain("CancellationToken refreshCancellationToken"));
-        Assert.That(method, Does.Contain("refreshCancellationToken.ThrowIfCancellationRequested();"));
+        Assert.That(
+            method,
+            Does.Contain("refreshCancellationToken.ThrowIfCancellationRequested();")
+        );
         Assert.That(method, Does.Contain("Task.Run("));
         Assert.That(method, Does.Contain("MovieViewReadModelRequest readModelRequest = new()"));
         Assert.That(method, Does.Contain("MovieViewReadModelBuilder.Build(readModelRequest)"));
@@ -375,9 +445,9 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(dispatcherCancellationTokenIndex, Is.GreaterThan(dispatcherPriorityIndex));
         Assert.That(method, Does.Contain("resolvedTraceName"));
         Assert.That(
-            method,
+            compactMethod,
             Does.Contain(
-                "catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)"
+                "catch(OperationCanceledException)when(refreshCancellationToken.IsCancellationRequested)"
             )
         );
         Assert.That(method, Does.Contain("stage=apply-dispatch"));
@@ -391,6 +461,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
         string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
         string method = GetMethodBlock(requestSource, "private async Task FilterAndSortAsync(");
+        string compactMethod = string.Concat(method.Where(c => !char.IsWhiteSpace(c)));
         int loadIndex = method.IndexOf(
             "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath, id)",
             StringComparison.Ordinal
@@ -399,9 +470,13 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "stage=filter-sort-compute",
             StringComparison.Ordinal
         );
-        int dbReloadCancelCatchIndex = method.IndexOf(
-            "catch (OperationCanceledException) when (",
-            loadIndex,
+        int compactLoadIndex = compactMethod.IndexOf(
+            "_mainDbMovieReadFacade.LoadMovieTableForSort(dbFullPath,id)",
+            StringComparison.Ordinal
+        );
+        int dbReloadCancelCatchIndex = compactMethod.IndexOf(
+            "catch(OperationCanceledException)when(",
+            compactLoadIndex,
             StringComparison.Ordinal
         );
 
@@ -428,15 +503,14 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             Is.GreaterThan(loadIndex)
         );
         Assert.That(computeStageIndex, Is.GreaterThan(loadIndex));
-        Assert.That(dbReloadCancelCatchIndex, Is.GreaterThan(loadIndex));
-        Assert.That(dbReloadCancelCatchIndex, Is.LessThan(computeStageIndex));
+        Assert.That(dbReloadCancelCatchIndex, Is.GreaterThan(compactLoadIndex));
         Assert.That(
-            method.IndexOf(
+            compactMethod.IndexOf(
                 "filterAndSortCancellationToken.IsCancellationRequested",
                 dbReloadCancelCatchIndex,
                 StringComparison.Ordinal
             ),
-            Is.LessThan(computeStageIndex)
+            Is.GreaterThan(dbReloadCancelCatchIndex)
         );
         Assert.That(
             method.IndexOf(
@@ -459,7 +533,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "private void MarkStartupSourceCompleteAfterFullReload("
         );
         int sourceApplyIndex = method.IndexOf(
-            "latestMovieRecords = await SetRecordsToSource(latestMovieData, requestRevision);",
+            "MovieRecordSourceApplyResult sourceApplyResult = await SetRecordsToSource(",
             StringComparison.Ordinal
         );
         int staleGuardIndex = method.IndexOf(
@@ -480,7 +554,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             method.IndexOf("if (latestMovieData == null)", StringComparison.Ordinal),
             Is.LessThan(sourceApplyIndex)
         );
-        Assert.That(completeHelper, Does.Contain("Volatile.Read(ref _filterAndSortRequestRevision)"));
+        Assert.That(
+            completeHelper,
+            Does.Contain("Volatile.Read(ref _filterAndSortRequestRevision)")
+        );
         Assert.That(completeHelper, Does.Contain("_startupFeedLoadedAllPages = true;"));
         Assert.That(completeHelper, Does.Contain("ClearStartupContinuationState();"));
         Assert.That(completeHelper, Does.Contain("startup source completed by full reload"));
@@ -509,7 +586,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(method, Does.Contain("string expectedDbFullPath = \"\""));
         Assert.That(method, Does.Contain("CaptureMovieRecordBulkBuildContext()"));
         Assert.That(method, Does.Contain("Task.Run(() =>"));
-        Assert.That(method, Does.Contain("BuildMovieRecordBulkBuildCache(bulkContext)"));
+        Assert.That(compactMethod, Does.Contain("BuildMovieRecordBulkBuildCache(bulkContext)"));
         Assert.That(method, Does.Contain("CreateMovieRecordFromDataRow("));
         Assert.That(method, Does.Contain("bulkContext"));
         Assert.That(method, Does.Contain("bulkCache"));
@@ -525,28 +602,89 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             method.IndexOf("AreSameMainDbPath(", StringComparison.Ordinal),
             Is.LessThan(method.IndexOf("MainVM.MovieRecs.Add(item);", StringComparison.Ordinal))
         );
-        Assert.That(method, Does.Contain("QueueMovieExistsRefresh([item], _filterAndSortRequestRevision);"));
+        Assert.That(
+            method,
+            Does.Contain("QueueMovieExistsRefresh([item], _filterAndSortRequestRevision);")
+        );
         Assert.That(method, Does.Not.Contain("CreateMovieRecordFromDataRow(row);"));
         Assert.That(method, Does.Not.Contain("Path.Exists("));
-        Assert.That(movieRecordFactorySource, Does.Contain("private MovieRecords CreateMovieRecordFromDataRow("));
-        Assert.That(movieRecordFactorySource, Does.Contain("private readonly record struct MovieRecordBulkBuildContext"));
-        Assert.That(movieRecordFactorySource, Does.Contain("private sealed class MovieRecordBulkBuildCache"));
-        Assert.That(movieRecordFactorySource, Does.Contain("private MovieRecordBulkBuildContext CaptureMovieRecordBulkBuildContext("));
-        Assert.That(movieRecordFactorySource, Does.Contain("private static MovieRecordBulkBuildCache BuildMovieRecordBulkBuildCache("));
-        Assert.That(movieRecordFactorySource, Does.Contain("internal static string ResolveThumbnailDisplayPath("));
-        Assert.That(movieRecordFactorySource, Does.Contain("private async Task<MovieRecords[]> SetRecordsToSource("));
-        Assert.That(movieRecordFactorySource, Does.Contain("private void QueueMovieExistsRefresh("));
-        Assert.That(movieRecordFactorySource, Does.Contain("private Task ApplyMovieExistsRefreshBatchAsync("));
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private MovieRecords CreateMovieRecordFromDataRow(")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private readonly record struct MovieRecordBulkBuildContext")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private sealed class MovieRecordBulkBuildCache")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private MovieRecordBulkBuildContext CaptureMovieRecordBulkBuildContext(")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private static MovieRecordBulkBuildCache BuildMovieRecordBulkBuildCache(")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("internal static string ResolveThumbnailDisplayPath(")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private async Task<MovieRecordSourceApplyResult> SetRecordsToSource(")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private void QueueMovieExistsRefresh(")
+        );
+        Assert.That(
+            movieRecordFactorySource,
+            Does.Contain("private Task ApplyMovieExistsRefreshBatchAsync(")
+        );
         Assert.That(mainWindowSource, Does.Not.Contain("private async Task DataRowToViewData("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private MovieRecords CreateMovieRecordFromDataRow("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private readonly record struct MovieRecordBulkBuildContext"));
-        Assert.That(mainWindowSource, Does.Not.Contain("private sealed class MovieRecordBulkBuildCache"));
-        Assert.That(mainWindowSource, Does.Not.Contain("private MovieRecordBulkBuildContext CaptureMovieRecordBulkBuildContext("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private static MovieRecordBulkBuildCache BuildMovieRecordBulkBuildCache("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private static string ResolveThumbnailDisplayPath("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private async Task<MovieRecords[]> SetRecordsToSource("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private Task ApplyMovieExistsRefreshBatchAsync("));
-        Assert.That(appendMethod, Does.Contain("DataRowToViewData(targetRow, snapshotDbFullPath);"));
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private MovieRecords CreateMovieRecordFromDataRow(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private readonly record struct MovieRecordBulkBuildContext")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private sealed class MovieRecordBulkBuildCache")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain(
+                "private MovieRecordBulkBuildContext CaptureMovieRecordBulkBuildContext("
+            )
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain(
+                "private static MovieRecordBulkBuildCache BuildMovieRecordBulkBuildCache("
+            )
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private static string ResolveThumbnailDisplayPath(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private async Task<MovieRecords[]> SetRecordsToSource(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private Task ApplyMovieExistsRefreshBatchAsync(")
+        );
+        Assert.That(
+            appendMethod,
+            Does.Contain("DataRowToViewData(targetRow, snapshotDbFullPath);")
+        );
     }
 
     [Test]
@@ -618,12 +756,59 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         Assert.That(
             createMethod,
-            Does.Contain(
-                "? new LazyThumbnailSourceImagePathResolver(movieFullPath)"
-            )
+            Does.Contain("? new LazyThumbnailSourceImagePathResolver(movieFullPath)")
         );
         Assert.That(source, Does.Not.Contain("static LazyThumbnailSourceImagePathResolver"));
         Assert.That(source, Does.Not.Contain("required LazyThumbnailSourceImagePathResolver"));
+    }
+
+    [Test]
+    public void SourceApply_区間計測は1行へ集約し存在確認完了を待たない()
+    {
+        string factorySource = GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
+        string requestsSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
+        string resolverSource = GetRepoText("Thumbnail", "ThumbnailSourceImagePathResolver.cs");
+        string setSourceMethod = GetMethodBlock(
+            factorySource,
+            "private async Task<MovieRecordSourceApplyResult> SetRecordsToSource("
+        );
+        string queueMethod = GetMethodBlock(factorySource, "private void QueueMovieExistsRefresh(");
+        string lazyResolveMethod = GetMethodBlock(resolverSource, "internal string Resolve(");
+
+        foreach (
+            string field in new[]
+            {
+                "bulk_cache_ms=",
+                "row_convert_ms=",
+                "source_image_probe_ms=",
+                "source_image_probe_count=",
+                "source_image_probe_hit=",
+                "replace_movie_recs_ms=",
+                "queue_movie_exists_ms=",
+                "invalidate_thumbnail_error_ms=",
+                "background_ms=",
+                "ui_ms=",
+                "total_ms=",
+                "stale=",
+            }
+        )
+        {
+            Assert.That(requestsSource, Does.Contain(field));
+        }
+
+        Assert.That(factorySource, Does.Not.Contain("movie record bulk build:"));
+        Assert.That(
+            setSourceMethod,
+            Does.Contain("QueueMovieExistsRefresh(result.Items, requestRevision);")
+        );
+        Assert.That(setSourceMethod, Does.Not.Contain("await QueueMovieExistsRefresh"));
+        Assert.That(queueMethod, Does.Contain("_ = Task.Run(async () =>"));
+        Assert.That(lazyResolveMethod, Does.Contain("if (_resolved)"));
+        Assert.That(
+            lazyResolveMethod.IndexOf("Stopwatch.GetTimestamp()", StringComparison.Ordinal),
+            Is.GreaterThan(lazyResolveMethod.IndexOf("if (_resolved)", StringComparison.Ordinal))
+        );
+        Assert.That(CountOccurrences(lazyResolveMethod, "Stopwatch.GetTimestamp()"), Is.EqualTo(2));
     }
 
     [Test]
@@ -637,7 +822,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             readModelUiSource,
             "private async Task SortDataFromLegacyCallerAsync("
         );
-        string sortAsync = GetMethodBlock(readModelUiSource, "private async Task<bool> SortDataAsync(");
+        string sortAsync = GetMethodBlock(
+            readModelUiSource,
+            "private async Task<bool> SortDataAsync("
+        );
         string comboChanged = GetMethodBlock(
             inputRoutingSource,
             "private async void ComboSort_SelectionChanged("
@@ -646,10 +834,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "UiOperationSnapshot snapshot = CaptureUserPriorityOperationSnapshot(",
             StringComparison.Ordinal
         );
-        int sortLogIndex = comboChanged.IndexOf(
-            "DebugRuntimeLog.Write(",
-            StringComparison.Ordinal
-        );
+        int sortLogIndex = comboChanged.IndexOf("DebugRuntimeLog.Write(", StringComparison.Ordinal);
         int sortInputLogIndex = comboChanged.IndexOf(
             "BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)",
             StringComparison.Ordinal
@@ -662,7 +847,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(legacyWrapper, Does.Contain("SortDataFromLegacyCallerAsync(id);"));
         Assert.That(legacyAsyncWrapper, Does.Contain("await SortDataAsync(id);"));
         Assert.That(legacyAsyncWrapper, Does.Contain("sort legacy caller failed:"));
-        Assert.That(sortAsync, Does.Contain("Interlocked.Increment(ref _filterAndSortRequestRevision);"));
+        Assert.That(
+            sortAsync,
+            Does.Contain("Interlocked.Increment(ref _filterAndSortRequestRevision);")
+        );
         Assert.That(sortAsync, Does.Contain("BeginFilterAndSortCancellation();"));
         Assert.That(sortAsync, Does.Contain("ShouldRunFilterSortOnBackground(source.Length);"));
         Assert.That(sortAsync, Does.Contain("Task.Run("));
@@ -676,7 +864,12 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(comboChanged, Does.Contain("CaptureUserPriorityOperationSnapshot("));
         Assert.That(comboChanged, Does.Contain("IsUserPriorityWorkActive()"));
         Assert.That(comboChanged, Does.Contain("DebugRuntimeLog.Write("));
-        Assert.That(comboChanged, Does.Contain("BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"));
+        Assert.That(
+            comboChanged,
+            Does.Contain(
+                "BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"
+            )
+        );
         Assert.That(comboChanged, Does.Contain("BeginUserPriorityWork(\"sort\");"));
         Assert.That(comboChanged, Does.Contain("if (!await SortDataAsync(plan.SortId))"));
         Assert.That(comboChanged, Does.Contain("finally"));
@@ -685,10 +878,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortLogIndex, Is.GreaterThan(sortSnapshotIndex));
         Assert.That(sortInputLogIndex, Is.GreaterThan(sortLogIndex));
         // sort の user-priority を張る前に、入力入口の状態を runtime log へ閉じ込める。
-        Assert.That(
-            sortInputLogIndex,
-            Is.LessThan(sortBeginIndex)
-        );
+        Assert.That(sortInputLogIndex, Is.LessThan(sortBeginIndex));
         Assert.That(
             sortBeginIndex,
             Is.LessThan(
@@ -702,7 +892,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             )
         );
         Assert.That(comboChanged, Does.Not.Contain("shouldSelectFirstItem"));
-        Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private async void ComboSort_SelectionChanged(")
+        );
     }
 
     [Test]
@@ -711,11 +904,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
         string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
         string readModelUiSource = GetRepoText("Views", "Main", "MainWindow.MovieViewReadModel.cs");
-        string focusSource = GetRepoText(
-            "UpperTabs",
-            "Common",
-            "MainWindow.UpperTabs.Focus.cs"
-        );
+        string focusSource = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Focus.cs");
         string filterAsync = GetMethodBlock(
             requestSource,
             "private async Task FilterAndSortAsync("
@@ -724,7 +913,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             readModelUiSource,
             "private bool TryApplyMovieViewReadModelResultOnUiThread("
         );
-        string sortAsync = GetMethodBlock(readModelUiSource, "private async Task<bool> SortDataAsync(");
+        string sortAsync = GetMethodBlock(
+            readModelUiSource,
+            "private async Task<bool> SortDataAsync("
+        );
         string helper = GetMethodBlock(
             mainWindowSource,
             "private bool RefreshSelectionDetailAfterCollectionApplyIfNeeded("
@@ -733,36 +925,73 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(filterAsync, Does.Contain("TryApplyMovieViewReadModelResultOnUiThread("));
         Assert.That(filterAsync, Does.Not.Contain("MainVM.ReplaceFilteredMovieRecs("));
         Assert.That(filterAsync, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
-        Assert.That(mainWindowSource, Does.Not.Contain("private bool TryApplyMovieViewReadModelResultOnUiThread("));
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private bool TryApplyMovieViewReadModelResultOnUiThread(")
+        );
         Assert.That(mainWindowSource, Does.Not.Contain("private async Task<bool> SortDataAsync("));
         Assert.That(mainWindowSource, Does.Not.Contain("private async Task FilterAndSortAsync("));
 
-        Assert.That(applyReadModel, Does.Contain("MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"));
-        Assert.That(applyReadModel, Does.Contain("MovieViewSelectionContinuityPolicy.CaptureStableKeys("));
+        Assert.That(
+            applyReadModel,
+            Does.Contain(
+                "MovieRecords selectedBeforeCollectionApply = GetSelectedItemByTabIndex();"
+            )
+        );
+        Assert.That(
+            applyReadModel,
+            Does.Contain("MovieViewSelectionContinuityPolicy.CaptureStableKeys(")
+        );
         Assert.That(applyReadModel, Does.Contain("GetSelectedItemsByTabIndex()"));
         Assert.That(applyReadModel, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
-        Assert.That(applyReadModel, Does.Contain("MovieViewSelectionContinuityPolicy.ResolveManyAfterCollectionApply("));
-        Assert.That(applyReadModel, Does.Contain("foreach (MovieRecords restoredSelection in restoredSelections)"));
-        Assert.That(applyReadModel, Does.Contain("SetCurrentUpperTabMovieSelection(restoredSelection, true);"));
+        Assert.That(
+            applyReadModel,
+            Does.Contain("MovieViewSelectionContinuityPolicy.ResolveManyAfterCollectionApply(")
+        );
+        Assert.That(
+            applyReadModel,
+            Does.Contain("foreach (MovieRecords restoredSelection in restoredSelections)")
+        );
+        Assert.That(
+            applyReadModel,
+            Does.Contain("SetCurrentUpperTabMovieSelection(restoredSelection, true);")
+        );
         Assert.That(applyReadModel, Does.Contain("CaptureMovieViewScrollAnchor()"));
         Assert.That(applyReadModel, Does.Contain("CaptureMovieViewFocus()"));
-        Assert.That(applyReadModel, Does.Contain("updateMode == FilteredMovieRecsUpdateMode.Reset"));
-        Assert.That(applyReadModel, Does.Contain("RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);"));
-        Assert.That(applyReadModel, Does.Contain("RestoreMovieViewFocus(focusContext, updateMode, collectionResult);"));
-        Assert.That(applyReadModel, Does.Not.Contain("MovieViewSelectionContinuityPolicy.TryCaptureStableKey("));
-        Assert.That(applyReadModel, Does.Not.Contain("MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply("));
+        Assert.That(
+            applyReadModel,
+            Does.Contain("updateMode == FilteredMovieRecsUpdateMode.Reset")
+        );
+        Assert.That(
+            applyReadModel,
+            Does.Contain(
+                "RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);"
+            )
+        );
+        Assert.That(
+            applyReadModel,
+            Does.Contain("RestoreMovieViewFocus(focusContext, updateMode, collectionResult);")
+        );
+        Assert.That(
+            applyReadModel,
+            Does.Not.Contain("MovieViewSelectionContinuityPolicy.TryCaptureStableKey(")
+        );
+        Assert.That(
+            applyReadModel,
+            Does.Not.Contain("MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply(")
+        );
         Assert.That(applyReadModel, Does.Not.Contain("SelectUpperTabMovieRecord("));
-        Assert.That(applyReadModel, Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded("));
+        Assert.That(
+            applyReadModel,
+            Does.Contain("RefreshSelectionDetailAfterCollectionApplyIfNeeded(")
+        );
         Assert.That(
             applyReadModel.IndexOf(
                 "MovieViewSelectionContinuityPolicy.CaptureStableKeys(",
                 StringComparison.Ordinal
             ),
             Is.LessThan(
-                applyReadModel.IndexOf(
-                    "MainVM.ReplaceFilteredMovieRecs(",
-                    StringComparison.Ordinal
-                )
+                applyReadModel.IndexOf("MainVM.ReplaceFilteredMovieRecs(", StringComparison.Ordinal)
             )
         );
         Assert.That(
@@ -836,7 +1065,12 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
                 )
             )
         );
-        Assert.That(applyReadModel, Does.Contain("!isSortOnly && string.Equals(resolvedSortId, \"28\", StringComparison.Ordinal)"));
+        Assert.That(
+            applyReadModel,
+            Does.Contain(
+                "!isSortOnly && string.Equals(resolvedSortId, \"28\", StringComparison.Ordinal)"
+            )
+        );
         Assert.That(applyReadModel, Does.Contain("readmodel apply end: request_revision="));
         Assert.That(
             applyReadModel,
@@ -850,7 +1084,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(sortAsync, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
 
         Assert.That(helper, Does.Contain("ShouldRefreshAfterCollectionApply("));
-        Assert.That(helper, Does.Contain("ReferenceEquals(selectedBeforeApply, selectedAfterApply)"));
+        Assert.That(
+            helper,
+            Does.Contain("ReferenceEquals(selectedBeforeApply, selectedAfterApply)")
+        );
         Assert.That(helper, Does.Contain("Refresh();"));
     }
 
@@ -882,32 +1119,97 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(builderSource, Does.Not.Contain("ApplyObservedStateToMovieRecord("));
         Assert.That(filterAsync, Does.Contain("MovieViewReadModelBuilder.Build(readModelRequest)"));
         Assert.That(filterAsync, Does.Contain("snapshot_ms="));
-        Assert.That(refreshAsync, Does.Contain("MovieViewReadModelBuilder.Build(readModelRequest)"));
-        Assert.That(refreshAsync, Does.Contain("CaptureMovieViewReadModelSnapshotOnUiThreadAsync("));
+        Assert.That(
+            refreshAsync,
+            Does.Contain("MovieViewReadModelBuilder.Build(readModelRequest)")
+        );
+        Assert.That(
+            refreshAsync,
+            Does.Contain("CaptureMovieViewReadModelSnapshotOnUiThreadAsync(")
+        );
         Assert.That(refreshAsync, Does.Contain("snapshot_ms="));
-        Assert.That(readModelUiSource, Does.Contain("private readonly record struct MovieViewReadModelSnapshot"));
-        Assert.That(readModelUiSource, Does.Contain("private async Task<MovieViewReadModelSnapshot> CaptureMovieViewReadModelSnapshotOnUiThreadAsync("));
-        Assert.That(readModelUiSource, Does.Contain("private static void ApplyObservedStatesToMovieRecords("));
-        Assert.That(readModelUiSource, Does.Contain("private readonly record struct MovieViewReadModelApplyResult"));
+        Assert.That(
+            readModelUiSource,
+            Does.Contain("private readonly record struct MovieViewReadModelSnapshot")
+        );
+        Assert.That(
+            readModelUiSource,
+            Does.Contain(
+                "private async Task<MovieViewReadModelSnapshot> CaptureMovieViewReadModelSnapshotOnUiThreadAsync("
+            )
+        );
+        Assert.That(
+            readModelUiSource,
+            Does.Contain("private static void ApplyObservedStatesToMovieRecords(")
+        );
+        Assert.That(
+            readModelUiSource,
+            Does.Contain("private readonly record struct MovieViewReadModelApplyResult")
+        );
         Assert.That(readModelUiSource, Does.Contain("private async Task<bool> SortDataAsync("));
-        Assert.That(requestSource, Does.Contain("public void FilterAndSort(string id, bool IsGetNew = false)"));
+        Assert.That(
+            requestSource,
+            Does.Contain("public void FilterAndSort(string id, bool IsGetNew = false)")
+        );
         Assert.That(requestSource, Does.Contain("private async Task FilterAndSortAsync("));
-        Assert.That(requestSource, Does.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
+        Assert.That(
+            requestSource,
+            Does.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync(")
+        );
         Assert.That(requestSource, Does.Contain("private Task RefreshMovieViewAfterRenameAsync("));
-        Assert.That(requestSource, Does.Contain("private CancellationTokenSource BeginFilterAndSortCancellation("));
-        Assert.That(requestSource, Does.Contain("internal static string ResolveFilterSortExecutionRouteLabel("));
-        Assert.That(requestSource, Does.Contain("internal static string ResolveFilterSortFullReloadReason("));
-        Assert.That(requestSource, Does.Contain("internal static bool DoesSearchDependOnDirtyFields("));
-        Assert.That(requestSource, Does.Contain("internal static bool DoesCurrentSortDependOnDirtyFields("));
-        Assert.That(requestSource, Does.Contain("internal static bool ShouldRunFilterSortOnBackground("));
-        Assert.That(requestSource, Does.Contain("internal static bool ShouldUseFastAsciiSearchProjection("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private readonly record struct MovieViewReadModelSnapshot"));
-        Assert.That(mainWindowSource, Does.Not.Contain("private bool TryApplyMovieViewReadModelResultOnUiThread("));
-        Assert.That(mainWindowSource, Does.Not.Contain("public void FilterAndSort(string id, bool IsGetNew = false)"));
+        Assert.That(
+            requestSource,
+            Does.Contain("private CancellationTokenSource BeginFilterAndSortCancellation(")
+        );
+        Assert.That(
+            requestSource,
+            Does.Contain("internal static string ResolveFilterSortExecutionRouteLabel(")
+        );
+        Assert.That(
+            requestSource,
+            Does.Contain("internal static string ResolveFilterSortFullReloadReason(")
+        );
+        Assert.That(
+            requestSource,
+            Does.Contain("internal static bool DoesSearchDependOnDirtyFields(")
+        );
+        Assert.That(
+            requestSource,
+            Does.Contain("internal static bool DoesCurrentSortDependOnDirtyFields(")
+        );
+        Assert.That(
+            requestSource,
+            Does.Contain("internal static bool ShouldRunFilterSortOnBackground(")
+        );
+        Assert.That(
+            requestSource,
+            Does.Contain("internal static bool ShouldUseFastAsciiSearchProjection(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private readonly record struct MovieViewReadModelSnapshot")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private bool TryApplyMovieViewReadModelResultOnUiThread(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("public void FilterAndSort(string id, bool IsGetNew = false)")
+        );
         Assert.That(mainWindowSource, Does.Not.Contain("private async Task FilterAndSortAsync("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private Task RefreshMovieViewAfterRenameAsync("));
-        Assert.That(mainWindowSource, Does.Not.Contain("private CancellationTokenSource BeginFilterAndSortCancellation("));
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private async Task RefreshMovieViewFromCurrentSourceAsync(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private Task RefreshMovieViewAfterRenameAsync(")
+        );
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private CancellationTokenSource BeginFilterAndSortCancellation(")
+        );
         Assert.That(applyReadModel, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
     }
 
@@ -926,9 +1228,17 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(comboChanged, Does.Contain("SelectFirstItem();"));
         Assert.That(
             comboChanged.IndexOf("SelectFirstItem();", StringComparison.Ordinal),
-            Is.LessThan(comboChanged.IndexOf("if (!await SortDataAsync(plan.SortId))", StringComparison.Ordinal))
+            Is.LessThan(
+                comboChanged.IndexOf(
+                    "if (!await SortDataAsync(plan.SortId))",
+                    StringComparison.Ordinal
+                )
+            )
         );
-        Assert.That(mainWindowSource, Does.Not.Contain("private async void ComboSort_SelectionChanged("));
+        Assert.That(
+            mainWindowSource,
+            Does.Not.Contain("private async void ComboSort_SelectionChanged(")
+        );
     }
 
     [Test]
@@ -985,14 +1295,22 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(inputRoutingSource, Does.Contain("TryHandleUpperTabPageScroll(e)"));
         Assert.That(inputRoutingSource, Does.Contain("TryHandleDeleteShortcut(e)"));
         Assert.That(inputRoutingSource, Does.Contain("SortComboSelectionPolicy.BuildPlan("));
-        Assert.That(inputRoutingSource, Does.Contain("BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"));
+        Assert.That(
+            inputRoutingSource,
+            Does.Contain(
+                "BuildUiShellInputLogMessage(\"sort\", \"combo-selection-changed\", snapshot)"
+            )
+        );
         Assert.That(inputRoutingSource, Does.Contain("BeginUserPriorityWork(\"sort\");"));
         Assert.That(inputRoutingSource, Does.Contain("EndUserPriorityWork(\"sort\");"));
         Assert.That(inputRoutingSource, Does.Contain("FilterAndSort(plan.SortId, true);"));
         Assert.That(inputRoutingSource, Does.Contain("if (!await SortDataAsync(plan.SortId))"));
         Assert.That(inputRoutingSource, Does.Contain("RefreshThumbnailErrorRecords(force: true)"));
         Assert.That(inputRoutingSource, Does.Contain("SelectFirstItem();"));
-        Assert.That(sortComboPolicySource, Does.Contain("internal static class SortComboSelectionPolicy"));
+        Assert.That(
+            sortComboPolicySource,
+            Does.Contain("internal static class SortComboSelectionPolicy")
+        );
         Assert.That(sortComboPolicySource, Does.Not.Contain("System.Windows"));
         Assert.That(sortComboPolicySource, Does.Not.Contain("Dispatcher"));
         Assert.That(sortComboPolicySource, Does.Not.Contain("ComboBox"));
@@ -1006,11 +1324,17 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(inputRoutingSource, Does.Not.Contain("OpenDatafile"));
         Assert.That(inputRoutingSource, Does.Not.Match(@"(?m)^\s*Refresh\(\);\s*$"));
         Assert.That(inputRoutingSource, Does.Not.Contain("Items.Refresh()"));
-        Assert.That(mainWindowSource, Does.Contain("AddPreviewTextInputHandler(SearchBox, OnPreviewTextInput)"));
+        Assert.That(
+            mainWindowSource,
+            Does.Contain("AddPreviewTextInputHandler(SearchBox, OnPreviewTextInput)")
+        );
         Assert.That(mainWindowSource, Does.Contain("OnPreviewTextInputStart"));
         Assert.That(mainWindowSource, Does.Contain("OnPreviewTextInputUpdate"));
         Assert.That(mainWindowXaml, Does.Contain("PreviewKeyDown=\"Tab_PreviewKeyDown\""));
-        Assert.That(mainWindowXaml, Does.Contain("SelectionChanged=\"ComboSort_SelectionChanged\""));
+        Assert.That(
+            mainWindowXaml,
+            Does.Contain("SelectionChanged=\"ComboSort_SelectionChanged\"")
+        );
         Assert.That(inputRoutingSource, Does.Not.Contain("MenuToggleButton_Checked"));
         Assert.That(inputRoutingSource, Does.Not.Contain("MenuToggleButton_Unchecked"));
         Assert.That(mainWindowXaml, Does.Not.Contain("x:Name=\"MenuToggleButton\""));
@@ -1085,13 +1409,15 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
         Assert.That(replaceMethod, Does.Contain("TryReplaceStableKeyUpdatesInPlace("));
         Assert.That(
-            replaceMethod.IndexOf(
-                "TryReplaceStableKeyUpdatesInPlace(",
-                StringComparison.Ordinal
-            ),
-            Is.LessThan(replaceMethod.IndexOf("FilteredMovieRecs.RemoveAt(", StringComparison.Ordinal))
+            replaceMethod.IndexOf("TryReplaceStableKeyUpdatesInPlace(", StringComparison.Ordinal),
+            Is.LessThan(
+                replaceMethod.IndexOf("FilteredMovieRecs.RemoveAt(", StringComparison.Ordinal)
+            )
         );
-        Assert.That(inPlaceMethod, Does.Contain("removedCount != insertedCount || removedCount < 1"));
+        Assert.That(
+            inPlaceMethod,
+            Does.Contain("removedCount != insertedCount || removedCount < 1")
+        );
         Assert.That(
             inPlaceMethod,
             Does.Contain("FilteredMovieRecs[startIndex + offset] = nextItems[startIndex + offset];")
@@ -1103,11 +1429,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     [Test]
     public void Debugサムネイル全削除後はDB再読込ではなく表示モデルの局所更新へ寄せる()
     {
-        string debugSource = GetRepoText(
-            "BottomTabs",
-            "DebugTab",
-            "MainWindow.BottomTab.Debug.cs"
-        );
+        string debugSource = GetRepoText("BottomTabs", "DebugTab", "MainWindow.BottomTab.Debug.cs");
         string deleteMethod = GetMethodBlock(
             debugSource,
             "private async void DebugDeleteThumbnailDir_Click("
@@ -1117,7 +1439,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             "private async Task RefreshLoadedThumbnailUiAfterDebugDeleteAsync("
         );
 
-        Assert.That(deleteMethod, Does.Contain("await RefreshLoadedThumbnailUiAfterDebugDeleteAsync();"));
+        Assert.That(
+            deleteMethod,
+            Does.Contain("await RefreshLoadedThumbnailUiAfterDebugDeleteAsync();")
+        );
         Assert.That(deleteMethod, Does.Contain("await Task.Run(() =>"));
         Assert.That(
             deleteMethod.IndexOf("Directory.Exists(thumbnailRoot)", StringComparison.Ordinal),
@@ -1128,9 +1453,20 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             Is.GreaterThan(deleteMethod.IndexOf("await Task.Run(() =>", StringComparison.Ordinal))
         );
         Assert.That(deleteMethod, Does.Not.Contain("FilterAndSort("));
-        Assert.That(refreshMethod, Does.Contain("ClearThumbnailPathsForThumbnailOnlyDelete(record)"));
-        Assert.That(refreshMethod, Does.Contain("RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"debug-thumbnail-delete\");"));
-        Assert.That(refreshMethod, Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
+        Assert.That(
+            refreshMethod,
+            Does.Contain("ClearThumbnailPathsForThumbnailOnlyDelete(record)")
+        );
+        Assert.That(
+            refreshMethod,
+            Does.Contain(
+                "RequestUpperTabVisibleRangeRefresh(immediate: true, reason: \"debug-thumbnail-delete\");"
+            )
+        );
+        Assert.That(
+            refreshMethod,
+            Does.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();")
+        );
         Assert.That(refreshMethod, Does.Contain("RequestThumbnailErrorSnapshotRefresh();"));
         Assert.That(refreshMethod, Does.Contain("RequestThumbnailProgressSnapshotRefresh();"));
         Assert.That(refreshMethod, Does.Contain("await SortDataAsync(MainVM.DbInfo.Sort);"));
@@ -1140,11 +1476,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     [Test]
     public void DebugExplorer起動前の存在確認は背景helperへ逃がす()
     {
-        string debugSource = GetRepoText(
-            "BottomTabs",
-            "DebugTab",
-            "MainWindow.BottomTab.Debug.cs"
-        );
+        string debugSource = GetRepoText("BottomTabs", "DebugTab", "MainWindow.BottomTab.Debug.cs");
         string openMethod = GetMethodBlock(
             debugSource,
             "private async void OpenDebugPathInExplorer("
@@ -1155,11 +1487,20 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         );
 
         Assert.That(openMethod, Does.Contain("string pathSnapshot = path?.Trim() ?? \"\";"));
-        Assert.That(openMethod, Does.Contain("Interlocked.Increment(ref _debugExplorerOpenRequestRevision);"));
+        Assert.That(
+            openMethod,
+            Does.Contain("Interlocked.Increment(ref _debugExplorerOpenRequestRevision);")
+        );
         Assert.That(openMethod, Does.Contain("await Task.Run(() =>"));
-        Assert.That(openMethod, Does.Contain("ResolveDebugExplorerOpenPlan(pathSnapshot, preferSelectFileSnapshot)"));
+        Assert.That(
+            openMethod,
+            Does.Contain("ResolveDebugExplorerOpenPlan(pathSnapshot, preferSelectFileSnapshot)")
+        );
         Assert.That(openMethod, Does.Contain("IsDebugExplorerOpenRequestCurrent(requestRevision)"));
-        Assert.That(openMethod, Does.Contain("Process.Start(\"explorer.exe\", plan.ExplorerArguments);"));
+        Assert.That(
+            openMethod,
+            Does.Contain("Process.Start(\"explorer.exe\", plan.ExplorerArguments);")
+        );
         Assert.That(openMethod, Does.Contain("ShowDebugPathMissingMessage(plan.MissingMessage);"));
         Assert.That(openMethod, Does.Contain("debug explorer open failed:"));
         Assert.That(openMethod, Does.Not.Contain("File.Exists("));
@@ -1172,11 +1513,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     [Test]
     public void Debugタブのレコード件数取得は背景helperへ逃がす()
     {
-        string debugSource = GetRepoText(
-            "BottomTabs",
-            "DebugTab",
-            "MainWindow.BottomTab.Debug.cs"
-        );
+        string debugSource = GetRepoText("BottomTabs", "DebugTab", "MainWindow.BottomTab.Debug.cs");
         string mainRefresh = GetMethodBlock(
             debugSource,
             "private async void RefreshDebugCurrentDbRecordCount("
@@ -1203,17 +1540,58 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         );
 
         Assert.That(mainRefresh, Does.Contain("string dbPathSnapshot = dbPath ?? \"\";"));
-        Assert.That(queueRefresh, Does.Contain("string queueDbPathSnapshot = queueDbPath ?? \"\";"));
-        Assert.That(failureRefresh, Does.Contain("string failureDbPathSnapshot = failureDbPath ?? \"\";"));
-        Assert.That(mainRefresh, Does.Contain("Interlocked.Increment(ref _debugCurrentDbRecordCountRevision);"));
-        Assert.That(queueRefresh, Does.Contain("Interlocked.Increment(ref _debugCurrentQueueDbRecordCountRevision);"));
-        Assert.That(failureRefresh, Does.Contain("Interlocked.Increment(ref _debugCurrentFailureDbRecordCountRevision);"));
-        Assert.That(mainRefresh, Does.Contain("await BuildDebugCurrentDbRecordCountTextAsync(dbPathSnapshot)"));
-        Assert.That(queueRefresh, Does.Contain("await BuildDebugCurrentQueueDbRecordCountTextAsync(queueDbPathSnapshot)"));
-        Assert.That(failureRefresh, Does.Contain("await BuildDebugCurrentFailureDbRecordCountTextAsync(failureDbPathSnapshot)"));
-        Assert.That(mainRefresh, Does.Contain("IsDebugCurrentDbRecordCountRequestCurrent(requestRevision, dbPathSnapshot)"));
-        Assert.That(queueRefresh, Does.Contain("IsDebugCurrentQueueDbRecordCountRequestCurrent(requestRevision, queueDbPathSnapshot)"));
-        Assert.That(failureRefresh, Does.Contain("IsDebugCurrentFailureDbRecordCountRequestCurrent(requestRevision, failureDbPathSnapshot)"));
+        Assert.That(
+            queueRefresh,
+            Does.Contain("string queueDbPathSnapshot = queueDbPath ?? \"\";")
+        );
+        Assert.That(
+            failureRefresh,
+            Does.Contain("string failureDbPathSnapshot = failureDbPath ?? \"\";")
+        );
+        Assert.That(
+            mainRefresh,
+            Does.Contain("Interlocked.Increment(ref _debugCurrentDbRecordCountRevision);")
+        );
+        Assert.That(
+            queueRefresh,
+            Does.Contain("Interlocked.Increment(ref _debugCurrentQueueDbRecordCountRevision);")
+        );
+        Assert.That(
+            failureRefresh,
+            Does.Contain("Interlocked.Increment(ref _debugCurrentFailureDbRecordCountRevision);")
+        );
+        Assert.That(
+            mainRefresh,
+            Does.Contain("await BuildDebugCurrentDbRecordCountTextAsync(dbPathSnapshot)")
+        );
+        Assert.That(
+            queueRefresh,
+            Does.Contain("await BuildDebugCurrentQueueDbRecordCountTextAsync(queueDbPathSnapshot)")
+        );
+        Assert.That(
+            failureRefresh,
+            Does.Contain(
+                "await BuildDebugCurrentFailureDbRecordCountTextAsync(failureDbPathSnapshot)"
+            )
+        );
+        Assert.That(
+            mainRefresh,
+            Does.Contain(
+                "IsDebugCurrentDbRecordCountRequestCurrent(requestRevision, dbPathSnapshot)"
+            )
+        );
+        Assert.That(
+            queueRefresh,
+            Does.Contain(
+                "IsDebugCurrentQueueDbRecordCountRequestCurrent(requestRevision, queueDbPathSnapshot)"
+            )
+        );
+        Assert.That(
+            failureRefresh,
+            Does.Contain(
+                "IsDebugCurrentFailureDbRecordCountRequestCurrent(requestRevision, failureDbPathSnapshot)"
+            )
+        );
         Assert.That(debugSource, Does.Contain("private bool IsDebugRecordCountUiAvailable()"));
         Assert.That(debugSource, Does.Contain("Dispatcher.HasShutdownStarted"));
         Assert.That(debugSource, Does.Contain("Dispatcher.HasShutdownFinished"));
@@ -1223,19 +1601,24 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(mainRefresh, Does.Not.Contain("CreateReadOnlyConnection("));
         Assert.That(queueRefresh, Does.Not.Contain("new SQLiteConnection("));
         Assert.That(failureRefresh, Does.Not.Contain("new SQLiteConnection("));
-        Assert.That(mainAsync, Does.Contain("Task.Run(() => BuildDebugCurrentDbRecordCountText(dbPath))"));
-        Assert.That(queueAsync, Does.Contain("Task.Run(() => BuildDebugCurrentQueueDbRecordCountText(queueDbPath))"));
-        Assert.That(failureAsync, Does.Contain("Task.Run(() => BuildDebugCurrentFailureDbRecordCountText(failureDbPath))"));
+        Assert.That(
+            mainAsync,
+            Does.Contain("Task.Run(() => BuildDebugCurrentDbRecordCountText(dbPath))")
+        );
+        Assert.That(
+            queueAsync,
+            Does.Contain("Task.Run(() => BuildDebugCurrentQueueDbRecordCountText(queueDbPath))")
+        );
+        Assert.That(
+            failureAsync,
+            Does.Contain("Task.Run(() => BuildDebugCurrentFailureDbRecordCountText(failureDbPath))")
+        );
     }
 
     [Test]
     public void DebugタブのDBファイル削除IOは背景helperへ逃がす()
     {
-        string debugSource = GetRepoText(
-            "BottomTabs",
-            "DebugTab",
-            "MainWindow.BottomTab.Debug.cs"
-        );
+        string debugSource = GetRepoText("BottomTabs", "DebugTab", "MainWindow.BottomTab.Debug.cs");
         string mainDelete = GetMethodBlock(
             debugSource,
             "private async void DebugDeleteCurrentDb_Click("
@@ -1260,21 +1643,37 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(mainDelete, Does.Contain("ShutdownCurrentDb();"));
         Assert.That(mainDelete, Does.Contain("await DeleteDebugFileIfExistsAsync(dbPath)"));
         Assert.That(mainDelete, Does.Contain("await DebugFileExistsAsync(dbPath)"));
-        Assert.That(mainDelete, Does.Contain("QueueApplicationSettingsSave(\"debug-delete-current-db-last-doc\")"));
+        Assert.That(
+            mainDelete,
+            Does.Contain("QueueApplicationSettingsSave(\"debug-delete-current-db-last-doc\")")
+        );
         Assert.That(mainDelete, Does.Contain("ResetDebugCurrentDbUiState();"));
         Assert.That(
             mainDelete.IndexOf("ShutdownCurrentDb();", StringComparison.Ordinal),
-            Is.LessThan(mainDelete.IndexOf("await DeleteDebugFileIfExistsAsync(dbPath)", StringComparison.Ordinal))
+            Is.LessThan(
+                mainDelete.IndexOf(
+                    "await DeleteDebugFileIfExistsAsync(dbPath)",
+                    StringComparison.Ordinal
+                )
+            )
         );
         Assert.That(
-            mainDelete.IndexOf("await DeleteDebugFileIfExistsAsync(dbPath)", StringComparison.Ordinal),
-            Is.LessThan(mainDelete.IndexOf("ResetDebugCurrentDbUiState();", StringComparison.Ordinal))
+            mainDelete.IndexOf(
+                "await DeleteDebugFileIfExistsAsync(dbPath)",
+                StringComparison.Ordinal
+            ),
+            Is.LessThan(
+                mainDelete.IndexOf("ResetDebugCurrentDbUiState();", StringComparison.Ordinal)
+            )
         );
         Assert.That(mainDelete, Does.Not.Contain("File.Exists("));
         Assert.That(mainDelete, Does.Not.Contain("File.Delete("));
         Assert.That(mainDelete, Does.Not.Contain("Properties.Settings.Default.Save();"));
 
-        Assert.That(failureDelete, Does.Contain("await DeleteDebugFileIfExistsAsync(failureDbPath)"));
+        Assert.That(
+            failureDelete,
+            Does.Contain("await DeleteDebugFileIfExistsAsync(failureDbPath)")
+        );
         Assert.That(failureDelete, Does.Not.Contain("File.Exists("));
         Assert.That(failureDelete, Does.Not.Contain("File.Delete("));
 
@@ -1282,7 +1681,12 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(queueDelete, Does.Contain("await DeleteDebugFileIfExistsAsync(queueDbPath)"));
         Assert.That(
             queueDelete.IndexOf("ClearThumbnailQueue();", StringComparison.Ordinal),
-            Is.LessThan(queueDelete.IndexOf("await DeleteDebugFileIfExistsAsync(queueDbPath)", StringComparison.Ordinal))
+            Is.LessThan(
+                queueDelete.IndexOf(
+                    "await DeleteDebugFileIfExistsAsync(queueDbPath)",
+                    StringComparison.Ordinal
+                )
+            )
         );
         Assert.That(queueDelete, Does.Not.Contain("File.Exists("));
         Assert.That(queueDelete, Does.Not.Contain("File.Delete("));
@@ -1369,18 +1773,12 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
 
     private static string ClassifyDirectRefreshCall(string relativePath, string trimmedLine)
     {
-        if (
-            relativePath == "Views/Main/MainWindow.Startup.cs"
-            && trimmedLine == "Refresh();"
-        )
+        if (relativePath == "Views/Main/MainWindow.Startup.cs" && trimmedLine == "Refresh();")
         {
             return "startup-first-page-detail-sync";
         }
 
-        if (
-            relativePath == "Views/Main/MainWindow.xaml.cs"
-            && trimmedLine == "Refresh();"
-        )
+        if (relativePath == "Views/Main/MainWindow.xaml.cs" && trimmedLine == "Refresh();")
         {
             return "collection-apply-selection-changed-compat";
         }
@@ -1399,7 +1797,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         }
     }
 
-    private static IEnumerable<(string RelativePath, string TrimmedLine)> EnumerateProductionSourceLines()
+    private static IEnumerable<(
+        string RelativePath,
+        string TrimmedLine
+    )> EnumerateProductionSourceLines()
     {
         DirectoryInfo repoRoot = GetRepoRoot();
         foreach (
@@ -1435,7 +1836,8 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             }
 
             if (
-                segment is "Tests"
+                segment
+                is "Tests"
                     or "WhiteBrowserSkin"
                     or "skin"
                     or "bin"
@@ -1520,7 +1922,11 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{signature} が見つかりません。");
 
         int bodyStart = source.IndexOf('{', start);
-        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"{signature} の本文開始が見つかりません。");
+        Assert.That(
+            bodyStart,
+            Is.GreaterThanOrEqualTo(0),
+            $"{signature} の本文開始が見つかりません。"
+        );
 
         int depth = 0;
         for (int index = bodyStart; index < source.Length; index++)

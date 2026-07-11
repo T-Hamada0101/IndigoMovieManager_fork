@@ -71,9 +71,8 @@ namespace IndigoMovieManager
                     );
                     filterAndSortCancellationToken.ThrowIfCancellationRequested();
                 }
-                catch (OperationCanceledException) when (
-                    filterAndSortCancellationToken.IsCancellationRequested
-                )
+                catch (OperationCanceledException)
+                    when (filterAndSortCancellationToken.IsCancellationRequested)
                 {
                     dbLoadStopwatch.Stop();
                     DebugRuntimeLog.Write(
@@ -110,14 +109,19 @@ namespace IndigoMovieManager
                     $"filter stage begin: revision={requestRevision} stage=source-apply rows={latestMovieData.Rows.Count}"
                 );
                 Stopwatch sourceApplyStopwatch = Stopwatch.StartNew();
-                latestMovieRecords = await SetRecordsToSource(latestMovieData, requestRevision);
+                MovieRecordSourceApplyResult sourceApplyResult = await SetRecordsToSource(
+                    latestMovieData,
+                    requestRevision
+                );
+                latestMovieRecords = sourceApplyResult.Items;
                 // DB読み込みと変換が完了したので、rawなDataTable参照を残さずに解放する。
                 movieData = null;
                 if (requestRevision != _filterAndSortRequestRevision)
                 {
+                    sourceApplyStopwatch.Stop();
                     DebugRuntimeLog.Write(
                         "ui-tempo",
-                        $"filter skip stale source set: revision={requestRevision} current_revision={_filterAndSortRequestRevision} source_apply_ms={sourceApplyStopwatch.ElapsedMilliseconds}"
+                        $"source apply: revision={requestRevision} rows={latestMovieData.Rows.Count} items={latestMovieRecords?.Length ?? -1} bulk_cache_ms={sourceApplyResult.BulkCacheElapsedMs} row_convert_ms={sourceApplyResult.RowConvertElapsedMs} source_image_probe_ms={sourceApplyResult.SourceImageProbeElapsedMs} source_image_probe_count={sourceApplyResult.SourceImageProbeCount} source_image_probe_hit={sourceApplyResult.SourceImageCacheHitCount} replace_movie_recs_ms={sourceApplyResult.ReplaceMovieRecsElapsedMs} queue_movie_exists_ms={sourceApplyResult.QueueMovieExistsElapsedMs} invalidate_thumbnail_error_ms=0 background_ms={sourceApplyResult.BackgroundElapsedMs} ui_ms={sourceApplyResult.ReplaceMovieRecsElapsedMs + sourceApplyResult.QueueMovieExistsElapsedMs} total_ms={sourceApplyStopwatch.ElapsedMilliseconds} stale=true"
                     );
                     return;
                 }
@@ -126,12 +130,14 @@ namespace IndigoMovieManager
                     latestMovieRecords?.Length ?? 0,
                     fullReloadReason
                 );
+                Stopwatch invalidateThumbnailErrorStopwatch = Stopwatch.StartNew();
                 InvalidateThumbnailErrorRecords(refreshIfVisible: true);
+                invalidateThumbnailErrorStopwatch.Stop();
                 sourceApplyStopwatch.Stop();
                 sourceApplyElapsedMs = sourceApplyStopwatch.ElapsedMilliseconds;
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"filter stage end: revision={requestRevision} stage=source-apply items={latestMovieRecords?.Length ?? -1} elapsed_ms={sourceApplyElapsedMs}"
+                    $"source apply: revision={requestRevision} rows={latestMovieData.Rows.Count} items={latestMovieRecords?.Length ?? -1} bulk_cache_ms={sourceApplyResult.BulkCacheElapsedMs} row_convert_ms={sourceApplyResult.RowConvertElapsedMs} source_image_probe_ms={sourceApplyResult.SourceImageProbeElapsedMs} source_image_probe_count={sourceApplyResult.SourceImageProbeCount} source_image_probe_hit={sourceApplyResult.SourceImageCacheHitCount} replace_movie_recs_ms={sourceApplyResult.ReplaceMovieRecsElapsedMs} queue_movie_exists_ms={sourceApplyResult.QueueMovieExistsElapsedMs} invalidate_thumbnail_error_ms={invalidateThumbnailErrorStopwatch.ElapsedMilliseconds} background_ms={sourceApplyResult.BackgroundElapsedMs} ui_ms={sourceApplyResult.ReplaceMovieRecsElapsedMs + sourceApplyResult.QueueMovieExistsElapsedMs + invalidateThumbnailErrorStopwatch.ElapsedMilliseconds} total_ms={sourceApplyElapsedMs} stale=false"
                 );
             }
 
@@ -185,7 +191,8 @@ namespace IndigoMovieManager
                     )
                     : MovieViewReadModelBuilder.Build(readModelRequest);
             }
-            catch (OperationCanceledException) when (filterAndSortCancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
+                when (filterAndSortCancellationToken.IsCancellationRequested)
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
@@ -244,7 +251,9 @@ namespace IndigoMovieManager
             IReadOnlyList<WatchChangedMovie> changedMovies = null
         )
         {
-            string resolvedTraceName = string.IsNullOrWhiteSpace(traceName) ? "memory-refresh" : traceName;
+            string resolvedTraceName = string.IsNullOrWhiteSpace(traceName)
+                ? "memory-refresh"
+                : traceName;
             using IDisposable uiHangScope = TrackUiHangActivity(uiHangActivityKind);
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             int requestRevision = Interlocked.Increment(ref _filterAndSortRequestRevision);
@@ -263,7 +272,8 @@ namespace IndigoMovieManager
                     refreshCancellationToken
                 );
             }
-            catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
+                when (refreshCancellationToken.IsCancellationRequested)
             {
                 snapshotStopwatch.Stop();
                 DebugRuntimeLog.Write(
@@ -309,7 +319,8 @@ namespace IndigoMovieManager
                     refreshCancellationToken
                 );
             }
-            catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
+                when (refreshCancellationToken.IsCancellationRequested)
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
@@ -374,7 +385,8 @@ namespace IndigoMovieManager
                     );
                 }
             }
-            catch (OperationCanceledException) when (refreshCancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
+                when (refreshCancellationToken.IsCancellationRequested)
             {
                 DebugRuntimeLog.Write(
                     "ui-tempo",
@@ -452,9 +464,7 @@ namespace IndigoMovieManager
             {
                 previous?.Cancel();
             }
-            catch (ObjectDisposedException)
-            {
-            }
+            catch (ObjectDisposedException) { }
 
             return current;
         }
@@ -497,7 +507,10 @@ namespace IndigoMovieManager
             WatchMovieDirtyFields dirtyFields
         )
         {
-            return MovieViewReadModelBuilder.DoesCurrentSortDependOnDirtyFields(sortId, dirtyFields);
+            return MovieViewReadModelBuilder.DoesCurrentSortDependOnDirtyFields(
+                sortId,
+                dirtyFields
+            );
         }
     }
 }

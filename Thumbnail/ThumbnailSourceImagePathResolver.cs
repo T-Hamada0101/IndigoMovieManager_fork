@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 
 namespace IndigoMovieManager;
@@ -27,10 +28,7 @@ internal static class ThumbnailSourceImagePathResolver
 
         for (int i = 0; i < SupportedImageExtensions.Length; i++)
         {
-            string candidatePath = Path.ChangeExtension(
-                movieFullPath,
-                SupportedImageExtensions[i]
-            );
+            string candidatePath = Path.ChangeExtension(movieFullPath, SupportedImageExtensions[i]);
             if (!HasUsableFile(candidatePath))
             {
                 continue;
@@ -81,6 +79,8 @@ internal sealed class LazyThumbnailSourceImagePathResolver
 
     internal int CacheHitCount { get; private set; }
 
+    internal long ProbeElapsedTimestampTicks { get; private set; }
+
     internal string Resolve()
     {
         if (_resolved)
@@ -92,10 +92,12 @@ internal sealed class LazyThumbnailSourceImagePathResolver
         // 最初に管理サムネが欠損した用途だけが、実ファイル探索を引き受ける。
         _resolved = true;
         ProbeCount++;
+        long startedTimestamp = Stopwatch.GetTimestamp();
         ThumbnailSourceImagePathResolver.TryResolveSameNameThumbnailSourceImagePath(
             _movieFullPath,
             out _sourceImagePath
         );
+        ProbeElapsedTimestampTicks = Stopwatch.GetTimestamp() - startedTimestamp;
         return _sourceImagePath;
     }
 }

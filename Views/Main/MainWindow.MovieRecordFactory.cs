@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,7 +39,20 @@ namespace IndigoMovieManager
         {
             public int SourceImageProbeCount { get; set; }
             public int SourceImageCacheHitCount { get; set; }
+            public long SourceImageProbeTimestampTicks { get; set; }
         }
+
+        private readonly record struct MovieRecordSourceApplyResult(
+            MovieRecords[] Items,
+            long BulkCacheElapsedMs,
+            long RowConvertElapsedMs,
+            long SourceImageProbeElapsedMs,
+            int SourceImageProbeCount,
+            int SourceImageCacheHitCount,
+            long ReplaceMovieRecsElapsedMs,
+            long QueueMovieExistsElapsedMs,
+            long BackgroundElapsedMs
+        );
 
         /// <summary>
         /// DBから拾った無骨なレコード1件を、キラキラな表示用（MovieRecords）へ変換する。
@@ -58,15 +72,18 @@ namespace IndigoMovieManager
                     .Task.ConfigureAwait(false);
 
             MovieRecords item = await Task.Run(() =>
-            {
-                MovieRecordBulkBuildCache bulkCache = BuildMovieRecordBulkBuildCache(bulkContext);
-                return CreateMovieRecordFromDataRow(
-                    row,
-                    bulkContext,
-                    bulkCache,
-                    resolveMovieExists: false
-                );
-            }).ConfigureAwait(false);
+                {
+                    MovieRecordBulkBuildCache bulkCache = BuildMovieRecordBulkBuildCache(
+                        bulkContext
+                    );
+                    return CreateMovieRecordFromDataRow(
+                        row,
+                        bulkContext,
+                        bulkCache,
+                        resolveMovieExists: false
+                    );
+                })
+                .ConfigureAwait(false);
             if (item == null)
             {
                 return;
@@ -124,7 +141,8 @@ namespace IndigoMovieManager
             string hash = row["hash"]?.ToString() ?? "";
             string movieFullPath = row["movie_path"]?.ToString() ?? "";
             string movieName = row["movie_name"]?.ToString() ?? "";
-            string imagesDirectoryPath = bulkContext?.ImagesDirectoryPath
+            string imagesDirectoryPath =
+                bulkContext?.ImagesDirectoryPath
                 ?? Path.Combine(AppContext.BaseDirectory, "Images");
             LazyThumbnailSourceImagePathResolver sourceImageResolver =
                 bulkContext.HasValue && bulkCache != null
@@ -189,6 +207,8 @@ namespace IndigoMovieManager
             {
                 bulkMetrics.SourceImageProbeCount += sourceImageResolver.ProbeCount;
                 bulkMetrics.SourceImageCacheHitCount += sourceImageResolver.CacheHitCount;
+                bulkMetrics.SourceImageProbeTimestampTicks +=
+                    sourceImageResolver.ProbeElapsedTimestampTicks;
             }
 
             string tags = row["tag"]?.ToString() ?? "";
@@ -285,7 +305,9 @@ namespace IndigoMovieManager
             MovieRecordBulkBuildContext context
         )
         {
-            HashSet<string>[] thumbnailFileNamesByTab = new HashSet<string>[context.ThumbnailOutPaths.Length];
+            HashSet<string>[] thumbnailFileNamesByTab = new HashSet<string>[
+                context.ThumbnailOutPaths.Length
+            ];
             for (int index = 0; index < context.ThumbnailOutPaths.Length; index++)
             {
                 thumbnailFileNamesByTab[index] = BuildThumbnailFileNameLookup(
@@ -296,7 +318,9 @@ namespace IndigoMovieManager
             return new MovieRecordBulkBuildCache
             {
                 ThumbnailFileNamesByTab = thumbnailFileNamesByTab,
-                DetailThumbnailFileNames = BuildThumbnailFileNameLookup(context.DetailThumbnailOutPath),
+                DetailThumbnailFileNames = BuildThumbnailFileNameLookup(
+                    context.DetailThumbnailOutPath
+                ),
             };
         }
 
@@ -321,7 +345,10 @@ namespace IndigoMovieManager
         {
             if (!string.IsNullOrWhiteSpace(thumbnailOutPath) && existingFileNames != null)
             {
-                string currentFileName = ThumbnailPathResolver.BuildThumbnailFileName(movieFullPath, hash);
+                string currentFileName = ThumbnailPathResolver.BuildThumbnailFileName(
+                    movieFullPath,
+                    hash
+                );
                 if (existingFileNames.Contains(currentFileName))
                 {
                     return Path.Combine(thumbnailOutPath, currentFileName);
@@ -329,7 +356,10 @@ namespace IndigoMovieManager
 
                 if (!string.IsNullOrWhiteSpace(movieName))
                 {
-                    string legacyFileName = ThumbnailPathResolver.BuildThumbnailFileName(movieName, hash);
+                    string legacyFileName = ThumbnailPathResolver.BuildThumbnailFileName(
+                        movieName,
+                        hash
+                    );
                     if (existingFileNames.Contains(legacyFileName))
                     {
                         return Path.Combine(thumbnailOutPath, legacyFileName);
@@ -360,7 +390,7 @@ namespace IndigoMovieManager
         /// <summary>
         /// 取得済みの生データ（movieData）から、表示用コレクションを背景で組み立てて一気に差し替える。
         /// </summary>
-        private async Task<MovieRecords[]> SetRecordsToSource(
+        private async Task<MovieRecordSourceApplyResult> SetRecordsToSource(
             DataTable sourceData,
             int requestRevision
         )
@@ -368,16 +398,20 @@ namespace IndigoMovieManager
             DataTable targetData = sourceData ?? movieData;
             if (targetData == null)
             {
-                return [];
+                return new MovieRecordSourceApplyResult([], 0, 0, 0, 0, 0, 0, 0, 0);
             }
 
             int rowCount = targetData.Rows.Count;
             MovieRecordBulkBuildContext bulkContext = CaptureMovieRecordBulkBuildContext();
-            MovieRecords[] items = await Task.Run(() =>
+            MovieRecordSourceApplyResult result = await Task.Run(() =>
             {
+                Stopwatch backgroundStopwatch = Stopwatch.StartNew();
+                Stopwatch bulkCacheStopwatch = Stopwatch.StartNew();
                 MovieRecordBulkBuildCache bulkCache = BuildMovieRecordBulkBuildCache(bulkContext);
+                bulkCacheStopwatch.Stop();
                 MovieRecordBulkBuildMetrics bulkMetrics = new();
                 MovieRecords[] loadedItems = new MovieRecords[rowCount];
+                Stopwatch rowConvertStopwatch = Stopwatch.StartNew();
                 for (int index = 0; index < rowCount; index++)
                 {
                     loadedItems[index] = CreateMovieRecordFromDataRow(
@@ -388,34 +422,47 @@ namespace IndigoMovieManager
                         resolveMovieExists: false
                     );
                 }
+                rowConvertStopwatch.Stop();
+                backgroundStopwatch.Stop();
 
-
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"movie record bulk build: rows={rowCount} source_image_probe_count={bulkMetrics.SourceImageProbeCount} source_image_cache_hit_count={bulkMetrics.SourceImageCacheHitCount}"
+                return new MovieRecordSourceApplyResult(
+                    loadedItems,
+                    bulkCacheStopwatch.ElapsedMilliseconds,
+                    rowConvertStopwatch.ElapsedMilliseconds,
+                    (long)(
+                        bulkMetrics.SourceImageProbeTimestampTicks * 1000.0 / Stopwatch.Frequency
+                    ),
+                    bulkMetrics.SourceImageProbeCount,
+                    bulkMetrics.SourceImageCacheHitCount,
+                    0,
+                    0,
+                    backgroundStopwatch.ElapsedMilliseconds
                 );
-
-                return loadedItems;
             });
 
             if (requestRevision != _filterAndSortRequestRevision)
             {
-                return items;
+                return result;
             }
 
-            MainVM.ReplaceMovieRecs(items);
-            QueueMovieExistsRefresh(items, requestRevision);
-            return items;
+            Stopwatch replaceStopwatch = Stopwatch.StartNew();
+            MainVM.ReplaceMovieRecs(result.Items);
+            replaceStopwatch.Stop();
+            Stopwatch queueStopwatch = Stopwatch.StartNew();
+            QueueMovieExistsRefresh(result.Items, requestRevision);
+            queueStopwatch.Stop();
+            return result with
+            {
+                ReplaceMovieRecsElapsedMs = replaceStopwatch.ElapsedMilliseconds,
+                QueueMovieExistsElapsedMs = queueStopwatch.ElapsedMilliseconds,
+            };
         }
 
         /// <summary>
         /// 起動時全件変換で省略したファイル存在チェックをバックグラウンドで後追い実行し、
         /// 見つからないファイルの IsExists を false に更新する。128件ずつバッチでUIスレッドへ反映。
         /// </summary>
-        private void QueueMovieExistsRefresh(
-            IReadOnlyList<MovieRecords> items,
-            int requestRevision
-        )
+        private void QueueMovieExistsRefresh(IReadOnlyList<MovieRecords> items, int requestRevision)
         {
             if (items == null || items.Count < 1)
             {
