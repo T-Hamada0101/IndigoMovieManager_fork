@@ -12,6 +12,8 @@ namespace IndigoMovieManager
     {
         private static readonly object LogLock = new();
         private static readonly object QuietLogLock = new();
+        private const string LogPathOverrideEnvironmentVariable =
+            "INDIGO_DEBUG_RUNTIME_LOG_PATH";
         private const long MaxLogFileBytes = 20 * 1024 * 1024;
         private const int ReleaseWatchLogThrottleMilliseconds = 1200;
         private const int NoisyWatchRepairLogThrottleMilliseconds = 1500;
@@ -63,10 +65,19 @@ namespace IndigoMovieManager
             try
             {
                 // VS出力だけで追いにくいケースに備え、同じ内容をファイルにも追記する。
-                string logDir = AppLocalDataPaths.LogsPath;
+                string defaultLogPath = Path.Combine(
+                    AppLocalDataPaths.LogsPath,
+                    "debug-runtime.log"
+                );
+                string requestedLogPath = Environment.GetEnvironmentVariable(
+                    LogPathOverrideEnvironmentVariable
+                );
+                string resolvedLogPath = ResolveLogPath(requestedLogPath, defaultLogPath);
+                string logDir =
+                    Path.GetDirectoryName(resolvedLogPath) ?? AppLocalDataPaths.LogsPath;
                 Directory.CreateDirectory(logDir);
                 string logPath = IndigoMovieManager.Thumbnail.LogFileTimeWindowSeparator.PrepareForWrite(
-                    Path.Combine(logDir, "debug-runtime.log"),
+                    resolvedLogPath,
                     MaxLogFileBytes
                 );
 
@@ -89,6 +100,28 @@ namespace IndigoMovieManager
         )
         {
             return ShouldWrite(category, message, utcNow);
+        }
+
+        internal static string ResolveLogPathForTesting(
+            string requestedLogPath,
+            string defaultLogPath
+        )
+        {
+            return ResolveLogPath(requestedLogPath, defaultLogPath);
+        }
+
+        private static string ResolveLogPath(string requestedLogPath, string defaultLogPath)
+        {
+            // 子プロセスだけ監査ログを分離し、通常起動時は従来の保存先を維持する。
+            if (
+                string.IsNullOrWhiteSpace(requestedLogPath)
+                || !Path.IsPathFullyQualified(requestedLogPath)
+            )
+            {
+                return defaultLogPath;
+            }
+
+            return requestedLogPath;
         }
 
         internal static void ResetThrottleStateForTests()
