@@ -3,6 +3,7 @@
 最終更新日: 2026-07-12
 
 変更概要:
+- 2026-07-12、ASCII fast prewarm後の同条件実測でstartup partial検索は `filter_sort_ms=101 apply_ms=47 total_ms=104` となり、導入前1434msから短縮して300ms目標を達成した。prewarmと検索は同じ200レコード参照・同じcacheを再利用し、更新時invalidateを含む親関連78テストも成功。次順位はpartial表示直後に続く全件整合2806msがPlayer scrollへ割り込まないことの確認である。
 - 2026-07-12、startup partialの先頭最大200件について、入力可能になった後にASCII fast検索投影だけを単一background taskで事前生成するようにした。16件ごとにuser-priority / startup session / DB / shutdownを確認し、操作時は中断する。Release x64コピーDBでは200件を10msで完了し、Player scroll時間帯へ残らなかった。次は同じ条件で初回partial検索を再測定する。
 - 2026-07-12、Player右レールの未warm画像はscroll user-priority中にdecode queueへ積まず、`Suppressed`としてburst集約するようにした。Release x64コピーDBのPageDown 8回で `cache_miss_count=40 queue_enqueued_count=0 suppressed_count=40`、解除時はpending revisionを1回flushし、その後の現在可視18件だけが通常warmへ戻った。UI hot pathのログI/Oは増やしていない。
 - 2026-07-12、visible source image probeはDB path・filter revision・順序付きplaceholder keyのfingerprintが同じ正常完了結果を2秒だけ再利用し、stale / failedは再利用しない。UI hang heartbeatは`DispatcherPriority.Input`へ上げ、Player burst IDとactive状態を同じ監視ログへ接続した。
