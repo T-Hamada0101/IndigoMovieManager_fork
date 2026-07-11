@@ -16,6 +16,7 @@ public sealed class Phase0LiveAuditScriptPolicyTests
             Assert.That(source, Does.Contain("[string]$Configuration = 'Release'"));
             Assert.That(source, Does.Contain("[string]$Platform = 'x64'"));
             Assert.That(source, Does.Contain("[switch]$NoBuild"));
+            Assert.That(source, Does.Contain("[string]$ManualReviewPath"));
             Assert.That(source, Does.Contain("Join-Path $env:LOCALAPPDATA 'IndigoMovieManager\\logs\\debug-runtime.log'"));
             Assert.That(source, Does.Contain("Join-Path $repoRoot 'Tests/IndigoMovieManager.Tests/IndigoMovieManager.Tests.csproj'"));
         });
@@ -87,6 +88,31 @@ public sealed class Phase0LiveAuditScriptPolicyTests
             Assert.That(source, Does.Contain("exit $exitCode"));
             Assert.That(source, Does.Contain("Write-Host"));
             Assert.That(source, Does.Contain("非0終了は不足evidenceを示し、監査未完なら想定内です。"));
+        });
+    }
+
+    [Test]
+    public void 目視確認指定時だけ固定schemaと全passを完了条件へ加える()
+    {
+        string source = GetTargetSource();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("Get-Phase0ManualReviewValidation"));
+            Assert.That(source, Does.Contain("Test-Path -LiteralPath $Path -PathType Leaf"));
+            Assert.That(source, Does.Contain("Resolve-Path -LiteralPath $Path"));
+            Assert.That(source, Does.Contain("ConvertFrom-Json"));
+            Assert.That(source, Does.Contain("phase0-manual-review-v1"));
+            Assert.That(source, Does.Contain("$allowedManualReviewStatuses = @('pending', 'pass', 'fail', 'not_observed')"));
+            Assert.That(source, Does.Contain("duplicate-scenarios="));
+            Assert.That(source, Does.Contain("duplicate-checks="));
+            Assert.That(source, Does.Contain("missing-scenarios="));
+            Assert.That(source, Does.Contain("unexpected-checks="));
+            Assert.That(source, Does.Contain("if ($status -ne 'pass')"));
+            Assert.That(source, Does.Contain("if (-not [string]::IsNullOrWhiteSpace($ManualReviewPath))"));
+            Assert.That(source, Does.Contain("Phase0 manual review: incomplete"));
+            Assert.That(source, Does.Not.Contain("Set-Content"));
+            Assert.That(source, Does.Not.Contain("Add-Content"));
         });
     }
 
