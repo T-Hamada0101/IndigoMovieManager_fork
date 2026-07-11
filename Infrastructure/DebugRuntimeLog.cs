@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
 using System.Threading;
 using IndigoMovieManager.Properties;
 
@@ -14,7 +15,11 @@ namespace IndigoMovieManager
         private static readonly object QuietLogLock = new();
         private const string LogPathOverrideEnvironmentVariable =
             "INDIGO_DEBUG_RUNTIME_LOG_PATH";
-        private const long MaxLogFileBytes = 20 * 1024 * 1024;
+        private const string LogMaxBytesOverrideEnvironmentVariable =
+            "INDIGO_DEBUG_RUNTIME_LOG_MAX_BYTES";
+        private const long DefaultMaxLogFileBytes = 20 * 1024 * 1024;
+        private const long MinimumMaxLogFileBytes = 1 * 1024 * 1024;
+        private const long MaximumMaxLogFileBytes = 256 * 1024 * 1024;
         private const int ReleaseWatchLogThrottleMilliseconds = 1200;
         private const int NoisyWatchRepairLogThrottleMilliseconds = 1500;
         private static readonly HashSet<string> ReleaseMinimalCategories = new(
@@ -66,6 +71,9 @@ namespace IndigoMovieManager
                     LogPathOverrideEnvironmentVariable
                 );
                 string resolvedLogPath = ResolveLogPath(requestedLogPath, defaultLogPath);
+                long maxLogFileBytes = ResolveMaxLogFileBytes(
+                    Environment.GetEnvironmentVariable(LogMaxBytesOverrideEnvironmentVariable)
+                );
                 lock (LogLock)
                 {
                     // 採番から追記までを直列化し、ファイル上の連番を必ず単調増加に保つ。
@@ -81,7 +89,7 @@ namespace IndigoMovieManager
                     Directory.CreateDirectory(logDir);
                     string logPath = IndigoMovieManager.Thumbnail.LogFileTimeWindowSeparator.PrepareForWrite(
                         resolvedLogPath,
-                        MaxLogFileBytes
+                        maxLogFileBytes
                     );
 
                     // 上限超過時は同日でも退避して、次の追記を継続できるようにする。
@@ -115,6 +123,31 @@ namespace IndigoMovieManager
         )
         {
             return ResolveLogPath(requestedLogPath, defaultLogPath);
+        }
+
+        internal static long ResolveMaxLogFileBytesForTesting(string requestedMaxBytes)
+        {
+            return ResolveMaxLogFileBytes(requestedMaxBytes);
+        }
+
+        private static long ResolveMaxLogFileBytes(string requestedMaxBytes)
+        {
+            // 診断runだけ上限を広げ、通常起動と範囲外指定は従来の20MBへ戻す。
+            if (
+                !long.TryParse(
+                    requestedMaxBytes,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out long maxBytes
+                )
+                || maxBytes < MinimumMaxLogFileBytes
+                || maxBytes > MaximumMaxLogFileBytes
+            )
+            {
+                return DefaultMaxLogFileBytes;
+            }
+
+            return maxBytes;
         }
 
         private static string ResolveLogPath(string requestedLogPath, string defaultLogPath)

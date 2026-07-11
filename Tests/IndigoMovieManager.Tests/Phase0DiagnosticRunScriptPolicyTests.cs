@@ -134,6 +134,7 @@ public sealed class Phase0DiagnosticRunScriptPolicyTests
             Assert.That(source, Does.Contain("INDIGO_DIAGNOSTIC_NO_PERSIST = '1'"));
             Assert.That(source, Does.Contain("INDIGO_DIAGNOSTIC_STARTUP_DB = $resolvedDbPath"));
             Assert.That(source, Does.Contain("INDIGO_RELEASE_LOG_MODE      = '1'"));
+            Assert.That(source, Does.Contain("INDIGO_DEBUG_RUNTIME_LOG_MAX_BYTES = '134217728'"));
             Assert.That(source, Does.Contain("-Environment $childEnvironment"));
             Assert.That(source, Does.Not.Contain("$env:INDIGO_DIAGNOSTIC_NO_PERSIST"));
             Assert.That(source, Does.Not.Contain("$env:INDIGO_DIAGNOSTIC_STARTUP_DB"));

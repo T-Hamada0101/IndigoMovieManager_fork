@@ -185,6 +185,7 @@ $childEnvironment = @{
     INDIGO_DIAGNOSTIC_NO_PERSIST = '1'
     INDIGO_DIAGNOSTIC_STARTUP_DB = $resolvedDbPath
     INDIGO_RELEASE_LOG_MODE      = '1'
+    INDIGO_DEBUG_RUNTIME_LOG_MAX_BYTES = '134217728'
 }
 
 # 起動直前に同じJSONへrun固有のsessionを記録し、再利用できない証跡にする。
