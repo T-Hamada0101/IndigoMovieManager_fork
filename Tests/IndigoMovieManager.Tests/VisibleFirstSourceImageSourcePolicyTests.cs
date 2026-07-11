@@ -210,6 +210,69 @@ public sealed class VisibleFirstSourceImageSourcePolicyTests
         });
     }
 
+    [Test]
+    public void 同一Db_FilterRevision_Placeholder対象の完了probeは短時間だけ省く()
+    {
+        string source = GetVisibleSourceImageProbeSource();
+        int duplicateSkip = source.IndexOf(
+            "IsRecentCompletedVisibleSourceImageProbe(fingerprint)",
+            StringComparison.Ordinal
+        );
+        int revisionIssue = source.IndexOf(
+            "int probeRevision = Interlocked.Increment(ref _visibleSourceImageProbeRevision);",
+            StringComparison.Ordinal
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("BuildVisibleSourceImageProbeFingerprint("));
+            Assert.That(source, Does.Contain("dbFullPath"));
+            Assert.That(source, Does.Contain("filterRevision"));
+            Assert.That(source, Does.Contain("target => target.MoviePathKey"));
+            Assert.That(source, Does.Contain("IsRecentCompletedVisibleSourceImageProbe(fingerprint)"));
+            Assert.That(source, Does.Contain("Stopwatch.Frequency * 2"));
+            Assert.That(source, Does.Not.Contain("MemoryCache"));
+            Assert.That(
+                duplicateSkip,
+                Is.LessThan(revisionIssue),
+                "重複skipだけで進行中の別probeをstale化しない"
+            );
+        });
+    }
+
+    [Test]
+    public void staleとfailedは完了fingerprintへ保存しない()
+    {
+        string source = GetVisibleSourceImageProbeSource();
+        int cacheWrite = source.IndexOf(
+            "_visibleSourceImageProbeLastCompletedFingerprint =",
+            StringComparison.Ordinal
+        );
+        int successfulResult = source.LastIndexOf(
+            "WriteVisibleSourceImageProbeResult(",
+            cacheWrite,
+            StringComparison.Ordinal
+        );
+        int catchBlock = source.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cacheWrite, Is.GreaterThan(successfulResult));
+            Assert.That(cacheWrite, Is.LessThan(catchBlock));
+            Assert.That(
+                CountOccurrences(
+                    source,
+                    "_visibleSourceImageProbeLastCompletedFingerprint ="
+                ),
+                Is.EqualTo(1)
+            );
+            Assert.That(
+                CountOccurrences(source, "_visibleSourceImageProbeLastCompletedTimestamp ="),
+                Is.EqualTo(1)
+            );
+        });
+    }
+
     private static string GetMovieRecordFactorySource()
     {
         return GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");

@@ -34,6 +34,10 @@ namespace IndigoMovieManager
         private int _visibleSourceImageProbeRevision;
         private string _visibleSourceImageProbePendingRequest;
         private int _visibleSourceImageProbeWorkerRunning;
+        private string _visibleSourceImageProbeLastCompletedFingerprint;
+        private long _visibleSourceImageProbeLastCompletedTimestamp;
+        private static readonly long VisibleSourceImageProbeDuplicateWindowTicks =
+            Stopwatch.Frequency * 2;
 
         // 最新viewportだけを対象にし、user-priority中は探索開始そのものを後ろへ送る。
         private void QueueVisibleSourceImageProbe(string reason)
@@ -66,7 +70,6 @@ namespace IndigoMovieManager
                 return;
             }
 
-            int probeRevision = Interlocked.Increment(ref _visibleSourceImageProbeRevision);
             int filterRevision = _filterAndSortRequestRevision;
             string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
             VisibleSourceImageProbeTarget[] targets = CaptureVisibleSourceImageProbeTargets();
@@ -75,6 +78,17 @@ namespace IndigoMovieManager
                 return;
             }
 
+            string fingerprint = BuildVisibleSourceImageProbeFingerprint(
+                dbFullPath,
+                filterRevision,
+                targets
+            );
+            if (IsRecentCompletedVisibleSourceImageProbe(fingerprint))
+            {
+                return;
+            }
+
+            int probeRevision = Interlocked.Increment(ref _visibleSourceImageProbeRevision);
             VisibleSourceImageProbeRequest request = new(
                 reason,
                 probeRevision,
@@ -338,6 +352,9 @@ namespace IndigoMovieManager
                     false,
                     applyStopwatch.ElapsedMilliseconds
                 );
+                _visibleSourceImageProbeLastCompletedFingerprint =
+                    BuildVisibleSourceImageProbeFingerprint(dbFullPath, filterRevision, targets);
+                _visibleSourceImageProbeLastCompletedTimestamp = Stopwatch.GetTimestamp();
             }
             catch (Exception ex)
             {
@@ -346,6 +363,27 @@ namespace IndigoMovieManager
                     $"source image probe failed: reason={reason} revision={probeRevision} filter_revision={filterRevision} requested={targets.Length} err='{ex.GetType().Name}: {ex.Message}'"
                 );
             }
+        }
+
+        // placeholder対象だけで作り、管理サムネイル生成後は同じviewportでも別要求として扱う。
+        private static string BuildVisibleSourceImageProbeFingerprint(
+            string dbFullPath,
+            int filterRevision,
+            VisibleSourceImageProbeTarget[] targets
+        )
+        {
+            return $"{dbFullPath}\n{filterRevision}\n{string.Join("\n", Array.ConvertAll(targets, target => target.MoviePathKey))}";
+        }
+
+        private bool IsRecentCompletedVisibleSourceImageProbe(string fingerprint)
+        {
+            return string.Equals(
+                    fingerprint,
+                    _visibleSourceImageProbeLastCompletedFingerprint,
+                    StringComparison.Ordinal
+                )
+                && Stopwatch.GetTimestamp() - _visibleSourceImageProbeLastCompletedTimestamp
+                    <= VisibleSourceImageProbeDuplicateWindowTicks;
         }
 
         // 背景探索の完了後も、その間に生成された管理サムネイルは上書きしない。
