@@ -155,6 +155,10 @@ namespace IndigoMovieManager
                 updateMode == FilteredMovieRecsUpdateMode.Reset
                     ? CaptureMovieViewScrollAnchor()
                     : null;
+            MovieViewFocusContext? focusContext =
+                updateMode == FilteredMovieRecsUpdateMode.Reset
+                    ? CaptureMovieViewFocus()
+                    : null;
             FilteredMovieRecsUpdateResult collectionResult = MainVM.ReplaceFilteredMovieRecs(
                 sortedMovies,
                 updateMode: updateMode
@@ -184,6 +188,7 @@ namespace IndigoMovieManager
                 updateMode
             );
             selectionRefreshStopwatch.Stop();
+            RestoreMovieViewFocus(focusContext, updateMode, collectionResult);
 
             if (collectionResult.HasChanges)
             {

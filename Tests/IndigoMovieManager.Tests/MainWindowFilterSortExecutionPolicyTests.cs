@@ -596,6 +596,11 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         string mainWindowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
         string requestSource = GetRepoText("Views", "Main", "MainWindow.MovieViewRequests.cs");
         string readModelUiSource = GetRepoText("Views", "Main", "MainWindow.MovieViewReadModel.cs");
+        string focusSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.Focus.cs"
+        );
         string filterAsync = GetMethodBlock(
             requestSource,
             "private async Task FilterAndSortAsync("
@@ -625,8 +630,10 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
         Assert.That(applyReadModel, Does.Contain("foreach (MovieRecords restoredSelection in restoredSelections)"));
         Assert.That(applyReadModel, Does.Contain("SetCurrentUpperTabMovieSelection(restoredSelection, true);"));
         Assert.That(applyReadModel, Does.Contain("CaptureMovieViewScrollAnchor()"));
+        Assert.That(applyReadModel, Does.Contain("CaptureMovieViewFocus()"));
         Assert.That(applyReadModel, Does.Contain("updateMode == FilteredMovieRecsUpdateMode.Reset"));
         Assert.That(applyReadModel, Does.Contain("RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);"));
+        Assert.That(applyReadModel, Does.Contain("RestoreMovieViewFocus(focusContext, updateMode, collectionResult);"));
         Assert.That(applyReadModel, Does.Not.Contain("MovieViewSelectionContinuityPolicy.TryCaptureStableKey("));
         Assert.That(applyReadModel, Does.Not.Contain("MovieViewSelectionContinuityPolicy.ResolveAfterCollectionApply("));
         Assert.That(applyReadModel, Does.Not.Contain("SelectUpperTabMovieRecord("));
@@ -671,6 +678,12 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             )
         );
         Assert.That(
+            applyReadModel.IndexOf("CaptureMovieViewFocus()", StringComparison.Ordinal),
+            Is.LessThan(
+                applyReadModel.IndexOf("MainVM.ReplaceFilteredMovieRecs(", StringComparison.Ordinal)
+            )
+        );
+        Assert.That(
             applyReadModel.IndexOf(
                 "RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);",
                 StringComparison.Ordinal
@@ -682,6 +695,20 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
                 )
             )
         );
+        Assert.That(
+            applyReadModel.IndexOf(
+                "RestoreMovieViewFocus(focusContext, updateMode, collectionResult);",
+                StringComparison.Ordinal
+            ),
+            Is.GreaterThan(
+                applyReadModel.IndexOf(
+                    "RefreshSelectionDetailAfterCollectionApplyIfNeeded(",
+                    StringComparison.Ordinal
+                )
+            )
+        );
+        Assert.That(focusSource, Does.Not.Contain("ScrollIntoView("));
+        Assert.That(focusSource, Does.Not.Contain("UpdateLayout("));
         Assert.That(
             applyReadModel.IndexOf(
                 "RestoreMovieViewScrollAnchor(scrollAnchorContext, updateMode, collectionResult);",
