@@ -48,16 +48,16 @@ namespace IndigoMovieManager
         /// </summary>
         private async void Label_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (sender is Label label && label.DataContext is MovieRecords record)
+            if (sender is FrameworkElement clickedElement && clickedElement.DataContext is MovieRecords record)
             {
-                lbClickPoint = e.GetPosition(label);
+                lbClickPoint = e.GetPosition(clickedElement);
 
                 if (
                     e.ChangedButton == MouseButton.Left
                     && TabPlayer?.IsSelected == true
                 )
                 {
-                    SelectPlayerThumbnailRecordWithoutScroll(label, record);
+                    SelectPlayerThumbnailRecordWithoutScroll(clickedElement, record);
                     await OpenMovieInPlayerTabAsync(
                         record,
                         0,
@@ -76,9 +76,12 @@ namespace IndigoMovieManager
         }
 
         // プレーヤータブ内のクリックは現在スクロール位置を守り、選択だけを同期する。
-        private void SelectPlayerThumbnailRecordWithoutScroll(Label label, MovieRecords record)
+        private void SelectPlayerThumbnailRecordWithoutScroll(
+            FrameworkElement clickedElement,
+            MovieRecords record
+        )
         {
-            ListView sourceList = FindVisualAncestor<ListView>(label);
+            ListView sourceList = FindVisualAncestor<ListView>(clickedElement);
 
             _suppressPlayerThumbnailSelectionChanged = true;
             try

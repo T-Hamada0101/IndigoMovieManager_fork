@@ -32,6 +32,25 @@ public sealed class PlayerThumbnailScrollSourceTests
         Assert.That(playerThumbnailList, Does.Not.Contain("VirtualizingPanel.ScrollUnit=\"Pixel\""));
     }
 
+    [Test]
+    public void Player右レールのクリック処理はBorderと既存Labelの両senderを受け入れる()
+    {
+        string selectionSource = GetRepoText("Views", "Main", "MainWindow.Selection.cs");
+
+        Assert.That(
+            selectionSource,
+            Does.Contain(
+                "sender is FrameworkElement clickedElement && clickedElement.DataContext is MovieRecords record"
+            )
+        );
+        Assert.That(
+            selectionSource,
+            Does.Contain("SelectPlayerThumbnailRecordWithoutScroll(clickedElement, record)")
+        );
+        Assert.That(selectionSource, Does.Not.Contain("sender is Label label"));
+        Assert.That(selectionSource, Does.Not.Contain("label.Content"));
+    }
+
     private static string GetRepoText(params string[] relativePathParts)
     {
         DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
