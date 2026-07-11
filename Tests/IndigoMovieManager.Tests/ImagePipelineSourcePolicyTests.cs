@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using IndigoMovieManager.UpperTabs.Common;
+using IndigoMovieManager.UpperTabs.Player;
 
 namespace IndigoMovieManager.Tests;
 
@@ -213,9 +214,11 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(convertMethod, Does.Contain("PlayerRightRailImageWarmQueue.Queue("));
         Assert.That(convertMethod, Does.Not.Contain("ConvertDecodeRequest("));
         Assert.That(convertMethod, Does.Not.Contain("ConvertImageRequest("));
-        Assert.That(convertMethod, Does.Contain("\"image.player-right-rail.background-warm\""));
+        Assert.That(convertMethod, Does.Contain("\"player-right-rail.background-warm\""));
         Assert.That(converterSource, Does.Contain("internal const int Capacity = 64"));
         Assert.That(converterSource, Does.Contain("Task.Run(ProcessAsync)"));
+        Assert.That(converterSource, Does.Contain("ImageDecodePlanLogFields.Build(result)"));
+        Assert.That(converterSource, Does.Contain("PlayerRightRailImageWarmLogSampler.TryAccept(result)"));
         Assert.That(converterSource, Does.Contain("ImageWarmCompleted?.Invoke"));
         Assert.That(converterSource, Does.Contain("ImageLoadResult.Canceled("));
         Assert.That(converterSource, Does.Contain("\"stale-player-right-rail\""));
@@ -226,6 +229,61 @@ public sealed class ImagePipelineSourcePolicyTests
         Assert.That(staleMethod, Does.Contain("DebugRuntimeLog.Write("));
         Assert.That(staleMethod, Does.Contain("ImageLoadLogFields.Build(loadResult)"));
         Assert.That(staleMethod, Does.Contain("player {ImageLoadLogFields.Build(loadResult)}"));
+    }
+
+    [Test]
+    public void Player右レールwarmログは成功失敗を各初回だけ採用する()
+    {
+        PlayerRightRailImageWarmLogSampler.ResetForTesting();
+        ImageRequest request = ImageRequest.ForPlayerRightRail(
+            "thumb.jpg",
+            "movie-key",
+            isVisiblePriority: true,
+            requestRevision: 12
+        );
+        ImageDecodeRequest decodeRequest = ImageDecodeRequest.ForSynchronousDecode(
+            request,
+            decodePixelHeight: 96,
+            logReason: "player-right-rail.background-warm"
+        );
+        ImageDecodePlanResult success = new(
+            decodeRequest,
+            new ImageDecodeResult(
+                ImageLoadResult.Ready(request, usesPlaceholder: false, resultRevision: 12),
+                DecodeElapsedMilliseconds: 7,
+                CacheHit: false
+            ),
+            DecodeAttempted: true
+        );
+        ImageDecodePlanResult failure = new(
+            decodeRequest,
+            new ImageDecodeResult(
+                ImageLoadResult.Failed(
+                    request,
+                    resultRevision: 12,
+                    failureReason: "decode-failed",
+                    usesPlaceholder: false,
+                    hasResolvedImage: false
+                ),
+                DecodeElapsedMilliseconds: 11,
+                CacheHit: false
+            ),
+            DecodeAttempted: true
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(PlayerRightRailImageWarmLogSampler.TryAccept(success), Is.True);
+            Assert.That(PlayerRightRailImageWarmLogSampler.TryAccept(success), Is.False);
+            Assert.That(PlayerRightRailImageWarmLogSampler.TryAccept(failure), Is.True);
+            Assert.That(PlayerRightRailImageWarmLogSampler.TryAccept(failure), Is.False);
+            string fields = ImageDecodePlanLogFields.Build(success);
+            Assert.That(fields, Does.Contain("image_contract=image-pipeline-v1"));
+            Assert.That(fields, Does.Contain("image_log_reason=player-right-rail.background-warm"));
+            Assert.That(fields, Does.Contain("decode_elapsed_ms=7"));
+            Assert.That(fields, Does.Contain("cache_hit=false"));
+            Assert.That(fields, Does.Contain("image_outcome=ready"));
+        });
     }
 
     [Test]

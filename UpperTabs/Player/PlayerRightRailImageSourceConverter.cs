@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -55,7 +56,7 @@ namespace IndigoMovieManager.UpperTabs.Player
             ImageDecodeRequest decodeRequest = NoLockImageConverter.BuildImageDecodeRequest(
                 request,
                 decodePixelHeight,
-                "image.player-right-rail.background-warm"
+                "player-right-rail.background-warm"
             );
             if (
                 NoLockImageConverter.TryGetCachedDecodeRequest(
@@ -187,6 +188,7 @@ namespace IndigoMovieManager.UpperTabs.Player
                     request = Pending.Dequeue();
                 }
 
+                long decodeStartedTimestamp = Stopwatch.GetTimestamp();
                 try
                 {
                     NoLockImageConverter.ImageDecodeExecutionResult result =
@@ -194,13 +196,40 @@ namespace IndigoMovieManager.UpperTabs.Player
                             request.DecodeRequest,
                             request.IsExists
                         );
+                    WriteDecodeSample(
+                        new ImageDecodePlanResult(
+                            request.DecodeRequest,
+                            result.DecodeResult,
+                            DecodeAttempted: true
+                        )
+                    );
                     if (!ReferenceEquals(result.Image, Binding.DoNothing))
                     {
                         request.Completed(request.DecodeRequest.ImageRequest);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    ImageLoadResult loadResult = ImageLoadResult.Failed(
+                        request.DecodeRequest.ImageRequest,
+                        request.DecodeRequest.RequestRevision,
+                        $"background-warm-{ex.GetType().Name}",
+                        usesPlaceholder: false,
+                        hasResolvedImage: false
+                    );
+                    WriteDecodeSample(
+                        new ImageDecodePlanResult(
+                            request.DecodeRequest,
+                            new ImageDecodeResult(
+                                loadResult,
+                                DecodeElapsedMilliseconds: (long)
+                                    Stopwatch.GetElapsedTime(decodeStartedTimestamp)
+                                        .TotalMilliseconds,
+                                CacheHit: false
+                            ),
+                            DecodeAttempted: true
+                        )
+                    );
                     // 個別画像の失敗は次の要求へ進める。
                 }
                 finally
@@ -211,6 +240,19 @@ namespace IndigoMovieManager.UpperTabs.Player
                     }
                 }
             }
+        }
+
+        private static void WriteDecodeSample(ImageDecodePlanResult result)
+        {
+            if (!PlayerRightRailImageWarmLogSampler.TryAccept(result))
+            {
+                return;
+            }
+
+            global::IndigoMovieManager.DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"player image warm {ImageDecodePlanLogFields.Build(result)}"
+            );
         }
 
         private static string BuildKey(ImageDecodeRequest request, bool isExists)
@@ -224,5 +266,27 @@ namespace IndigoMovieManager.UpperTabs.Player
             bool IsExists,
             Action<ImageRequest> Completed
         );
+    }
+
+    internal static class PlayerRightRailImageWarmLogSampler
+    {
+        private static int _successLogged;
+        private static int _failureLogged;
+
+        internal static bool TryAccept(ImageDecodePlanResult result)
+        {
+            ref int sampleSlot = ref (
+                result.ImageLoadResult.Outcome == ImageLoadOutcome.Ready
+                    ? ref _successLogged
+                    : ref _failureLogged
+            );
+            return System.Threading.Interlocked.CompareExchange(ref sampleSlot, 1, 0) == 0;
+        }
+
+        internal static void ResetForTesting()
+        {
+            System.Threading.Interlocked.Exchange(ref _successLogged, 0);
+            System.Threading.Interlocked.Exchange(ref _failureLogged, 0);
+        }
     }
 }
