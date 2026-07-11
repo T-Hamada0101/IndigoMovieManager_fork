@@ -39,6 +39,9 @@
 - サムネイルqueueへuser-priority lease gateを追加した。取得済みjobは中断せず、新規取得と補充だけを延期し、解除後に自動再開する。更新版Releaseでは入力開始23 ms後にdeferし、2817 msの入力優先区間内は新規lease 0件、解除後にresumeしたことを確認した。
 - Phase 0診断runはサムネイル大量ログで数分以内に既定20MBへ達し、同一run前半のstartup証拠がrotation先へ退避されることを実機で確認した。通常起動の20MBは維持し、診断プロセスだけ128MBへ拡張した。
 - live監査はManualReview session開始後に更新された同basenameのrotation片と現行logを時系列snapshotへ連結する。既存rotation済みrunで `log_run_lines=51675 sequence=1-51699` を復元し、startup / watch小差分 / skin / persistenceの証拠が再び完了扱いになることを確認した。
+- ユーザー実機報告で、プレーヤータブ右レールのサムネイルスクロールが遅いことを最優先へ上げた。PlayerThumbnailListは仮想化済みだったが、Pixel scrollと先行cache範囲に加え、container実現時の画像同期decodeがスクロール中のUIを最大560 ms占有していた。
+- PlayerThumbnailListをItem scroll、半ページcacheへ絞り、wheel / PageUp / PageDownの描画前から250 msのuser-priorityを維持する。さらに右レール画像はUI上でmemory cache hitだけを返し、missは容量64・重複排除・single-flightの背景warmへ送り、scroll idle後にvisible項目だけlatest-onlyで再評価する。
+- 更新版Releaseの8回PageDownは初回63 ms、以降30から32 msで、スクロールuser-priority中のUI停止ログは0件だった。新規thumbnail leaseも開始12 ms後にdeferし、idle後にresumeした。完了判定はユーザーのホイール実操作による目視・体感確認で閉じる。
 
 ## 0. 結論
 
@@ -577,7 +580,7 @@ sidecar判断ゲート:
 
 シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、250 ms未満では表示せず、超えた時はヘッダー表示中も入力とscrollを続けられることを確認する。シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
-2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化、入力中のサムネイル表示延期と新規lease延期、live監査のrun分離とrotation跨ぎ復元をRelease実機で確認した。次の最優先は、128MB診断runでsort / scroll / player-core / image-pipelineを揃え、実表示の入力追従とサムネイル再開を人間の目で判定すること。実表示が滑らかなら入力フェーズを閉じ、引っ掛かりが残るなら同時刻のUI停止activityを基に次の1件だけを選ぶ。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
+2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化、入力中のサムネイル表示延期と新規lease延期、live監査のrun分離とrotation跨ぎ復元、Player右レールのscroll中decode分離をRelease実機で確認した。次の最優先は、ユーザー自身のホイール操作でPlayer右レールの改善を判定し、128MB診断runでplayer-core / image-pipelineを揃えること。実表示が滑らかならPlayer scrollフェーズを閉じ、引っ掛かりが残るなら同時刻のUI停止activityを基に次の1件だけを選ぶ。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
 ## 11. 前提
 
