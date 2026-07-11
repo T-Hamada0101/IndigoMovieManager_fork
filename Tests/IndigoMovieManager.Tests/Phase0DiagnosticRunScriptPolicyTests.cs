@@ -14,6 +14,7 @@ public sealed class Phase0DiagnosticRunScriptPolicyTests
         {
             Assert.That(source, Does.Contain("[Parameter(Mandatory = $true)]"));
             Assert.That(source, Does.Contain("[string]$CopiedDbPath"));
+            Assert.That(source, Does.Contain("[string]$ManualReviewPath"));
             Assert.That(source, Does.Contain("[switch]$AcknowledgeCopiedDb"));
             Assert.That(source, Does.Contain("if (-not $AcknowledgeCopiedDb)"));
             Assert.That(source, Does.Contain("コピー済みDBだけを指定する"));
@@ -39,7 +40,7 @@ public sealed class Phase0DiagnosticRunScriptPolicyTests
     }
 
     [Test]
-    public void DB操作は読み取り検証に限定し自動コピーや削除をしない()
+    public void DB操作は読み取り検証に限定し目視確認JSONだけを束縛する()
     {
         string source = GetTargetSource();
 
@@ -51,7 +52,71 @@ public sealed class Phase0DiagnosticRunScriptPolicyTests
             Assert.That(source, Does.Not.Contain("File.Copy"));
             Assert.That(source, Does.Not.Contain("File.Move"));
             Assert.That(source, Does.Not.Contain("File.Delete"));
-            Assert.That(source, Does.Not.Contain("WriteAllText"));
+            Assert.That(source, Does.Contain("Get-Phase0UnusedManualReviewTemplate"));
+            Assert.That(source, Does.Contain("Test-Path -LiteralPath $Path -PathType Leaf"));
+            Assert.That(source, Does.Contain("Resolve-Path -LiteralPath $Path"));
+            Assert.That(source, Does.Contain("ConvertFrom-Json"));
+            Assert.That(source, Does.Contain("phase0-manual-review-v1"));
+            Assert.That(source, Does.Contain("[System.IO.File]::WriteAllText($resolvedManualReviewPath"));
+            Assert.That(source, Does.Not.Contain("WriteAllText($resolvedDbPath"));
+        });
+    }
+
+    [Test]
+    public void 未使用の目視確認テンプレートだけを起動直前にsession束縛する()
+    {
+        string source = GetTargetSource();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("$document.PSObject.Properties.Match('session').Count -ne 1"));
+            Assert.That(source, Does.Contain("$document.session.id -isnot [string]"));
+            Assert.That(source, Does.Contain("$document.session.started_local -isnot [string]"));
+            Assert.That(source, Does.Contain("-not [string]::IsNullOrEmpty($document.session.id)"));
+            Assert.That(source, Does.Contain("-not [string]::IsNullOrEmpty($document.session.started_local)"));
+            Assert.That(source, Does.Contain("$pendingCount -ne 36"));
+            Assert.That(source, Does.Contain("$actualChecksByKey[$expectedCheckKey].status -cne 'pending'"));
+            Assert.That(source, Does.Contain("-not [string]::IsNullOrEmpty($actualChecksByKey[$expectedCheckKey].notes)"));
+            Assert.That(source, Does.Contain("[Guid]::NewGuid().ToString('D')"));
+            Assert.That(source, Does.Contain("[DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss.fff'"));
+            Assert.That(source, Does.Contain("[System.Text.UTF8Encoding]::new($false)"));
+            Assert.That(source, Does.Contain("$manualReviewJson -replace \"`r`n?\", \"`n\""));
+        });
+    }
+
+    [Test]
+    public void session束縛はDBと実行ファイルを検証した後StartProcessの直前に行う()
+    {
+        string source = GetTargetSource();
+        int executableValidation = source.IndexOf("$resolvedExecutablePath = $resolvedExecutable.Path", StringComparison.Ordinal);
+        int bind = source.IndexOf("$manualReviewTemplate = Get-Phase0UnusedManualReviewTemplate", StringComparison.Ordinal);
+        int startProcess = source.IndexOf("$process = Start-Process", StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(executableValidation, Is.GreaterThanOrEqualTo(0));
+            Assert.That(bind, Is.GreaterThan(executableValidation));
+            Assert.That(startProcess, Is.GreaterThan(bind));
+        });
+    }
+
+    [Test]
+    public void 起動失敗時は目視確認JSONだけを束縛前のbytesへ復元する()
+    {
+        string source = GetTargetSource();
+        int originalBytes = source.IndexOf("$manualReviewOriginalBytes = [System.IO.File]::ReadAllBytes($resolvedManualReviewPath)", StringComparison.Ordinal);
+        int startProcess = source.IndexOf("$process = Start-Process", StringComparison.Ordinal);
+        int rollback = source.IndexOf("[System.IO.File]::WriteAllBytes($resolvedManualReviewPath, $manualReviewOriginalBytes)", StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(originalBytes, Is.GreaterThanOrEqualTo(0));
+            Assert.That(source.IndexOf("try", originalBytes, StringComparison.Ordinal), Is.GreaterThan(originalBytes));
+            Assert.That(startProcess, Is.GreaterThan(originalBytes));
+            Assert.That(source.IndexOf("catch", startProcess, StringComparison.Ordinal), Is.GreaterThan(startProcess));
+            Assert.That(rollback, Is.GreaterThan(startProcess));
+            Assert.That(source, Does.Not.Contain("WriteAllBytes($resolvedDbPath"));
+            Assert.That(source, Does.Not.Contain("WriteAllBytes($LogPath"));
         });
     }
 
@@ -133,6 +198,7 @@ public sealed class Phase0DiagnosticRunScriptPolicyTests
                 Does.Contain("8. 設定変更、bookmark / score / tag保存後に終了する。")
             );
             Assert.That(source, Does.Contain("scripts/New-Phase0ManualReview.ps1"));
+            Assert.That(source, Does.Contain("-ManualReviewPath <目視記録.json> を指定してください。"));
             Assert.That(source, Does.Contain("scripts/Invoke-Phase0LiveAudit.ps1"));
             Assert.That(source, Does.Contain("-ManualReviewPath <目視記録.json>"));
             Assert.That(source, Does.Contain("$process.Id"));

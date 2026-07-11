@@ -33,8 +33,10 @@ function Get-Phase0ManualReviewValidation
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf))
     {
         return [pscustomobject]@{
-            IsComplete = $false
-            Summary    = 'file-not-found'
+            IsValid             = $false
+            IsComplete          = $false
+            SessionStartedLocal = ''
+            Summary             = 'file-not-found'
         }
     }
 
@@ -46,8 +48,10 @@ function Get-Phase0ManualReviewValidation
     catch
     {
         return [pscustomobject]@{
-            IsComplete = $false
-            Summary    = 'invalid-json'
+            IsValid             = $false
+            IsComplete          = $false
+            SessionStartedLocal = ''
+            Summary             = 'invalid-json'
         }
     }
 
@@ -69,11 +73,43 @@ function Get-Phase0ManualReviewValidation
         }
     }
 
+    $sessionId = [Guid]::Empty
+    $sessionStartedLocal = [DateTime]::MinValue
+    if ($null -eq $document -or $document.PSObject.Properties.Match('session').Count -ne 1 -or $null -eq $document.session)
+    {
+        $issues.Add('missing-session')
+    }
+    else
+    {
+        if (
+            $document.session.PSObject.Properties.Match('id').Count -ne 1 -or
+            -not [Guid]::TryParse([string]$document.session.id, [ref]$sessionId)
+        )
+        {
+            $issues.Add('invalid-session-id')
+        }
+
+        if (
+            $document.session.PSObject.Properties.Match('started_local').Count -ne 1 -or
+            -not [DateTime]::TryParseExact(
+                [string]$document.session.started_local,
+                'yyyy-MM-dd HH:mm:ss.fff',
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::None,
+                [ref]$sessionStartedLocal
+            )
+        )
+        {
+            $issues.Add('invalid-session-started-local')
+        }
+    }
     if ($null -eq $document -or $document.PSObject.Properties.Match('scenarios').Count -ne 1)
     {
         return [pscustomobject]@{
-            IsComplete = $false
-            Summary    = (($issues + 'missing-scenarios') -join ', ')
+            IsValid             = $false
+            IsComplete          = $false
+            SessionStartedLocal = ''
+            Summary             = (($issues + 'missing-scenarios') -join ', ')
         }
     }
 
@@ -198,23 +234,33 @@ function Get-Phase0ManualReviewValidation
         }
     }
 
+    $completionIssues = [System.Collections.Generic.List[string]]::new()
     foreach ($status in $statusCounts.Keys | Sort-Object)
     {
-        $issues.Add("$status=$($statusCounts[$status])")
+        $completionIssues.Add("$status=$($statusCounts[$status])")
     }
 
-    $summaryIssues = @($issues | Select-Object -Unique)
-    if ($summaryIssues.Count -eq 0)
+    $validationIssues = @($issues | Select-Object -Unique)
+    $isValid = $validationIssues.Count -eq 0
+    $isComplete = $isValid -and $completionIssues.Count -eq 0
+    $summary = if ($isComplete)
     {
-        return [pscustomobject]@{
-            IsComplete = $true
-            Summary    = 'complete'
-        }
+        'complete'
+    }
+    elseif ($isValid)
+    {
+        $completionIssues -join ', '
+    }
+    else
+    {
+        @($validationIssues + $completionIssues | Select-Object -Unique) -join ', '
     }
 
     return [pscustomobject]@{
-        IsComplete = $false
-        Summary    = ($summaryIssues -join ', ')
+        IsValid             = $isValid
+        IsComplete          = $isComplete
+        SessionStartedLocal = if ($isValid) { $document.session.started_local } else { '' }
+        Summary             = $summary
     }
 }
 
@@ -237,6 +283,31 @@ $resolvedLogPath = (Resolve-Path -LiteralPath $LogPath).Path
 Write-Host "Phase0 live auditを実行します: $resolvedLogPath"
 Write-Host '非0終了は不足evidenceを示し、監査未完なら想定内です。'
 
+$manualReviewValidation = $null
+$manualReviewSessionStartedLocal = ''
+$manualReviewIsIncomplete = $false
+if (-not [string]::IsNullOrWhiteSpace($ManualReviewPath))
+{
+    # dotnet監査より先に構造とsessionを検証し、未完でも同じrunのログevidenceは採取する。
+    $manualReviewValidation = Get-Phase0ManualReviewValidation -Path $ManualReviewPath
+    if (-not $manualReviewValidation.IsValid)
+    {
+        Write-Host "Phase0 manual review: incomplete ($($manualReviewValidation.Summary))"
+        exit 1
+    }
+
+    $manualReviewSessionStartedLocal = $manualReviewValidation.SessionStartedLocal
+    if ($manualReviewValidation.IsComplete)
+    {
+        Write-Host 'Phase0 manual review: complete'
+    }
+    else
+    {
+        Write-Host "Phase0 manual review: incomplete ($($manualReviewValidation.Summary))"
+        $manualReviewIsIncomplete = $true
+    }
+}
+
 $dotnetArguments = @(
     'test',
     $projectPath,
@@ -254,33 +325,32 @@ if ($NoBuild)
 
 $enabledEnvironmentName = 'IMM_PHASE0_LOG_AUDIT_LIVE'
 $pathEnvironmentName = 'IMM_PHASE0_LOG_AUDIT_PATH'
+$sessionStartedLocalEnvironmentName = 'IMM_PHASE0_LOG_AUDIT_SESSION_STARTED_LOCAL'
 $previousEnabledValue = [Environment]::GetEnvironmentVariable($enabledEnvironmentName, 'Process')
 $previousPathValue = [Environment]::GetEnvironmentVariable($pathEnvironmentName, 'Process')
+$previousSessionStartedLocalValue = [Environment]::GetEnvironmentVariable($sessionStartedLocalEnvironmentName, 'Process')
 $exitCode = 1
-$manualReviewValidation = $null
 
 try
 {
     # 監査用の環境変数は子プロセス実行中だけ設定し、親PowerShellへ残さない。
     Set-Item -Path "Env:$enabledEnvironmentName" -Value '1'
     Set-Item -Path "Env:$pathEnvironmentName" -Value $resolvedLogPath
+    if (-not [string]::IsNullOrWhiteSpace($manualReviewSessionStartedLocal))
+    {
+        Set-Item -Path "Env:$sessionStartedLocalEnvironmentName" -Value $manualReviewSessionStartedLocal
+    }
+    else
+    {
+        # manual未指定の従来監査へ、親PowerShellの古いsession境界を継承させない。
+        Remove-Item "Env:$sessionStartedLocalEnvironmentName" -ErrorAction SilentlyContinue
+    }
 
     & dotnet @dotnetArguments
     $exitCode = $LASTEXITCODE
-
-    if (-not [string]::IsNullOrWhiteSpace($ManualReviewPath))
+    if ($manualReviewIsIncomplete)
     {
-        # 指定時だけ目視確認も同じ完了ゲートへ加え、ログ監査の終了コードはそのまま尊重する。
-        $manualReviewValidation = Get-Phase0ManualReviewValidation -Path $ManualReviewPath
-        if ($manualReviewValidation.IsComplete)
-        {
-            Write-Host 'Phase0 manual review: complete'
-        }
-        else
-        {
-            Write-Host "Phase0 manual review: incomplete ($($manualReviewValidation.Summary))"
-            $exitCode = 1
-        }
+        $exitCode = 1
     }
 }
 finally
@@ -301,6 +371,15 @@ finally
     else
     {
         Set-Item -Path "Env:$pathEnvironmentName" -Value $previousPathValue
+    }
+
+    if ($null -eq $previousSessionStartedLocalValue)
+    {
+        Remove-Item "Env:$sessionStartedLocalEnvironmentName" -ErrorAction SilentlyContinue
+    }
+    else
+    {
+        Set-Item -Path "Env:$sessionStartedLocalEnvironmentName" -Value $previousSessionStartedLocalValue
     }
 }
 

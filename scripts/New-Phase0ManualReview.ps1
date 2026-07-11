@@ -37,6 +37,10 @@ if (-not (Test-Path -LiteralPath $parentDirectory -PathType Container))
 $document = [ordered]@{
     schema      = 'phase0-manual-review-v1'
     created_utc = [DateTime]::UtcNow.ToString('o')
+    session     = [ordered]@{
+        id            = ''
+        started_local = ''
+    }
     scenarios   = @(
         foreach ($scenario in $scenarios)
         {

@@ -66,14 +66,40 @@ public sealed class Phase0LiveAuditScriptPolicyTests
         {
             Assert.That(source, Does.Contain("IMM_PHASE0_LOG_AUDIT_LIVE"));
             Assert.That(source, Does.Contain("IMM_PHASE0_LOG_AUDIT_PATH"));
+            Assert.That(source, Does.Contain("IMM_PHASE0_LOG_AUDIT_SESSION_STARTED_LOCAL"));
             Assert.That(source, Does.Contain("[Environment]::GetEnvironmentVariable($enabledEnvironmentName, 'Process')"));
             Assert.That(source, Does.Contain("[Environment]::GetEnvironmentVariable($pathEnvironmentName, 'Process')"));
+            Assert.That(source, Does.Contain("$previousSessionStartedLocalValue = [Environment]::GetEnvironmentVariable($sessionStartedLocalEnvironmentName, 'Process')"));
             Assert.That(source, Does.Contain("try"));
             Assert.That(source, Does.Contain("finally"));
             Assert.That(source, Does.Contain("Set-Item -Path \"Env:$enabledEnvironmentName\" -Value '1'"));
             Assert.That(source, Does.Contain("Set-Item -Path \"Env:$pathEnvironmentName\" -Value $resolvedLogPath"));
+            Assert.That(source, Does.Contain("Set-Item -Path \"Env:$sessionStartedLocalEnvironmentName\" -Value $manualReviewSessionStartedLocal"));
             Assert.That(source, Does.Contain("Remove-Item \"Env:$enabledEnvironmentName\""));
             Assert.That(source, Does.Contain("Remove-Item \"Env:$pathEnvironmentName\""));
+            Assert.That(source, Does.Contain("Remove-Item \"Env:$sessionStartedLocalEnvironmentName\""));
+        });
+    }
+
+    [Test]
+    public void manual未指定時はambient_sessionをdotnet前に除去し終了後に元値を復元する()
+    {
+        string source = GetTargetSource();
+        int sessionBranch = source.IndexOf("if (-not [string]::IsNullOrWhiteSpace($manualReviewSessionStartedLocal))", StringComparison.Ordinal);
+        int removeBeforeDotnet = source.IndexOf("Remove-Item \"Env:$sessionStartedLocalEnvironmentName\"", sessionBranch, StringComparison.Ordinal);
+        int dotnet = source.IndexOf("& dotnet @dotnetArguments", StringComparison.Ordinal);
+        int finallyBlock = source.IndexOf("finally", dotnet, StringComparison.Ordinal);
+        int restoreNullBranch = source.IndexOf("if ($null -eq $previousSessionStartedLocalValue)", finallyBlock, StringComparison.Ordinal);
+        int restoreValue = source.IndexOf("Set-Item -Path \"Env:$sessionStartedLocalEnvironmentName\" -Value $previousSessionStartedLocalValue", finallyBlock, StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sessionBranch, Is.GreaterThanOrEqualTo(0));
+            Assert.That(removeBeforeDotnet, Is.GreaterThan(sessionBranch));
+            Assert.That(removeBeforeDotnet, Is.LessThan(dotnet));
+            Assert.That(finallyBlock, Is.GreaterThan(dotnet));
+            Assert.That(restoreNullBranch, Is.GreaterThan(finallyBlock));
+            Assert.That(restoreValue, Is.GreaterThan(restoreNullBranch));
         });
     }
 
@@ -92,7 +118,7 @@ public sealed class Phase0LiveAuditScriptPolicyTests
     }
 
     [Test]
-    public void 目視確認指定時だけ固定schemaと全passを完了条件へ加える()
+    public void 目視確認は構造妥当性と全pass完了を分離して検証する()
     {
         string source = GetTargetSource();
 
@@ -103,6 +129,12 @@ public sealed class Phase0LiveAuditScriptPolicyTests
             Assert.That(source, Does.Contain("Resolve-Path -LiteralPath $Path"));
             Assert.That(source, Does.Contain("ConvertFrom-Json"));
             Assert.That(source, Does.Contain("phase0-manual-review-v1"));
+            Assert.That(source, Does.Contain("missing-session"));
+            Assert.That(source, Does.Contain("invalid-session-id"));
+            Assert.That(source, Does.Contain("invalid-session-started-local"));
+            Assert.That(source, Does.Contain("[Guid]::TryParse"));
+            Assert.That(source, Does.Contain("[DateTime]::TryParseExact"));
+            Assert.That(source, Does.Contain("'yyyy-MM-dd HH:mm:ss.fff'"));
             Assert.That(source, Does.Contain("$allowedManualReviewStatuses = @('pending', 'pass', 'fail', 'not_observed')"));
             Assert.That(source, Does.Contain("duplicate-scenarios="));
             Assert.That(source, Does.Contain("duplicate-checks="));
@@ -110,9 +142,50 @@ public sealed class Phase0LiveAuditScriptPolicyTests
             Assert.That(source, Does.Contain("unexpected-checks="));
             Assert.That(source, Does.Contain("if ($status -ne 'pass')"));
             Assert.That(source, Does.Contain("if (-not [string]::IsNullOrWhiteSpace($ManualReviewPath))"));
+            Assert.That(source, Does.Contain("IsValid             = $isValid"));
+            Assert.That(source, Does.Contain("IsComplete          = $isComplete"));
+            Assert.That(source, Does.Contain("$isComplete = $isValid -and $completionIssues.Count -eq 0"));
+            Assert.That(source, Does.Contain("if (-not $manualReviewValidation.IsValid)"));
+            Assert.That(source, Does.Contain("if ($manualReviewValidation.IsComplete)"));
+            Assert.That(source, Does.Contain("$manualReviewSessionStartedLocal = $manualReviewValidation.SessionStartedLocal"));
             Assert.That(source, Does.Contain("Phase0 manual review: incomplete"));
             Assert.That(source, Does.Not.Contain("Set-Content"));
             Assert.That(source, Does.Not.Contain("Add-Content"));
+        });
+    }
+
+    [Test]
+    public void 無効な目視確認だけはdotnet監査を起動せず非0で終了する()
+    {
+        string source = GetTargetSource();
+        int validate = source.IndexOf("$manualReviewValidation = Get-Phase0ManualReviewValidation", StringComparison.Ordinal);
+        int reject = source.IndexOf("if (-not $manualReviewValidation.IsValid)", StringComparison.Ordinal);
+        int dotnet = source.IndexOf("& dotnet @dotnetArguments", StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(validate, Is.GreaterThanOrEqualTo(0));
+            Assert.That(reject, Is.GreaterThan(validate));
+            Assert.That(source.IndexOf("exit 1", reject, StringComparison.Ordinal), Is.GreaterThan(reject));
+            Assert.That(dotnet, Is.GreaterThan(reject));
+        });
+    }
+
+    [Test]
+    public void 構造妥当だが未完の目視確認はsessionを渡してdotnet監査を実行し最終的に非0にする()
+    {
+        string source = GetTargetSource();
+        int incomplete = source.IndexOf("$manualReviewIsIncomplete = $true", StringComparison.Ordinal);
+        int dotnet = source.IndexOf("& dotnet @dotnetArguments", StringComparison.Ordinal);
+        int forceFailure = source.IndexOf("if ($manualReviewIsIncomplete)", dotnet, StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(source, Does.Contain("Set-Item -Path \"Env:$sessionStartedLocalEnvironmentName\" -Value $manualReviewSessionStartedLocal"));
+            Assert.That(incomplete, Is.GreaterThanOrEqualTo(0));
+            Assert.That(dotnet, Is.GreaterThan(incomplete));
+            Assert.That(forceFailure, Is.GreaterThan(dotnet));
+            Assert.That(source, Does.Contain("$exitCode = 1"));
         });
     }
 

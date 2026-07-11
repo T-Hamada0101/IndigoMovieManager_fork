@@ -34,6 +34,12 @@ public sealed class Phase0ManualReviewScriptPolicyTests
             using JsonDocument document = JsonDocument.Parse(bytes);
             Assert.That(document.RootElement.GetProperty("schema").GetString(), Is.EqualTo("phase0-manual-review-v1"));
             Assert.That(document.RootElement.GetProperty("created_utc").GetString(), Is.Not.Empty);
+            JsonElement session = document.RootElement.GetProperty("session");
+            Assert.Multiple(() =>
+            {
+                Assert.That(session.GetProperty("id").GetString(), Is.EqualTo(""));
+                Assert.That(session.GetProperty("started_local").GetString(), Is.EqualTo(""));
+            });
 
             JsonElement scenarios = document.RootElement.GetProperty("scenarios");
             DebugRuntimeLogPhase0ScenarioScorecard scorecard = CreateEmptyEvidenceScorecard();
