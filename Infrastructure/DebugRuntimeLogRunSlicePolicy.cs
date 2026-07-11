@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 namespace IndigoMovieManager.Infrastructure
 {
+    // DetectedResetCountは、先頭runより後で検出したsequence=1の境界数を表す。
     public readonly record struct DebugRuntimeLogRunSliceResult(
         IReadOnlyList<string> Lines,
         bool HasSequence,
@@ -41,9 +42,7 @@ namespace IndigoMovieManager.Infrastructure
             List<string> currentRunLines = new();
             int sourceLineCount = 0;
             int detectedResetCount = 0;
-            bool hasPreviousSequence = false;
             bool currentRunHasSequence = false;
-            long previousSequence = 0;
             long? startSequence = null;
             long? endSequence = null;
 
@@ -58,8 +57,8 @@ namespace IndigoMovieManager.Infrastructure
 
                 if (TryReadSequence(line, out long sequence))
                 {
-                    // 連番が巻き戻った地点から、同じファイル内の次の起動runとして扱う。
-                    if (hasPreviousSequence && sequence <= previousSequence)
+                    // 起動runは必ず1から始まる。並列追記による途中の逆転や重複は境界にしない。
+                    if (currentRunHasSequence && sequence == 1)
                     {
                         detectedResetCount++;
                         currentRunLines.Clear();
@@ -75,8 +74,6 @@ namespace IndigoMovieManager.Infrastructure
                     }
 
                     endSequence = sequence;
-                    previousSequence = sequence;
-                    hasPreviousSequence = true;
                 }
 
                 currentRunLines.Add(line);

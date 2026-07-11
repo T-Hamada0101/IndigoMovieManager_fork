@@ -25,7 +25,7 @@ public sealed class DebugRuntimeLogRunSlicePolicyTests
     }
 
     [Test]
-    public void SliceLatestRun_連番が戻ったら後半runだけ返す()
+    public void SliceLatestRun_sequence1が現れたら後半runだけ返す()
     {
         string oldFirst = BuildLine(1, "old startup");
         string oldLast = BuildLine(3, "old input ready");
@@ -42,6 +42,62 @@ public sealed class DebugRuntimeLogRunSlicePolicyTests
         Assert.That(result.EndSequence, Is.EqualTo(2));
         Assert.That(result.DetectedResetCount, Is.EqualTo(1));
         Assert.That(result.SourceLineCount, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void SliceLatestRun_途中の逆転と重複はrun境界にしない()
+    {
+        string first = BuildLine(1, "startup");
+        string fourth = BuildLine(4, "parallel write A");
+        string third = BuildLine(3, "parallel write B");
+        string duplicate = BuildLine(3, "parallel write C");
+        string fifth = BuildLine(5, "input ready");
+
+        DebugRuntimeLogRunSliceResult result = DebugRuntimeLogRunSlicePolicy.SliceLatestRun(
+            new[] { first, fourth, third, duplicate, fifth }
+        );
+
+        Assert.That(result.Lines, Is.EqualTo(new[] { first, fourth, third, duplicate, fifth }));
+        Assert.That(result.StartSequence, Is.EqualTo(1));
+        Assert.That(result.EndSequence, Is.EqualTo(5));
+        Assert.That(result.DetectedResetCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void SliceLatestRun_rotationで先頭が1でなくても次のsequence1をrun境界にする()
+    {
+        string rotatedFirst = BuildLine(42, "rotated old run");
+        string rotatedLast = BuildLine(43, "rotated old ready");
+        string newFirst = BuildLine(1, "new startup");
+        string newSecond = BuildLine(2, "new ready");
+
+        DebugRuntimeLogRunSliceResult result = DebugRuntimeLogRunSlicePolicy.SliceLatestRun(
+            new[] { rotatedFirst, rotatedLast, newFirst, newSecond }
+        );
+
+        Assert.That(result.Lines, Is.EqualTo(new[] { newFirst, newSecond }));
+        Assert.That(result.StartSequence, Is.EqualTo(1));
+        Assert.That(result.EndSequence, Is.EqualTo(2));
+        Assert.That(result.DetectedResetCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void SliceLatestRun_複数runなら最後のsequence1以降だけ返す()
+    {
+        string firstRun = BuildLine(7, "rotated first run");
+        string secondRunFirst = BuildLine(1, "second startup");
+        string secondRunLast = BuildLine(8, "second ready");
+        string thirdRunFirst = BuildLine(1, "third startup");
+        string helper = "third run helper without sequence";
+
+        DebugRuntimeLogRunSliceResult result = DebugRuntimeLogRunSlicePolicy.SliceLatestRun(
+            new[] { firstRun, secondRunFirst, secondRunLast, thirdRunFirst, helper }
+        );
+
+        Assert.That(result.Lines, Is.EqualTo(new[] { thirdRunFirst, helper }));
+        Assert.That(result.StartSequence, Is.EqualTo(1));
+        Assert.That(result.EndSequence, Is.EqualTo(1));
+        Assert.That(result.DetectedResetCount, Is.EqualTo(2));
     }
 
     [Test]
