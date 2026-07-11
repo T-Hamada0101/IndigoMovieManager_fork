@@ -31,6 +31,9 @@
 - 2026-07-12の更新版Release runでは、startup partial中も検索可否と入力優先を分離し、最後の入力からdebounce満了まで `search-input` user-priorityを維持した。入力中のサムネイル進捗反映は全件deferredとなり、同区間のUI停止ログは出ていない。
 - サムネイル進捗の実UI applyは直近0.1から15 msで、直後の計測CSV同期I/Oが長いUI占有の主因だった。計測保存を容量1のlatest-only背景処理へ移し、診断処理がUI待ちや無制限queueを作らないようにした。
 - 同runの検索は、初回全件構築が `total_ms=7144 source_apply_ms=6234`、次回が `route=query-only total_ms=88 source_apply_ms=0` となり、全件source完成後の再利用を実機ログで確認した。
+- Phase 0 live監査は、監査開始時の実機ログを一時snapshotへ固定し、子テスト自身のruntime logを別の一時sinkへ分離した。監査中の本体追記や子プロセスが判定対象runを汚さず、終了時に環境変数と一時ファイルを必ず戻す契約とした。
+- 実機ログのsequence採番とfile appendを同じlock内へ置き、並列追記でもfile上の連番を単調化した。run sliceは後続の `sequence=1` だけを新run境界として扱い、過去ログの軽微な逆転や重複を誤ってrun開始にしない。
+- 2026-07-12の分離後Release監査では `log_run_lines=1084 sequence=1-1084` でsession境界を通過した。失敗理由は `missing-contract-evidence` のみとなり、startupとskinはログ証拠完了、残りはsearch / sort / scroll / player / watch / image / persistence / thumbnailの操作採取である。
 
 ## 0. 結論
 
@@ -569,7 +572,7 @@ sidecar判断ゲート:
 
 シナリオ2ではGrid系のResetを含む検索と通常sortの後に主選択・複数選択・先頭可視項目のtop位置・一覧内keyboard focusが飛ばないこと、250 ms未満では表示せず、超えた時はヘッダー表示中も入力とscrollを続けられることを確認する。シナリオ3では上側タブ往復後に各タブの既存選択が残り、SearchBoxや別ペインのfocusを奪わないことを目視し、今回の修正をBehavior証跡で閉じる。Wrap系とList系のoffset差、同期layout時間は別々に記録する。外部skin sortはコピーDB + no-persistで同じ保持を確認するまで実機完了扱いにしない。
 
-2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化と入力中のサムネイル延期は同一Release runで確認した。次の最優先は、UI Automationで残った約0.7秒の入力外れ値が実表示でも起きるかを人間の目で判定すること。実表示が滑らかなら入力フェーズを閉じ、引っ掛かりが残るなら同時刻のUI停止activityを基に次の1件だけを選ぶ。サムネイル進捗が入力終了後に再開し、blankや表示欠落を作らないことも同じ目視で確認する。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
+2026-07-12の最上位所見には最小変更を入れ、2回目検索のquery-only化、入力中のサムネイル延期、live監査のrun分離をRelease実機で確認した。次の最優先は、現在の同一runでsearch / sort / scrollを操作し、UI Automationで残った約0.7秒の入力外れ値が実表示でも起きるかを人間の目で判定すること。続いてplayer、watch小差分、image、persistence、thumbnailを採取する。実表示が滑らかなら入力フェーズを閉じ、引っ掛かりが残るなら同時刻のUI停止activityを基に次の1件だけを選ぶ。ここから先の進捗は、契約数ではなく、ユーザーの待ちと表示の乱れが減ったかで判定する。
 
 ## 11. 前提
 
