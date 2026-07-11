@@ -5,7 +5,7 @@ internal static class UiOperationFeedbackPolicy
     internal const int DelayMs = 250;
 
     // 操作理由だけを表示文言へ変換し、UI固有の状態は持ち込まない。
-    internal static string ResolveStatusText(string? reason)
+    internal static string ResolveStatusText(string reason)
     {
         if (string.Equals(reason, "search", StringComparison.OrdinalIgnoreCase))
         {

@@ -40,6 +40,7 @@ namespace IndigoMovieManager
                     "ui-priority",
                     BuildUserPriorityBeginLogMessage(reason, snapshot)
                 );
+                ScheduleUiOperationFeedback(reason);
             }
         }
 
@@ -64,7 +65,8 @@ namespace IndigoMovieManager
                 }
 
                 isStillActive = _userPriorityWorkCount > 0;
-                hasDeferredWatchWork = !isStillActive && ConsumeWatchWorkDeferredForUserPriorityCatchUp();
+                hasDeferredWatchWork =
+                    !isStillActive && ConsumeWatchWorkDeferredForUserPriorityCatchUp();
                 if (!isStillActive)
                 {
                     beginReason = _userPriorityWorkBeginReason;
@@ -115,6 +117,11 @@ namespace IndigoMovieManager
                     $"user priority catch-up queued: reason={reason}"
                 );
                 _ = QueueCheckFolderAsync(CheckMode.Watch, $"user-priority-resume:{reason}");
+            }
+
+            if (!isStillActive)
+            {
+                CompleteUiOperationFeedback();
             }
         }
 

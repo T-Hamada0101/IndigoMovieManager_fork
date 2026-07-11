@@ -1896,6 +1896,32 @@
                 Text="{Binding DbInfo.DBFullPath, UpdateSourceTrigger=PropertyChanged}"
                 TextTrimming="CharacterEllipsis"
               />
+              <Grid
+                x:Name="UiOperationFeedbackPanel"
+                Grid.Column="8"
+                Margin="8,0,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                IsHitTestVisible="False"
+                Visibility="Collapsed"
+              >
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <ProgressBar
+                    Width="52"
+                    Height="4"
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    IsIndeterminate="True"
+                  />
+                  <TextBlock
+                    x:Name="UiOperationFeedbackStatusText"
+                    VerticalAlignment="Center"
+                    FontSize="11"
+                    Foreground="{DynamicResource MainHeaderForegroundBrush}"
+                    Text="処理中"
+                  />
+                </StackPanel>
+              </Grid>
               <Border
                 x:Name="ExternalSkinFallbackNoticeBorder"
                 Grid.Column="9"
