@@ -3,6 +3,7 @@
 最終更新日: 2026-07-11
 
 変更概要:
+- 2026-07-12、Playerスクロールの1バースト計測を追加し、8回PageDownで `revision=7 / converter=227 / generator=194 / max layout gap=944ms` を観測した。viewport revisionをscroll中pending、idle warmと最大1回へ合流してconverterを104まで減らしたが、generatorと約0.9秒gapは残った。仮想化cache `0` はgeneratorを228へ悪化させたため `0.5 Page` へ戻した。次順位は固定高行templateの軽量化とする。
 - 2026-07-12、Player右レールの画像revisionを通常5タブから分離した。Player viewport / warmは専用revision、通常タブviewportは共有revision、サムネ実体変更は両方を更新する。Release x64では `shared_revision_updated=False player_revision_updated=True` を確認したが、UI停止は最大1249 ms残ったため主因解消とは扱わない。次順位はPlayer内のBinding / converter呼出数とWPF layoutの実測である。
 - 2026-07-12、rescued thumbnailのUI反映を1件ごとのDispatcher往復と全件走査から、最大16件のbatchごとDispatcher 1回・MovieRecs索引1回へ変更した。user-priority中は120 ms単位で延期し、DB session / path / shutdownをapply直前にも確認する。Release x64のコピーDB + no-persist新規runでは4回の反映が `apply_ms=0〜3`、`dispatch_wait_ms=0〜5` で、次順位はPlayer scroll中の画像revision再評価の合流とする。
 - 長期ロードマップを「UIのスムーズ化とユーザーストレス最小化」の実装正本として再構築した。総合進捗率は使わず、Behavior / Evidence / Regression Guard の3条件とPhase状態で完了を判定する。直近最優先は、主要8シナリオを同一Release runで採取し、選択 / focus / scroll / blankを含む体感支配要因を最大3件へ絞ること。

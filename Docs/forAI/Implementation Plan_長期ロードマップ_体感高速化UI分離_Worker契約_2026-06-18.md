@@ -588,6 +588,10 @@ sidecar判断ゲート:
 
 続くrevision監査では、Player warm / viewport更新が共有revisionを通じて通常5タブのMultiBindingも再評価していたため、`PlayerRightRailImageRevision` を専用化した。Player由来のviewportとwarmは専用revisionだけ、通常タブviewportは共有revisionだけ、サムネ実体変更は両方を進める。Release x64実機ではPlayer操作中とwarm反映の双方で `shared_revision_updated=False player_revision_updated=True` を確認した。一方、同じrunのUI停止は最大1249 ms残り、最初のRenderは22 msだった。したがって他タブへのrevision波及は削減できたが主因ではない。次の最上位候補はPlayer内で実現された行のBinding / converter呼出数とWPF layoutであり、物理ホイールの目視結果と同時刻の実測を揃えてから1件へ絞る。
 
+Player内の1バースト集約計測を追加した結果、8回PageDownで `revision_delta=7 converter_count=227 generator_delta=194 max_layout_gap_ms=944` を観測した。viewport revisionをscroll priority中はpendingへ畳み、idle時のvisible warmと最大1回に合流すると、同条件で `revision_delta=0`、idle反映1回、`converter_count=104` まで減った。ただし `generator_delta=198 max_layout_gap_ms=903`、UI停止最大1247 msで、Binding再評価削減だけでは停止は閉じなかった。
+
+仮想化先読みを `0.5 Page` から `0` へ下げる比較も行ったが、`generator_delta=228 max_layout_gap_ms=883`、UI停止最大1203 msとなり、container再生成が増えて改善しなかったため同日中に `0.5 Page` へ戻した。次順位は固定高56 px行のtemplate軽量化で、`Label` / itemごとのContextMenu / ToolTipがcontainer生成へ与えるコストを小さく比較する。cache `0` は再採用しない。ユーザー自身の物理ホイール確認まではPlayer scrollフェーズを完了扱いにしない。
+
 ## 11. 前提
 
 - WPF一覧を本線として維持する。
