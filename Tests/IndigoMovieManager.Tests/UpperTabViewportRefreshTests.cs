@@ -302,6 +302,67 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
+    public void Playerサムネスクロール計測は最初のRenderを捉えidle時に1行へ集約する()
+    {
+        string viewportSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.Viewport.cs"
+        );
+        string beginMethod = GetMethodBlock(
+            viewportSource,
+            "private void BeginOrExtendPlayerThumbnailScrollUserPriority("
+        );
+        string queueMethod = GetMethodBlock(
+            viewportSource,
+            "private void QueuePlayerThumbnailScrollRenderMeasure()"
+        );
+        string releaseMethod = GetMethodBlock(
+            viewportSource,
+            "private void ReleasePlayerThumbnailScrollUserPriority("
+        );
+
+        Assert.That(beginMethod, Does.Contain("_playerThumbnailScrollInputCount++;"));
+        Assert.That(beginMethod, Does.Contain("QueuePlayerThumbnailScrollRenderMeasure();"));
+        Assert.That(queueMethod, Does.Contain("DispatcherPriority.Render"));
+        Assert.That(queueMethod, Does.Contain("_playerThumbnailScrollRenderMeasureOperation != null"));
+        Assert.That(
+            releaseMethod,
+            Does.Contain("player thumbnail scroll render: release_reason=")
+        );
+        Assert.That(releaseMethod, Does.Contain("input_count={_playerThumbnailScrollInputCount}"));
+        Assert.That(
+            releaseMethod,
+            Does.Contain("first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds}")
+        );
+        Assert.That(queueMethod, Does.Not.Contain("DebugRuntimeLog.Write("));
+    }
+
+    [Test]
+    public void Playerページ送りは選択と再生を変えずviewportだけを移動する()
+    {
+        string pageScrollSource = GetRepoText(
+            "UpperTabs",
+            "Common",
+            "MainWindow.UpperTabs.PageScroll.cs"
+        );
+        string playerSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "MainWindow.UpperTabs.PlayerTab.cs"
+        );
+        string pageScrollMethod = GetMethodBlock(
+            pageScrollSource,
+            "private bool TryHandleUpperTabPageScroll("
+        );
+
+        Assert.That(pageScrollMethod, Does.Contain("UpperTabScrollNavigator.TryScrollPage("));
+        Assert.That(pageScrollMethod, Does.Not.Contain("SelectedIndex"));
+        Assert.That(pageScrollMethod, Does.Not.Contain("SelectedItem"));
+        Assert.That(playerSource, Does.Not.Contain("TryScrollUpperTabPlayerPage("));
+    }
+
+    [Test]
     public void Player右レールwarm完了はスクロールidle後にlatest_onlyで再評価する()
     {
         string viewportSource = GetRepoText(

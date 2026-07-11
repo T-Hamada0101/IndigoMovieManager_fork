@@ -63,6 +63,60 @@ namespace IndigoMovieManager.UpperTabs.Common
             );
         }
 
+        // Player の標準縦リストは item 単位でスクロールするため、描画待ちを挟まず範囲を確定できる。
+        public static UpperTabVisibleRange GetVerticalItemVisibleRange(
+            ScrollViewer scrollViewer,
+            int totalCount,
+            int overscanItemCount
+        )
+        {
+            if (
+                scrollViewer == null
+                || totalCount < 1
+                || scrollViewer.ViewportHeight <= 0
+            )
+            {
+                return UpperTabVisibleRange.Empty;
+            }
+
+            return CalculateVerticalItemVisibleRange(
+                scrollViewer.VerticalOffset,
+                scrollViewer.ViewportHeight,
+                totalCount,
+                overscanItemCount
+            );
+        }
+
+        public static UpperTabVisibleRange CalculateVerticalItemVisibleRange(
+            double verticalOffset,
+            double viewportHeight,
+            int totalCount,
+            int overscanItemCount
+        )
+        {
+            if (totalCount < 1 || viewportHeight <= 0)
+            {
+                return UpperTabVisibleRange.Empty;
+            }
+
+            int firstVisibleIndex = Math.Clamp(
+                (int)Math.Floor(verticalOffset),
+                0,
+                totalCount - 1
+            );
+            int lastVisibleIndex = Math.Clamp(
+                (int)Math.Ceiling(verticalOffset + viewportHeight) - 1,
+                firstVisibleIndex,
+                totalCount - 1
+            );
+            return UpperTabVisibleRange.Create(
+                firstVisibleIndex,
+                lastVisibleIndex,
+                totalCount,
+                overscanItemCount
+            );
+        }
+
         public static bool TryGetContainerTopRelativeToViewport(
             FrameworkElement container,
             ScrollViewer scrollViewer,

@@ -41,6 +41,7 @@ namespace IndigoMovieManager
         private DispatcherTimer _upperTabStartupAppendRetryTimer;
         private DispatcherTimer _upperTabViewportRefreshTimer;
         private DispatcherTimer _playerThumbnailScrollUserPriorityTimer;
+        private DispatcherOperation _playerThumbnailScrollRenderMeasureOperation;
         private DispatcherOperation _playerRightRailWarmRefreshOperation;
         private UpperTabVisibleRange _activeUpperTabVisibleRange = UpperTabVisibleRange.Empty;
         private IReadOnlyList<string> _preferredVisibleMoviePathKeysSnapshot = Array.Empty<string>();
@@ -52,6 +53,9 @@ namespace IndigoMovieManager
         private long _upperTabStartupAppendSuppressUntilUtcTicks;
         private long _recentViewportInteractionUntilUtcTicks;
         private bool _isPlayerThumbnailScrollUserPriorityActive;
+        private long _playerThumbnailScrollStartedTimestamp;
+        private long _playerThumbnailScrollFirstRenderElapsedMilliseconds = -1;
+        private int _playerThumbnailScrollInputCount;
         private bool _playerRightRailWarmCompletionHooked;
         private readonly HashSet<string> _playerRightRailWarmCompletedMoviePathKeys = new(
             StringComparer.OrdinalIgnoreCase
@@ -445,12 +449,18 @@ namespace IndigoMovieManager
             if (!_isPlayerThumbnailScrollUserPriorityActive)
             {
                 _isPlayerThumbnailScrollUserPriorityActive = true;
+                _playerThumbnailScrollStartedTimestamp = Stopwatch.GetTimestamp();
+                _playerThumbnailScrollFirstRenderElapsedMilliseconds = -1;
+                _playerThumbnailScrollInputCount = 0;
                 BeginUserPriorityWork("player-thumbnail-scroll");
                 DebugRuntimeLog.Write(
                     "ui-priority",
                     $"player thumbnail scroll priority begin: trigger_reason={triggerReason}"
                 );
+                QueuePlayerThumbnailScrollRenderMeasure();
             }
+
+            _playerThumbnailScrollInputCount++;
 
             StopDispatcherTimerSafely(
                 _playerThumbnailScrollUserPriorityTimer,
@@ -470,6 +480,8 @@ namespace IndigoMovieManager
         private void PlayerThumbnailScrollDispatcher_ShutdownStarted(object sender, EventArgs e)
         {
             ReleasePlayerThumbnailScrollUserPriority("shutdown");
+            _playerThumbnailScrollRenderMeasureOperation?.Abort();
+            _playerThumbnailScrollRenderMeasureOperation = null;
             if (_playerRightRailWarmCompletionHooked)
             {
                 PlayerRightRailImageSourceConverter.ImageWarmCompleted -=
@@ -495,14 +507,57 @@ namespace IndigoMovieManager
 
             _isPlayerThumbnailScrollUserPriorityActive = false;
             EndUserPriorityWork("player-thumbnail-scroll");
+            long totalElapsedMilliseconds = _playerThumbnailScrollStartedTimestamp > 0
+                ? (long)Stopwatch.GetElapsedTime(_playerThumbnailScrollStartedTimestamp).TotalMilliseconds
+                : 0;
             DebugRuntimeLog.Write(
                 "ui-priority",
                 $"player thumbnail scroll priority end: release_reason={releaseReason}"
             );
+            DebugRuntimeLog.Write(
+                "ui-tempo",
+                $"player thumbnail scroll render: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} total_ms={totalElapsedMilliseconds}"
+            );
+            _playerThumbnailScrollStartedTimestamp = 0;
+            _playerThumbnailScrollFirstRenderElapsedMilliseconds = -1;
+            _playerThumbnailScrollInputCount = 0;
             if (string.Equals(releaseReason, "idle", StringComparison.Ordinal))
             {
                 QueuePlayerRightRailWarmRefresh();
             }
+        }
+
+        // 連続入力を1バーストへ束ね、最初に画面へ届いたRenderだけを計測する。
+        private void QueuePlayerThumbnailScrollRenderMeasure()
+        {
+            if (
+                Dispatcher == null
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+                || _playerThumbnailScrollRenderMeasureOperation != null
+            )
+            {
+                return;
+            }
+
+            _playerThumbnailScrollRenderMeasureOperation = Dispatcher.InvokeAsync(
+                () =>
+                {
+                    _playerThumbnailScrollRenderMeasureOperation = null;
+                    if (
+                        !_isPlayerThumbnailScrollUserPriorityActive
+                        || _playerThumbnailScrollStartedTimestamp <= 0
+                    )
+                    {
+                        return;
+                    }
+
+                    _playerThumbnailScrollFirstRenderElapsedMilliseconds = (long)Stopwatch
+                        .GetElapsedTime(_playerThumbnailScrollStartedTimestamp)
+                        .TotalMilliseconds;
+                },
+                DispatcherPriority.Render
+            );
         }
 
         // 背景warm完了はUIへ戻し、現在のPlayer visible項目だけを再評価候補にする。
@@ -791,6 +846,15 @@ namespace IndigoMovieManager
             ScrollViewer scrollViewer
         )
         {
+            if (ReferenceEquals(activeItemsControl, PlayerThumbnailList))
+            {
+                return UpperTabViewportTracker.GetVerticalItemVisibleRange(
+                    scrollViewer,
+                    activeItemsControl.Items.Count,
+                    UpperTabViewportOverscanItemCount
+                );
+            }
+
             Panel itemsHostPanel = GetUpperTabItemsHostPanel(activeItemsControl);
             return UpperTabViewportTracker.GetVisibleRange(
                 activeItemsControl,

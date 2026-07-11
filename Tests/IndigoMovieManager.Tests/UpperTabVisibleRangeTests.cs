@@ -47,4 +47,20 @@ public sealed class UpperTabVisibleRangeTests
             Is.EqualTo(UpperTabVisibleRange.Empty)
         );
     }
+
+    [Test]
+    public void 標準縦リストはitem単位offsetからvisible範囲を求める()
+    {
+        UpperTabVisibleRange actual = UpperTabViewportTracker.CalculateVerticalItemVisibleRange(
+            verticalOffset: 10.25,
+            viewportHeight: 5.5,
+            totalCount: 100,
+            overscanItemCount: 2
+        );
+
+        Assert.That(actual.FirstVisibleIndex, Is.EqualTo(10));
+        Assert.That(actual.LastVisibleIndex, Is.EqualTo(15));
+        Assert.That(actual.FirstNearVisibleIndex, Is.EqualTo(8));
+        Assert.That(actual.LastNearVisibleIndex, Is.EqualTo(17));
+    }
 }
