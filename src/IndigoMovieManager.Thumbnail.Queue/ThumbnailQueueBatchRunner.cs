@@ -27,7 +27,8 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailParallelController parallelController,
             Func<int> resolveLatestConfiguredParallelism,
             Action<string> log,
-            CancellationToken cts
+            CancellationToken cts,
+            ThumbnailLeaseDeferralGate leaseDeferralGate = null
         )
         {
             Action<string> safeLog = log ?? (_ => { });
@@ -224,6 +225,7 @@ namespace IndigoMovieManager.Thumbnail
                         preferredTabIndexResolver,
                         preferredMoviePathKeysResolver,
                         safeLog,
+                        leaseDeferralGate,
                         cts
                     ),
                     new ParallelOptions

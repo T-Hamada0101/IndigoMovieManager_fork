@@ -17,9 +17,11 @@ namespace IndigoMovieManager.Thumbnail
             Func<int?> preferredTabIndexResolver,
             Func<IReadOnlyList<string>> preferredMoviePathKeysResolver,
             Action<string> log,
+            ThumbnailLeaseDeferralGate leaseDeferralGate,
             [EnumeratorCancellation] CancellationToken cts
         )
         {
+            leaseDeferralGate ??= new ThumbnailLeaseDeferralGate(null, 250, log);
             LinkedList<QueueDbLeaseItem> buffer = new();
             ThumbnailLeaseBuffer.AppendLeaseItems(buffer, initialItems);
             DateTime lastPreferredProbeUtc = DateTime.MinValue;
@@ -28,6 +30,9 @@ namespace IndigoMovieManager.Thumbnail
             {
                 if (buffer.Count < 1)
                 {
+                    await leaseDeferralGate
+                        .WaitUntilLeaseAllowedAsync(cts)
+                        .ConfigureAwait(false);
                     List<QueueDbLeaseItem> nextItems = ThumbnailLeaseAcquirer.AcquireLeasedItems(
                         queueDbService,
                         ownerInstanceId,
@@ -57,7 +62,8 @@ namespace IndigoMovieManager.Thumbnail
                 }
 
                 if (
-                    ThumbnailLeaseBuffer.ShouldProbePreferredLease(buffer, lastPreferredProbeUtc)
+                    !leaseDeferralGate.ShouldDeferLease()
+                    && ThumbnailLeaseBuffer.ShouldProbePreferredLease(buffer, lastPreferredProbeUtc)
                     && ThumbnailLeaseBuffer.TryFrontInsertPreferredLeaseItems(
                         queueDbService,
                         ownerInstanceId,

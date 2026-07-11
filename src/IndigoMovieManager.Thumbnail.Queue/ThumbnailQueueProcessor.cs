@@ -38,7 +38,8 @@ namespace IndigoMovieManager.Thumbnail
             Action<QueueObj> onJobStarted = null,
             Action<QueueObj> onJobCompleted = null,
             IThumbnailQueueProgressPresenter progressPresenter = null,
-            CancellationToken cts = default
+            CancellationToken cts = default,
+            Func<bool> shouldDeferLeaseResolver = null
         )
         {
             if (queueDbServiceResolver == null)
@@ -75,6 +76,11 @@ namespace IndigoMovieManager.Thumbnail
                 maxParallelismResolver
             );
             ThumbnailParallelController parallelController = new(initialConfiguredParallelism);
+            ThumbnailLeaseDeferralGate leaseDeferralGate = new(
+                shouldDeferLeaseResolver,
+                safePollIntervalMs,
+                safeLog
+            );
             int ResolveLatestConfiguredParallelism()
             {
                 return ResolveConfiguredParallelism(maxParallelism, maxParallelismResolver);
@@ -86,6 +92,7 @@ namespace IndigoMovieManager.Thumbnail
                 while (true)
                 {
                     cts.ThrowIfCancellationRequested();
+                    await leaseDeferralGate.WaitUntilLeaseAllowedAsync(cts).ConfigureAwait(false);
                     QueueDbService queueDbService = queueDbServiceResolver();
                     if (queueDbService == null)
                     {
@@ -195,6 +202,9 @@ namespace IndigoMovieManager.Thumbnail
                                     leaseBatchSize,
                                     currentParallelism
                                 );
+                                await leaseDeferralGate
+                                    .WaitUntilLeaseAllowedAsync(cts)
+                                    .ConfigureAwait(false);
                                 leasedItems = ThumbnailLeaseAcquirer.AcquireLeasedItems(
                                     queueDbService,
                                     ownerInstanceId,
@@ -223,7 +233,8 @@ namespace IndigoMovieManager.Thumbnail
                                         parallelController,
                                         ResolveLatestConfiguredParallelism,
                                         safeLog,
-                                        cts
+                                        cts,
+                                        leaseDeferralGate
                                     )
                                     .ConfigureAwait(false);
 
@@ -239,6 +250,9 @@ namespace IndigoMovieManager.Thumbnail
                                 leaseBatchSize,
                                 currentParallelism
                             );
+                            await leaseDeferralGate
+                                .WaitUntilLeaseAllowedAsync(cts)
+                                .ConfigureAwait(false);
                             leasedItems = ThumbnailLeaseAcquirer.AcquireLeasedItems(
                                 queueDbService,
                                 ownerInstanceId,
