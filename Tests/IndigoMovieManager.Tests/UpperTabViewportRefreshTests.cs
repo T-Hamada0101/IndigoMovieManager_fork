@@ -363,7 +363,8 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(beginMethod, Does.Contain("PlayerThumbnailList.LayoutUpdated +="));
         Assert.That(beginMethod, Does.Contain("CompositionTarget.Rendering +="));
         Assert.That(endMethod, Does.Contain("PlayerRightRailImageBurstMetrics.End(sessionId"));
-        Assert.That(endMethod, Does.Contain("player thumbnail scroll burst: release_reason="));
+        Assert.That(endMethod, Does.Contain("player thumbnail scroll burst: burst_id="));
+        Assert.That(endMethod, Does.Contain("burst_id={sessionId}"));
         Assert.That(endMethod, Does.Contain("converter_count={converterMetrics.ConvertCount}"));
         Assert.That(endMethod, Does.Contain("generator_delta="));
         Assert.That(endMethod, Does.Contain("layout_delta="));
@@ -373,6 +374,37 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(detachMethod, Does.Contain("ItemContainerGenerator.StatusChanged -="));
         Assert.That(detachMethod, Does.Contain("PlayerThumbnailList.LayoutUpdated -="));
         Assert.That(detachMethod, Does.Contain("CompositionTarget.Rendering -="));
+    }
+
+    [Test]
+    public void Playerスクロールburstはhang監視へ軽量snapshotを渡し既存ログで同じIDを記録する()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string initializeMethod = GetMethodBlock(
+            source,
+            "private void InitializeUpperTabViewportSupport()"
+        );
+        string beginMethod = GetMethodBlock(
+            source,
+            "private void BeginOrExtendPlayerThumbnailScrollUserPriority("
+        );
+        string releaseMethod = GetMethodBlock(
+            source,
+            "private void ReleasePlayerThumbnailScrollUserPriority("
+        );
+        string snapshotMethod = GetMethodBlock(
+            source,
+            "private PlayerScrollBurstSnapshot GetPlayerScrollBurstSnapshot()"
+        );
+
+        Assert.That(
+            initializeMethod,
+            Does.Contain("SetPlayerScrollBurstSnapshotProvider(")
+        );
+        Assert.That(beginMethod, Does.Contain("priority begin: burst_id="));
+        Assert.That(releaseMethod, Does.Contain("priority end: burst_id="));
+        Assert.That(snapshotMethod, Does.Contain("Volatile.Read("));
+        Assert.That(snapshotMethod, Does.Not.Contain("DebugRuntimeLog.Write("));
     }
 
     [Test]

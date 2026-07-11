@@ -2,6 +2,11 @@ using System.Windows.Threading;
 
 namespace IndigoMovieManager
 {
+    internal readonly record struct PlayerScrollBurstSnapshot(long BurstId, bool IsActive)
+    {
+        internal static PlayerScrollBurstSnapshot Inactive => new(0, false);
+    }
+
     internal enum UiHangNotificationLevel
     {
         None = 0,
@@ -24,6 +29,8 @@ namespace IndigoMovieManager
         private readonly Func<UiHangHeartbeatSample, bool> _dangerStateResolver;
         private readonly Func<UiHangNotificationLevel, bool> _visibilityResolver;
         private readonly object _gate = new();
+        private Func<PlayerScrollBurstSnapshot> _playerScrollBurstSnapshotProvider =
+            static () => PlayerScrollBurstSnapshot.Inactive;
         private bool _started;
         private bool _isVisible;
         private int _consecutiveOverThreshold;
@@ -67,6 +74,14 @@ namespace IndigoMovieManager
             _visibilityResolver =
                 visibilityResolver ?? throw new ArgumentNullException(nameof(visibilityResolver));
             _heartbeatMonitor.SampleObserved += HandleHeartbeatSample;
+        }
+
+        internal void SetPlayerScrollBurstSnapshotProvider(
+            Func<PlayerScrollBurstSnapshot> snapshotProvider
+        )
+        {
+            ArgumentNullException.ThrowIfNull(snapshotProvider);
+            Volatile.Write(ref _playerScrollBurstSnapshotProvider, snapshotProvider);
         }
 
         internal void Start()
@@ -318,9 +333,10 @@ namespace IndigoMovieManager
 
             if (shouldShow)
             {
+                PlayerScrollBurstSnapshot scrollSnapshot = GetPlayerScrollBurstSnapshot();
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"ui hang detected: level={nextLevel} activity={activitySnapshot.Kind} delay_ms={sample.DelayMs} pending={sample.IsPending} danger={isDangerState} foreground_only={nextLevel != UiHangNotificationLevel.Critical}"
+                    $"ui hang detected: level={nextLevel} activity={activitySnapshot.Kind} delay_ms={sample.DelayMs} pending={sample.IsPending} danger={isDangerState} foreground_only={nextLevel != UiHangNotificationLevel.Critical} burst_id={scrollSnapshot.BurstId} scroll_active={scrollSnapshot.IsActive.ToString().ToLowerInvariant()}"
                 );
                 _overlayHost.Show(nextLevel, nextMessage);
                 return;
@@ -328,9 +344,10 @@ namespace IndigoMovieManager
 
             if (shouldUpdate)
             {
+                PlayerScrollBurstSnapshot scrollSnapshot = GetPlayerScrollBurstSnapshot();
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"ui hang updated: level={nextLevel} activity={activitySnapshot.Kind} delay_ms={sample.DelayMs} pending={sample.IsPending} danger={isDangerState}"
+                    $"ui hang updated: level={nextLevel} activity={activitySnapshot.Kind} delay_ms={sample.DelayMs} pending={sample.IsPending} danger={isDangerState} burst_id={scrollSnapshot.BurstId} scroll_active={scrollSnapshot.IsActive.ToString().ToLowerInvariant()}"
                 );
                 _overlayHost.Update(nextLevel, nextMessage);
                 return;
@@ -346,6 +363,14 @@ namespace IndigoMovieManager
                 );
                 _overlayHost.Hide();
             }
+        }
+
+        private PlayerScrollBurstSnapshot GetPlayerScrollBurstSnapshot()
+        {
+            Func<PlayerScrollBurstSnapshot> provider = Volatile.Read(
+                ref _playerScrollBurstSnapshotProvider
+            );
+            return provider();
         }
 
         internal static UiHangNotificationLevel ResolveLevel(long delayMs, bool isDangerState)

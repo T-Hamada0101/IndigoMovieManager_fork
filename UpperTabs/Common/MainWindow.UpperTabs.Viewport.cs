@@ -132,6 +132,9 @@ namespace IndigoMovieManager
                 PlayerRightRailImageSourceConverter_ImageWarmCompleted;
             _playerRightRailWarmCompletionHooked = true;
             Dispatcher.ShutdownStarted += PlayerThumbnailScrollDispatcher_ShutdownStarted;
+            _uiHangNotificationCoordinator?.SetPlayerScrollBurstSnapshotProvider(
+                GetPlayerScrollBurstSnapshot
+            );
 
             Loaded += (_, _) =>
             {
@@ -488,7 +491,7 @@ namespace IndigoMovieManager
                 BeginPlayerThumbnailScrollBurstMetrics();
                 DebugRuntimeLog.Write(
                     "ui-priority",
-                    $"player thumbnail scroll priority begin: trigger_reason={triggerReason}"
+                    $"player thumbnail scroll priority begin: burst_id={_playerThumbnailScrollBurstSessionId} trigger_reason={triggerReason}"
                 );
                 QueuePlayerThumbnailScrollRenderMeasure();
             }
@@ -547,7 +550,7 @@ namespace IndigoMovieManager
                 : 0;
             DebugRuntimeLog.Write(
                 "ui-priority",
-                $"player thumbnail scroll priority end: release_reason={releaseReason}"
+                $"player thumbnail scroll priority end: burst_id={_playerThumbnailScrollBurstSessionId} release_reason={releaseReason}"
             );
             EndPlayerThumbnailScrollBurstMetrics(releaseReason, totalElapsedMilliseconds);
             _playerThumbnailScrollStartedTimestamp = 0;
@@ -669,8 +672,14 @@ namespace IndigoMovieManager
 
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player thumbnail scroll burst: release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_flush_state={(_playerRightRailViewportRevisionPending ? "pending-before-idle-flush" : "not-pending")}"
+                $"player thumbnail scroll burst: burst_id={sessionId} release_reason={releaseReason} input_count={_playerThumbnailScrollInputCount} first_render_ms={_playerThumbnailScrollFirstRenderElapsedMilliseconds} first_layout_ms={_playerThumbnailScrollFirstLayoutMilliseconds} first_composition_ms={_playerThumbnailScrollFirstRenderingMilliseconds} max_layout_gap_ms={_playerThumbnailScrollMaxLayoutGapMilliseconds} max_composition_gap_ms={_playerThumbnailScrollMaxRenderingGapMilliseconds} total_ms={totalElapsedMilliseconds} converter_count={converterMetrics.ConvertCount} cache_hit_count={converterMetrics.CacheHitCount} cache_miss_count={converterMetrics.CacheMissCount} queue_enqueued_count={converterMetrics.QueueEnqueuedCount} queue_duplicate_count={converterMetrics.QueueDuplicateCount} generator_delta={_playerThumbnailScrollGeneratorStatusChangedCount} layout_delta={_playerThumbnailScrollLayoutUpdatedCount} render_delta={_playerThumbnailScrollRenderingCount} realized_delta={realizedCountAfter - _playerThumbnailScrollRealizedCountBefore} revision_delta={revisionAfter - _playerThumbnailScrollRevisionBefore} viewport_revision_pending={_playerRightRailViewportRevisionPending} revision_flush_state={(_playerRightRailViewportRevisionPending ? "pending-before-idle-flush" : "not-pending")}"
             );
+        }
+
+        private PlayerScrollBurstSnapshot GetPlayerScrollBurstSnapshot()
+        {
+            long burstId = Volatile.Read(ref _playerThumbnailScrollBurstSessionId);
+            return new PlayerScrollBurstSnapshot(burstId, burstId > 0);
         }
 
         private int GetPlayerThumbnailRealizedCount()
