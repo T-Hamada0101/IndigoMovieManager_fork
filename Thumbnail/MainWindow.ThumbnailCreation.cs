@@ -91,6 +91,7 @@ namespace IndigoMovieManager
                                 preferredMoviePathKeysResolver: ResolvePreferredVisibleMoviePathKeys,
                                 handoffLaneResolver: queueObj =>
                                     ResolveThumbnailRescueLaneName(queueObj?.MovieSizeBytes ?? 0),
+                                shouldDeferLeaseResolver: IsUserPriorityWorkActive,
                                 log: message => DebugRuntimeLog.Write("queue-consumer", message),
                                 progressSnapshot: (completed, total, currentParallel, configuredParallel) =>
                                 {
