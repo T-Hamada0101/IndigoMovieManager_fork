@@ -419,7 +419,7 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
-    public void Player右レールwarm完了はスクロールidle後にlatest_onlyで再評価する()
+    public void Player右レールwarmとviewport更新はスクロールidle後にlatest_onlyで再評価する()
     {
         string viewportSource = GetRepoText(
             "UpperTabs",
@@ -456,9 +456,27 @@ public sealed class UpperTabViewportRefreshTests
             queueMethod,
             Does.Contain("_playerRightRailWarmRefreshOperation.Status == DispatcherOperationStatus.Pending")
         );
+        Assert.That(
+            queueMethod,
+            Does.Contain("_playerRightRailWarmCompletedMoviePathKeys.Count == 0")
+        );
+        Assert.That(queueMethod, Does.Contain("!_playerRightRailViewportRevisionPending"));
         Assert.That(applyMethod, Does.Contain("Stopwatch.StartNew();"));
         Assert.That(applyMethod, Does.Contain("visibleCompletionCount++"));
+        Assert.That(
+            applyMethod,
+            Does.Contain("bool viewportRevisionPending = _playerRightRailViewportRevisionPending;")
+        );
+        Assert.That(applyMethod, Does.Contain("_playerRightRailViewportRevisionPending = false;"));
         Assert.That(applyMethod, Does.Contain("RefreshPlayerRightRailImageRevision();"));
+        Assert.That(
+            applyMethod.Split("RefreshPlayerRightRailImageRevision();").Length - 1,
+            Is.EqualTo(1)
+        );
+        Assert.That(
+            applyMethod,
+            Does.Contain("if (visibleCompletionCount > 0 || viewportRevisionPending)")
+        );
         Assert.That(applyMethod, Does.Not.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
         Assert.That(
             applyMethod,
@@ -466,6 +484,7 @@ public sealed class UpperTabViewportRefreshTests
         );
         Assert.That(applyMethod, Does.Contain("shared_revision_updated=False"));
         Assert.That(applyMethod, Does.Contain("player_revision_updated={playerRevisionUpdated}"));
+        Assert.That(applyMethod, Does.Contain("viewport_revision_pending={viewportRevisionPending}"));
         Assert.That(applyMethod, Does.Contain("elapsed_ms={stopwatch.ElapsedMilliseconds}"));
         Assert.That(
             applyMethod,
@@ -478,6 +497,97 @@ public sealed class UpperTabViewportRefreshTests
             viewportSource,
             Does.Contain("QueuePlayerRightRailWarmRefresh();")
         );
+    }
+
+    [Test]
+    public void Playerスクロール中の複数viewport更新はrevisionを進めずpendingへ畳み込む()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string routeMethod = GetMethodBlock(source, "private void RefreshActiveUpperTabImageRevision()");
+
+        Assert.That(source, Does.Contain("private bool _playerRightRailViewportRevisionPending;"));
+        Assert.That(routeMethod, Does.Contain("if (_isPlayerThumbnailScrollUserPriorityActive)"));
+        Assert.That(routeMethod, Does.Contain("_playerRightRailViewportRevisionPending = true;"));
+
+        int pendingIndex = routeMethod.IndexOf(
+            "_playerRightRailViewportRevisionPending = true;",
+            StringComparison.Ordinal
+        );
+        int immediateElseIndex = routeMethod.IndexOf("else", pendingIndex, StringComparison.Ordinal);
+        int playerRefreshIndex = routeMethod.IndexOf(
+            "RefreshPlayerRightRailImageRevision();",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(immediateElseIndex, Is.GreaterThan(pendingIndex));
+        Assert.That(playerRefreshIndex, Is.GreaterThan(immediateElseIndex));
+    }
+
+    [Test]
+    public void Playerのpendingはidleでwarm有無にかかわらず最大1回だけapplyする()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string releaseMethod = GetMethodBlock(
+            source,
+            "private void ReleasePlayerThumbnailScrollUserPriority("
+        );
+        string queueMethod = GetMethodBlock(
+            source,
+            "private void QueuePlayerRightRailWarmRefresh()"
+        );
+        string applyMethod = GetMethodBlock(
+            source,
+            "private void ApplyPlayerRightRailWarmRefresh()"
+        );
+
+        Assert.That(releaseMethod, Does.Contain("QueuePlayerRightRailWarmRefresh();"));
+        Assert.That(queueMethod, Does.Contain("_playerRightRailWarmCompletedMoviePathKeys.Count == 0"));
+        Assert.That(queueMethod, Does.Contain("&& !_playerRightRailViewportRevisionPending"));
+        Assert.That(
+            applyMethod.Split("RefreshPlayerRightRailImageRevision();").Length - 1,
+            Is.EqualTo(1)
+        );
+        Assert.That(
+            applyMethod,
+            Does.Contain("if (visibleCompletionCount > 0 || viewportRevisionPending)")
+        );
+    }
+
+    [Test]
+    public void Playerのpendingはshutdownと非Playerで破棄し残存させない()
+    {
+        string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
+        string shutdownMethod = GetMethodBlock(
+            source,
+            "private void PlayerThumbnailScrollDispatcher_ShutdownStarted("
+        );
+        string applyMethod = GetMethodBlock(
+            source,
+            "private void ApplyPlayerRightRailWarmRefresh()"
+        );
+
+        Assert.That(shutdownMethod, Does.Contain("_playerRightRailViewportRevisionPending = false;"));
+        Assert.That(shutdownMethod, Does.Contain("_playerRightRailWarmCompletedMoviePathKeys.Clear();"));
+        Assert.That(shutdownMethod, Does.Contain("_playerRightRailWarmRefreshOperation?.Abort();"));
+
+        int nonPlayerIndex = applyMethod.IndexOf(
+            "if (TabPlayer?.IsSelected != true)",
+            StringComparison.Ordinal
+        );
+        int pendingClearIndex = applyMethod.IndexOf(
+            "_playerRightRailViewportRevisionPending = false;",
+            nonPlayerIndex,
+            StringComparison.Ordinal
+        );
+        int nonPlayerReturnIndex = applyMethod.IndexOf(
+            "return;",
+            pendingClearIndex,
+            StringComparison.Ordinal
+        );
+
+        Assert.That(nonPlayerIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(pendingClearIndex, Is.GreaterThan(nonPlayerIndex));
+        Assert.That(nonPlayerReturnIndex, Is.GreaterThan(pendingClearIndex));
     }
 
     [TestCase("movie-key", "MOVIE-KEY", true)]
@@ -669,7 +779,7 @@ public sealed class UpperTabViewportRefreshTests
     }
 
     [Test]
-    public void viewport更新はPlayerだけ専用revisionを進め通常タブは共有revisionを進める()
+    public void viewport更新は通常タブの共有revision契約を従来どおり維持する()
     {
         string source = GetRepoText("UpperTabs", "Common", "MainWindow.UpperTabs.Viewport.cs");
         string routeMethod = GetMethodBlock(source, "private void RefreshActiveUpperTabImageRevision()");
@@ -677,6 +787,11 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(routeMethod, Does.Contain("bool playerActive = TabPlayer?.IsSelected == true;"));
         Assert.That(routeMethod, Does.Contain("RefreshPlayerRightRailImageRevision();"));
         Assert.That(routeMethod, Does.Contain("RefreshSharedUpperTabImageRevision();"));
+        Assert.That(
+            routeMethod,
+            Does.Contain("shared_revision_updated={!playerActive}")
+        );
+        Assert.That(routeMethod, Does.Contain("revision_reason="));
         Assert.That(routeMethod, Does.Not.Contain("RefreshUpperTabPreferredMoviePathKeysRevision();"));
     }
 
