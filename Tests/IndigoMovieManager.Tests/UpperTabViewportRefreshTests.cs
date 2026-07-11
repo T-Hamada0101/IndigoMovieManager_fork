@@ -404,6 +404,11 @@ public sealed class UpperTabViewportRefreshTests
         Assert.That(beginMethod, Does.Contain("priority begin: burst_id="));
         Assert.That(releaseMethod, Does.Contain("priority end: burst_id="));
         Assert.That(snapshotMethod, Does.Contain("Volatile.Read("));
+        Assert.That(
+            snapshotMethod,
+            Does.Contain("ref _isPlayerThumbnailScrollUserPriorityActive")
+        );
+        Assert.That(snapshotMethod, Does.Not.Contain("burstId > 0"));
         Assert.That(snapshotMethod, Does.Not.Contain("DebugRuntimeLog.Write("));
     }
 
