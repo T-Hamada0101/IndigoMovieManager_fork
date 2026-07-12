@@ -3,6 +3,7 @@
 最終更新日: 2026-07-12
 
 変更概要:
+- 2026-07-12、Watch folder scanの`skip_zero_byte` / `skip_failure_state`個別ログをreason別先頭3件へ制限し、4件目以降は文字列生成せず、scan endの`skip_counts`へ総数を集約した。failure reasonを含むOutcome、ERROR marker、例外ログは維持。親Release x64 92件成功。コピーDB再runは`scan_bg_ms=6178 skip_counts=none`、UI hangはCaution 500ms 1件でWarningなし。非zero countsの実機採取は未達。
 - 2026-07-12、Playerタブ開始の`reason=player` user-priorityを要求revision付き250ms上限へ固定し、成功/失敗イベントが来なくても再生要求を止めず入力優先権だけ返すようにした。最終単一プロセスrunはrev1を`superseded`、rev2を`timeout`で解放し、PageDown 8回は `first_render_ms=12 max_layout_gap_ms=224 total_ms=353`。full整合は最終releaseの3409ms後に1回だけ開始し、scroll中開始と二重起動は0件。
 - 2026-07-12、実DBで効果のなかった`SQLiteCommand.Cancel()`案を正式撤回し、全件整合のactive CTS中は再queueしないsingle-flightと、pending整合へ操作が衝突した時だけ最後の解除から1500ms待つscroll quiet windowを追加した。Release x64契約15件成功。単一プロセス実機ではpartial検索107ms、Player priority中のfull開始0件。ただしPlayerタブ切替の`reason=player`が解除されずquiet後再開は未観測、同burst最大gap1270ms。次順位はPlayer開始priorityの長期保持とスクロール停止の因果である。
 - 2026-07-12、startup partial表示後の全件整合をlatest-onlyでApplicationIdleへ送り、user-priority開始時は外部tokenでDB後段・43k変換・UI applyを中断し、解除後に最新1件だけ再開するようにした。Player PageDown 1回目の間はfull開始0件、解除後に始まったrevision 2は二度目のPageDownで `stage=db-reload` cancel、revision 3だけが完了した。親60テスト成功。ただしDB facade自体は協調キャンセル非対応で読込完了まで1509ms走り、二度目burstは `max_layout_gap_ms=893`。次順位はDB読込の真の中断または十分なscroll quiet windowである。
