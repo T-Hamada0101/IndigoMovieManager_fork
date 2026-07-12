@@ -67,6 +67,23 @@ public sealed class ReleaseVersionConsistencyPolicyTests
         });
     }
 
+    [Test]
+    public void 公開ミラー同期ではPrivateTokenを送らない()
+    {
+        string source = ReadRepoFile(".github", "workflows", "github-release-package.yml");
+        int guardedTokenCount = source.Split(
+            "if ($needsToken)",
+            StringSplitOptions.None
+        ).Length - 1;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(guardedTokenCount, Is.GreaterThanOrEqualTo(2));
+            Assert.That(source, Does.Contain("公開ミラーへ期限切れPrivate tokenを送ると"));
+            Assert.That(source, Does.Contain("公開ミラーは匿名API"));
+        });
+    }
+
     private static string ReadRepoFile(params string[] parts)
     {
         return File.ReadAllText(Path.Combine([FindRepoRoot(), .. parts]));

@@ -159,9 +159,13 @@ jobs:
                 "-NoProfile",
                 "-File",
                 "./scripts/sync_private_engine_worker_artifact.ps1",
-                "-PrivateRepoFullName", $repo,
-                "-GitHubToken", $env:IMM_PRIVATE_ENGINE_TOKEN
+                "-PrivateRepoFullName", $repo
               )
+
+              # 公開ミラーへ期限切れPrivate tokenを送ると匿名取得可能なreleaseまで401になるため、Private repoだけへ渡す。
+              if ($needsToken) {
+                $syncArguments += @("-GitHubToken", $env:IMM_PRIVATE_ENGINE_TOKEN)
+              }
 
               if (-not [string]::IsNullOrWhiteSpace($ReleaseTagValue)) {
                 $syncArguments += @("-ReleaseTag", $ReleaseTagValue)
@@ -325,9 +329,13 @@ jobs:
                 "-NoProfile",
                 "-File",
                 "./scripts/sync_private_engine_packages.ps1",
-                "-PrivateRepoFullName", $repo,
-                "-GitHubToken", $env:IMM_PRIVATE_ENGINE_TOKEN
+                "-PrivateRepoFullName", $repo
               )
+
+              # worker同期と同じく、公開ミラーは匿名API、Private repoだけtoken付きAPIを使う。
+              if ($needsToken) {
+                $syncArguments += @("-GitHubToken", $env:IMM_PRIVATE_ENGINE_TOKEN)
+              }
 
               if (-not [string]::IsNullOrWhiteSpace($ReleaseTagValue)) {
                 $syncArguments += @("-ReleaseTag", $ReleaseTagValue)
