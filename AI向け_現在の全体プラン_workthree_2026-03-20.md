@@ -3,7 +3,7 @@
 最終更新日: 2026-07-12
 
 変更概要:
-- 2026-07-12、startup partial first page前に5タブ＋詳細のサムネイルディレクトリを全件列挙していた`BuildMovieRecordBulkBuildCache`を起動経路から外し、読込済みページの現行名・旧名候補だけを存在確認して同一cacheへ増分追記するようにした。continuationは同じcacheを再利用し、thumbnail/error marker/tags/source image表示とDB非変更を維持する。`startup page load end`へDB読込、6用途cache、行変換、総時間を追加。focused 5件とRelease x64 build成功。7.6〜9.3秒帯の解消確認はコピーDB実機ログ待ち。
+- 2026-07-12、startup partial first page前に5タブ＋詳細のサムネイルディレクトリを全件列挙していた`BuildMovieRecordBulkBuildCache`を起動経路から外し、読込済みページの現行名・旧名候補だけを存在確認して同一cacheへ増分追記するようにした。continuationは同じcacheを再利用し、thumbnail/error marker/tags/source image表示とDB非変更を維持する。最終Release x64コピーDBでは`db_read_ms=50 bulk_cache_ms=41 row_convert_ms=36 total_ms=131`、`first-page shown=481ms input ready=482ms`となり、旧8117〜10187msから約94〜95%短縮した。
 - 2026-07-12、Watch直後のmissing-thumbnail rescueもfailure reason別先頭3件だけをsample出力し、4件目以降は文字列生成せず、scope終了時の`rescue summary failure_state_skip_counts`へ集約した。早期return時も誤ってfinishedと呼ばず、enqueue/marker/例外とreason詳細は維持。親Release x64 90件成功。コピーDB再runではrescue自体が発火せず非zero summary実機確認は未達。
 - 2026-07-12、Watch folder scanの`skip_zero_byte` / `skip_failure_state`個別ログをreason別先頭3件へ制限し、4件目以降は文字列生成せず、scan endの`skip_counts`へ総数を集約した。failure reasonを含むOutcome、ERROR marker、例外ログは維持。親Release x64 92件成功。コピーDB再runは`scan_bg_ms=6178 skip_counts=none`、UI hangはCaution 500ms 1件でWarningなし。非zero countsの実機採取は未達。
 - 2026-07-12、Playerタブ開始の`reason=player` user-priorityを要求revision付き250ms上限へ固定し、成功/失敗イベントが来なくても再生要求を止めず入力優先権だけ返すようにした。最終単一プロセスrunはrev1を`superseded`、rev2を`timeout`で解放し、PageDown 8回は `first_render_ms=12 max_layout_gap_ms=224 total_ms=353`。full整合は最終releaseの3409ms後に1回だけ開始し、scroll中開始と二重起動は0件。
