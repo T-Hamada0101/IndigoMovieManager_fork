@@ -3,6 +3,7 @@
 最終更新日: 2026-07-12
 
 変更概要:
+- 2026-07-12、Watch直後のmissing-thumbnail rescueもfailure reason別先頭3件だけをsample出力し、4件目以降は文字列生成せず、scope終了時の`rescue summary failure_state_skip_counts`へ集約した。早期return時も誤ってfinishedと呼ばず、enqueue/marker/例外とreason詳細は維持。親Release x64 90件成功。コピーDB再runではrescue自体が発火せず非zero summary実機確認は未達。
 - 2026-07-12、Watch folder scanの`skip_zero_byte` / `skip_failure_state`個別ログをreason別先頭3件へ制限し、4件目以降は文字列生成せず、scan endの`skip_counts`へ総数を集約した。failure reasonを含むOutcome、ERROR marker、例外ログは維持。親Release x64 92件成功。コピーDB再runは`scan_bg_ms=6178 skip_counts=none`、UI hangはCaution 500ms 1件でWarningなし。非zero countsの実機採取は未達。
 - 2026-07-12、Playerタブ開始の`reason=player` user-priorityを要求revision付き250ms上限へ固定し、成功/失敗イベントが来なくても再生要求を止めず入力優先権だけ返すようにした。最終単一プロセスrunはrev1を`superseded`、rev2を`timeout`で解放し、PageDown 8回は `first_render_ms=12 max_layout_gap_ms=224 total_ms=353`。full整合は最終releaseの3409ms後に1回だけ開始し、scroll中開始と二重起動は0件。
 - 2026-07-12、実DBで効果のなかった`SQLiteCommand.Cancel()`案を正式撤回し、全件整合のactive CTS中は再queueしないsingle-flightと、pending整合へ操作が衝突した時だけ最後の解除から1500ms待つscroll quiet windowを追加した。Release x64契約15件成功。単一プロセス実機ではpartial検索107ms、Player priority中のfull開始0件。ただしPlayerタブ切替の`reason=player`が解除されずquiet後再開は未観測、同burst最大gap1270ms。次順位はPlayer開始priorityの長期保持とスクロール停止の因果である。
