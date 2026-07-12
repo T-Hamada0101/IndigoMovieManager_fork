@@ -81,6 +81,7 @@ function Invoke-GitHubJson {
         [Parameter(Mandatory = $true)]
         [string]$Uri,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token
     )
 
@@ -93,6 +94,7 @@ function Download-GitHubArtifactZip {
         [Parameter(Mandatory = $true)]
         [string]$Uri,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token,
         [Parameter(Mandatory = $true)]
         [string]$OutFilePath
@@ -202,6 +204,7 @@ function Find-LatestSuccessfulWorkflowRun {
         [Parameter(Mandatory = $true)]
         [string]$BranchName,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token
     )
 
@@ -225,6 +228,7 @@ function Get-WorkflowRun {
         [Parameter(Mandatory = $true)]
         [long]$WorkflowRunId,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token
     )
 
@@ -239,6 +243,7 @@ function Get-ReleaseByTag {
         [Parameter(Mandatory = $true)]
         [string]$TagName,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token
     )
 
@@ -394,6 +399,7 @@ function Find-RunArtifact {
         [Parameter(Mandatory = $true)]
         [string]$ExpectedArtifactName,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token
     )
 
@@ -415,6 +421,7 @@ function Download-GitHubReleaseAssetZip {
         [Parameter(Mandatory = $true)]
         [long]$AssetId,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token,
         [Parameter(Mandatory = $true)]
         [string]$OutFilePath
@@ -530,6 +537,7 @@ function Get-PrivateEngineSyncSource {
         [Parameter(Mandatory = $true)]
         [long]$WorkflowRunId,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Token
     )
 
