@@ -1,6 +1,8 @@
 # IndigoMovieManager
 
-最終更新日: 2026-04-25
+> このリポジトリは、IndigoMovieManagerを独自に改良・保守しているフォーク版です。
+
+最終更新日: 2026-07-12
 
 IndigoMovieManager は、WhiteBrowser 互換を重視した動画管理アプリです。
 動画一覧の管理、検索、監視フォルダからの取り込み、サムネイル生成をまとめて扱えます。
