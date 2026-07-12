@@ -56,6 +56,18 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      - name: Validate release version consistency
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        working-directory: IndigoMovieManager_fork
+        env:
+          GITHUB_REF_NAME_VALUE: ${{ github.ref_name }}
+        run: |
+          # タグ、project三種の版数を最初に照合し、誤った名前の成果物を作り始めない。
+          ./scripts/assert_release_version_consistency.ps1 `
+            -ProjectPath ./IndigoMovieManager.csproj `
+            -VersionLabel $env:GITHUB_REF_NAME_VALUE
+
       - name: Try sync private engine publish source
         id: sync_private_engine
         shell: pwsh

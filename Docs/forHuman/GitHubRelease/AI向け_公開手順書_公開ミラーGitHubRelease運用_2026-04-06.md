@@ -102,6 +102,10 @@ release 側が不足しても、自動では `PRIVATE_ENGINE_PUBLISH_RUN_ID` へ
 
 tag push でも `github-release-package.yml` は起動する。
 
+正式タグは `IndigoMovieManager.csproj` の `Version` / `FileVersion` / `AssemblyVersion` と同じ4要素版数にする。workflowはPrivate Engine同期前にこの一致を検証し、ZIP作成時とInstaller作成時にも配布EXEの `FileVersion` を再検証する。
+
+MSIのupgrade判定は先頭3桁を使うため、公開版で4桁目だけを上げてはいけない。現在版が `1.0.4.0` なら、次版は `1.0.4.1` ではなく `1.0.5.0` のように先頭3桁を進める。
+
 tag 実行時は最終的に GitHub Release へ以下を公開する。
 
 - `IndigoMovieManager-<version>-win-x64.zip`

@@ -590,6 +590,19 @@ if ($LASTEXITCODE -ne 0) {
 # publish 出力をそのまま配布フォルダへ移し、依存 DLL 取りこぼしを防ぐ。
 Copy-Item -Path (Join-Path $publishDir "*") -Destination $packageDir -Recurse -Force
 
+# 正式タグ、project、配布EXEの版数がずれた成果物をZIPへ進めない。
+$mainExePath = Join-Path $packageDir "$assemblyName.exe"
+if (-not (Test-Path -LiteralPath $mainExePath)) {
+    throw "配布用 exe が見つかりません: $mainExePath"
+}
+
+$versionConsistencyScriptPath = Join-Path $repoRoot "scripts\assert_release_version_consistency.ps1"
+& $versionConsistencyScriptPath `
+    -ProjectPath $projectFullPath `
+    -MainExePath $mainExePath `
+    -VersionLabel $versionLabelNormalized `
+    -AllowNonReleaseLabel
+
 # rescue worker は完成済み artifact を rescue-worker 配下へ同梱し、利用者が別 asset を探さなくて済む形にする。
 $workerArtifactSource = Publish-RescueWorkerArtifactIntoPackage `
     -PackageDir $packageDir `
@@ -707,11 +720,6 @@ if (-not (Test-Path -LiteralPath $verifyWorkerLockScriptPath)) {
 & $verifyWorkerLockScriptPath -PackageDir $packageDir
 if ($LASTEXITCODE -ne 0) {
     throw "worker lock verification に失敗しました。"
-}
-
-$mainExePath = Join-Path $packageDir "$assemblyName.exe"
-if (-not (Test-Path -LiteralPath $mainExePath)) {
-    throw "配布用 exe が見つかりません: $mainExePath"
 }
 
 $hash = Get-FileHash -LiteralPath $mainExePath -Algorithm SHA256

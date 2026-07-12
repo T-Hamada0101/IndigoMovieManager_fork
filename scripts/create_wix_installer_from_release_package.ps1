@@ -181,7 +181,6 @@ function Resolve-PackageDir {
 $scriptPath = $MyInvocation.MyCommand.Path
 $repoRoot = Get-RepoRoot -ScriptPath $scriptPath
 $installerLanguage = Resolve-InstallerLanguage -Culture $Culture
-$dotNetDesktopRuntime = Get-DotNetDesktopRuntimeMetadata -MajorVersion 8 -Platform "x64"
 
 if ([string]::IsNullOrWhiteSpace($VersionLabel)) {
     $VersionLabel = "v$(Get-ProjectAppVersion -RepoRoot $repoRoot)"
@@ -202,6 +201,16 @@ if (-not (Test-Path -LiteralPath $mainExePath)) {
 # 実際に包む package の exe 版数へ合わせる。
 $appVersion = Get-PackageAppVersion -MainExePath $mainExePath
 $productVersion = Convert-ToThreePartVersion -Version $appVersion
+
+# PackageDir が過去版でも扱えるようcheckout中のprojectとは比べず、成果物ラベルとEXE実体を照合する。
+$versionConsistencyScriptPath = Join-Path $repoRoot "scripts\assert_release_version_consistency.ps1"
+& $versionConsistencyScriptPath `
+    -MainExePath $mainExePath `
+    -VersionLabel $VersionLabel `
+    -AllowNonReleaseLabel
+
+# 版数不整合を先に止めてから、remote prerequisite の取得へ進む。
+$dotNetDesktopRuntime = Get-DotNetDesktopRuntimeMetadata -MajorVersion 8 -Platform "x64"
 
 $workerLockPath = Join-Path $packageDirFullPath "rescue-worker.lock.json"
 if (-not (Test-Path -LiteralPath $workerLockPath)) {
