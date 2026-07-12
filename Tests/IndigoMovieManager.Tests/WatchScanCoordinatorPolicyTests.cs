@@ -36,6 +36,79 @@ public sealed class WatchScanCoordinatorPolicyTests
     }
 
     [Test]
+    public void TryHandleWatchFolderMoviePreCheck_zero_byte5件は全件marker処理しsampleだけ3件へ制限する()
+    {
+        MainWindow window = CreateMainWindowForCoordinatorTests();
+        MainWindow.WatchScanSkipLogAggregation aggregation = new();
+        List<string> markerPaths = [];
+        MainWindow.WatchFolderScanContext context = new()
+        {
+            AllowMissingTabAutoEnqueue = true,
+            AutoEnqueueTabIndex = 3,
+            SkipLogAggregation = aggregation,
+            CreateErrorMarkerForSkippedMovieAction = (path, _, _) => markerPaths.Add(path),
+        };
+
+        for (int index = 1; index <= 5; index++)
+        {
+            string moviePath = $@"E:\Movies\zero-{index}.mp4";
+            bool handled = window.TryHandleWatchFolderMoviePreCheck(
+                context,
+                moviePath,
+                0,
+                new MainWindow.WatchFolderMoviePreCheckDecision(
+                    "skip_zero_byte",
+                    ShouldNotifyFolderHit: false,
+                    ShouldContinueProcessing: false,
+                    IsZeroByteMovie: true
+                ),
+                new MainWindow.WatchFolderScanMovieResult()
+            );
+
+            Assert.That(handled, Is.True);
+        }
+
+        Assert.That(markerPaths, Has.Count.EqualTo(5));
+        Assert.That(
+            aggregation.BuildSummaryLogFields(),
+            Is.EqualTo("skip_counts=skip_zero_byte:5")
+        );
+        Assert.That(aggregation.ShouldWriteSample("skip_failure_state"), Is.True);
+    }
+
+    [Test]
+    public void BuildWatchFolderScanRuntimeContextsは走査ごとに集約器を新規生成して3contextで共有する()
+    {
+        string source = ReadRepoSource("Watcher", "MainWindow.WatchFolderScanContextFactory.cs");
+        string method = ExtractMethodSource(source, "BuildWatchFolderScanRuntimeContexts(");
+
+        Assert.That(method, Does.Contain("WatchScanSkipLogAggregation skipLogAggregation = new();"));
+        Assert.That(method, Does.Contain("pendingMovieFlushContext.SkipLogAggregation = skipLogAggregation;"));
+        Assert.That(method, Does.Contain("folderScanContext.SkipLogAggregation = skipLogAggregation;"));
+    }
+
+    [Test]
+    public void zero_byte実入口はsample可否を判定してからログ文字列を生成する()
+    {
+        string source = ReadRepoSource("Watcher", "MainWindow.WatchScanCoordinator.cs");
+        string method = ExtractMethodSource(
+            source,
+            "internal bool TryHandleWatchFolderMoviePreCheck("
+        );
+        int sampleGuardIndex = method.IndexOf(
+            "context.SkipLogAggregation?.ShouldWriteSample(\"skip_zero_byte\")",
+            StringComparison.Ordinal
+        );
+        int messageIndex = method.IndexOf(
+            "$\"skip zero-byte movie before queue:",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(sampleGuardIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(messageIndex, Is.GreaterThan(sampleGuardIndex));
+    }
+
+    [Test]
     public void EvaluateWatchFolderMoviePreCheck_visible_only_gateはfirst_hit前に止める()
     {
         MainWindow.WatchFolderMoviePreCheckDecision result =
@@ -1213,6 +1286,7 @@ public sealed class WatchScanCoordinatorPolicyTests
     public void TryHandleWatchFolderMoviePreCheck_zero_byteなら通知とerror_markerをまとめて処理する()
     {
         MainWindow window = CreateMainWindowForCoordinatorTests();
+        MainWindow.WatchScanSkipLogAggregation aggregation = new();
         int notifyCount = 0;
         (string Path, int TabIndex, string Reason)? capturedErrorMarker = null;
         MainWindow.WatchFolderScanMovieResult result = new();
@@ -1222,6 +1296,7 @@ public sealed class WatchScanCoordinatorPolicyTests
             NotifyFolderFirstHit = () => notifyCount++,
             AllowMissingTabAutoEnqueue = true,
             AutoEnqueueTabIndex = 3,
+            SkipLogAggregation = aggregation,
             CreateErrorMarkerForSkippedMovieAction = (path, tabIndex, reason) =>
                 capturedErrorMarker = (path, tabIndex, reason),
         };
@@ -1247,6 +1322,10 @@ public sealed class WatchScanCoordinatorPolicyTests
         Assert.That(capturedErrorMarker?.Path, Is.EqualTo(@"E:\Movies\sample.mp4"));
         Assert.That(capturedErrorMarker?.TabIndex, Is.EqualTo(3));
         Assert.That(capturedErrorMarker?.Reason, Is.EqualTo("zero-byte movie(folder scan)"));
+        Assert.That(
+            aggregation.BuildSummaryLogFields(),
+            Is.EqualTo("skip_counts=skip_zero_byte:1")
+        );
     }
 
     [Test]
@@ -2009,7 +2088,9 @@ public sealed class WatchScanCoordinatorPolicyTests
         MainWindow window = CreateMainWindowForCoordinatorTests();
         string moviePath = @"Z:\missing\sample.mp4";
         MainWindow.WatchPendingNewMovieFlushContext pendingContext = CreatePendingFlushContext();
+        MainWindow.WatchScanSkipLogAggregation aggregation = new();
         pendingContext.CheckFolder = @"Z:\missing";
+        pendingContext.SkipLogAggregation = aggregation;
         MainWindow.WatchScannedMovieContext context = new()
         {
             SnapshotDbFullPath = @"D:\Db\Main.wb",
@@ -2039,6 +2120,7 @@ public sealed class WatchScanCoordinatorPolicyTests
         Assert.That(result.Outcome, Is.EqualTo("skip_movieinfo_exception"));
         Assert.That(result.HasFolderUpdate, Is.False);
         Assert.That(pendingContext.PendingNewMovies, Is.Empty);
+        Assert.That(aggregation.BuildSummaryLogFields(), Is.EqualTo("skip_counts=none"));
     }
 
     [Test]
@@ -2643,6 +2725,40 @@ public sealed class WatchScanCoordinatorPolicyTests
     private static MainWindow CreateMainWindowForCoordinatorTests()
     {
         return (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+    }
+
+    private static string ReadRepoSource(
+        string directoryName,
+        string fileName,
+        [CallerFilePath] string callerFilePath = ""
+    )
+    {
+        DirectoryInfo repoRoot = new FileInfo(callerFilePath).Directory!.Parent!.Parent!;
+        return File.ReadAllText(Path.Combine(repoRoot.FullName, directoryName, fileName));
+    }
+
+    private static string ExtractMethodSource(string source, string signature)
+    {
+        int signatureIndex = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.That(signatureIndex, Is.GreaterThanOrEqualTo(0), $"method not found: {signature}");
+        int bodyStart = source.IndexOf('{', signatureIndex);
+        Assert.That(bodyStart, Is.GreaterThanOrEqualTo(0), $"method body not found: {signature}");
+
+        int depth = 0;
+        for (int index = bodyStart; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}' && --depth == 0)
+            {
+                return source[signatureIndex..(index + 1)];
+            }
+        }
+
+        Assert.Fail($"method end not found: {signature}");
+        return "";
     }
 
     private static bool ReadNextSuppressionState(Queue<bool> suppressionStates)
