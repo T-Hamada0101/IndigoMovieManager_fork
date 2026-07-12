@@ -9,12 +9,26 @@
     InstallerVersion="500">
 
     <!-- v1 は per-user install を固定し、verify 済み package をそのまま payload にする。 -->
+    <!-- Bundleだけをアプリ一覧へ表示し、内包MSIの単独登録は常に非表示にする。 -->
+    <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
     <MajorUpgrade DowngradeErrorMessage="!(loc.Product_DowngradeError)" />
     <MediaTemplate EmbedCab="yes" />
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="IMM_PROGRAMS_DIR" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="$(var.InstallDirName)">
+          <Component Id="LegacyDockLayoutCleanup" Guid="*">
+            <!-- 旧版が実行フォルダへ保存したレイアウトだけを除去し、新しいユーザーデータ領域は守る。 -->
+            <RemoveFile Id="RemoveLegacyDockLayouts" Name="layout*.xml" On="uninstall" />
+            <RemoveFolder Id="RemoveInstallFolderAfterCleanup" On="uninstall" />
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+              Name="LegacyDockLayoutCleanup"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+          </Component>
         </Directory>
       </Directory>
     </StandardDirectory>
@@ -28,7 +42,8 @@
             Name="$(var.ProductName)"
             Description="$(var.ProductName)"
             Target="[INSTALLFOLDER]$(var.MainExeName)"
-            WorkingDirectory="INSTALLFOLDER" />
+            WorkingDirectory="INSTALLFOLDER"
+            Advertise="no" />
           <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
           <RegistryValue
             Root="HKCU"
@@ -44,6 +59,7 @@
     <Feature Id="MainFeature" Title="$(var.ProductName)" Level="1">
       <ComponentGroupRef Id="ApplicationFiles" />
       <ComponentRef Id="ApplicationStartMenuShortcut" />
+      <ComponentRef Id="LegacyDockLayoutCleanup" />
     </Feature>
   </Package>
 

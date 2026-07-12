@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
@@ -25,13 +26,20 @@ namespace IndigoMovieManager
         {
             try
             {
-                if (await TryRestoreDockLayoutFromFile(DockLayoutFileName, backupInvalidLayout: true))
+                await Task.Run(EnsureDockLayoutStorageReady).ConfigureAwait(false);
+
+                if (
+                    await TryRestoreDockLayoutFromFile(
+                        DockLayoutStorage.LayoutFilePath,
+                        backupInvalidLayout: true
+                    )
+                )
                 {
                     return;
                 }
 
                 _ = await TryRestoreDockLayoutFromFile(
-                    DefaultDockLayoutFileName,
+                    DockLayoutStorage.DefaultLayoutFilePath,
                     backupInvalidLayout: false
                 );
             }
@@ -41,6 +49,33 @@ namespace IndigoMovieManager
                     "layout",
                     $"layout restore task failed. reason={ex.GetType().Name}: {ex.Message}"
                 );
+            }
+        }
+
+        private static void EnsureDockLayoutStorageReady()
+        {
+            try
+            {
+                IReadOnlyList<string> migratedFiles = DockLayoutStorage.MigrateLegacyFiles(
+                    AppContext.BaseDirectory,
+                    AppLocalDataPaths.LayoutsPath
+                );
+                if (migratedFiles.Count > 0)
+                {
+                    DebugRuntimeLog.Write(
+                        "layout",
+                        $"legacy layout migrated. files='{string.Join(",", migratedFiles)}'"
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                // 移行に失敗しても起動は止めず、新しい保存先で既定レイアウトを使う。
+                DebugRuntimeLog.Write(
+                    "layout",
+                    $"legacy layout migration failed. reason={ex.GetType().Name}: {ex.Message}"
+                );
+                Directory.CreateDirectory(AppLocalDataPaths.LayoutsPath);
             }
         }
 
@@ -534,6 +569,12 @@ namespace IndigoMovieManager
         private void SaveDockLayoutToFile(string layoutFilePath)
         {
             EnsureRequiredBottomTabsPresent();
+            string directoryPath = Path.GetDirectoryName(layoutFilePath);
+            if (!string.IsNullOrWhiteSpace(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
             XmlLayoutSerializer layoutSerializer = new(uxDockingManager);
             using var writer = new StreamWriter(layoutFilePath);
             layoutSerializer.Serialize(writer);

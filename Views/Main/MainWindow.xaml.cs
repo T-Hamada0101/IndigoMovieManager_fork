@@ -75,8 +75,6 @@ namespace IndigoMovieManager
         private const int EverythingWatchPollMediumThreshold = 50;
         private const int EverythingWatchPollLowUpdateThreshold = 1;
         private const int EverythingWatchPollCalmCyclesThreshold = 3;
-        private const string DockLayoutFileName = "layout.xml";
-        private const string DefaultDockLayoutFileName = "layout.default.xml";
         private const string ExtensionBottomTabContentId = "ToolExtension";
         private int _mainWindowClosingStarted;
         private const string BookmarkBottomTabContentId = "ToolBookmark";

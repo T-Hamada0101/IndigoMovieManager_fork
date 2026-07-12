@@ -23,7 +23,9 @@
   <String Id="OptionsOkButton" Value="OK(&amp;O)" />
   <String Id="OptionsCancelButton" Value="キャンセル(&amp;C)" />
   <String Id="ProgressHeader" Value="セットアップの進行状況" />
+  <String Id="ProgressUninstallHeader" Value="アンインストールしています" />
   <String Id="ProgressLabel" Value="処理中:" />
+  <String Id="ProgressUninstallLabel" Value="削除中:" />
   <String Id="OverallProgressPackageText" Value="初期化しています..." />
   <String Id="ProgressCancelButton" Value="キャンセル(&amp;C)" />
   <String Id="ModifyHeader" Value="セットアップの変更" />

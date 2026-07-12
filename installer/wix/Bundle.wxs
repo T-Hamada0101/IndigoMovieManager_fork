@@ -20,7 +20,8 @@
       <bal:WixStandardBootstrapperApplication
         LicenseUrl="https://opensource.org/licenses/MIT"
         LocalizationFile="Localization\Bundle\$(var.InstallerCulture).wxl"
-        Theme="hyperlinkLicense" />
+        Theme="hyperlinkLicense"
+        ThemeFile="Themes\IndigoHyperlinkTheme.xml" />
     </BootstrapperApplication>
 
     <!-- net8 desktop app がそのまま起動できるかだけを先に見る。 -->
@@ -44,7 +45,7 @@
         InstallArguments="/install /quiet /norestart"
         DetectCondition="DotNetDesktopRuntimeVersion AND DotNetDesktopRuntimeVersion >= v$(var.DotNetDesktopRuntimeMinimumVersion)">
         <ExePackagePayload
-          Name="redist/$(var.DotNetDesktopRuntimeFileName)"
+          Name="redist\$(var.DotNetDesktopRuntimeFileName)"
           DownloadUrl="$(var.DotNetDesktopRuntimeDownloadUrl)"
           Hash="$(var.DotNetDesktopRuntimeHash)"
           Size="$(var.DotNetDesktopRuntimeSize)"

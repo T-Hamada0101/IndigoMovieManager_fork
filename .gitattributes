@@ -57,6 +57,9 @@
 *.yaml    text eol=lf
 *.ps1     text eol=lf
 *.js      text eol=lf
+*.wxs     text eol=lf
+*.wxl     text eol=lf
+installer/wix/Themes/*.xml text eol=lf
 .gitattributes text eol=lf
 # Binary artifacts (Git LFS)
 tools/ffmpeg/ffmpeg.exe            filter=lfs diff=lfs merge=lfs -text

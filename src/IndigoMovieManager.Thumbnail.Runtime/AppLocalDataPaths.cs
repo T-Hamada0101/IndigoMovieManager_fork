@@ -10,6 +10,7 @@ namespace IndigoMovieManager
         public const string QueueDbFolderName = "QueueDb";
         public const string FailureDbFolderName = "FailureDb";
         public const string RescueWorkerSessionsFolderName = "RescueWorkerSessions";
+        public const string LayoutsFolderName = "Layouts";
 
         public static string RootPath =>
             Path.Combine(
@@ -25,5 +26,7 @@ namespace IndigoMovieManager
 
         public static string RescueWorkerSessionsPath =>
             Path.Combine(RootPath, RescueWorkerSessionsFolderName);
+
+        public static string LayoutsPath => Path.Combine(RootPath, LayoutsFolderName);
     }
 }

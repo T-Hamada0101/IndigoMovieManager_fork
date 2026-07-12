@@ -255,8 +255,8 @@ namespace IndigoMovieManager
                     QueueApplicationSettingsSave("main-window-closing");
 
                     ShowUiHangShutdownStatus("終了処理: レイアウトを保存中");
-                    SaveDockLayoutToFile(DockLayoutFileName);
-                    SaveDockLayoutToFile(DefaultDockLayoutFileName);
+                    SaveDockLayoutToFile(DockLayoutStorage.LayoutFilePath);
+                    SaveDockLayoutToFile(DockLayoutStorage.DefaultLayoutFilePath);
 
                     if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
                     {
