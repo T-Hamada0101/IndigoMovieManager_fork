@@ -1,8 +1,9 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-07-11
+最終更新日: 2026-07-12
 
 変更概要:
+- startup partial first pageの`BuildMovieRecordBulkBuildCache`を監査し、5タブ＋詳細ディレクトリの全件列挙を起動前段から除去した。各ページの最大200/300件について現行名・旧名候補だけを確認し、同じcacheへ増分追記してcontinuationで再利用する。`startup page load end`は`db_read_ms`、用途別`bulk_cache_*_ms`、候補/一致数、`row_convert_ms`、`total_ms`を持つ。表示互換、error marker、tags、source image、DB非変更は維持し、focused 5件とRelease x64 buildは成功。コピーDBで`startup open begin`からfirst pageまでの再採取を完了条件とする。
 - 再構築した長期ロードマップに合わせ、直近着手を主要8シナリオの同一Release run採取へ更新した。処理時間だけでなく、入力受理、選択 / focus / scroll保持、blank / ちらつき、後着巻き戻りをscenario scorecardで確認し、支配要因を最大3件へ絞ってから最上位1件を実装する。
 - watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定した。`plan_reason` と並べて実機ログで読める契約を source policy で守り、`dirty-fields-unsafe:*` の実頻度を見るまで Hash / MovieName などを安全扱いへ広げない。
 - `CreateWatcher` の `watcher creation plan built` / `watcher creation apply summary` は source policy で固定済み。2026-06-18 の Release 実機ログでは `_Anime - コピー.wb` で `elapsed_ms=150`、`watch_table_load_ms=3`、`registration_ms=6`、`failed=0` だったため、このDBでは watcher 作成を削らない。

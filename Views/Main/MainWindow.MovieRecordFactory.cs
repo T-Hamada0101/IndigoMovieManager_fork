@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using IndigoMovieManager.Data;
 using IndigoMovieManager.DB;
 using IndigoMovieManager.Infrastructure;
 using IndigoMovieManager.Thumbnail;
@@ -34,6 +35,13 @@ namespace IndigoMovieManager
             public required HashSet<string>[] ThumbnailFileNamesByTab { get; init; }
             public required HashSet<string> DetailThumbnailFileNames { get; init; }
         }
+
+        private readonly record struct StartupBulkCacheWarmResult(
+            long ElapsedMs,
+            int CandidateCount,
+            int HitCount,
+            long[] ComponentElapsedMs
+        );
 
         private sealed class MovieRecordBulkBuildMetrics
         {
@@ -322,6 +330,130 @@ namespace IndigoMovieManager
                 DetailThumbnailFileNames = BuildThumbnailFileNameLookup(
                     context.DetailThumbnailOutPath
                 ),
+            };
+        }
+
+        /// <summary>
+        /// 起動ページでは全ディレクトリを列挙せず、表示対象の現行名・旧名だけを増分確認する。
+        /// 同じキャッシュへ追記するため、continuationでも確認済み結果をそのまま再利用できる。
+        /// </summary>
+        private static StartupBulkCacheWarmResult WarmMovieRecordBulkBuildCacheForStartupPage(
+            MovieRecordBulkBuildCache cache,
+            MovieRecordBulkBuildContext context,
+            MainDbMovieReadItemResult[] items
+        )
+        {
+            Stopwatch totalStopwatch = Stopwatch.StartNew();
+            long[] componentElapsedMs = new long[context.ThumbnailOutPaths.Length + 1];
+            int candidateCount = 0;
+            int hitCount = 0;
+
+            for (int index = 0; index < context.ThumbnailOutPaths.Length; index++)
+            {
+                Stopwatch componentStopwatch = Stopwatch.StartNew();
+                WarmThumbnailFileNamesForStartupItems(
+                    context.ThumbnailOutPaths[index],
+                    cache.ThumbnailFileNamesByTab[index],
+                    items,
+                    ref candidateCount,
+                    ref hitCount
+                );
+                componentElapsedMs[index] = componentStopwatch.ElapsedMilliseconds;
+            }
+
+            Stopwatch detailStopwatch = Stopwatch.StartNew();
+            WarmThumbnailFileNamesForStartupItems(
+                context.DetailThumbnailOutPath,
+                cache.DetailThumbnailFileNames,
+                items,
+                ref candidateCount,
+                ref hitCount
+            );
+            componentElapsedMs[^1] = detailStopwatch.ElapsedMilliseconds;
+            totalStopwatch.Stop();
+
+            return new StartupBulkCacheWarmResult(
+                totalStopwatch.ElapsedMilliseconds,
+                candidateCount,
+                hitCount,
+                componentElapsedMs
+            );
+        }
+
+        private static void WarmThumbnailFileNamesForStartupItems(
+            string thumbnailOutPath,
+            HashSet<string> lookup,
+            MainDbMovieReadItemResult[] items,
+            ref int candidateCount,
+            ref int hitCount
+        )
+        {
+            if (string.IsNullOrWhiteSpace(thumbnailOutPath) || items == null)
+            {
+                return;
+            }
+
+            foreach (MainDbMovieReadItemResult item in items)
+            {
+                AddStartupThumbnailCandidate(
+                    thumbnailOutPath,
+                    lookup,
+                    ThumbnailPathResolver.BuildThumbnailFileName(item.MoviePath, item.Hash),
+                    ref candidateCount,
+                    ref hitCount
+                );
+                if (!string.IsNullOrWhiteSpace(item.MovieName))
+                {
+                    AddStartupThumbnailCandidate(
+                        thumbnailOutPath,
+                        lookup,
+                        ThumbnailPathResolver.BuildThumbnailFileName(item.MovieName, item.Hash),
+                        ref candidateCount,
+                        ref hitCount
+                    );
+                }
+            }
+        }
+
+        private static void AddStartupThumbnailCandidate(
+            string thumbnailOutPath,
+            HashSet<string> lookup,
+            string fileName,
+            ref int candidateCount,
+            ref int hitCount
+        )
+        {
+            if (lookup.Contains(fileName))
+            {
+                return;
+            }
+
+            candidateCount++;
+            if (File.Exists(Path.Combine(thumbnailOutPath, fileName)))
+            {
+                lookup.Add(fileName);
+                hitCount++;
+            }
+        }
+
+        private static MovieRecordBulkBuildCache CreateEmptyMovieRecordBulkBuildCache(
+            MovieRecordBulkBuildContext context
+        )
+        {
+            HashSet<string>[] thumbnailFileNamesByTab = new HashSet<string>[
+                context.ThumbnailOutPaths.Length
+            ];
+            for (int index = 0; index < thumbnailFileNamesByTab.Length; index++)
+            {
+                thumbnailFileNamesByTab[index] = new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase
+                );
+            }
+
+            return new MovieRecordBulkBuildCache
+            {
+                ThumbnailFileNamesByTab = thumbnailFileNamesByTab,
+                DetailThumbnailFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             };
         }
 

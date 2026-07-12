@@ -169,9 +169,9 @@ namespace IndigoMovieManager
                 }
 
                 MovieRecordBulkBuildContext bulkContext = CaptureMovieRecordBulkBuildContext();
-                MovieRecordBulkBuildCache bulkCache = await Task.Run(
-                    () => BuildMovieRecordBulkBuildCache(bulkContext),
-                    session.CancellationToken
+                // first page前は全サムネイルフォルダを列挙せず、各ページの候補だけを増分確認する。
+                MovieRecordBulkBuildCache bulkCache = CreateEmptyMovieRecordBulkBuildCache(
+                    bulkContext
                 );
                 StartupFeedPage firstPage = await LoadStartupFeedPageAsync(
                     request,
@@ -618,6 +618,7 @@ namespace IndigoMovieManager
             cancellationToken.ThrowIfCancellationRequested();
 
             int pageSize = pageIndex == 0 ? request.FirstPageSize : request.AppendPageSize;
+            Stopwatch pageStopwatch = Stopwatch.StartNew();
 
             DebugRuntimeLog.Write(
                 "db",
@@ -631,14 +632,37 @@ namespace IndigoMovieManager
                 request.FirstPageSize,
                 request.AppendPageSize
             );
+            Stopwatch dbReadStopwatch = Stopwatch.StartNew();
             MainDbMovieReadPageResult sourcePage = await Task.Run(
-                () => _mainDbMovieReadFacade.ReadStartupPage(dataRequest, pageIndex),
-                cancellationToken
-            );
+                    () => _mainDbMovieReadFacade.ReadStartupPage(dataRequest, pageIndex),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+            dbReadStopwatch.Stop();
             cancellationToken.ThrowIfCancellationRequested();
+            StartupBulkCacheWarmResult cacheWarmResult = await Task.Run(
+                    () =>
+                        WarmMovieRecordBulkBuildCacheForStartupPage(
+                            bulkCache,
+                            bulkContext,
+                            sourcePage.Items
+                        ),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            Stopwatch convertStopwatch = Stopwatch.StartNew();
             MovieRecords[] items = await Task.Run(
-                () => BuildStartupMovieRecords(sourcePage.Items, bulkContext, bulkCache),
-                cancellationToken
+                    () => BuildStartupMovieRecords(sourcePage.Items, bulkContext, bulkCache),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+            convertStopwatch.Stop();
+            pageStopwatch.Stop();
+
+            DebugRuntimeLog.Write(
+                "db",
+                $"startup page load end: page={pageIndex} take={pageSize} rows={sourcePage.Items.Length} db_read_ms={dbReadStopwatch.ElapsedMilliseconds} bulk_cache_ms={cacheWarmResult.ElapsedMs} bulk_cache_candidates={cacheWarmResult.CandidateCount} bulk_cache_hits={cacheWarmResult.HitCount} bulk_cache_small_ms={cacheWarmResult.ComponentElapsedMs[0]} bulk_cache_big_ms={cacheWarmResult.ComponentElapsedMs[1]} bulk_cache_grid_ms={cacheWarmResult.ComponentElapsedMs[2]} bulk_cache_list_ms={cacheWarmResult.ComponentElapsedMs[3]} bulk_cache_big10_ms={cacheWarmResult.ComponentElapsedMs[4]} bulk_cache_detail_ms={cacheWarmResult.ComponentElapsedMs[5]} row_convert_ms={convertStopwatch.ElapsedMilliseconds} total_ms={pageStopwatch.ElapsedMilliseconds}"
             );
 
             return new StartupFeedPage(
@@ -1067,6 +1091,8 @@ namespace IndigoMovieManager
             ];
             string[] thumbPath = new string[thumbErrorPath.Length];
             string imagesDirectoryPath = bulkContext.ImagesDirectoryPath;
+            // 管理サムネ欠損時の同名source image探索は、6用途で1回だけ共有する。
+            LazyThumbnailSourceImagePathResolver sourceImageResolver = new(source.MoviePath);
 
             for (int i = 0; i < thumbErrorPath.Length; i++)
             {
@@ -1076,7 +1102,8 @@ namespace IndigoMovieManager
                     source.MoviePath,
                     source.MovieName,
                     source.Hash,
-                    Path.Combine(imagesDirectoryPath, thumbErrorPath[i])
+                    Path.Combine(imagesDirectoryPath, thumbErrorPath[i]),
+                    sourceImageResolver
                 );
             }
 
@@ -1086,7 +1113,8 @@ namespace IndigoMovieManager
                 source.MoviePath,
                 source.MovieName,
                 source.Hash,
-                Path.Combine(imagesDirectoryPath, thumbErrorPath[2])
+                Path.Combine(imagesDirectoryPath, thumbErrorPath[2]),
+                sourceImageResolver
             );
 
             List<string> tagArray = [];

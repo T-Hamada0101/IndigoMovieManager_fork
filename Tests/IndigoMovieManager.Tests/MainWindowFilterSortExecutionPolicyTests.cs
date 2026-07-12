@@ -689,6 +689,48 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
     }
 
     [Test]
+    public void StartupFirstPage_BulkCacheは全件列挙せずページ対象を増分再利用する()
+    {
+        string startupSource = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
+        string factorySource = GetRepoText(
+            "Views",
+            "Main",
+            "MainWindow.MovieRecordFactory.cs"
+        );
+        string openMethod = GetMethodBlock(startupSource, "private async Task RunStartupDbOpenAsync(");
+        string loadMethod = GetMethodBlock(
+            startupSource,
+            "private async Task<StartupFeedPage> LoadStartupFeedPageAsync("
+        );
+        string warmMethod = GetMethodBlock(
+            factorySource,
+            "private static StartupBulkCacheWarmResult WarmMovieRecordBulkBuildCacheForStartupPage("
+        );
+        string candidateWarmMethod = GetMethodBlock(
+            factorySource,
+            "private static void WarmThumbnailFileNamesForStartupItems("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(openMethod, Does.Contain("CreateEmptyMovieRecordBulkBuildCache("));
+            Assert.That(openMethod, Does.Not.Contain("BuildMovieRecordBulkBuildCache("));
+            Assert.That(loadMethod, Does.Contain("sourcePage.Items"));
+            Assert.That(loadMethod, Does.Contain("WarmMovieRecordBulkBuildCacheForStartupPage("));
+            Assert.That(loadMethod, Does.Contain("bulk_cache_small_ms="));
+            Assert.That(loadMethod, Does.Contain("bulk_cache_detail_ms="));
+            Assert.That(warmMethod, Does.Contain("WarmThumbnailFileNamesForStartupItems("));
+            Assert.That(warmMethod, Does.Not.Contain("BuildThumbnailFileNameLookup("));
+            Assert.That(candidateWarmMethod, Does.Contain("AddStartupThumbnailCandidate("));
+            Assert.That(factorySource, Does.Contain("File.Exists(Path.Combine(thumbnailOutPath, fileName))"));
+            Assert.That(
+                startupSource,
+                Does.Contain("LazyThumbnailSourceImagePathResolver sourceImageResolver = new(source.MoviePath);")
+            );
+        });
+    }
+
+    [Test]
     public void MovieRecordFactory_同名画像probeは行単位で最大1回だけ共有する()
     {
         string source = GetRepoText("Views", "Main", "MainWindow.MovieRecordFactory.cs");
