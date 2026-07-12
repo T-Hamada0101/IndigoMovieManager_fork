@@ -1380,6 +1380,58 @@ public sealed class WatchScanCoordinatorPolicyTests
     }
 
     [Test]
+    public async Task ProcessScannedMovieAsync_sample上限後もfailure_state詳細をOutcomeへ残す()
+    {
+        MainWindow window = CreateMainWindowForCoordinatorTests();
+        string moviePath = @"E:\Movies\sample.mp4";
+        MainWindow.WatchPendingNewMovieFlushContext pendingContext = CreatePendingFlushContext();
+        pendingContext.SkipLogAggregation = new MainWindow.WatchScanSkipLogAggregation();
+        for (int index = 0; index < 3; index++)
+        {
+            pendingContext.SkipLogAggregation.ShouldWriteSample("skip_failure_state");
+        }
+
+        MainWindow.WatchScannedMovieContext context = new()
+        {
+            SnapshotDbFullPath = @"D:\Db\Main.wb",
+            SnapshotTabIndex = 2,
+            ExistingMovieByPath = new Dictionary<string, WatchMainDbMovieSnapshot>(
+                StringComparer.OrdinalIgnoreCase
+            )
+            {
+                [moviePath] = new WatchMainDbMovieSnapshot(10, "hash-10", "", 0, 0),
+            },
+            ExistingViewMoviePaths = MainWindow.BuildMoviePathLookup([moviePath]),
+            DisplayedMoviePaths = MainWindow.BuildMoviePathLookup([moviePath]),
+            SearchKeyword = "",
+            AllowViewConsistencyRepair = true,
+            UseIncrementalUiMode = true,
+            AllowMissingTabAutoEnqueue = true,
+            AutoEnqueueTabIndex = 2,
+            ThumbnailOutPath = @"E:\Thumbs",
+            ExistingThumbnailFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ThumbnailPathResolver.BuildErrorMarkerFileName(moviePath),
+            },
+            OpenRescueRequestKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            PendingMovieFlushContext = pendingContext,
+            ShouldSuppressWatchWork = () => false,
+        };
+
+        MainWindow.WatchScannedMovieProcessResult result = await window.ProcessScannedMovieAsync(
+            context,
+            moviePath,
+            "sample"
+        );
+
+        Assert.That(result.Outcome, Is.EqualTo("skip_failure_state:error-marker"));
+        Assert.That(
+            pendingContext.SkipLogAggregation.BuildSummaryLogFields(),
+            Is.EqualTo("skip_counts=skip_failure_state:4")
+        );
+    }
+
+    [Test]
     public async Task ProcessScannedMovieAsync_new_movieのDB登録後suppressionならcurrent_itemをdeferredへ戻す()
     {
         MainWindow window = CreateMainWindowForCoordinatorTests();

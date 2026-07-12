@@ -1422,7 +1422,8 @@ namespace IndigoMovieManager
                     );
                 }
 
-                result.Outcome = "skip_failure_state";
+                result.Outcome =
+                    $"skip_failure_state:{DescribeMissingThumbnailAutoEnqueueBlockReason(blockReason)}";
                 if (
                     context.PendingMovieFlushContext?.SkipLogAggregation?.ShouldWriteSample(
                         "skip_failure_state"
