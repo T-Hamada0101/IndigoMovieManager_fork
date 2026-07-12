@@ -7,6 +7,7 @@ param(
     [string]$ReleaseTag = "",
     [string]$DestinationPath = "artifacts/private-engine-packages/Release",
     [string]$GitHubToken = "",
+    [switch]$AnonymousGitHub,
     [long]$RunId = 0
 )
 
@@ -42,6 +43,11 @@ function New-GitHubHeaders {
 
 function Get-GitHubToken {
     param([string]$ExplicitToken)
+
+    # worker同期と同じく、公開ミラーでは環境変数tokenを明示的に無視する。
+    if ($AnonymousGitHub) {
+        return ""
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($ExplicitToken)) {
         return $ExplicitToken.Trim()

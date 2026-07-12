@@ -7,6 +7,7 @@ param(
     [string]$ReleaseTag = "",
     [string]$DestinationPath = "artifacts/rescue-worker/publish/Release-win-x64",
     [string]$GitHubToken = "",
+    [switch]$AnonymousGitHub,
     [long]$RunId = 0
 )
 
@@ -41,6 +42,11 @@ function New-GitHubHeaders {
 
 function Get-GitHubToken {
     param([string]$ExplicitToken)
+
+    # 公開ミラーでは、期限切れPrivate tokenを環境変数から拾わず匿名APIへ固定する。
+    if ($AnonymousGitHub) {
+        return ""
+    }
 
     # CI では secret 注入を優先し、ローカルでは既存 git credential を最後の fallback にする。
     if (-not [string]::IsNullOrWhiteSpace($ExplicitToken)) {

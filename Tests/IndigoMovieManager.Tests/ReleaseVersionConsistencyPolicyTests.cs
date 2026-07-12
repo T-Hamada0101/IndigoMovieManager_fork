@@ -71,6 +71,8 @@ public sealed class ReleaseVersionConsistencyPolicyTests
     public void 公開ミラー同期ではPrivateTokenを送らない()
     {
         string source = ReadRepoFile(".github", "workflows", "github-release-package.yml");
+        string workerSync = ReadRepoFile("scripts", "sync_private_engine_worker_artifact.ps1");
+        string packageSync = ReadRepoFile("scripts", "sync_private_engine_packages.ps1");
         int guardedTokenCount = source.Split(
             "if ($needsToken)",
             StringSplitOptions.None
@@ -81,6 +83,24 @@ public sealed class ReleaseVersionConsistencyPolicyTests
             Assert.That(guardedTokenCount, Is.GreaterThanOrEqualTo(2));
             Assert.That(source, Does.Contain("公開ミラーへ期限切れPrivate tokenを送ると"));
             Assert.That(source, Does.Contain("公開ミラーは匿名API"));
+            Assert.That(
+                source.Split("-AnonymousGitHub", StringSplitOptions.None).Length - 1,
+                Is.GreaterThanOrEqualTo(2)
+            );
+            Assert.That(workerSync, Does.Contain("[switch]$AnonymousGitHub"));
+            Assert.That(
+                workerSync.IndexOf("if ($AnonymousGitHub)", StringComparison.Ordinal),
+                Is.LessThan(
+                    workerSync.IndexOf("$env:IMM_PRIVATE_ENGINE_TOKEN", StringComparison.Ordinal)
+                )
+            );
+            Assert.That(packageSync, Does.Contain("[switch]$AnonymousGitHub"));
+            Assert.That(
+                packageSync.IndexOf("if ($AnonymousGitHub)", StringComparison.Ordinal),
+                Is.LessThan(
+                    packageSync.IndexOf("$env:IMM_PRIVATE_ENGINE_TOKEN", StringComparison.Ordinal)
+                )
+            );
         });
     }
 

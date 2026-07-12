@@ -166,6 +166,9 @@ jobs:
               if ($needsToken) {
                 $syncArguments += @("-GitHubToken", $env:IMM_PRIVATE_ENGINE_TOKEN)
               }
+              else {
+                $syncArguments += "-AnonymousGitHub"
+              }
 
               if (-not [string]::IsNullOrWhiteSpace($ReleaseTagValue)) {
                 $syncArguments += @("-ReleaseTag", $ReleaseTagValue)
@@ -335,6 +338,9 @@ jobs:
               # worker同期と同じく、公開ミラーは匿名API、Private repoだけtoken付きAPIを使う。
               if ($needsToken) {
                 $syncArguments += @("-GitHubToken", $env:IMM_PRIVATE_ENGINE_TOKEN)
+              }
+              else {
+                $syncArguments += "-AnonymousGitHub"
               }
 
               if (-not [string]::IsNullOrWhiteSpace($ReleaseTagValue)) {
