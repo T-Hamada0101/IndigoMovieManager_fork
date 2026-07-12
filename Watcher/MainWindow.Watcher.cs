@@ -1135,7 +1135,8 @@ namespace IndigoMovieManager
                 dbLookupTotalMs,
                 dbInsertTotalMs,
                 uiReflectTotalMs,
-                enqueueFlushTotalMs
+                enqueueFlushTotalMs,
+                folderScanContext?.SkipLogAggregation
             );
             return (new WatchLoopDecision(false, false), enqueueFlushTotalMs);
         }

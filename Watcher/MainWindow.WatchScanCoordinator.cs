@@ -18,6 +18,33 @@ namespace IndigoMovieManager
         // フォルダ走査で見つけた新規動画を、何件単位でサムネイルキューへ流すか。
         // 走査完了を待たずに段階投入することで、初動を早めつつI/O競合を抑える。
         private const int FolderScanEnqueueBatchSize = 100;
+        private const int WatchScanSkipSampleLimit = 3;
+
+        internal sealed class WatchScanSkipLogAggregation
+        {
+            private readonly Dictionary<string, int> _counts = new(StringComparer.Ordinal);
+
+            // sample上限後は呼び出し側がログ文字列を作らずに済むよう、先に出力可否を返す。
+            public bool ShouldWriteSample(string reason)
+            {
+                string normalizedReason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
+                _counts.TryGetValue(normalizedReason, out int count);
+                count++;
+                _counts[normalizedReason] = count;
+                return count <= WatchScanSkipSampleLimit;
+            }
+
+            public string BuildSummaryLogFields()
+            {
+                if (_counts.Count < 1)
+                {
+                    return "skip_counts=none";
+                }
+
+                return "skip_counts="
+                    + string.Join(",", _counts.Select(pair => $"{pair.Key}:{pair.Value}"));
+            }
+        }
 
         private enum WatchCoordinatorGuardAction
         {
@@ -937,10 +964,16 @@ namespace IndigoMovieManager
                     );
                 if (pendingBlockReason != MissingThumbnailAutoEnqueueBlockReason.None)
                 {
-                    DebugRuntimeLog.Write(
-                        "watch-check",
-                        $"skip enqueue by failure-state: tab={context.AutoEnqueueTabIndex.Value}, movie='{pending.MovieFullPath}', reason={DescribeMissingThumbnailAutoEnqueueBlockReason(pendingBlockReason)}"
-                    );
+                    if (
+                        context.SkipLogAggregation?.ShouldWriteSample("skip_failure_state")
+                        != false
+                    )
+                    {
+                        DebugRuntimeLog.Write(
+                            "watch-check",
+                            $"skip enqueue by failure-state: tab={context.AutoEnqueueTabIndex.Value}, movie='{pending.MovieFullPath}', reason={DescribeMissingThumbnailAutoEnqueueBlockReason(pendingBlockReason)}"
+                        );
+                    }
                     if (shouldDeferCurrentMovie)
                     {
                         if (!IsCurrentWatchCoordinatorScope(context.IsCurrentWatchScanScope))
@@ -1389,12 +1422,18 @@ namespace IndigoMovieManager
                     );
                 }
 
-                result.Outcome =
-                    $"skip_failure_state:{DescribeMissingThumbnailAutoEnqueueBlockReason(blockReason)}";
-                DebugRuntimeLog.Write(
-                    "watch-check",
-                    $"skip enqueue by failure-state: tab={context.AutoEnqueueTabIndex.Value}, movie='{movieFullPath}', reason={DescribeMissingThumbnailAutoEnqueueBlockReason(blockReason)}"
-                );
+                result.Outcome = "skip_failure_state";
+                if (
+                    context.PendingMovieFlushContext?.SkipLogAggregation?.ShouldWriteSample(
+                        "skip_failure_state"
+                    ) != false
+                )
+                {
+                    DebugRuntimeLog.Write(
+                        "watch-check",
+                        $"skip enqueue by failure-state: tab={context.AutoEnqueueTabIndex.Value}, movie='{movieFullPath}', reason={DescribeMissingThumbnailAutoEnqueueBlockReason(blockReason)}"
+                    );
+                }
                 return result;
             }
 
@@ -1626,10 +1665,13 @@ namespace IndigoMovieManager
 
             if (preCheckDecision.IsZeroByteMovie)
             {
-                DebugRuntimeLog.Write(
-                    "watch-check",
-                    $"skip zero-byte movie before queue: '{movieFullPath}' size={zeroFileLength}"
-                );
+                if (context.SkipLogAggregation?.ShouldWriteSample("skip_zero_byte") != false)
+                {
+                    DebugRuntimeLog.Write(
+                        "watch-check",
+                        $"skip zero-byte movie before queue: '{movieFullPath}' size={zeroFileLength}"
+                    );
+                }
             }
 
             result.Outcome = preCheckDecision.Outcome;
@@ -2092,7 +2134,8 @@ namespace IndigoMovieManager
             long dbLookupTotalMs,
             long dbInsertTotalMs,
             long uiReflectTotalMs,
-            long enqueueFlushTotalMs
+            long enqueueFlushTotalMs,
+            WatchScanSkipLogAggregation skipLogAggregation
         )
         {
             DebugRuntimeLog.Write(
@@ -2101,7 +2144,8 @@ namespace IndigoMovieManager
                     + $"mode={(useIncrementalUiMode ? "small" : "bulk")} "
                     + $"scan_bg_ms={scanBackgroundElapsedMs} movieinfo_ms={movieInfoTotalMs} db_lookup_ms={dbLookupTotalMs} "
                     + $"db_insert_ms={dbInsertTotalMs} ui_reflect_ms={uiReflectTotalMs} "
-                    + $"enqueue_flush_ms={enqueueFlushTotalMs}"
+                    + $"enqueue_flush_ms={enqueueFlushTotalMs} "
+                    + (skipLogAggregation?.BuildSummaryLogFields() ?? "skip_counts=none")
             );
             await Task.Delay(100);
         }
@@ -2768,6 +2812,7 @@ namespace IndigoMovieManager
             public Func<string, string, Task> AppendMovieToViewAsync { get; set; }
             public Action<string> RemovePendingMoviePlaceholderAction { get; set; }
             public Action<List<QueueObj>, string> FlushPendingQueueItemsAction { get; set; }
+            public WatchScanSkipLogAggregation SkipLogAggregation { get; set; }
         }
 
         [Flags]
@@ -2934,6 +2979,7 @@ namespace IndigoMovieManager
             public Func<IEnumerable<string>, string, bool> TryDeferWatchFolderPreprocessByUiSuppressionAction { get; set; }
             public Func<IEnumerable<string>, string, bool> TryDeferWatchFolderMidByUiSuppressionAction { get; set; }
             public Func<string, bool> TryDeferWatchFolderWorkByUiSuppressionAction { get; set; }
+            public WatchScanSkipLogAggregation SkipLogAggregation { get; set; }
 
             public bool TryDeferWatchFolderPreprocessByUiSuppression(
                 IEnumerable<string> remainingScanPaths,

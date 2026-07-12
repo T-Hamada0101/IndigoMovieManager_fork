@@ -12,6 +12,30 @@ namespace IndigoMovieManager.Tests;
 public sealed class WatchScanCoordinatorPolicyTests
 {
     [Test]
+    public void WatchScanSkipLogAggregation_reasonごとに先頭3件だけsample許可する()
+    {
+        MainWindow.WatchScanSkipLogAggregation aggregation = new();
+
+        Assert.That(
+            Enumerable.Range(0, 5).Select(_ => aggregation.ShouldWriteSample("skip_zero_byte")),
+            Is.EqualTo(new[] { true, true, true, false, false })
+        );
+        Assert.That(aggregation.ShouldWriteSample("skip_failure_state"), Is.True);
+        Assert.That(
+            aggregation.BuildSummaryLogFields(),
+            Is.EqualTo("skip_counts=skip_zero_byte:5,skip_failure_state:1")
+        );
+    }
+
+    [Test]
+    public void WatchScanSkipLogAggregation_skipなしはnoneを返す()
+    {
+        MainWindow.WatchScanSkipLogAggregation aggregation = new();
+
+        Assert.That(aggregation.BuildSummaryLogFields(), Is.EqualTo("skip_counts=none"));
+    }
+
+    [Test]
     public void EvaluateWatchFolderMoviePreCheck_visible_only_gateはfirst_hit前に止める()
     {
         MainWindow.WatchFolderMoviePreCheckDecision result =

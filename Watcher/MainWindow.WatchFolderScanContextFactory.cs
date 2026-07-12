@@ -303,6 +303,7 @@ namespace IndigoMovieManager
             Action<string> refreshWatchVisibleMovieGate
         )
         {
+            WatchScanSkipLogAggregation skipLogAggregation = new();
             WatchPendingNewMovieFlushContext pendingMovieFlushContext =
                 CreateWatchPendingNewMovieFlushContext(
                     mode,
@@ -320,6 +321,7 @@ namespace IndigoMovieManager
                     checkFolder,
                     refreshWatchVisibleMovieGate
                 );
+            pendingMovieFlushContext.SkipLogAggregation = skipLogAggregation;
             WatchScannedMovieContext scannedMovieContext = CreateWatchScannedMovieContext(
                 snapshotDbFullPath,
                 snapshotTabIndex,
@@ -353,6 +355,7 @@ namespace IndigoMovieManager
                 scannedMovieContext,
                 checkFolder
             );
+            folderScanContext.SkipLogAggregation = skipLogAggregation;
             return (pendingMovieFlushContext, scannedMovieContext, folderScanContext);
         }
     }
