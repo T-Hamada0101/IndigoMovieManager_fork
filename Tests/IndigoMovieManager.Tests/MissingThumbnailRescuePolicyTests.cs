@@ -15,6 +15,119 @@ public sealed class MissingThumbnailRescuePolicyTests
     private const string ThumbnailNormalLaneTimeoutSecEnvName = "IMM_THUMB_NORMAL_TIMEOUT_SEC";
 
     [Test]
+    public void FailureStateログ集約_skipなしはnoneを返す()
+    {
+        MainWindow.MissingThumbnailRescueSkipLogAggregation aggregation = new();
+
+        Assert.That(
+            aggregation.BuildSummaryLogFields(),
+            Is.EqualTo("failure_state_skip_counts=none")
+        );
+    }
+
+    [Test]
+    public void rescue実入口はscope内集約とsample判定後の文字列生成と終了summaryを維持する()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.MissingThumbnailRescueRuntime.cs");
+        string method = GetMethodBlock(
+            source,
+            "private async Task EnqueueMissingThumbnailsAsync("
+        );
+        int aggregationIndex = method.IndexOf(
+            "MissingThumbnailRescueSkipLogAggregation skipLogAggregation = new();",
+            StringComparison.Ordinal
+        );
+        int sampleGuardIndex = method.IndexOf(
+            "if (skipLogAggregation.ShouldWriteSample(blockReason))",
+            StringComparison.Ordinal
+        );
+        int sampleMessageIndex = method.IndexOf(
+            "$\"skip enqueue by failure-state:",
+            StringComparison.Ordinal
+        );
+
+        Assert.That(aggregationIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(sampleGuardIndex, Is.GreaterThan(aggregationIndex));
+        Assert.That(sampleMessageIndex, Is.GreaterThan(sampleGuardIndex));
+        Assert.That(method, Does.Contain("finally"));
+        Assert.That(method, Does.Contain("rescue summary:"));
+        Assert.That(method, Does.Not.Contain("finished rescue"));
+        Assert.That(method, Does.Contain("skipLogAggregation.BuildSummaryLogFields()"));
+    }
+
+    [Test]
+    public void rescue実入口はfailure判定と通常enqueueと例外伝播契約を維持する()
+    {
+        string source = GetRepoText("Watcher", "MainWindow.MissingThumbnailRescueRuntime.cs");
+        string method = GetMethodBlock(
+            source,
+            "private async Task EnqueueMissingThumbnailsAsync("
+        );
+
+        Assert.That(method, Does.Contain("ResolveMissingThumbnailAutoEnqueueBlockReason("));
+        Assert.That(method, Does.Contain("DescribeMissingThumbnailAutoEnqueueBlockReason(blockReason)"));
+        Assert.That(method, Does.Contain("existingThumbnailFileNames"));
+        Assert.That(method, Does.Contain("openRescueRequestKeys"));
+        Assert.That(method, Does.Contain("batch.Add("));
+        Assert.That(method, Does.Contain("FlushPendingQueueItems(batch, \"RescueMissingThumbnails\")"));
+        Assert.That(method, Does.Not.Contain("catch (Exception"));
+    }
+
+    [Test]
+    public void MissingThumbnailRescueSkipLogAggregation_reasonごとに先頭3件だけsample許可する()
+    {
+        MainWindow.MissingThumbnailRescueSkipLogAggregation aggregation = new();
+
+        bool[] errorMarkerSamples = Enumerable
+            .Range(0, 5)
+            .Select(_ =>
+                aggregation.ShouldWriteSample(
+                    MainWindow.MissingThumbnailAutoEnqueueBlockReason.ErrorMarkerExists
+                )
+            )
+            .ToArray();
+        bool openRescueSample = aggregation.ShouldWriteSample(
+            MainWindow.MissingThumbnailAutoEnqueueBlockReason.OpenRescueRequestExists
+        );
+
+        Assert.That(errorMarkerSamples, Is.EqualTo(new[] { true, true, true, false, false }));
+        Assert.That(openRescueSample, Is.True);
+        Assert.That(
+            aggregation.BuildSummaryLogFields(),
+            Is.EqualTo("failure_state_skip_counts=error-marker:5,failuredb-open-rescue:1")
+        );
+    }
+
+    [Test]
+    public void MissingThumbnailRescueSkipLogAggregation_並行scopeのcountを共有しない()
+    {
+        MainWindow.MissingThumbnailRescueSkipLogAggregation firstScope = new();
+        MainWindow.MissingThumbnailRescueSkipLogAggregation secondScope = new();
+
+        Parallel.For(
+            0,
+            100,
+            _ =>
+                firstScope.ShouldWriteSample(
+                    MainWindow.MissingThumbnailAutoEnqueueBlockReason.ErrorMarkerExists
+                )
+        );
+        bool secondScopeFirstSample = secondScope.ShouldWriteSample(
+            MainWindow.MissingThumbnailAutoEnqueueBlockReason.ErrorMarkerExists
+        );
+
+        Assert.That(secondScopeFirstSample, Is.True);
+        Assert.That(
+            firstScope.BuildSummaryLogFields(),
+            Is.EqualTo("failure_state_skip_counts=error-marker:100")
+        );
+        Assert.That(
+            secondScope.BuildSummaryLogFields(),
+            Is.EqualTo("failure_state_skip_counts=error-marker:1")
+        );
+    }
+
+    [Test]
     public void ShouldSkipMissingThumbnailRescueForBusyQueue_Watch高負荷時は抑止する()
     {
         bool result = MainWindow.ShouldSkipMissingThumbnailRescueForBusyQueue(

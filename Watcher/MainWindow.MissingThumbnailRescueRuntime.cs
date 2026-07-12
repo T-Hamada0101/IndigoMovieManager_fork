@@ -15,10 +15,50 @@ namespace IndigoMovieManager
     {
         // 欠損サムネ救済は重い全件確認になるため、DB+タブ単位で最小間隔を設ける。
         private static readonly TimeSpan MissingThumbnailRescueMinInterval = TimeSpan.FromSeconds(60);
+        private const int MissingThumbnailRescueSkipSampleLimit = 3;
         // DB+タブ単位で、欠損サムネ救済を直近いつ実行したかを記録する。
         private readonly object _missingThumbnailRescueSync = new();
         private readonly Dictionary<string, DateTime> _missingThumbnailRescueLastRunUtcByScope =
             new(StringComparer.OrdinalIgnoreCase);
+
+        internal sealed class MissingThumbnailRescueSkipLogAggregation
+        {
+            private readonly object _sync = new();
+            private readonly Dictionary<MissingThumbnailAutoEnqueueBlockReason, int> _counts = [];
+
+            // 先に件数だけ記録し、上限を超えた呼び出し側ではログ文字列を作らせない。
+            public bool ShouldWriteSample(MissingThumbnailAutoEnqueueBlockReason reason)
+            {
+                lock (_sync)
+                {
+                    _counts.TryGetValue(reason, out int count);
+                    count++;
+                    _counts[reason] = count;
+                    return count <= MissingThumbnailRescueSkipSampleLimit;
+                }
+            }
+
+            public string BuildSummaryLogFields()
+            {
+                lock (_sync)
+                {
+                    if (_counts.Count < 1)
+                    {
+                        return "failure_state_skip_counts=none";
+                    }
+
+                    return "failure_state_skip_counts="
+                        + string.Join(
+                            ",",
+                            _counts
+                                .OrderBy(pair => pair.Key)
+                                .Select(pair =>
+                                    $"{DescribeMissingThumbnailAutoEnqueueBlockReason(pair.Key)}:{pair.Value}"
+                                )
+                        );
+                }
+            }
+        }
 
         // Watch差分では「動画更新なし + サムネ削除」の取りこぼしが起き得るため、低頻度で欠損救済を実行する。
         private async Task TryRunMissingThumbnailRescueAsync(
@@ -262,6 +302,7 @@ namespace IndigoMovieManager
             }
 
             int enqueuedCount = 0;
+            MissingThumbnailRescueSkipLogAggregation skipLogAggregation = new();
             List<QueueObj> batch = [];
             HashSet<string> existingThumbnailFileNames = await Task.Run(() =>
                 BuildThumbnailFileNameLookup(thumbnailOutPath)
@@ -276,117 +317,128 @@ namespace IndigoMovieManager
                 $"start rescue missing thumbs for tab={targetTabIndex}. total docs={dt.Rows.Count}"
             );
 
-            foreach (DataRow row in dt.Rows)
+            try
             {
-                long.TryParse(row["movie_id"]?.ToString(), out long movieId);
-                string path = row["movie_path"]?.ToString() ?? "";
-                string hash = row["hash"]?.ToString() ?? "";
-
-                if (string.IsNullOrWhiteSpace(path))
+                foreach (DataRow row in dt.Rows)
                 {
-                    continue;
-                }
+                    long.TryParse(row["movie_id"]?.ToString(), out long movieId);
+                    string path = row["movie_path"]?.ToString() ?? "";
+                    string hash = row["hash"]?.ToString() ?? "";
 
-                string fileBody = Path.GetFileNameWithoutExtension(path);
-                if (string.IsNullOrWhiteSpace(fileBody))
-                {
-                    continue;
-                }
-
-                string expectedThumbFileName = ThumbnailPathResolver.BuildThumbnailFileName(path, hash);
-                if (!existingThumbnailFileNames.Contains(expectedThumbFileName))
-                {
-                    MissingThumbnailAutoEnqueueBlockReason blockReason =
-                        ResolveMissingThumbnailAutoEnqueueBlockReason(
-                            path,
-                            targetTabIndex,
-                            existingThumbnailFileNames,
-                            openRescueRequestKeys
-                        );
-                    if (blockReason != MissingThumbnailAutoEnqueueBlockReason.None)
+                    if (string.IsNullOrWhiteSpace(path))
                     {
-                        DebugRuntimeLog.Write(
-                            "rescue-thumb",
-                            $"skip enqueue by failure-state: tab={targetTabIndex}, movie='{path}', reason={DescribeMissingThumbnailAutoEnqueueBlockReason(blockReason)}"
-                        );
                         continue;
                     }
 
-                    if (TryGetMovieFileLength(path, out _))
+                    string fileBody = Path.GetFileNameWithoutExtension(path);
+                    if (string.IsNullOrWhiteSpace(fileBody))
                     {
-                        batch.Add(
-                            new QueueObj
-                            {
-                                MovieId = movieId,
-                                MovieFullPath = path,
-                                Hash = hash,
-                                Tabindex = targetTabIndex,
-                                Priority = ThumbnailQueuePriority.Normal,
-                            }
-                        );
+                        continue;
+                    }
 
-                        enqueuedCount++;
-                        existingThumbnailFileNames.Add(expectedThumbFileName);
-                        DebugRuntimeLog.Write(
-                            "rescue-thumb",
-                            $"enqueue by rescue: tab={targetTabIndex}, movie='{path}'"
-                        );
-
-                        if (batch.Count >= FolderScanEnqueueBatchSize)
-                        {
-                            guardAction = GetMissingThumbnailRescueGuardAction(
-                                isWatchMode,
-                                snapshotDbFullPath,
-                                requestScopeStamp
+                    string expectedThumbFileName = ThumbnailPathResolver.BuildThumbnailFileName(
+                        path,
+                        hash
+                    );
+                    if (!existingThumbnailFileNames.Contains(expectedThumbFileName))
+                    {
+                        MissingThumbnailAutoEnqueueBlockReason blockReason =
+                            ResolveMissingThumbnailAutoEnqueueBlockReason(
+                                path,
+                                targetTabIndex,
+                                existingThumbnailFileNames,
+                                openRescueRequestKeys
                             );
-                            if (guardAction == MissingThumbnailRescueGuardAction.DropStaleScope)
+                        if (blockReason != MissingThumbnailAutoEnqueueBlockReason.None)
+                        {
+                            if (skipLogAggregation.ShouldWriteSample(blockReason))
                             {
-                                return;
-                            }
-
-                            if (
-                                guardAction
-                                == MissingThumbnailRescueGuardAction.DeferByUiSuppression
-                            )
-                            {
-                                MarkWatchWorkDeferredWhileSuppressed(
-                                    "missing-thumb-rescue:flush"
+                                DebugRuntimeLog.Write(
+                                    "rescue-thumb",
+                                    $"skip enqueue by failure-state: tab={targetTabIndex}, movie='{path}', reason={DescribeMissingThumbnailAutoEnqueueBlockReason(blockReason)}"
                                 );
-                                return;
                             }
+                            continue;
+                        }
 
-                            FlushPendingQueueItems(batch, "RescueMissingThumbnails");
-                            await Task.Delay(50);
+                        if (TryGetMovieFileLength(path, out _))
+                        {
+                            batch.Add(
+                                new QueueObj
+                                {
+                                    MovieId = movieId,
+                                    MovieFullPath = path,
+                                    Hash = hash,
+                                    Tabindex = targetTabIndex,
+                                    Priority = ThumbnailQueuePriority.Normal,
+                                }
+                            );
+
+                            enqueuedCount++;
+                            existingThumbnailFileNames.Add(expectedThumbFileName);
+                            DebugRuntimeLog.Write(
+                                "rescue-thumb",
+                                $"enqueue by rescue: tab={targetTabIndex}, movie='{path}'"
+                            );
+
+                            if (batch.Count >= FolderScanEnqueueBatchSize)
+                            {
+                                guardAction = GetMissingThumbnailRescueGuardAction(
+                                    isWatchMode,
+                                    snapshotDbFullPath,
+                                    requestScopeStamp
+                                );
+                                if (guardAction == MissingThumbnailRescueGuardAction.DropStaleScope)
+                                {
+                                    return;
+                                }
+
+                                if (
+                                    guardAction
+                                    == MissingThumbnailRescueGuardAction.DeferByUiSuppression
+                                )
+                                {
+                                    MarkWatchWorkDeferredWhileSuppressed(
+                                        "missing-thumb-rescue:flush"
+                                    );
+                                    return;
+                                }
+
+                                FlushPendingQueueItems(batch, "RescueMissingThumbnails");
+                                await Task.Delay(50);
+                            }
                         }
                     }
                 }
-            }
 
-            if (batch.Count > 0)
+                if (batch.Count > 0)
+                {
+                    guardAction = GetMissingThumbnailRescueGuardAction(
+                        isWatchMode,
+                        snapshotDbFullPath,
+                        requestScopeStamp
+                    );
+                    if (guardAction == MissingThumbnailRescueGuardAction.DropStaleScope)
+                    {
+                        return;
+                    }
+
+                    if (guardAction == MissingThumbnailRescueGuardAction.DeferByUiSuppression)
+                    {
+                        MarkWatchWorkDeferredWhileSuppressed("missing-thumb-rescue:flush-final");
+                        return;
+                    }
+
+                    FlushPendingQueueItems(batch, "RescueMissingThumbnails");
+                }
+            }
+            finally
             {
-                guardAction = GetMissingThumbnailRescueGuardAction(
-                    isWatchMode,
-                    snapshotDbFullPath,
-                    requestScopeStamp
+                DebugRuntimeLog.Write(
+                    "rescue-thumb",
+                    $"rescue summary: tab={targetTabIndex} enqueued={enqueuedCount} {skipLogAggregation.BuildSummaryLogFields()}"
                 );
-                if (guardAction == MissingThumbnailRescueGuardAction.DropStaleScope)
-                {
-                    return;
-                }
-
-                if (guardAction == MissingThumbnailRescueGuardAction.DeferByUiSuppression)
-                {
-                    MarkWatchWorkDeferredWhileSuppressed("missing-thumb-rescue:flush-final");
-                    return;
-                }
-
-                FlushPendingQueueItems(batch, "RescueMissingThumbnails");
             }
-
-            DebugRuntimeLog.Write(
-                "rescue-thumb",
-                $"finished rescue missing thumbs for tab={targetTabIndex}. enqueued={enqueuedCount}"
-            );
         }
     }
 }
