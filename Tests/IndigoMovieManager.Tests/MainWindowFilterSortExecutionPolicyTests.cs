@@ -710,6 +710,14 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             factorySource,
             "private static void WarmThumbnailFileNamesForStartupItems("
         );
+        string staleGuardMethod = GetMethodBlock(
+            startupSource,
+            "private void ThrowIfStartupPageLoadIsStale("
+        );
+        string fullReloadMethod = GetMethodBlock(
+            factorySource,
+            "private async Task<MovieRecordSourceApplyResult> SetRecordsToSource("
+        );
 
         Assert.Multiple(() =>
         {
@@ -719,6 +727,14 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
             Assert.That(loadMethod, Does.Contain("WarmMovieRecordBulkBuildCacheForStartupPage("));
             Assert.That(loadMethod, Does.Contain("bulk_cache_small_ms="));
             Assert.That(loadMethod, Does.Contain("bulk_cache_detail_ms="));
+            Assert.That(
+                CountOccurrences(loadMethod, "ThrowIfStartupPageLoadIsStale("),
+                Is.EqualTo(4)
+            );
+            Assert.That(staleGuardMethod, Does.Contain("_startupLoadCoordinator.IsCurrent(revision)"));
+            Assert.That(staleGuardMethod, Does.Contain("Dispatcher.HasShutdownStarted"));
+            Assert.That(staleGuardMethod, Does.Contain("Dispatcher.HasShutdownFinished"));
+            Assert.That(staleGuardMethod, Does.Contain("AreSameMainDbPath(expectedDbPath"));
             Assert.That(warmMethod, Does.Contain("WarmThumbnailFileNamesForStartupItems("));
             Assert.That(warmMethod, Does.Not.Contain("BuildThumbnailFileNameLookup("));
             Assert.That(candidateWarmMethod, Does.Contain("AddStartupThumbnailCandidate("));
@@ -727,6 +743,7 @@ public sealed class MainWindowFilterSortExecutionPolicyTests
                 startupSource,
                 Does.Contain("LazyThumbnailSourceImagePathResolver sourceImageResolver = new(source.MoviePath);")
             );
+            Assert.That(fullReloadMethod, Does.Contain("BuildMovieRecordBulkBuildCache(bulkContext)"));
         });
     }
 

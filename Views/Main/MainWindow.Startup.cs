@@ -178,6 +178,7 @@ namespace IndigoMovieManager
                     pageIndex: 0,
                     bulkContext,
                     bulkCache,
+                    session.Revision,
                     session.CancellationToken
                 );
 
@@ -612,10 +613,11 @@ namespace IndigoMovieManager
             int pageIndex,
             MovieRecordBulkBuildContext bulkContext,
             MovieRecordBulkBuildCache bulkCache,
+            int revision,
             CancellationToken cancellationToken
         )
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfStartupPageLoadIsStale(request.DbPath, revision, cancellationToken);
 
             int pageSize = pageIndex == 0 ? request.FirstPageSize : request.AppendPageSize;
             Stopwatch pageStopwatch = Stopwatch.StartNew();
@@ -639,7 +641,7 @@ namespace IndigoMovieManager
                 )
                 .ConfigureAwait(false);
             dbReadStopwatch.Stop();
-            cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfStartupPageLoadIsStale(request.DbPath, revision, cancellationToken);
             StartupBulkCacheWarmResult cacheWarmResult = await Task.Run(
                     () =>
                         WarmMovieRecordBulkBuildCacheForStartupPage(
@@ -650,13 +652,14 @@ namespace IndigoMovieManager
                     cancellationToken
                 )
                 .ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfStartupPageLoadIsStale(request.DbPath, revision, cancellationToken);
             Stopwatch convertStopwatch = Stopwatch.StartNew();
             MovieRecords[] items = await Task.Run(
                     () => BuildStartupMovieRecords(sourcePage.Items, bulkContext, bulkCache),
                     cancellationToken
                 )
                 .ConfigureAwait(false);
+            ThrowIfStartupPageLoadIsStale(request.DbPath, revision, cancellationToken);
             convertStopwatch.Stop();
             pageStopwatch.Stop();
 
@@ -672,6 +675,24 @@ namespace IndigoMovieManager
                 SourceKind: StartupSourceDbFallback,
                 PageIndex: pageIndex
             );
+        }
+
+        private void ThrowIfStartupPageLoadIsStale(
+            string expectedDbPath,
+            int revision,
+            CancellationToken cancellationToken
+        )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                !_startupLoadCoordinator.IsCurrent(revision)
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+                || !AreSameMainDbPath(expectedDbPath, MainVM?.DbInfo?.DBFullPath ?? "")
+            )
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
         }
 
         private MovieRecords[] BuildStartupMovieRecords(
@@ -1324,6 +1345,7 @@ namespace IndigoMovieManager
                     pageIndex,
                     bulkContext,
                     bulkCache,
+                    revision,
                     cancellationToken
                 );
                 if (!_startupLoadCoordinator.IsCurrent(revision))
