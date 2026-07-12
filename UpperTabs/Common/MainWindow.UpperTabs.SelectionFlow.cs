@@ -11,16 +11,19 @@ namespace IndigoMovieManager
             Stopwatch SelectionStopwatch
         );
 
-        // 選択レコードに応じて詳細ペインを更新し、呼び出し側でも結果を使えるように返す。
+        // 選択レコードに応じて詳細とタグペインを同じ対象へ揃え、呼び出し側でも結果を使えるように返す。
         private MovieRecords ApplyUpperTabExtensionDetail(MovieRecords selectedMovie)
         {
             if (selectedMovie == null)
             {
                 HideExtensionDetail();
+                HideTagEditor();
                 return null;
             }
 
             ShowExtensionDetail(selectedMovie);
+            // Playerタブの先頭自動選択はSelectionChangedを抑止するため、ここでタグ対象も明示的に同期する。
+            ShowTagEditor(selectedMovie);
             return selectedMovie;
         }
 
