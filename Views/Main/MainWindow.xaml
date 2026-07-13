@@ -739,14 +739,6 @@
                               <RowDefinition Height="*" />
                               <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <Grid.Effect>
-                              <DropShadowEffect
-                                BlurRadius="2"
-                                RenderingBias="Performance"
-                                ShadowDepth="10"
-                                Color="{DynamicResource PlayerShadowColor}"
-                              />
-                            </Grid.Effect>
                             <MediaElement
                               x:Name="uxVideoPlayer"
                               Grid.Row="0"

@@ -6,10 +6,13 @@
 
 親レビュー: 2026-07-12
 
+追補: 2026-07-13
+
 位置づけ: UIのスムーズ化とユーザーストレス最小化を長期判断へ落とす実装正本
 
 変更概要:
 
+- 2026-07-13の変更前Releaseログでは、Player復帰後にInput heartbeatの`delay_ms=1000〜1258`が反復し、物理ホイールburstは`max_layout_gap_ms=1134〜1616`だった。converterはcache hitまたはscroll中抑止、container生成周期は最大1〜3msであり、右レール側は支配要因ではなかった。Player再生面全体の`Grid.Effect`に残っていた`DropShadowEffect`を除去し、動画の毎フレーム更新へWPFエフェクトを戻さないsource testを追加した。変更後ReleaseはコピーDB + no-persistで実在MKVをMediaElement再生し、OSホイール10回を右レールへ送った結果、thumbnail worker 8本稼働中でも`first_render_ms=5 max_layout_gap_ms=70 max_composition_gap_ms=30 max_generator_cycle_ms=2`、burst中UI hang 0件となった。Player関連Release x64 15テストと本体buildも成功し、Behavior / Evidence / Regression Guardが揃ったため、このPlayer再生中スクロール詰まりを完了とする。
 - 実装量を表す総合進捗率を廃止し、ユーザー体感、実装接続、実機証跡の3条件で完了を判定する構成へ変更した。
 - 2026-06-25から2026-06-27までの逐次レビュー記録を、現行契約と到達点へ集約した。詳細履歴はGit履歴を正本とする。
 - 「速い」だけでなく、入力を失わない、表示を飛ばさない、古い結果を見せない、背後処理が操作へ譲ることを固定原則にした。

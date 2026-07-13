@@ -43,6 +43,32 @@ public sealed class PlayerThumbnailScrollSourceTests
     }
 
     [Test]
+    public void Player再生面は動画フレームへWPFエフェクトを掛けない()
+    {
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        int playerAreaStart = mainWindowXaml.IndexOf(
+            "x:Name=\"PlayerArea\"",
+            StringComparison.Ordinal
+        );
+        Assert.That(playerAreaStart, Is.GreaterThanOrEqualTo(0));
+
+        int playerAreaEnd = mainWindowXaml.IndexOf(
+            "x:Name=\"PlayerEmptyState\"",
+            playerAreaStart,
+            StringComparison.Ordinal
+        );
+        Assert.That(playerAreaEnd, Is.GreaterThan(playerAreaStart));
+        string playerArea = mainWindowXaml.Substring(
+            playerAreaStart,
+            playerAreaEnd - playerAreaStart
+        );
+
+        // 動画の毎フレーム更新へWPFエフェクトを重ねず、右レールの入力と描画を守る。
+        Assert.That(playerArea, Does.Not.Contain("<Grid.Effect>"));
+        Assert.That(playerArea, Does.Not.Contain("<DropShadowEffect"));
+    }
+
+    [Test]
     public void Player右レールのクリック処理はBorderと既存Labelの両senderを受け入れる()
     {
         string selectionSource = GetRepoText("Views", "Main", "MainWindow.Selection.cs");

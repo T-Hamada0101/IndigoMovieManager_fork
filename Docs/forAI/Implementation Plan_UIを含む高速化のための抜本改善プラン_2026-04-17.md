@@ -1,8 +1,9 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-07-12
+最終更新日: 2026-07-13
 
 変更概要:
+- Player再生面全体に残っていた`DropShadowEffect`を除去した。2026-07-13の変更前Releaseログでは、Player復帰後にInput heartbeatの1秒超遅延が反復し、物理ホイールburstもconverter cache hit中心・container生成1〜3msのまま`max_layout_gap_ms=1134〜1616`だった。変更後ReleaseはコピーDB + no-persistで実在MKVをMediaElement再生し、OSホイール10回を右レールへ送った結果、thumbnail worker 8本稼働中でも`first_render_ms=5 max_layout_gap_ms=70 max_composition_gap_ms=30 max_generator_cycle_ms=2`、burst中UI hang 0件となった。枠線・背景・角丸・再生継続を維持し、Player関連Release x64 15テストと本体buildも成功した。一時DB、診断用サムネフォルダ、プロセスの残置は0件。
 - startup partial first pageの`BuildMovieRecordBulkBuildCache`を監査し、5タブ＋詳細ディレクトリの全件列挙を起動前段から除去した。各ページの最大200/300件について現行名・旧名候補だけを確認し、同じcacheへ増分追記してcontinuationで再利用する。各背景段階後にはstartup session、DB path、shutdownのlatest-only guardを置いた。最終Release x64コピーDBは`db_read_ms=50 bulk_cache_ms=41 row_convert_ms=36 total_ms=131`、`first-page shown=481ms input ready=482ms`で、旧8117〜10187msから約94〜95%短縮した。表示互換、全件reload、DB非変更を維持し、focused testとRelease x64 buildも成功した。
 - 再構築した長期ロードマップに合わせ、直近着手を主要8シナリオの同一Release run採取へ更新した。処理時間だけでなく、入力受理、選択 / focus / scroll保持、blank / ちらつき、後着巻き戻りをscenario scorecardで確認し、支配要因を最大3件へ絞ってから最上位1件を実装する。
 - watch full fallback の `recovery_reason` は deferred schedule / apply と final skip / apply の各ログで `BuildWatchUiReloadPlanLogFields(...)` 経由に固定した。`plan_reason` と並べて実機ログで読める契約を source policy で守り、`dirty-fields-unsafe:*` の実頻度を見るまで Hash / MovieName などを安全扱いへ広げない。

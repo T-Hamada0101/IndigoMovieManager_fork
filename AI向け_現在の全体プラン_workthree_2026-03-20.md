@@ -1,8 +1,9 @@
 # AI向け 現在の全体プラン（開発本線） 2026-03-20
 
-最終更新日: 2026-07-12
+最終更新日: 2026-07-13
 
 変更概要:
+- 2026-07-13、Player再生面全体の`Grid.Effect`に残っていた`DropShadowEffect`を除去した。変更前Release実機ログではPlayer復帰後にInput heartbeatの`delay_ms=1000〜1258`が反復し、物理ホイールburstも右レール側`max_generator_cycle_ms=1〜3`のまま`max_layout_gap_ms=1134〜1616`だった。変更後ReleaseはコピーDB + no-persistで実在MKVをMediaElement再生し、OSホイール10回を右レールへ送った結果、thumbnail worker 8本稼働中でも`first_render_ms=5 max_layout_gap_ms=70 max_composition_gap_ms=30 max_generator_cycle_ms=2`、burst中UI hang 0件となった。枠線・背景・角丸・再生継続を維持し、再生面へWPFエフェクトを戻さないsource testを追加した。Player関連Release x64 15テストと本体buildも成功し、一時DB・診断用サムネフォルダ・プロセスの残置0を確認した。
 - 2026-07-12、startup partial first page前に5タブ＋詳細のサムネイルディレクトリを全件列挙していた`BuildMovieRecordBulkBuildCache`を起動経路から外し、読込済みページの現行名・旧名候補だけを存在確認して同一cacheへ増分追記するようにした。continuationは同じcacheを再利用し、thumbnail/error marker/tags/source image表示とDB非変更を維持する。最終Release x64コピーDBでは`db_read_ms=50 bulk_cache_ms=41 row_convert_ms=36 total_ms=131`、`first-page shown=481ms input ready=482ms`となり、旧8117〜10187msから約94〜95%短縮した。
 - 2026-07-12、Watch直後のmissing-thumbnail rescueもfailure reason別先頭3件だけをsample出力し、4件目以降は文字列生成せず、scope終了時の`rescue summary failure_state_skip_counts`へ集約した。早期return時も誤ってfinishedと呼ばず、enqueue/marker/例外とreason詳細は維持。親Release x64 90件成功。コピーDB再runではrescue自体が発火せず非zero summary実機確認は未達。
 - 2026-07-12、Watch folder scanの`skip_zero_byte` / `skip_failure_state`個別ログをreason別先頭3件へ制限し、4件目以降は文字列生成せず、scan endの`skip_counts`へ総数を集約した。failure reasonを含むOutcome、ERROR marker、例外ログは維持。親Release x64 92件成功。コピーDB再runは`scan_bg_ms=6178 skip_counts=none`、UI hangはCaution 500ms 1件でWarningなし。非zero countsの実機採取は未達。
