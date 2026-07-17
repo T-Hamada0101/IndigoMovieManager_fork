@@ -858,7 +858,7 @@
                                 Minimum="0"
                                 ToolTip="音量調整"
                                 ValueChanged="UxVolumeSlider_ValueChanged"
-                                Value="0.5"
+                                Value="0.25"
                               />
                               <TextBlock
                                 x:Name="uxVolume"

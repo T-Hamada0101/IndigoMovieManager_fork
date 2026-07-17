@@ -18,12 +18,12 @@ namespace IndigoMovieManager
         private const double ManualPlayerHorizontalPadding = 96d;
         private const double ManualPlayerVerticalPadding = 120d;
         private const double ManualPlayerFallbackControllerHeight = 72d;
-        private const double DefaultPlayerVolume = 0.5d;
         private bool _isTimeSliderSyncingFromPlayer;
         private bool _isTimeSliderDragging;
         private bool _isManualPlayerResizeTrackingHooked;
         private bool _isPlayerVolumeApplyingToUi;
-        private double _currentPlayerVolume = DefaultPlayerVolume;
+        private bool _isPlayerVolumeInitialized;
+        private double _currentPlayerVolume = PlayerVolumePolicy.DefaultVolume;
         private DispatcherTimer _playerVolumeSaveDebounceTimer;
         private readonly object _playerVolumeSettingsSaveSync = new();
         private Task _playerVolumeSettingsSaveTask = Task.CompletedTask;
@@ -31,28 +31,15 @@ namespace IndigoMovieManager
         // 保存済み設定が壊れていても、音量は常に 0.0 から 1.0 の安全域へ戻す。
         private static double ClampPlayerVolumeSetting(double volume)
         {
-            if (double.IsNaN(volume) || double.IsInfinity(volume))
-            {
-                return DefaultPlayerVolume;
-            }
-
-            return Math.Max(0d, Math.Min(1d, volume));
-        }
-
-        // WebView2 の既定値 100% が保存に混ざった時は、次回起動で既定の 50% へ戻す。
-        private static double ResolveSavedPlayerVolumeSetting(double volume)
-        {
-            double resolvedVolume = ClampPlayerVolumeSetting(volume);
-            return resolvedVolume >= 1d ? DefaultPlayerVolume : resolvedVolume;
+            return PlayerVolumePolicy.Normalize(volume);
         }
 
         // 起動時の復元も中央入口へ通し、保存値・UI・プレイヤーの正本を分散させない。
         private void RestorePlayerVolumeFromSettings()
         {
             double rawSavedVolume = Properties.Settings.Default.PlayerVolume;
-            double savedPlayerVolume = ResolveSavedPlayerVolumeSetting(rawSavedVolume);
-            bool repairSavedVolume =
-                Math.Abs(ClampPlayerVolumeSetting(rawSavedVolume) - savedPlayerVolume) > 0.0001d;
+            double savedPlayerVolume = PlayerVolumePolicy.Normalize(rawSavedVolume);
+            bool repairSavedVolume = PlayerVolumePolicy.RequiresRepair(rawSavedVolume);
 
             ApplyPlayerVolumeSetting(
                 savedPlayerVolume,
@@ -60,6 +47,7 @@ namespace IndigoMovieManager
                 save: repairSavedVolume,
                 pushToWebView: false
             );
+            _isPlayerVolumeInitialized = true;
         }
 
         // 他ファイルから音量を参照する時も、スライダー値ではなくこの正本を使う。
@@ -160,28 +148,10 @@ namespace IndigoMovieManager
             );
         }
 
-        // WebView2の100%既定値が逆流した時は、正本を守って50%または現在値へ戻す。
+        // WebView2のユーザー操作も中央入口へ通し、100%を含む正規値をそのまま正本へ保存する。
         private void SetPlayerVolumeFromWebView(double volume)
         {
             double resolvedVolume = ClampPlayerVolumeSetting(volume);
-            if (resolvedVolume >= 1d)
-            {
-                double currentVolume = GetCurrentPlayerVolumeSetting();
-                double fallbackVolume = currentVolume >= 1d ? DefaultPlayerVolume : currentVolume;
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"player webview default volume ignored: incoming={resolvedVolume:0.###} current={currentVolume:0.###} fallback={fallbackVolume:0.###}"
-                );
-
-                ApplyPlayerVolumeSetting(
-                    fallbackVolume,
-                    updateSlider: true,
-                    save: true,
-                    pushToWebView: true
-                );
-                return;
-            }
-
             ApplyPlayerVolumeSetting(
                 resolvedVolume,
                 updateSlider: true,
@@ -1119,7 +1089,7 @@ namespace IndigoMovieManager
             RoutedPropertyChangedEventArgs<double> e
         )
         {
-            if (_isPlayerVolumeApplyingToUi)
+            if (!_isPlayerVolumeInitialized || _isPlayerVolumeApplyingToUi)
             {
                 return;
             }

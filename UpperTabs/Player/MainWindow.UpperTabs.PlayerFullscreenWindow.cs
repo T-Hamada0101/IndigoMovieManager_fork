@@ -14,9 +14,6 @@ namespace IndigoMovieManager
     {
         public double CurrentTime { get; set; }
         public bool Paused { get; set; }
-
-        // WebView2から音量が取れない時も、指定なしは必ず50%として扱う。
-        public double Volume { get; set; } = 0.5d;
     }
 
     internal sealed class PlayerFullscreenHostWindow : Window
@@ -262,10 +259,7 @@ namespace IndigoMovieManager
         {
             if (webView?.CoreWebView2 == null)
             {
-                return new PlayerWebViewPlaybackSnapshot
-                {
-                    Volume = GetCurrentPlayerVolumeSetting(),
-                };
+                return new PlayerWebViewPlaybackSnapshot();
             }
 
             try
@@ -280,8 +274,7 @@ namespace IndigoMovieManager
 
                       return {
                         currentTime: player.currentTime || 0,
-                        paused: !!player.paused,
-                        volume: Number.isFinite(player.volume) ? player.volume : 0.5
+                        paused: !!player.paused
                       };
                     })();
                     """
@@ -289,15 +282,11 @@ namespace IndigoMovieManager
 
                 PlayerWebViewPlaybackSnapshot snapshot =
                     ParsePlayerWebViewPlaybackSnapshot(rawJson);
-                snapshot.Volume = ClampPlayerVolumeSetting(snapshot.Volume);
                 return snapshot;
             }
             catch
             {
-                return new PlayerWebViewPlaybackSnapshot
-                {
-                    Volume = GetCurrentPlayerVolumeSetting(),
-                };
+                return new PlayerWebViewPlaybackSnapshot();
             }
         }
 
@@ -337,7 +326,7 @@ namespace IndigoMovieManager
             string seconds = snapshot.CurrentTime.ToString(
                 System.Globalization.CultureInfo.InvariantCulture
             );
-            string volume = ClampPlayerVolumeSetting(snapshot.Volume).ToString(
+            string volume = GetCurrentPlayerVolumeSetting().ToString(
                 System.Globalization.CultureInfo.InvariantCulture
             );
             string script = $$"""
@@ -403,9 +392,6 @@ namespace IndigoMovieManager
             await SetDetachedWindowDomFullscreenAsync(enable: false);
 
             ReturnDetachedWebViewPlayerToPlayerTab();
-
-            SetPlayerVolumeFromWebView(snapshot.Volume);
-            snapshot.Volume = GetCurrentPlayerVolumeSetting();
 
             if (_isWebViewPlayerActive && uxWebVideoPlayer?.CoreWebView2 != null)
             {

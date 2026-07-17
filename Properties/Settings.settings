@@ -42,7 +42,7 @@
       <Value Profile="(Default)">/start &lt;ms&gt;</Value>
     </Setting>
     <Setting Name="PlayerVolume" Type="System.Double" Scope="User">
-      <Value Profile="(Default)">0.5</Value>
+      <Value Profile="(Default)">0.25</Value>
     </Setting>
     <Setting Name="RecentFilesCount" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">7</Value>
