@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,8 +13,15 @@ namespace IndigoMovieManager
 {
     internal sealed class PlayerWebViewPlaybackSnapshot
     {
+        [JsonPropertyName("currentTime")]
         public double CurrentTime { get; set; }
+
+        [JsonPropertyName("paused")]
         public bool Paused { get; set; }
+
+        // 全画面遷移直前のWebView実値だけを一時保持し、取得できた時だけ中央正本へ合流する。
+        [JsonPropertyName("volume")]
+        public double? Volume { get; set; }
     }
 
     internal sealed class PlayerFullscreenHostWindow : Window
@@ -176,6 +184,7 @@ namespace IndigoMovieManager
 
             PlayerWebViewPlaybackSnapshot snapshot =
                 await CapturePlayerWebViewPlaybackSnapshotAsync(uxWebVideoPlayer);
+            ReconcilePlayerWebViewSnapshotVolume(snapshot);
 
             try
             {
@@ -274,7 +283,8 @@ namespace IndigoMovieManager
 
                       return {
                         currentTime: player.currentTime || 0,
-                        paused: !!player.paused
+                        paused: !!player.paused,
+                        volume: Number.isFinite(player.volume) ? player.volume : null
                       };
                     })();
                     """
@@ -311,6 +321,19 @@ namespace IndigoMovieManager
             {
                 return new PlayerWebViewPlaybackSnapshot();
             }
+        }
+
+        // WebMessageの到着待ちを全画面遷移が追い越しても、採取した最新音量を先に中央正本へ戻す。
+        private void ReconcilePlayerWebViewSnapshotVolume(
+            PlayerWebViewPlaybackSnapshot snapshot
+        )
+        {
+            if (snapshot?.Volume is not double volume)
+            {
+                return;
+            }
+
+            SetPlayerVolumeFromWebView(volume);
         }
 
         private async Task ApplyPlayerWebViewPlaybackSnapshotAsync(
@@ -389,6 +412,7 @@ namespace IndigoMovieManager
             PlayerWebViewPlaybackSnapshot snapshot = await CapturePlayerWebViewPlaybackSnapshotAsync(
                 uxWebVideoPlayer
             );
+            ReconcilePlayerWebViewSnapshotVolume(snapshot);
             await SetDetachedWindowDomFullscreenAsync(enable: false);
 
             ReturnDetachedWebViewPlayerToPlayerTab();

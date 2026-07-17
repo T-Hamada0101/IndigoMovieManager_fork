@@ -72,7 +72,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(settingsSource, Does.Contain("<Setting Name=\"PlayerVolume\" Type=\"System.Double\" Scope=\"User\">"));
         Assert.That(settingsSource, Does.Contain("<Value Profile=\"(Default)\">0.25</Value>"));
         Assert.That(settingsDesignerSource, Does.Contain("DefaultSettingValueAttribute(\"0.25\")"));
-        Assert.That(fullscreenWindowSource, Does.Not.Contain("public double Volume { get; set; }"));
+        Assert.That(fullscreenWindowSource, Does.Contain("public double? Volume { get; set; }"));
         Assert.That(
             fullscreenWindowSource,
             Does.Contain("string volume = GetCurrentPlayerVolumeSetting().ToString(")
@@ -138,7 +138,10 @@ public sealed class ManualPlayerResizeHookPolicyTests
             fullscreenWindowSource,
             Does.Contain("string volume = GetCurrentPlayerVolumeSetting().ToString(")
         );
-        Assert.That(fullscreenWindowSource, Does.Not.Contain("snapshot.Volume"));
+        Assert.That(
+            fullscreenWindowSource,
+            Does.Contain("private void ReconcilePlayerWebViewSnapshotVolume(")
+        );
     }
 
     [Test]
@@ -279,12 +282,24 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void WebViewPlayer_全画面復帰も中央正本音量を再注入する()
+    public void WebViewPlayer_全画面遷移直前の実音量を中央正本へ合流してから再注入する()
     {
         string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
+        string captureMethod = GetMethodBlock(
+            fullscreenWindowSource,
+            "private async Task<PlayerWebViewPlaybackSnapshot> CapturePlayerWebViewPlaybackSnapshotAsync("
+        );
+        string reconcileMethod = GetMethodBlock(
+            fullscreenWindowSource,
+            "private void ReconcilePlayerWebViewSnapshotVolume("
+        );
         string applyMethod = GetMethodBlock(
             fullscreenWindowSource,
             "private async Task ApplyPlayerWebViewPlaybackSnapshotAsync("
+        );
+        string openMethod = GetMethodBlock(
+            fullscreenWindowSource,
+            "private async Task OpenMainWindowPlayerFullscreenAsync()"
         );
         string closeMethod = GetMethodBlock(
             fullscreenWindowSource,
@@ -293,10 +308,23 @@ public sealed class ManualPlayerResizeHookPolicyTests
 
         Assert.Multiple(() =>
         {
+            Assert.That(
+                captureMethod,
+                Does.Contain("volume: Number.isFinite(player.volume) ? player.volume : null")
+            );
+            Assert.That(fullscreenWindowSource, Does.Contain("[JsonPropertyName(\"volume\")]"));
+            Assert.That(reconcileMethod, Does.Contain("snapshot?.Volume is not double volume"));
+            Assert.That(reconcileMethod, Does.Contain("SetPlayerVolumeFromWebView(volume);"));
             Assert.That(applyMethod, Does.Contain("GetCurrentPlayerVolumeSetting().ToString("));
             Assert.That(applyMethod, Does.Not.Contain("snapshot.Volume"));
-            Assert.That(closeMethod, Does.Not.Contain("SetPlayerVolumeFromWebView("));
-            Assert.That(closeMethod, Does.Not.Contain("snapshot.Volume"));
+            Assert.That(
+                openMethod,
+                Does.Contain("ReconcilePlayerWebViewSnapshotVolume(snapshot);")
+            );
+            Assert.That(
+                closeMethod,
+                Does.Contain("ReconcilePlayerWebViewSnapshotVolume(snapshot);")
+            );
         });
     }
 

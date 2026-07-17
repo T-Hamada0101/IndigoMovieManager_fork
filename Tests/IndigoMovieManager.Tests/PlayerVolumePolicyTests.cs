@@ -1,5 +1,7 @@
 namespace IndigoMovieManager.Tests;
 
+using System.Text.Json;
+
 [TestFixture]
 public sealed class PlayerVolumePolicyTests
 {
@@ -33,5 +35,22 @@ public sealed class PlayerVolumePolicyTests
         Assert.That(PlayerVolumePolicy.Normalize(double.PositiveInfinity), Is.EqualTo(0.25d));
         Assert.That(PlayerVolumePolicy.RequiresRepair(double.NaN), Is.True);
         Assert.That(PlayerVolumePolicy.RequiresRepair(double.PositiveInfinity), Is.True);
+    }
+
+    [Test]
+    public void 全画面スナップショットはWebViewの最新音量を復元する()
+    {
+        const string json = """{"currentTime":12.5,"paused":true,"volume":0.37}""";
+
+        PlayerWebViewPlaybackSnapshot snapshot =
+            JsonSerializer.Deserialize<PlayerWebViewPlaybackSnapshot>(json)
+            ?? throw new AssertionException("全画面スナップショットを復元できませんでした。");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshot.CurrentTime, Is.EqualTo(12.5d));
+            Assert.That(snapshot.Paused, Is.True);
+            Assert.That(snapshot.Volume, Is.EqualTo(0.37d));
+        });
     }
 }
