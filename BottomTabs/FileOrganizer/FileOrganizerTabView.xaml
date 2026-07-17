@@ -1,0 +1,234 @@
+<UserControl
+    x:Class="IndigoMovieManager.BottomTabs.FileOrganizer.FileOrganizerTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="clr-namespace:IndigoMovieManager.Converter"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Style="{StaticResource BottomTabRootUserControlStyle}"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <c:NoLockImageConverter x:Key="noLockImageConverter" />
+        <Style x:Key="ShortcutLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AppTextSubtleBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsShortcutActive}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}" />
+                    <Setter Property="FontWeight" Value="Bold" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="8,6">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="330" MinWidth="280" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="*" MinWidth="430" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 左側は、通常移動または全移動の代表となる1件だけをコンパクトに見せる。 -->
+        <Border
+            Grid.Column="0"
+            Padding="8"
+            BorderBrush="{DynamicResource AppTextSubtleBrush}"
+            BorderThickness="1"
+            CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Margin="0,0,0,6">
+                    <TextBlock FontWeight="Bold" Text="移動対象動画" />
+                    <TextBlock
+                        x:Name="TargetCountTextBlock"
+                        Margin="8,0,0,0"
+                        Foreground="{DynamicResource AppTextSubtleBrush}"
+                        Text="未選択" />
+                </DockPanel>
+
+                <Grid x:Name="SelectedMovieDetailPanel" Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="112" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border
+                        Width="104"
+                        Height="78"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Background="{DynamicResource ThumbImageBackground}">
+                        <Image
+                            Source="{Binding ThumbPathSmall, Converter={StaticResource noLockImageConverter}}"
+                            Stretch="Uniform" />
+                    </Border>
+
+                    <TextBlock
+                        Grid.Column="1"
+                        Margin="8,0,0,5"
+                        FontWeight="SemiBold"
+                        Text="{Binding Movie_Name, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        ToolTip="{Binding Movie_Name, Mode=OneWay}" />
+
+                    <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="52" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="ファイル" />
+                        <TextBox
+                            Grid.Column="1"
+                            Padding="4,2"
+                            IsReadOnly="True"
+                            Text="{Binding Movie_Path, Mode=OneWay}"
+                            ToolTip="{Binding Movie_Path, Mode=OneWay}" />
+                        <Button
+                            Grid.Column="2"
+                            Margin="4,0,0,0"
+                            Padding="7,2"
+                            Click="CopyMoviePathButton_Click"
+                            Content="コピー"
+                            ToolTip="表示中の動画ファイルパスをクリップボードへコピーします。" />
+                    </Grid>
+
+                    <Grid Grid.Row="2" Grid.ColumnSpan="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="52" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="フォルダ" />
+                        <TextBox
+                            Grid.Column="1"
+                            Padding="4,2"
+                            IsReadOnly="True"
+                            Text="{Binding Dir, Mode=OneWay}"
+                            ToolTip="{Binding Dir, Mode=OneWay}" />
+                        <Button
+                            Grid.Column="2"
+                            Margin="4,0,0,0"
+                            Padding="7,2"
+                            Click="CopyFolderPathButton_Click"
+                            Content="コピー"
+                            ToolTip="表示中の動画のフォルダパスをクリップボードへコピーします。" />
+                        <Button
+                            Grid.Column="3"
+                            Margin="4,0,0,0"
+                            Padding="7,2"
+                            Click="OpenFolderButton_Click"
+                            Content="開く"
+                            ToolTip="エクスプローラーで表示中の動画を選択して開きます。" />
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <GridSplitter
+            Grid.Column="1"
+            Width="6"
+            HorizontalAlignment="Stretch"
+            ResizeDirection="Columns" />
+
+        <!-- 右側は9件の登録先。ON中の行だけ、その番号のショートカットを受け付ける。 -->
+        <Grid Grid.Column="2" Margin="8,0,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock
+                FontWeight="SemiBold"
+                Text="ショートカットでファイルを移動できます。ONの登録先へ、左の詳細表示中の動画を Ctrl+1～9 で移動します。" />
+            <TextBlock
+                Grid.Row="1"
+                Margin="0,2,0,5"
+                Foreground="{DynamicResource AppTextSubtleBrush}"
+                Text="「全移動」は、現在のメインタブに表示中のすべての動画を登録先へ移動します。" />
+
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="DestinationItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="58" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock
+                                    Margin="4,0,6,0"
+                                    Style="{StaticResource ShortcutLabelStyle}"
+                                    Text="{Binding ShortcutLabel}" />
+                                <TextBox
+                                    Grid.Column="1"
+                                    MinWidth="170"
+                                    Padding="4,2"
+                                    IsReadOnly="True"
+                                    Text="{Binding DisplayFolderPath, Mode=OneWay}"
+                                    ToolTip="{Binding FolderPath, Mode=OneWay}" />
+                                <ToggleButton
+                                    Grid.Column="2"
+                                    Width="42"
+                                    Margin="4,0,0,0"
+                                    IsChecked="{Binding IsShortcutEnabled, Mode=TwoWay}"
+                                    Content="ON"
+                                    IsEnabled="{Binding IsRegistered}"
+                                    ToolTip="ONの間だけ、この行のCtrlショートカットを有効にします。" />
+                                <Button
+                                    Grid.Column="3"
+                                    Margin="4,0,0,0"
+                                    Padding="7,2"
+                                    Click="RegisterButton_Click"
+                                    Content="登録"
+                                    ToolTip="このショートカット番号の移動先フォルダを登録します。" />
+                                <Button
+                                    Grid.Column="4"
+                                    Margin="4,0,0,0"
+                                    Padding="7,2"
+                                    Click="ClearButton_Click"
+                                    Content="解除"
+                                    IsEnabled="{Binding IsRegistered}"
+                                    ToolTip="登録した移動先を解除し、ショートカットをOFFにします。" />
+                                <Button
+                                    Grid.Column="5"
+                                    Margin="4,0,0,0"
+                                    Padding="7,2"
+                                    Click="MoveAllButton_Click"
+                                    Content="全移動"
+                                    IsEnabled="{Binding IsRegistered}"
+                                    ToolTip="現在のメインタブに表示中のすべての動画を、この登録先へ移動します。" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <TextBlock
+                x:Name="StatusTextBlock"
+                Grid.Row="3"
+                Margin="0,5,0,0"
+                Foreground="{DynamicResource AppTextSubtleBrush}"
+                Text="移動先を登録してください。" />
+        </Grid>
+    </Grid>
+</UserControl>

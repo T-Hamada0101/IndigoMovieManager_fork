@@ -3,6 +3,10 @@
 最終更新日: 2026-07-17
 
 変更概要:
+- 2026-07-18、「ファイル整理」表示中にメイン一覧をクリックするとAvalonDockの `IsActive / IsSelected` が外れ、詳細同期を捨てる問題を修正した。メイン選択の詳細同期をDock活性から分離し、ショートカット条件は登録行のONだけへ一本化した。これにより一覧で動画を選んだ直後も整理タブへ表示され、ONの `Ctrl+1～9` をそのまま使える。
+- 2026-07-17、「ファイル整理」を代表動画のコンパクト詳細と登録リストの左右2分割へ更新した。詳細はサムネイル、動画名、ファイル／フォルダパス、コピー、Explorer起動を持つ。登録行ごとのON時だけ `Ctrl+1～9` を有効にし、通常は詳細1件、「全移動」は現在の `FilteredMovieRecs` 全件を対象とする。どちらも代表ファイル名・件数・移動先の確認後だけ既存背景Moveへ流し、大量全移動の要求組立も背景へ移した。登録先が同一監視フォルダまたはsub有効な親監視フォルダ配下でなければ監視追加を確認し、承認時は既存の監視登録経路を使う。
+- 2026-07-17、「ファイル整理」タブ初回描画時に、読み取り専用 `DisplayFolderPath` が `TextBox.Text` の既定双方向バインドへ接続されて `XamlParseException` となる問題を修正した。表示バインドを明示 `OneWay` に固定し、9行のテンプレートを `Measure / Arrange / UpdateLayout` まで実描画する回帰テストでクラッシュしないことを確認した。
+- 2026-07-17、下部へ「ファイル整理」タブを追加した。移動先9件をアプリ設定へ登録し、タブが前面の時だけ `Ctrl+1～9` をアクセント色で有効表示して、メインタブの複数選択動画を既存の背景ファイル移動へ流す。`.wb` のスキーマは変えず、物理移動成功後だけ既存の `movie_path` 背景保存と局所UI反映を使う。古いドックレイアウトでは必須タブ契約により新しい既定配置へ戻す。
 - 2026-07-17、Player音量を`PlayerVolumePolicy`へ一元化し、新規初期値を25%へ変更した。XAML初期化中の`ValueChanged`が保存済み音量を50%で上書きしていたため、設定復元完了までは音量変更イベントを無視する。0〜100%の保存値はそのまま尊重し、不正値だけ25%へ修復する。通常・全画面とも中央状態を正本とし、全画面遷移直前に採取できたWebView実音量だけを中央へ合流して、非同期通知を追い越した直前操作も失わない。音量・設定保存関連Release x64 58テストと本体buildが成功した。
 - 2026-07-13、Player再生面全体の`Grid.Effect`に残っていた`DropShadowEffect`を除去した。変更前Release実機ログではPlayer復帰後にInput heartbeatの`delay_ms=1000〜1258`が反復し、物理ホイールburstも右レール側`max_generator_cycle_ms=1〜3`のまま`max_layout_gap_ms=1134〜1616`だった。変更後ReleaseはコピーDB + no-persistで実在MKVをMediaElement再生し、OSホイール10回を右レールへ送った結果、thumbnail worker 8本稼働中でも`first_render_ms=5 max_layout_gap_ms=70 max_composition_gap_ms=30 max_generator_cycle_ms=2`、burst中UI hang 0件となった。枠線・背景・角丸・再生継続を維持し、再生面へWPFエフェクトを戻さないsource testを追加した。Player関連Release x64 15テストと本体buildも成功し、一時DB・診断用サムネフォルダ・プロセスの残置0を確認した。
 - 2026-07-12、startup partial first page前に5タブ＋詳細のサムネイルディレクトリを全件列挙していた`BuildMovieRecordBulkBuildCache`を起動経路から外し、読込済みページの現行名・旧名候補だけを存在確認して同一cacheへ増分追記するようにした。continuationは同じcacheを再利用し、thumbnail/error marker/tags/source image表示とDB非変更を維持する。最終Release x64コピーDBでは`db_read_ms=50 bulk_cache_ms=41 row_convert_ms=36 total_ms=131`、`first-page shown=481ms input ready=482ms`となり、旧8117〜10187msから約94〜95%短縮した。

@@ -369,6 +369,11 @@ namespace IndigoMovieManager
         // Window全体でショートカットを先に処理し、各コントロールの個別キー処理へ誤爆させない。
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (TryHandleFileOrganizerShortcut(e))
+            {
+                return;
+            }
+
             if (TryHandleManualPlayerShortcut(e))
             {
                 return;

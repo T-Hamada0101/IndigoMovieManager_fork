@@ -5,6 +5,7 @@ namespace IndigoMovieManager
     internal static class DockLayoutRestorePolicy
     {
         private const string ExtensionBottomTabContentId = "ToolExtension";
+        private const string FileOrganizerBottomTabContentId = "ToolFileOrganizer";
         private const string BookmarkBottomTabContentId = "ToolBookmark";
         private const string SavedSearchBottomTabContentId = "ToolTagBar";
         private const string ThumbnailProgressContentId = "ToolThumbnailProgress";
@@ -23,6 +24,7 @@ namespace IndigoMovieManager
             (string ContentId, string Reason)[] requiredTabs =
             [
                 (ExtensionBottomTabContentId, "missing-extension-bottom-tab"),
+                (FileOrganizerBottomTabContentId, "missing-file-organizer-bottom-tab"),
                 (BookmarkBottomTabContentId, "missing-bookmark-bottom-tab"),
                 (SavedSearchBottomTabContentId, "missing-saved-search-bottom-tab"),
                 (ThumbnailProgressContentId, "missing-thumbnail-progress"),

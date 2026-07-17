@@ -34,6 +34,7 @@ public sealed class DockLayoutRestorePolicyTests
             """
             <LayoutRoot>
               <LayoutAnchorable ContentId="ToolExtension" />
+              <LayoutAnchorable ContentId="ToolFileOrganizer" />
               <LayoutAnchorable ContentId="ToolBookmark" />
               <LayoutAnchorable ContentId="ToolTagBar" />
               <LayoutAnchorable ContentId="ToolThumbnailProgress" />
@@ -57,6 +58,7 @@ public sealed class DockLayoutRestorePolicyTests
             """
             <LayoutRoot>
               <LayoutAnchorable ContentId="ToolExtension" />
+              <LayoutAnchorable ContentId="ToolFileOrganizer" />
               <LayoutAnchorable ContentId="ToolBookmark" />
               <LayoutAnchorable ContentId="ToolTagBar" />
               <LayoutAnchorable ContentId="ToolThumbnailProgress" />
@@ -72,5 +74,28 @@ public sealed class DockLayoutRestorePolicyTests
         );
 
         Assert.That(actual, Is.EqualTo("missing-log-tool"));
+    }
+
+    [Test]
+    public void ファイル整理タブが欠けた旧layoutは新しい既定layoutへ戻す()
+    {
+        string layoutText =
+            """
+            <LayoutRoot>
+              <LayoutAnchorable ContentId="ToolExtension" />
+              <LayoutAnchorable ContentId="ToolBookmark" />
+              <LayoutAnchorable ContentId="ToolTagBar" />
+              <LayoutAnchorable ContentId="ToolThumbnailProgress" />
+              <LayoutAnchorable ContentId="ToolTagEditor" />
+            </LayoutRoot>
+            """;
+
+        string actual = DockLayoutRestorePolicy.FindMissingRequiredDockLayoutReason(
+            layoutText,
+            shouldShowThumbnailErrorBottomTab: false,
+            shouldShowDebugTab: false
+        );
+
+        Assert.That(actual, Is.EqualTo("missing-file-organizer-bottom-tab"));
     }
 }

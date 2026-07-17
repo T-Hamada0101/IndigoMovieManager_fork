@@ -76,6 +76,7 @@ namespace IndigoMovieManager
         private const int EverythingWatchPollLowUpdateThreshold = 1;
         private const int EverythingWatchPollCalmCyclesThreshold = 3;
         private const string ExtensionBottomTabContentId = "ToolExtension";
+        private const string FileOrganizerBottomTabContentId = "ToolFileOrganizer";
         private int _mainWindowClosingStarted;
         private const string BookmarkBottomTabContentId = "ToolBookmark";
         private const string SavedSearchBottomTabContentId = "ToolTagBar";
@@ -294,6 +295,7 @@ namespace IndigoMovieManager
             InitializeBookmarkTabSupport();
             InitializeSavedSearchTabSupport();
             InitializeTagEditorTabSupport();
+            InitializeFileOrganizerTabSupport();
             InitializeDebugTabSupport();
             InitializeLogTabSupport();
             ApplyDebugTabVisibility();

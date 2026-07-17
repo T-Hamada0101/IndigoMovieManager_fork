@@ -13,6 +13,7 @@
   xmlns:bookmarkTab="clr-namespace:IndigoMovieManager.BottomTabs.Bookmark"
   xmlns:extensionTab="clr-namespace:IndigoMovieManager.BottomTabs.Extension"
   xmlns:debugTab="clr-namespace:IndigoMovieManager.BottomTabs.Debug"
+  xmlns:fileOrganizerTab="clr-namespace:IndigoMovieManager.BottomTabs.FileOrganizer"
   xmlns:logTab="clr-namespace:IndigoMovieManager.BottomTabs.Log"
   xmlns:savedSearchTab="clr-namespace:IndigoMovieManager.BottomTabs.SavedSearch"
   xmlns:tagEditorTab="clr-namespace:IndigoMovieManager.BottomTabs.TagEditor"
@@ -1515,6 +1516,19 @@
               ContentId="ToolTagEditor"
             >
               <tagEditorTab:TagEditorTabView x:Name="TagEditorTabViewHost" />
+            </avalonDock:LayoutAnchorable>
+
+            <avalonDock:LayoutAnchorable
+              x:Name="FileOrganizerBottomTab"
+              Title="ファイル整理"
+              AutoHideHeight="240"
+              CanAutoHide="True"
+              CanClose="False"
+              CanDockAsTabbedDocument="False"
+              CanHide="False"
+              ContentId="ToolFileOrganizer"
+            >
+              <fileOrganizerTab:FileOrganizerTabView x:Name="FileOrganizerTabViewHost" />
             </avalonDock:LayoutAnchorable>
 
             <avalonDock:LayoutAnchorable

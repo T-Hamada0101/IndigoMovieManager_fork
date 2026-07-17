@@ -311,6 +311,12 @@ namespace IndigoMovieManager
             );
             EnsureRequiredBottomTabPresent(
                 targetPane,
+                FileOrganizerBottomTab,
+                FileOrganizerBottomTabContentId,
+                canHide: false
+            );
+            EnsureRequiredBottomTabPresent(
+                targetPane,
                 exDetail,
                 ExtensionBottomTabContentId,
                 canHide: false
@@ -455,6 +461,7 @@ namespace IndigoMovieManager
         private static bool IsKnownBottomTabContentId(string contentId)
         {
             return contentId is TagEditorBottomTabContentId
+                or FileOrganizerBottomTabContentId
                 or ExtensionBottomTabContentId
                 or BookmarkBottomTabContentId
                 or SavedSearchBottomTabContentId

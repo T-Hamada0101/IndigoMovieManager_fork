@@ -383,25 +383,34 @@ namespace IndigoMovieManager
             }
 
             string dbFullPathSnapshot = MainVM?.DbInfo?.DBFullPath ?? "";
-            MovieMoveSnapshot[] moveRequests = records
-                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Movie_Path))
-                .Select(x => new MovieMoveSnapshot
-                {
-                    UiRecord = x,
-                    MovieId = x.Movie_Id,
-                    SourcePath = x.Movie_Path,
-                    DestinationPath = Path.Combine(destFolder, Path.GetFileName(x.Movie_Path)),
-                    DestinationFolder = destFolder,
-                })
-                .ToArray();
-            if (moveRequests.Length == 0)
-            {
-                return;
-            }
-
-            FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(destFolder, enabled: false);
+            MovieRecords[] recordSnapshots = records.Where(x => x != null).ToArray();
+            string destinationFolderSnapshot = destFolder;
             _ = Task.Run(() =>
             {
+                // 全移動でも大量のPath.CombineをUIへ戻さず、物理Moveと同じ背景区間で要求を組み立てる。
+                MovieMoveSnapshot[] moveRequests = recordSnapshots
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Movie_Path))
+                    .Select(x => new MovieMoveSnapshot
+                    {
+                        UiRecord = x,
+                        MovieId = x.Movie_Id,
+                        SourcePath = x.Movie_Path,
+                        DestinationPath = Path.Combine(
+                            destinationFolderSnapshot,
+                            Path.GetFileName(x.Movie_Path)
+                        ),
+                        DestinationFolder = destinationFolderSnapshot,
+                    })
+                    .ToArray();
+                if (moveRequests.Length == 0)
+                {
+                    return;
+                }
+
+                FileSystemWatcher[] suppressedWatchers = SetFileWatchersEnabled(
+                    destinationFolderSnapshot,
+                    enabled: false
+                );
                 MovieMoveBackgroundResult moveResult = MoveMovieFilesInBackground(moveRequests);
                 try
                 {

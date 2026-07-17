@@ -26,12 +26,14 @@ namespace IndigoMovieManager
                 // 未選択時は詳細パネル自体を隠す
                 HideExtensionDetail();
                 HideTagEditor();
+                RefreshFileOrganizerDisplayedMovie();
                 return;
             }
 
             // 選択されたMovieRecordsをセットし、XAML側のバインディングを機能させる
             ShowExtensionDetail(mv);
             ShowTagEditor(mv);
+            RefreshFileOrganizerDisplayedMovie();
 
         }
 
@@ -103,6 +105,7 @@ namespace IndigoMovieManager
 
             ShowExtensionDetail(record);
             ShowTagEditor(record);
+            RefreshFileOrganizerDisplayedMovie();
         }
 
         private static T FindVisualAncestor<T>(DependencyObject source)
