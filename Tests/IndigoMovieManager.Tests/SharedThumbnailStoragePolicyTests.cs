@@ -1,4 +1,5 @@
 using IndigoMovieManager.Thumbnail;
+using System.Runtime.CompilerServices;
 
 namespace IndigoMovieManager.Tests;
 
@@ -170,7 +171,11 @@ public sealed class SharedThumbnailStoragePolicyTests
                 );
 
             SharedThumbnailWritePreparationResult preparation =
-                SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(firstPath);
+                SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(
+                    firstPath,
+                    SharedThumbnailStoragePolicy.SharedStoreMode,
+                    sharedRoot
+                );
             File.WriteAllBytes(firstPath, replacementBytes);
 
             Assert.Multiple(() =>
@@ -186,6 +191,95 @@ public sealed class SharedThumbnailStoragePolicyTests
                     Directory.EnumerateFiles(Path.GetDirectoryName(firstPath)!, "*.private-*.tmp"),
                     Is.Empty
                 );
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(sharedRoot);
+        }
+    }
+
+    [Test]
+    public void DB別モードの既存JPEGは上書き前コピーを行わない()
+    {
+        string workRoot = CreateTempDirectory("imm-per-db-overwrite");
+        string sharedRoot = Path.Combine(workRoot, "shared");
+        string thumbnailPath = Path.Combine(workRoot, "legacy", "Grid", "sample.jpg");
+        byte[] originalBytes = [0xFF, 0xD8, 0x31, 0xFF, 0xD9];
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(thumbnailPath)!);
+            File.WriteAllBytes(thumbnailPath, originalBytes);
+
+            SharedThumbnailWritePreparationResult preparation =
+                SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(
+                    thumbnailPath,
+                    SharedThumbnailStoragePolicy.PerDatabaseMode,
+                    sharedRoot
+                );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(preparation.SafeToWrite, Is.True, preparation.Reason);
+                Assert.That(preparation.Detached, Is.False);
+                Assert.That(preparation.Reason, Is.EqualTo("per-database-path"));
+                Assert.That(File.ReadAllBytes(thumbnailPath), Is.EqualTo(originalBytes));
+                Assert.That(
+                    Directory.EnumerateFiles(
+                        Path.GetDirectoryName(thumbnailPath)!,
+                        "*.private-*.tmp"
+                    ),
+                    Is.Empty
+                );
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(workRoot);
+        }
+    }
+
+    [Test]
+    public void DB別モードへ変更直後も旧共通ストア配下のJPEGは分離する()
+    {
+        string sharedRoot = CreateTempDirectory("imm-old-shared-overwrite");
+        string thumbnailPath = Path.Combine(
+            sharedRoot,
+            "databases",
+            "db1",
+            "Grid",
+            "sample.jpg"
+        );
+        byte[] originalBytes = [0xFF, 0xD8, 0x61, 0xFF, 0xD9];
+        byte[] replacementBytes = [0xFF, 0xD8, 0x62, 0xFF, 0xD9];
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(thumbnailPath)!);
+            File.WriteAllBytes(thumbnailPath, originalBytes);
+            SharedThumbnailDeduplicationResult deduplication =
+                SharedThumbnailStoragePolicy.TryDeduplicateGeneratedThumbnail(
+                    thumbnailPath,
+                    SharedThumbnailStoragePolicy.SharedStoreMode,
+                    sharedRoot
+                );
+
+            SharedThumbnailWritePreparationResult preparation =
+                SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(
+                    thumbnailPath,
+                    SharedThumbnailStoragePolicy.PerDatabaseMode,
+                    sharedRoot
+                );
+            File.WriteAllBytes(thumbnailPath, replacementBytes);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(deduplication.HardLinked, Is.True, deduplication.Reason);
+                Assert.That(preparation.SafeToWrite, Is.True, preparation.Reason);
+                Assert.That(preparation.Detached, Is.True);
+                Assert.That(File.ReadAllBytes(thumbnailPath), Is.EqualTo(replacementBytes));
+                Assert.That(File.ReadAllBytes(deduplication.ObjectPath), Is.EqualTo(originalBytes));
             });
         }
         finally
@@ -366,6 +460,48 @@ public sealed class SharedThumbnailStoragePolicyTests
     }
 
     [Test]
+    public void 一発移行は共有書込み中のJPEGを成功扱いしない()
+    {
+        string workRoot = CreateTempDirectory("imm-shared-thumbnail-migration-writing");
+        string sourceRoot = Path.Combine(workRoot, "legacy");
+        string sharedRoot = Path.Combine(workRoot, "shared");
+        string targetRoot = Path.Combine(sharedRoot, "databases", "anime.123456789abc");
+        string sourcePath = Path.Combine(sourceRoot, "Grid", "writing.jpg");
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+            File.WriteAllBytes(sourcePath, [0xFF, 0xD8, 0x41, 0xFF, 0xD9]);
+
+            using FileStream writerStream = new(
+                sourcePath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite | FileShare.Delete
+            );
+            SharedThumbnailMigrationResult result =
+                SharedThumbnailStoragePolicy.MigrateThumbnailTreeToSharedStore(
+                    sourceRoot,
+                    targetRoot,
+                    sharedRoot
+                );
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Succeeded, Is.False);
+                Assert.That(result.CopiedFiles, Is.Zero);
+                Assert.That(result.FailedFiles, Is.EqualTo(1));
+                Assert.That(File.Exists(sourcePath), Is.True);
+                Assert.That(File.Exists(Path.Combine(targetRoot, "Grid", "writing.jpg")), Is.False);
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(workRoot);
+        }
+    }
+
+    [Test]
     public void 一発移行はコピー元とコピー先が重なる構成を拒否する()
     {
         string sharedRoot = CreateTempDirectory("imm-shared-thumbnail-overlap");
@@ -501,6 +637,62 @@ public sealed class SharedThumbnailStoragePolicyTests
                 Assert.That(
                     File.ReadAllBytes(Path.Combine(targetRoot, relativePath)),
                     Is.EqualTo(migratedBytes)
+                );
+            });
+        }
+        finally
+        {
+            TryDeleteDirectory(workRoot);
+        }
+    }
+
+    [Test]
+    public void 移動済み削除は外部書込み中の旧JPEGを削除しない()
+    {
+        string workRoot = CreateTempDirectory("imm-shared-thumbnail-cleanup-writing");
+        string sourceRoot = Path.Combine(workRoot, "legacy");
+        string sharedRoot = Path.Combine(workRoot, "shared");
+        string targetRoot = Path.Combine(sharedRoot, "databases", "anime.123456789abc");
+        string relativePath = Path.Combine("Grid", "writing.jpg");
+        string sourcePath = Path.Combine(sourceRoot, relativePath);
+        byte[] jpegBytes = [0xFF, 0xD8, 0x51, 0xFF, 0xD9];
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+            File.WriteAllBytes(sourcePath, jpegBytes);
+            SharedThumbnailMigrationResult migration =
+                SharedThumbnailStoragePolicy.MigrateThumbnailTreeToSharedStore(
+                    sourceRoot,
+                    targetRoot,
+                    sharedRoot
+                );
+
+            using FileStream writerStream = new(
+                sourcePath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite | FileShare.Delete
+            );
+            SharedThumbnailSourceCleanupResult cleanup =
+                SharedThumbnailStoragePolicy.DeleteMigratedSourceFiles(
+                    sourceRoot,
+                    targetRoot,
+                    sharedRoot
+                );
+            writerStream.Dispose();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(migration.Succeeded, Is.True, migration.Reason);
+                Assert.That(cleanup.Succeeded, Is.False);
+                Assert.That(cleanup.DeletedFiles, Is.Zero);
+                Assert.That(cleanup.FailedFiles, Is.EqualTo(1));
+                Assert.That(File.Exists(sourcePath), Is.True);
+                Assert.That(File.ReadAllBytes(sourcePath), Is.EqualTo(jpegBytes));
+                Assert.That(
+                    Directory.EnumerateFiles(Path.GetDirectoryName(sourcePath)!, "*.cleanup-*.tmp"),
+                    Is.Empty
                 );
             });
         }
@@ -759,13 +951,10 @@ public sealed class SharedThumbnailStoragePolicyTests
                 thumbnailRescueLane,
                 Does.Contain("TryPrepareExistingThumbnailForRescueOverwrite")
             );
-            Assert.That(
-                upperTabRescue,
-                Does.Contain("TryPrepareThumbnailForOverwrite(outputThumbPath)")
-            );
+            Assert.That(upperTabRescue, Does.Contain("TryPrepareThumbnailForOverwrite("));
             Assert.That(
                 upperTabRescue.IndexOf(
-                    "TryPrepareThumbnailForOverwrite(outputThumbPath)",
+                    "TryPrepareThumbnailForOverwrite(",
                     StringComparison.Ordinal
                 ),
                 Is.LessThan(
@@ -827,21 +1016,38 @@ public sealed class SharedThumbnailStoragePolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
-        while (current != null)
+        string[] startDirectories =
+        [
+            TestContext.CurrentContext.TestDirectory,
+            TestContext.CurrentContext.WorkDirectory,
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory,
+            GetCurrentSourceDirectory(),
+        ];
+        foreach (
+            string startDirectory in startDirectories.Distinct(StringComparer.OrdinalIgnoreCase)
+        )
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            DirectoryInfo? current = new(startDirectory);
+            while (current != null)
             {
-                return File.ReadAllText(candidate);
-            }
+                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
+                if (File.Exists(candidate))
+                {
+                    return File.ReadAllText(candidate);
+                }
 
-            current = current.Parent;
+                current = current.Parent;
+            }
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} をrepo rootから解決できませんでした。");
         return string.Empty;
     }
+
+    private static string GetCurrentSourceDirectory(
+        [CallerFilePath] string sourceFilePath = ""
+    ) => Path.GetDirectoryName(sourceFilePath) ?? "";
 
     private static int CountOccurrences(string source, string value)
     {

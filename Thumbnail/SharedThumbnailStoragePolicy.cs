@@ -221,7 +221,10 @@ namespace IndigoMovieManager.Thumbnail
         /// ハードリンクかどうかを推測せず常に分離することで、設定変更直後の旧共通ルートも守る。
         /// </summary>
         internal static SharedThumbnailWritePreparationResult TryPrepareThumbnailForOverwrite(
-            string thumbnailPath
+            string thumbnailPath,
+            int storageMode,
+            string configuredSharedRoot,
+            string localApplicationDataPath = ""
         )
         {
             if (string.IsNullOrWhiteSpace(thumbnailPath) || !File.Exists(thumbnailPath))
@@ -229,6 +232,20 @@ namespace IndigoMovieManager.Thumbnail
                 return SharedThumbnailWritePreparationResult.Ready(
                     detached: false,
                     "thumbnail-missing"
+                );
+            }
+
+            string sharedRoot = ResolveSharedRoot(configuredSharedRoot, localApplicationDataPath);
+            string sharedDatabasesRoot = Path.Combine(sharedRoot, SharedDatabasesFolderName);
+            if (
+                !IsSharedStoreEnabled(storageMode)
+                && !IsPathUnderRoot(thumbnailPath, sharedDatabasesRoot)
+            )
+            {
+                // 従来のDB別ルートは共有objectを持たないため、上書き前コピーを増やさない。
+                return SharedThumbnailWritePreparationResult.Ready(
+                    detached: false,
+                    "per-database-path"
                 );
             }
 
@@ -536,14 +553,28 @@ namespace IndigoMovieManager.Thumbnail
                 string targetFilePath = Path.Combine(normalizedTargetRoot, relativePath);
                 try
                 {
-                    if (!TryFilesHaveSameStableContent(sourceFilePath, targetFilePath))
+                    SourceCleanupFileOutcome outcome = TryDeleteMatchedSourceFileSafely(
+                        sourceFilePath,
+                        targetFilePath,
+                        out string fileFailureReason
+                    );
+                    if (outcome == SourceCleanupFileOutcome.Skipped)
                     {
                         skippedFiles++;
                         continue;
                     }
 
-                    File.Delete(sourceFilePath);
-                    deletedFiles++;
+                    if (outcome == SourceCleanupFileOutcome.Deleted)
+                    {
+                        deletedFiles++;
+                        continue;
+                    }
+
+                    failedFiles++;
+                    if (string.IsNullOrWhiteSpace(firstFailure))
+                    {
+                        firstFailure = $"{relativePath}: {fileFailureReason}";
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -587,7 +618,7 @@ namespace IndigoMovieManager.Thumbnail
                         sourceFilePath,
                         FileMode.Open,
                         FileAccess.Read,
-                        FileShare.ReadWrite | FileShare.Delete
+                        FileShare.Read
                     )
                 )
                 using (
@@ -600,7 +631,16 @@ namespace IndigoMovieManager.Thumbnail
                 )
                 {
                     sourceStream.CopyTo(targetStream);
+                    if (sourceStream.Position != sourceStream.Length)
+                    {
+                        throw new IOException("source-length-changed-during-copy");
+                    }
+
                     targetStream.Flush(flushToDisk: true);
+                    if (targetStream.Length != sourceStream.Length)
+                    {
+                        throw new IOException("target-length-mismatch-after-copy");
+                    }
                 }
 
                 // 同一ディレクトリ内で置換し、途中状態のファイルを表示側へ見せない。
@@ -616,6 +656,143 @@ namespace IndigoMovieManager.Thumbnail
             finally
             {
                 TryDeleteTemporaryLink(temporaryPath);
+            }
+        }
+
+        private enum SourceCleanupFileOutcome
+        {
+            Deleted,
+            Skipped,
+            Failed,
+        }
+
+        private static SourceCleanupFileOutcome TryDeleteMatchedSourceFileSafely(
+            string sourceFilePath,
+            string targetFilePath,
+            out string failureReason
+        )
+        {
+            failureReason = "";
+            if (!TryFilesHaveSameStableContent(sourceFilePath, targetFilePath))
+            {
+                return SourceCleanupFileOutcome.Skipped;
+            }
+
+            string quarantinePath = sourceFilePath + $".cleanup-{Guid.NewGuid():N}.tmp";
+            bool sourceWasQuarantined = false;
+            try
+            {
+                // 元パスから先に退避し、照合後に外部処理が作った新ファイルを削除しない。
+                File.Move(sourceFilePath, quarantinePath, overwrite: false);
+                sourceWasQuarantined = true;
+
+                bool contentStillMatches;
+                using (
+                    FileStream sourceStream = new(
+                        quarantinePath,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read | FileShare.Delete
+                    )
+                )
+                using (
+                    FileStream targetStream = new(
+                        targetFilePath,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read
+                    )
+                )
+                {
+                    contentStillMatches = sourceStream.Length == targetStream.Length;
+                    if (contentStillMatches)
+                    {
+                        string sourceHash = ComputeFileSha256(sourceStream);
+                        string targetHash = ComputeFileSha256(targetStream);
+                        contentStillMatches = string.Equals(
+                            sourceHash,
+                            targetHash,
+                            StringComparison.Ordinal
+                        );
+                    }
+
+                    if (contentStillMatches)
+                    {
+                        // sourceは書込み禁止、targetは書込み・置換禁止のまま隔離済み実体だけを消す。
+                        File.Delete(quarantinePath);
+                        sourceWasQuarantined = false;
+                        return SourceCleanupFileOutcome.Deleted;
+                    }
+                }
+
+                if (
+                    TryRestoreQuarantinedSource(
+                        sourceFilePath,
+                        quarantinePath,
+                        out string restoreFailureReason
+                    )
+                )
+                {
+                    sourceWasQuarantined = false;
+                    return SourceCleanupFileOutcome.Skipped;
+                }
+
+                sourceWasQuarantined = false;
+                failureReason = restoreFailureReason;
+                return SourceCleanupFileOutcome.Failed;
+            }
+            catch (Exception ex)
+            {
+                failureReason = $"{ex.GetType().Name}:{ex.Message}";
+                if (
+                    sourceWasQuarantined
+                    && !TryRestoreQuarantinedSource(
+                        sourceFilePath,
+                        quarantinePath,
+                        out string restoreFailureReason
+                    )
+                )
+                {
+                    failureReason += $"; {restoreFailureReason}";
+                }
+
+                return SourceCleanupFileOutcome.Failed;
+            }
+        }
+
+        private static bool TryRestoreQuarantinedSource(
+            string sourceFilePath,
+            string quarantinePath,
+            out string failureReason
+        )
+        {
+            failureReason = "";
+            try
+            {
+                if (!File.Exists(quarantinePath))
+                {
+                    return true;
+                }
+
+                if (!File.Exists(sourceFilePath))
+                {
+                    File.Move(quarantinePath, sourceFilePath, overwrite: false);
+                    return true;
+                }
+
+                string sourceDirectory = Path.GetDirectoryName(sourceFilePath) ?? "";
+                string preservedPath = Path.Combine(
+                    sourceDirectory,
+                    $"{Path.GetFileNameWithoutExtension(sourceFilePath)}.cleanup-preserved-{Guid.NewGuid():N}{Path.GetExtension(sourceFilePath)}"
+                );
+                File.Move(quarantinePath, preservedPath, overwrite: false);
+                failureReason = $"source-recreated-during-cleanup:preserved='{preservedPath}'";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                failureReason = $"source-restore-failed:{ex.GetType().Name}:{ex.Message}";
+                return false;
             }
         }
 
@@ -723,6 +900,12 @@ namespace IndigoMovieManager.Thumbnail
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete
             );
+            return ComputeFileSha256(stream);
+        }
+
+        private static string ComputeFileSha256(FileStream stream)
+        {
+            stream.Position = 0;
             return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
         }
 

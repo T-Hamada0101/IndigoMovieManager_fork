@@ -1702,7 +1702,11 @@ namespace IndigoMovieManager
                 }
 
                 SharedThumbnailWritePreparationResult preparationResult =
-                    SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(outputThumbPath);
+                    SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(
+                        outputThumbPath,
+                        Properties.Settings.Default.ThumbnailStorageMode,
+                        Properties.Settings.Default.SharedThumbnailRoot
+                    );
                 if (!preparationResult.SafeToWrite)
                 {
                     throw new IOException(

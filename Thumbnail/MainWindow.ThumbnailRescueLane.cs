@@ -555,7 +555,9 @@ namespace IndigoMovieManager
 
             SharedThumbnailWritePreparationResult preparationResult =
                 SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(
-                    existingThumbnailPath
+                    existingThumbnailPath,
+                    Properties.Settings.Default.ThumbnailStorageMode,
+                    Properties.Settings.Default.SharedThumbnailRoot
                 );
             if (preparationResult.SafeToWrite)
             {
