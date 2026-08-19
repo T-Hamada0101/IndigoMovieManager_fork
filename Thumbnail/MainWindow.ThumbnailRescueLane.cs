@@ -203,6 +203,14 @@ namespace IndigoMovieManager
                 return ThumbnailRescueRequestResult.SkippedExistingSuccess;
             }
 
+            if (
+                !skipWhenSuccessExists
+                && !TryPrepareExistingThumbnailForRescueOverwrite(rescueQueueObj)
+            )
+            {
+                return ThumbnailRescueRequestResult.InvalidRequest;
+            }
+
             int recoveredStaleCount = failureDbService.RecoverExpiredProcessingToPendingRescue(
                 DateTime.UtcNow
             );
@@ -524,6 +532,41 @@ namespace IndigoMovieManager
             RequestThumbnailErrorSnapshotRefresh();
             RequestThumbnailProgressSnapshotRefresh();
             return true;
+        }
+
+        // 既存成功jpgも再生成する明示救済では、worker起動前に共有ハードリンクを独立させる。
+        private bool TryPrepareExistingThumbnailForRescueOverwrite(QueueObj rescueQueueObj)
+        {
+            string outPath = ResolveThumbnailOutPath(
+                rescueQueueObj.Tabindex,
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? ""
+            );
+            if (
+                !ThumbnailPathResolver.TryFindExistingSuccessThumbnailPath(
+                    outPath,
+                    rescueQueueObj.MovieFullPath,
+                    out string existingThumbnailPath
+                )
+            )
+            {
+                return true;
+            }
+
+            SharedThumbnailWritePreparationResult preparationResult =
+                SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(
+                    existingThumbnailPath
+                );
+            if (preparationResult.SafeToWrite)
+            {
+                return true;
+            }
+
+            DebugRuntimeLog.Write(
+                "thumbnail-shared-store",
+                $"rescue overwrite preparation failed: path='{existingThumbnailPath}' reason='{preparationResult.Reason}'"
+            );
+            return false;
         }
 
         // UI 上の ERROR 画像起点でも、入口ごとに即時実行か待機付きかを切り替えて worker へ渡す。

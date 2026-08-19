@@ -104,11 +104,18 @@ namespace IndigoMovieManager
             string defaultBaseDirectory = ""
         )
         {
-            return ThumbRootResolver.ResolveRuntimeThumbRoot(
+            string perDatabaseRoot = ThumbRootResolver.ResolveRuntimeThumbRoot(
                 dbFullPath,
                 dbName,
                 thumbFolder,
                 defaultBaseDirectory
+            );
+            return SharedThumbnailStoragePolicy.ResolveEffectiveThumbnailRoot(
+                dbFullPath,
+                dbName,
+                perDatabaseRoot,
+                Properties.Settings.Default.ThumbnailStorageMode,
+                Properties.Settings.Default.SharedThumbnailRoot
             );
         }
 

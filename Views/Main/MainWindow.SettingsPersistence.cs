@@ -34,6 +34,32 @@ namespace IndigoMovieManager
             }
         }
 
+        // 一発移行は「保存完了」まで利用者へ返す必要があるため、同じ直列キューを待てる形で公開する。
+        internal Task<bool> SaveApplicationSettingsFromSettingsWindowAsync(string reason)
+        {
+            PersistenceWriteRequest writeRequest = BuildApplicationSettingsWriteRequest(reason);
+            if (App.IsDiagnosticNoPersistEnabled())
+            {
+                DebugRuntimeLog.Write(
+                    "ui-tempo",
+                    $"application settings save skipped: {writeRequest.BuildLogFields()} diagnostic_no_persist=1"
+                );
+                return Task.FromResult(false);
+            }
+
+            lock (_applicationSettingsSaveSync)
+            {
+                Task<bool> saveTask = _applicationSettingsSaveTask.ContinueWith(
+                    _ => SaveApplicationSettingsInBackground(writeRequest),
+                    CancellationToken.None,
+                    TaskContinuationOptions.None,
+                    TaskScheduler.Default
+                );
+                _applicationSettingsSaveTask = saveTask;
+                return saveTask;
+            }
+        }
+
         private static PersistenceWriteRequest BuildApplicationSettingsWriteRequest(string reason)
         {
             return PersistenceWriteRequest.Create(
@@ -44,7 +70,7 @@ namespace IndigoMovieManager
             );
         }
 
-        private void SaveApplicationSettingsInBackground(PersistenceWriteRequest writeRequest)
+        private bool SaveApplicationSettingsInBackground(PersistenceWriteRequest writeRequest)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             try
@@ -55,7 +81,7 @@ namespace IndigoMovieManager
                         "ui-tempo",
                         $"application settings save skipped in background: {writeRequest.BuildLogFields()} diagnostic_no_persist=1"
                     );
-                    return;
+                    return false;
                 }
 
                 lock (_applicationSettingsSaveSync)
@@ -71,6 +97,7 @@ namespace IndigoMovieManager
                     "ui-tempo",
                     $"application settings save succeeded: {result.LogFields}"
                 );
+                return true;
             }
             catch (Exception ex)
             {
@@ -83,6 +110,7 @@ namespace IndigoMovieManager
                     "ui-tempo",
                     $"application settings save failed: {result.LogFields} err='{ex.GetType().Name}: {ex.Message}'"
                 );
+                return false;
             }
         }
 

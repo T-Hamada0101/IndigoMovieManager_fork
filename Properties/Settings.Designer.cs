@@ -472,6 +472,30 @@ namespace IndigoMovieManager.Properties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0")]
+        public int ThumbnailStorageMode {
+            get {
+                return ((int)(this["ThumbnailStorageMode"]));
+            }
+            set {
+                this["ThumbnailStorageMode"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string SharedThumbnailRoot {
+            get {
+                return ((string)(this["SharedThumbnailRoot"]));
+            }
+            set {
+                this["SharedThumbnailRoot"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool EverythingIntegrationEnabled {
             get {

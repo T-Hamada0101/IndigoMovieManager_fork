@@ -373,7 +373,7 @@ namespace IndigoMovieManager
                     string dbName = string.IsNullOrWhiteSpace(MainVM.DbInfo.DBName)
                         ? Path.GetFileNameWithoutExtension(dbFullPath) ?? ""
                         : MainVM.DbInfo.DBName;
-                    MainVM.DbInfo.ThumbFolder = ThumbRootResolver.ResolveRuntimeThumbRoot(
+                    MainVM.DbInfo.ThumbFolder = ResolveRuntimeThumbnailRoot(
                         dbFullPath,
                         dbName,
                         normalizedValue
@@ -541,7 +541,7 @@ namespace IndigoMovieManager
                     ? Path.GetFileNameWithoutExtension(dbPath) ?? ""
                     : MainVM.DbInfo.DBName;
                 string configuredThumbFolder = SelectSystemTable("thum");
-                MainVM.DbInfo.ThumbFolder = ThumbRootResolver.ResolveRuntimeThumbRoot(
+                MainVM.DbInfo.ThumbFolder = ResolveRuntimeThumbnailRoot(
                     dbPath,
                     dbName,
                     configuredThumbFolder

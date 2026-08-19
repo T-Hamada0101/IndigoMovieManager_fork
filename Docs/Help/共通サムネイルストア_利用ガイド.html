@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>共通サムネイルストア 利用ガイド</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --subtle: #516078;
+      --border: #d6deea;
+      --accent: #315fc3;
+      --warning-bg: #fff5d8;
+      --warning-border: #d88700;
+      --warning-text: #5f3b00;
+      --safe-bg: #eaf7ef;
+      --safe-border: #3b8f5a;
+      --safe-text: #174d2b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111722;
+        --panel: #192230;
+        --text: #edf2fa;
+        --subtle: #b9c5d8;
+        --border: #344258;
+        --accent: #8db2ff;
+        --warning-bg: #3a2a0d;
+        --warning-border: #d8a039;
+        --warning-text: #ffe2a1;
+        --safe-bg: #123321;
+        --safe-border: #5eb77d;
+        --safe-text: #c7f3d6;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+      line-height: 1.75;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.35; }
+    h2 { margin-top: 2.2rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border); }
+    h3 { margin-top: 1.5rem; }
+    p, li { max-width: 78ch; }
+    .lead { color: var(--subtle); font-size: 1.08rem; }
+    .card, .warning, .safe {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    .warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-text); }
+    .safe { background: var(--safe-bg); border-color: var(--safe-border); color: var(--safe-text); }
+    .warning strong, .safe strong { display: block; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); }
+    th, td { padding: 10px 12px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { background: color-mix(in srgb, var(--panel) 75%, var(--accent)); }
+    code { padding: 0.12rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--panel) 75%, var(--border)); }
+    .steps li { margin-bottom: 0.65rem; }
+    .small { color: var(--subtle); font-size: 0.92rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>共通サムネイルストア 利用ガイド</h1>
+  <p class="lead">複数の管理ファイル（DB）に同じ動画を登録している場合、同じサムネイル画像の実体を共有して、保存容量の重複を減らすための機能です。</p>
+
+  <div class="warning">
+    <strong>切り替える前に必ずお読みください</strong>
+    共通モードへの切り替え時は、現在DBの既存画像を「一発移行」できます。一発移行を使わないDBでは初回のサムネイル再構築が必要です。設定はアプリを再起動した後に有効になります。旧サムネイルフォルダーは安全のため自動削除されません。
+  </div>
+
+  <h2>1. 2つの保存方式</h2>
+  <table>
+    <thead><tr><th>保存方式</th><th>特徴</th><th>おすすめする人</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>DB別（既定）</td>
+        <td>DBごとに独立したサムネイルフォルダーを使用します。WhiteBrowserとの互換性を優先します。</td>
+        <td>迷った場合、WhiteBrowserと併用する場合</td>
+      </tr>
+      <tr>
+        <td>共通サムネイルストア</td>
+        <td>すべてのDBのサムネイルを1か所に集約し、内容が完全に同じJPEGはファイル実体を共有します。</td>
+        <td>同じ動画を複数DBへ登録しており、容量重複を減らしたい場合</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2. 共通モードの仕組み</h2>
+  <p>共通ストアの中には、DBごとの表示領域と、同一JPEGを保存する共有領域が作られます。ファイル名だけで同一と判断せず、生成されたJPEG全体のSHA-256を照合します。</p>
+  <div class="safe">
+    <strong>DB間の誤削除を防ぎます</strong>
+    DBごとの表示領域は分かれているため、あるDBでサムネイルを削除または動画名を変更しても、別DBの表示用ファイルには影響しません。ERRORマーカーもDBごとに分離されます。
+  </div>
+  <p>Windowsのハードリンクを利用できるドライブでは、複数のファイル名が同じデータ実体を参照します。見た目上はDBごとにファイルがありますが、同一JPEGのディスク使用量は1つ分です。</p>
+
+  <h2>3. 有効にする手順</h2>
+  <ol class="steps">
+    <li>設定の「表示と画像」を開きます。</li>
+    <li>「サムネイル保存方式」で「共通サムネイルストア」を選びます。</li>
+    <li>十分な空き容量があるローカルドライブ上の保存先を選びます。</li>
+    <li>現在開いているDBの既存画像を引き継ぐ場合は、「現在DBを共通ストアへ一発移行」を押します。</li>
+    <li>移行完了メッセージを確認します。全件成功時は新方式の設定も自動保存されます。</li>
+    <li>IndigoMovieManagerを終了し、再起動します。</li>
+    <li>ほかのDBも、DBを開いてから同じ一発移行を行うか、必要なタブのサムネイルを再構築します。</li>
+  </ol>
+
+  <h2>4. 一発移行と、初回に再構築が必要な場合</h2>
+  <p>一発移行は、現在DBの従来フォルダーにある通常JPEGと<code>#ERROR.jpg</code>を、フォルダー構造を保ったまま共通ストアへコピーします。JPEG以外のDBや無関係なファイルは対象にしません。コピー後に内容を照合し、同一内容だけを共有実体へまとめます。画面を固めないよう、ファイル処理は背景で実行します。</p>
+  <div class="safe">
+    <strong>一発移行が全件成功した場合</strong>
+    新方式と保存先も自動保存されます。アプリを再起動すれば、移行したサムネイルをそのまま利用できるため、原則として再構築は不要です。
+  </div>
+  <p>読み取り不能、空き容量不足、保存先切断などで1件でもコピーに失敗した場合、新方式の設定は自動保存されません。成功済みファイルと旧フォルダーは残るため、原因を解消して同じボタンを再実行できます。</p>
+  <p>一発移行を行わず設定だけを切り替えたDB、旧フォルダーが存在しないDB、DB移動・改名後の新しい表示領域では、新しいDB別表示領域が空なのでサムネイル再構築が必要になる場合があります。</p>
+  <div class="warning">
+    <strong>旧フォルダーをすぐ削除しないでください</strong>
+    すべてのタブ、詳細表示、Player、外部スキンで画像が表示されることを確認するまで、旧フォルダーを残してください。容量を空けたい場合も、最初は別の場所へ退避する方法を推奨します。
+  </div>
+
+  <h3>「移動済みサムネイル削除」について</h3>
+  <p>このボタンは、一発移行と新方式の設定保存が両方成功した直後だけ有効になります。削除前に、旧フォルダーの各ファイルと共通ストア側の移行先をもう一度照合し、内容が完全に一致する旧ファイルだけを削除します。</p>
+  <ul>
+    <li>未移行、移行後に更新された、読み取り不能、または移行先が見つからないファイルは削除しません。</li>
+    <li>共通ストア側のファイルと管理DB（<code>.wb</code>）は削除・変更しません。</li>
+    <li>削除処理中も新しいサムネイル生成を一時的に待機させ、書き込み中のファイルを避けます。</li>
+    <li>保留ファイルがある場合は、一発移行を再実行すると再照合できます。</li>
+  </ul>
+  <div class="warning">
+    <strong>削除後は簡単に元へ戻せません</strong>
+    旧ファイルを削除した後にDB別方式へ戻す場合、またはWhiteBrowserで再び表示する場合は、サムネイル再構築が必要です。共通ストアで十分に表示確認してから実行してください。
+  </div>
+
+  <h2>5. DB別モードへ戻す場合</h2>
+  <h3>以前のDB別サムネイルが残っている場合</h3>
+  <p>通常は再構築不要です。DB別モードへ戻してアプリを再起動すると、以前のDB別フォルダーを再び使用します。</p>
+
+  <h3>以前のDB別サムネイルを削除・退避した場合</h3>
+  <p>DBごとにサムネイル再構築が必要です。共通ストアの画像は、DB別モードへ自動コピーされません。</p>
+
+  <h3>再び共通モードへ戻す場合</h3>
+  <p>同じ共通ストアを残していれば、そこで以前使用したDBは原則として再構築不要です。共通ストアを移動・削除した場合は再構築が必要です。</p>
+
+  <h2>6. WhiteBrowserとの関係</h2>
+  <p>共通モードはIndigoMovieManager側だけの機能です。WhiteBrowserのDB形式やDB内のサムネイル保存先設定は書き換えません。</p>
+  <ul>
+    <li>WhiteBrowserは従来のDB別サムネイルフォルダーを参照します。</li>
+    <li>Indigoの共通ストアへ新しく作ったサムネイルは、WhiteBrowserには自動表示されません。</li>
+    <li>WhiteBrowserと同じサムネイルを常に共有したい場合は、DB別モードを使用してください。</li>
+  </ul>
+
+  <h2>7. リスクと制限</h2>
+  <table>
+    <thead><tr><th>項目</th><th>内容と対処</th></tr></thead>
+    <tbody>
+      <tr><td>ハードリンク非対応</td><td>ネットワーク共有、クラウド同期領域、一部のファイルシステムでは物理重複排除ができません。その場合も生成画像は残りますが、容量削減効果は得られません。NTFSのローカルドライブを推奨します。</td></tr>
+      <tr><td>ストアの移動・削除</td><td>共通ストアをエクスプローラーで移動・削除するとサムネイルが見えなくなります。設定で保存先を変更した場合も、新しい場所では再構築が必要です。</td></tr>
+      <tr><td>DBファイルの移動・改名</td><td>DBの絶対パスを使ってDB別表示領域を分離しています。そのため、同じ<code>.wb</code>でも移動または改名すると新しいDBとして扱われ、サムネイル再構築が必要です。移動前の表示領域は安全のため自動削除されません。</td></tr>
+      <tr><td>初回の処理負荷</td><td>一発移行ではディスク読み書き、再構築ではCPU・GPU・ディスクを使用します。画像数が多いDBは、動画視聴や重い作業をしていない時間帯に実行してください。</td></tr>
+      <tr><td>共有objectの残留</td><td>別DBの利用状況を誤判定して消さないよう、共有objectはサムネイル削除時に即時削除しません。安全優先のため、未使用objectが残る場合があります。</td></tr>
+      <tr><td>外部ツールでの直接編集</td><td>共通モードのJPEGを画像編集ソフト等で直接上書きすると、同じ実体を使う別DBにも変更が及ぶ可能性があります。サムネイルの変更・再作成はIndigoMovieManagerから行い、共通ストア内のJPEGを直接編集しないでください。</td></tr>
+      <tr><td>バックアップ</td><td>サムネイルは再生成できますが、手動で選んだ場面や時間のかかる動画がある場合は、旧フォルダーを退避してから整理してください。</td></tr>
+      <tr><td>ブックマーク画像</td><td>ブックマーク画像は用途と命名規則が異なるため、この共通化の対象外です。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>8. トラブル時の戻し方</h2>
+  <ol class="steps">
+    <li>設定を開き、「DB別（WhiteBrowser互換・推奨）」へ戻します。</li>
+    <li>アプリを終了して再起動します。</li>
+    <li>旧DB別フォルダーを残している場合は、そのまま表示を確認します。</li>
+    <li>画像が無い場合は、対象DBを開いて「全ファイルサムネイル再作成」を実行します。</li>
+  </ol>
+  <p>共通ストア自体は、すべてのDBで不要になったことを確認するまで削除しないでください。</p>
+
+  <h2>9. よくある質問</h2>
+  <h3>共通モードへ切り替えただけで容量は減りますか？</h3>
+  <p>いいえ。一発移行でも旧DB別フォルダーを自動削除しないため、切り替え直後は一時的に使用量が増える場合があります。共通側の移行または再構築と表示確認が終わってから、旧フォルダーを退避・整理してください。</p>
+
+  <h3>一発移行の途中で失敗した場合、最初からやり直しですか？</h3>
+  <p>いいえ。成功済みファイルは共通ストアに残り、同じボタンを再実行すると安全に置き換えられます。失敗が0件になるまで新方式は自動保存されません。</p>
+
+  <h3>「移動済みサムネイル削除」が押せないのはなぜですか？</h3>
+  <p>誤削除を防ぐため、現在の設定画面で一発移行と設定保存が全件成功した後だけ押せます。設定や保存先を変更した場合、または保留ファイルが残った場合は、一発移行をもう一度完了させてください。</p>
+
+  <h3>同じ動画なら、名前や保存場所が違っても共有されますか？</h3>
+  <p>生成されたJPEGの内容が完全に一致すれば共有対象になります。ただし、動画名、生成条件、選択された場面などが異なり、JPEG内容が違う場合は別画像として保持します。</p>
+
+  <h3>共通ストアをUSBやNASへ置けますか？</h3>
+  <p>保存自体は可能な場合がありますが、切断、遅延、ハードリンク非対応による問題があるため推奨しません。常時接続されたNTFSローカルドライブを使用してください。</p>
+
+  <h3>DBファイルの名前や場所を変更した場合はどうなりますか？</h3>
+  <p>移動後または改名後のDBでは再構築が必要です。以前の表示領域は残るため、移動後の表示確認が終わるまで削除せず、整理する場合も最初は退避してください。</p>
+
+  <p class="small">最終更新: 2026-08-19 / 対象: IndigoMovieManager 共通サムネイルストア・一発移行</p>
+</main>
+</body>
+</html>

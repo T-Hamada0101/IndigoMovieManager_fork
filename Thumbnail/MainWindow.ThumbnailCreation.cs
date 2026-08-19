@@ -30,6 +30,8 @@ namespace IndigoMovieManager
         private const int DefaultThumbnailNormalLaneTimeoutSec = 40;
         private const int MinThumbnailNormalLaneTimeoutSec = 1;
         private const int MaxThumbnailNormalLaneTimeoutSec = 600;
+        private static long sharedThumbnailDedupeSuccessCount;
+        private static long sharedThumbnailDedupeFailureCount;
 
         // サムネイル監視タスクを再起動する。
         private void RestartThumbnailTask()
@@ -255,6 +257,7 @@ namespace IndigoMovieManager
                     initialEngineHint: normalizedInitialEngineHint,
                     traceId: traceId
                 );
+                PrepareExistingThumbnailForGeneration(queueObj);
                 try
                 {
                     try
@@ -304,6 +307,15 @@ namespace IndigoMovieManager
                         saveThumbFileName
                     );
                 }
+
+                // 共通モードではDB別パスを維持したまま、同一JPEGの物理実体だけを共有する。
+                SharedThumbnailDeduplicationResult deduplicationResult =
+                    SharedThumbnailStoragePolicy.TryDeduplicateGeneratedThumbnail(
+                        saveThumbFileName,
+                        Properties.Settings.Default.ThumbnailStorageMode,
+                        Properties.Settings.Default.SharedThumbnailRoot
+                    );
+                WriteSharedThumbnailDeduplicationLog(deduplicationResult, saveThumbFileName);
 
                 // 保存成功直後に成功jpgキャッシュへ反映し、後続判定の再走査を減らす。
                 ThumbnailPathResolver.RememberSuccessThumbnailPath(saveThumbFileName);
@@ -652,6 +664,76 @@ namespace IndigoMovieManager
             }
 
             return queueObj != null;
+        }
+
+        private static void WriteSharedThumbnailDeduplicationLog(
+            SharedThumbnailDeduplicationResult result,
+            string thumbnailPath
+        )
+        {
+            if (!result.Attempted)
+            {
+                return;
+            }
+
+            if (result.HardLinked)
+            {
+                long successCount = Interlocked.Increment(ref sharedThumbnailDedupeSuccessCount);
+                if (successCount <= 3 || successCount % 1000 == 0)
+                {
+                    DebugRuntimeLog.Write(
+                        "thumbnail-shared-store",
+                        $"dedupe applied: count={successCount} reason={result.Reason} thumbnail='{thumbnailPath}' object='{result.ObjectPath}'"
+                    );
+                }
+
+                return;
+            }
+
+            long failureCount = Interlocked.Increment(ref sharedThumbnailDedupeFailureCount);
+            if (failureCount <= 3 || failureCount % 100 == 0)
+            {
+                DebugRuntimeLog.Write(
+                    "thumbnail-shared-store",
+                    $"dedupe fallback: count={failureCount} reason='{result.Reason}' thumbnail='{thumbnailPath}' object='{result.ObjectPath}'"
+                );
+            }
+        }
+
+        // 既存JPEGが共有objectへのハードリンクでも、生成側の上書きが他DBへ波及しない状態に戻す。
+        private void PrepareExistingThumbnailForGeneration(QueueObj queueObj)
+        {
+            if (queueObj == null || string.IsNullOrWhiteSpace(queueObj.MovieFullPath))
+            {
+                return;
+            }
+
+            string outPath = ResolveThumbnailOutPath(
+                queueObj.Tabindex,
+                MainVM?.DbInfo?.DBName ?? "",
+                MainVM?.DbInfo?.ThumbFolder ?? ""
+            );
+            if (
+                !ThumbnailPathResolver.TryFindExistingSuccessThumbnailPath(
+                    outPath,
+                    queueObj.MovieFullPath,
+                    out string existingThumbnailPath
+                )
+            )
+            {
+                return;
+            }
+
+            SharedThumbnailWritePreparationResult preparationResult =
+                SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(
+                    existingThumbnailPath
+                );
+            if (!preparationResult.SafeToWrite)
+            {
+                throw new IOException(
+                    $"thumbnail overwrite preparation failed: path='{existingThumbnailPath}', reason='{preparationResult.Reason}'"
+                );
+            }
         }
 
         // live確認で秒数を差し替えやすいよう、通常レーンtimeoutは環境変数で上書き可能にする。

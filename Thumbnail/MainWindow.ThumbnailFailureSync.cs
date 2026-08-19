@@ -284,6 +284,16 @@ namespace IndigoMovieManager
                         continue;
                     }
 
+                    SharedThumbnailDeduplicationResult deduplicationResult =
+                        SharedThumbnailStoragePolicy.TryDeduplicateGeneratedThumbnail(
+                            rescuedRecord.OutputThumbPath,
+                            Properties.Settings.Default.ThumbnailStorageMode,
+                            Properties.Settings.Default.SharedThumbnailRoot
+                        );
+                    WriteSharedThumbnailDeduplicationLog(
+                        deduplicationResult,
+                        rescuedRecord.OutputThumbPath
+                    );
                     reflectableRecords.Add(rescuedRecord);
                 }
 
@@ -808,6 +818,16 @@ namespace IndigoMovieManager
             }
 
             string normalizedOutputThumbPath = outputThumbPath.Trim();
+            SharedThumbnailDeduplicationResult deduplicationResult =
+                SharedThumbnailStoragePolicy.TryDeduplicateGeneratedThumbnail(
+                    normalizedOutputThumbPath,
+                    Properties.Settings.Default.ThumbnailStorageMode,
+                    Properties.Settings.Default.SharedThumbnailRoot
+                );
+            WriteSharedThumbnailDeduplicationLog(
+                deduplicationResult,
+                normalizedOutputThumbPath
+            );
             const int maxAttempts = 6;
 
             for (int attempt = 0; attempt < maxAttempts; attempt++)

@@ -1608,6 +1608,13 @@ namespace IndigoMovieManager
 
                 TryDeleteThumbnailErrorMarker(thumbOutPath, moviePath);
                 WriteSolidBlackThumbnail(outputThumbPath, width, height, thumbInfo);
+                SharedThumbnailDeduplicationResult deduplicationResult =
+                    SharedThumbnailStoragePolicy.TryDeduplicateGeneratedThumbnail(
+                        outputThumbPath,
+                        Properties.Settings.Default.ThumbnailStorageMode,
+                        Properties.Settings.Default.SharedThumbnailRoot
+                    );
+                WriteSharedThumbnailDeduplicationLog(deduplicationResult, outputThumbPath);
                 ThumbnailPathResolver.RememberSuccessThumbnailPath(outputThumbPath);
 
                 int deletedFailureCount = 0;
@@ -1675,25 +1682,50 @@ namespace IndigoMovieManager
                 File.Delete(tempPath);
             }
 
-            using (Bitmap bitmap = new(width, height))
-            using (Graphics graphics = Graphics.FromImage(bitmap))
+            try
             {
-                graphics.Clear(Color.Black);
-                if (
-                    !ThumbnailJpegMetadataWriter.TrySaveJpegWithThumbInfo(
-                        bitmap,
-                        tempPath,
-                        thumbInfo,
-                        out string errorMessage
-                    )
-                )
+                using (Bitmap bitmap = new(width, height))
+                using (Graphics graphics = Graphics.FromImage(bitmap))
                 {
-                    throw new IOException(errorMessage);
+                    graphics.Clear(Color.Black);
+                    if (
+                        !ThumbnailJpegMetadataWriter.TrySaveJpegWithThumbInfo(
+                            bitmap,
+                            tempPath,
+                            thumbInfo,
+                            out string errorMessage
+                        )
+                    )
+                    {
+                        throw new IOException(errorMessage);
+                    }
+                }
+
+                SharedThumbnailWritePreparationResult preparationResult =
+                    SharedThumbnailStoragePolicy.TryPrepareThumbnailForOverwrite(outputThumbPath);
+                if (!preparationResult.SafeToWrite)
+                {
+                    throw new IOException(
+                        $"黒画像の既存サムネイル分離に失敗しました: {preparationResult.Reason}"
+                    );
+                }
+
+                File.Move(tempPath, outputThumbPath, overwrite: true);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+                }
+                catch
+                {
+                    // 一時黒画像の後始末失敗は、元の生成結果や例外を上書きしない。
                 }
             }
-
-            File.Copy(tempPath, outputThumbPath, overwrite: true);
-            File.Delete(tempPath);
         }
     }
 }

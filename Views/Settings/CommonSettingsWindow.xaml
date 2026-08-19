@@ -485,6 +485,97 @@
                     <StackPanel Margin="22,8,10,8" Orientation="Vertical">
                         <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="表示と画像" />
 
+                        <StackPanel Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label
+                                Content="サムネイル保存方式"
+                                Style="{StaticResource SettingsRowLabelStyle}"
+                                ToolTip="共通モードは複数DBの同一JPEG実体を共有し、使用容量を抑えます。" />
+                            <ComboBox
+                                x:Name="ThumbnailStorageModeSelector"
+                                Width="300"
+                                FontSize="14"
+                                SelectionChanged="ThumbnailStorageModeSelector_SelectionChanged">
+                                <ComboBoxItem Content="DB別（WhiteBrowser互換・推奨）" />
+                                <ComboBoxItem Content="共通サムネイルストア（上級者向け）" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel x:Name="SharedThumbnailRootPanel" Style="{StaticResource SettingsRowPanelStyle}">
+                            <Label Content="共通ストアの保存先" Style="{StaticResource SettingsRowLabelStyle}" />
+                            <TextBox
+                                x:Name="SharedThumbnailRoot"
+                                Width="300"
+                                Margin="0,6,6,6"
+                                FontSize="14"
+                                IsReadOnly="True"
+                                ToolTip="共通サムネイルのDB別表示領域と共有objectを置くフォルダーです。" />
+                            <Button
+                                x:Name="OpenSharedThumbnailRoot"
+                                Width="30"
+                                Height="30"
+                                Margin="0,6,0,6"
+                                Click="OpenSharedThumbnailRoot_Click"
+                                Content="{materialDesign:PackIcon Kind=FolderOpen}"
+                                Style="{StaticResource AppIconButtonStyle}" />
+                        </StackPanel>
+
+                        <Border
+                            x:Name="SharedThumbnailWarning"
+                            Margin="0,4,0,8"
+                            Padding="12"
+                            Background="#22F5A623"
+                            BorderBrush="#D88700"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Foreground="{DynamicResource SettingsForegroundBrush}"
+                                    Text="注意：切り替え・保存先変更はアプリ再起動後に有効になります。" />
+                                <TextBlock
+                                    Margin="0,4,0,0"
+                                    Foreground="{DynamicResource SettingsForegroundBrush}"
+                                    Text="一発移行を使わない場合はDBごとのサムネイル再構築が必要です。旧フォルダーは自動削除しません。WhiteBrowserから共通ストアは参照されません。"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel
+                            x:Name="SharedThumbnailMigrationPanel"
+                            Margin="240,0,0,10"
+                            HorizontalAlignment="Left"
+                            Visibility="Collapsed">
+                            <Button
+                                x:Name="MigrateCurrentDbThumbnailsButton"
+                                Width="300"
+                                Click="MigrateCurrentDbThumbnailsToSharedStore_Click"
+                                Content="現在DBを共通ストアへ一発移行" />
+                            <Button
+                                x:Name="DeleteMigratedSourceThumbnailsButton"
+                                Width="300"
+                                Margin="0,8,0,0"
+                                Click="DeleteMigratedSourceThumbnails_Click"
+                                Content="移動済みサムネイル削除"
+                                IsEnabled="False"
+                                ToolTip="一発移行完了後、共通ストアと内容一致する旧ファイルだけを削除します。" />
+                            <TextBlock
+                                x:Name="SharedThumbnailMigrationStatus"
+                                Width="540"
+                                Margin="0,6,0,0"
+                                Foreground="{DynamicResource SettingsForegroundBrush}"
+                                Text="旧フォルダーを残したまま、現在DBの画像と状態ファイルを移行します。"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Button
+                            x:Name="OpenSharedThumbnailHelpButton"
+                            Width="300"
+                            Margin="240,0,0,12"
+                            HorizontalAlignment="Left"
+                            Click="OpenSharedThumbnailHelp_Click"
+                            Content="詳しい説明・リスク・戻し方を開く（HTML）" />
+
                         <StackPanel Orientation="Horizontal" Visibility="Collapsed">
                             <Label
                                 Content="サムネイルを縮小する"

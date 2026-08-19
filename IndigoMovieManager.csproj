@@ -111,6 +111,11 @@
   </Target>
 
   <ItemGroup>
+    <None Remove="Docs\Help\共通サムネイルストア_利用ガイド.html" />
+    <Content Include="Docs\Help\共通サムネイルストア_利用ガイド.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
     <Content Include="Images\errorBig.jpg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
