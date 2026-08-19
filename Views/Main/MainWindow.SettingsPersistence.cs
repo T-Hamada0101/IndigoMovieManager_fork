@@ -34,7 +34,7 @@ namespace IndigoMovieManager
             }
         }
 
-        // 一発移行は「保存完了」まで利用者へ返す必要があるため、同じ直列キューを待てる形で公開する。
+        // 一括移動は「保存完了」まで利用者へ返す必要があるため、同じ直列キューを待てる形で公開する。
         internal Task<bool> SaveApplicationSettingsFromSettingsWindowAsync(string reason)
         {
             PersistenceWriteRequest writeRequest = BuildApplicationSettingsWriteRequest(reason);

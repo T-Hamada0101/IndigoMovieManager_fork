@@ -849,7 +849,7 @@ public sealed class SharedThumbnailStoragePolicyTests
             Assert.That(settingsXaml, Does.Contain("x:Name=\"ThumbnailStorageModeSelector\""));
             Assert.That(settingsXaml, Does.Contain("x:Name=\"SharedThumbnailWarning\""));
             Assert.That(settingsXaml, Does.Contain("x:Name=\"SharedThumbnailMigrationPanel\""));
-            Assert.That(settingsXaml, Does.Contain("現在DBを共通ストアへ一発移行"));
+            Assert.That(settingsXaml, Does.Contain("現在DBのサムネイルを一括移動"));
             Assert.That(
                 settingsXaml,
                 Does.Contain("x:Name=\"DeleteMigratedSourceThumbnailsButton\"")
@@ -882,7 +882,7 @@ public sealed class SharedThumbnailStoragePolicyTests
             Assert.That(settingsSource, Does.Contain("HasCompletedThumbnailMigrationContext"));
             Assert.That(settingsSource, Does.Contain("_originalSharedThumbnailRoot"));
             Assert.That(settingsSource, Does.Contain("UseShellExecute = true"));
-            Assert.That(helpHtml, Does.Contain("一発移行と、初回に再構築が必要な場合"));
+            Assert.That(helpHtml, Does.Contain("一括移動と、初回に再構築が必要な場合"));
             Assert.That(helpHtml, Does.Contain("全件成功時は新方式の設定も自動保存"));
             Assert.That(helpHtml, Does.Contain("移動済みサムネイル削除"));
             Assert.That(helpHtml, Does.Contain("DB別モードへ戻す場合"));

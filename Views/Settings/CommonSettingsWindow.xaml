@@ -536,7 +536,7 @@
                                 <TextBlock
                                     Margin="0,4,0,0"
                                     Foreground="{DynamicResource SettingsForegroundBrush}"
-                                    Text="一発移行を使わない場合はDBごとのサムネイル再構築が必要です。旧フォルダーは自動削除しません。WhiteBrowserから共通ストアは参照されません。"
+                                    Text="一括移動を使わない場合はDBごとのサムネイル再構築が必要です。旧フォルダーは自動削除しません。WhiteBrowserから共通ストアは参照されません。"
                                     TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
@@ -550,7 +550,8 @@
                                 x:Name="MigrateCurrentDbThumbnailsButton"
                                 Width="300"
                                 Click="MigrateCurrentDbThumbnailsToSharedStore_Click"
-                                Content="現在DBを共通ストアへ一発移行" />
+                                Content="現在DBのサムネイルを一括移動"
+                                ToolTip="旧フォルダーを残したまま、現在DBのJPEGを共通ストアへ一括コピーし、全件成功後に新方式を保存します。" />
                             <Button
                                 x:Name="DeleteMigratedSourceThumbnailsButton"
                                 Width="300"
@@ -558,13 +559,13 @@
                                 Click="DeleteMigratedSourceThumbnails_Click"
                                 Content="移動済みサムネイル削除"
                                 IsEnabled="False"
-                                ToolTip="一発移行完了後、共通ストアと内容一致する旧ファイルだけを削除します。" />
+                                ToolTip="一括移動完了後、共通ストアと内容一致する旧ファイルだけを削除します。" />
                             <TextBlock
                                 x:Name="SharedThumbnailMigrationStatus"
                                 Width="540"
                                 Margin="0,6,0,0"
                                 Foreground="{DynamicResource SettingsForegroundBrush}"
-                                Text="旧フォルダーを残したまま、現在DBの画像と状態ファイルを移行します。"
+                                Text="旧フォルダーを残したまま、現在DBのサムネイルを共通ストアへ一括移動します。"
                                 TextWrapping="Wrap" />
                         </StackPanel>
 

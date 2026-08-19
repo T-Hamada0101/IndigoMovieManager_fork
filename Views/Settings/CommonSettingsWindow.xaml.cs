@@ -734,7 +734,7 @@ namespace IndigoMovieManager
             if (isShared && !hasCurrentDb)
             {
                 SharedThumbnailMigrationStatus.Text =
-                    "現在のDBが開かれていないため、一発移行は利用できません。";
+                    "現在のDBが開かれていないため、一括移動は利用できません。";
             }
         }
 
@@ -822,7 +822,7 @@ namespace IndigoMovieManager
                 MessageBox.Show(
                     this,
                     "設定画面を開いた後に現在のDBが変わりました。設定画面を開き直してから実行してください。",
-                    "一発移行を開始できません",
+                    "一括移動を開始できません",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning
                 );
@@ -883,7 +883,7 @@ namespace IndigoMovieManager
             MessageBoxResult confirmation = MessageBox.Show(
                 this,
                 $"現在のDBのサムネイル一式を共通ストアへ移行します。\n\nコピー元:\n{sourceRoot}\n\nコピー先:\n{targetRoot}\n\n・通常JPEGと #ERROR.jpg を移行します。\n・旧フォルダーは削除せず、DB別方式へ戻すために残します。\n・全件成功後に新方式の設定を保存します。\n・完了後はアプリの再起動が必要です。\n\n開始しますか？",
-                "共通ストアへ一発移行",
+                "サムネイルを共通ストアへ一括移動",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning
             );
@@ -928,7 +928,7 @@ namespace IndigoMovieManager
                 );
                 MessageBox.Show(
                     this,
-                    $"一発移行は完了していません。\n\n成功: {result.CopiedFiles}/{result.TotalFiles} 件\n失敗: {result.FailedFiles} 件\n最初の理由: {result.Reason}\n\n新方式の設定は保存していません。旧フォルダーはそのままです。原因を解消後、同じボタンで再実行できます。",
+                    $"一括移動は完了していません。\n\n成功: {result.CopiedFiles}/{result.TotalFiles} 件\n失敗: {result.FailedFiles} 件\n最初の理由: {result.Reason}\n\n新方式の設定は保存していません。旧フォルダーはそのままです。原因を解消後、同じボタンで再実行できます。",
                     "共通ストア移行が未完了です",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning
@@ -996,8 +996,8 @@ namespace IndigoMovieManager
             );
             MessageBox.Show(
                 this,
-                $"共通ストアへの一発移行が完了しました。\n\n移行: {result.CopiedFiles} 件\n共有化: {result.DeduplicatedJpegs} 件\n通常コピー: {result.FallbackJpegs} 件\n\n新方式の設定も保存しました。旧フォルダーは安全のため残しています。IndigoMovieManagerを再起動してください。",
-                "一発移行完了",
+                $"共通ストアへの一括移動が完了しました。\n\n移行: {result.CopiedFiles} 件\n共有化: {result.DeduplicatedJpegs} 件\n通常コピー: {result.FallbackJpegs} 件\n\n新方式の設定も保存しました。旧フォルダーは安全のため残しています。IndigoMovieManagerを再起動してください。",
+                "一括移動完了",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information
             );
@@ -1082,10 +1082,10 @@ namespace IndigoMovieManager
                 ClearCompletedThumbnailMigrationContext();
                 UpdateThumbnailStorageModeUi();
                 SharedThumbnailMigrationStatus.Text =
-                    $"削除 {result.DeletedFiles} 件、保留 {result.SkippedFiles} 件。保留分を削除するには一発移行を再実行してください。";
+                    $"削除 {result.DeletedFiles} 件、保留 {result.SkippedFiles} 件。保留分を削除するには一括移動を再実行してください。";
                 MessageBox.Show(
                     this,
-                    $"内容一致を確認できた旧ファイルを削除しました。\n\n削除: {result.DeletedFiles} 件\n保留: {result.SkippedFiles} 件\n\n保留ファイルは未移行または更新済みの可能性があるため残しています。必要なら一発移行を再実行してから、もう一度削除してください。",
+                    $"内容一致を確認できた旧ファイルを削除しました。\n\n削除: {result.DeletedFiles} 件\n保留: {result.SkippedFiles} 件\n\n保留ファイルは未移行または更新済みの可能性があるため残しています。必要なら一括移動を再実行してから、もう一度削除してください。",
                     "一部の旧ファイルを安全のため残しました",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information
