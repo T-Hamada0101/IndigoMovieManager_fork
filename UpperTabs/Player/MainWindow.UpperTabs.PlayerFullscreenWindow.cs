@@ -1,29 +1,13 @@
 using System;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
+using LibVLCSharp.WPF;
 
 namespace IndigoMovieManager
 {
-    internal sealed class PlayerWebViewPlaybackSnapshot
-    {
-        [JsonPropertyName("currentTime")]
-        public double CurrentTime { get; set; }
-
-        [JsonPropertyName("paused")]
-        public bool Paused { get; set; }
-
-        // 全画面遷移直前のWebView実値だけを一時保持し、取得できた時だけ中央正本へ合流する。
-        [JsonPropertyName("volume")]
-        public double? Volume { get; set; }
-    }
-
     internal sealed class PlayerFullscreenHostWindow : Window
     {
         private readonly Grid _playerHost;
@@ -34,17 +18,10 @@ namespace IndigoMovieManager
             Background = Brushes.Black;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
-            WindowState = WindowState.Maximized;
-            WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
-            Topmost = true;
-
-            _playerHost = new Grid
-            {
-                Background = Brushes.Black,
-            };
+            Topmost = false;
+            _playerHost = new Grid { Background = Brushes.Black };
             Content = _playerHost;
-
             PreviewKeyDown += PlayerFullscreenHostWindow_PreviewKeyDown;
         }
 
@@ -52,7 +29,7 @@ namespace IndigoMovieManager
 
         private void PlayerFullscreenHostWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e?.Key != Key.Escape)
+            if (e.Key != Key.Escape)
             {
                 return;
             }
@@ -61,29 +38,33 @@ namespace IndigoMovieManager
             EscapeRequested?.Invoke(this, EventArgs.Empty);
         }
 
-        // 既に再生できている WebView2 をそのまま持ち上げ、全画面側で再ロードさせない。
-        public void ShowPlayer(WebView2 player)
+        public void ShowPlayer(VideoView player)
         {
             ArgumentNullException.ThrowIfNull(player);
+            DetachFromCurrentParent(player);
 
-            MovePlayerToHost(player);
+            player.Visibility = Visibility.Visible;
+            player.Width = double.NaN;
+            player.Height = double.NaN;
+            player.HorizontalAlignment = HorizontalAlignment.Stretch;
+            player.VerticalAlignment = VerticalAlignment.Stretch;
+            _playerHost.Children.Add(player);
 
             if (!IsVisible)
             {
                 Show();
             }
 
+            WindowState = WindowState.Normal;
             WindowState = WindowState.Maximized;
             Activate();
             Focus();
         }
 
-        // 戻す時も同じ実体をプレイヤータブへ返し、再生状態の揺れを最小化する。
-        public void ReturnPlayer(WebView2 player, Panel targetParent, int targetRow)
+        public void ReturnPlayer(VideoView player, Panel targetParent, int targetRow)
         {
             ArgumentNullException.ThrowIfNull(player);
             ArgumentNullException.ThrowIfNull(targetParent);
-
             DetachFromCurrentParent(player);
 
             if (targetParent is Grid)
@@ -92,46 +73,27 @@ namespace IndigoMovieManager
             }
 
             player.Visibility = Visibility.Visible;
-            player.HorizontalAlignment = HorizontalAlignment.Stretch;
-            player.VerticalAlignment = VerticalAlignment.Stretch;
-
-            if (!targetParent.Children.Contains(player))
-            {
-                targetParent.Children.Add(player);
-            }
-
-            Hide();
-        }
-
-        private void MovePlayerToHost(WebView2 player)
-        {
-            DetachFromCurrentParent(player);
-
-            Grid.SetRow(player, 0);
-            player.Visibility = Visibility.Visible;
             player.Width = double.NaN;
             player.Height = double.NaN;
             player.HorizontalAlignment = HorizontalAlignment.Stretch;
             player.VerticalAlignment = VerticalAlignment.Stretch;
-
-            if (!_playerHost.Children.Contains(player))
-            {
-                _playerHost.Children.Add(player);
-            }
+            targetParent.Children.Add(player);
+            Hide();
         }
 
-        private static void DetachFromCurrentParent(WebView2 player)
+        private static void DetachFromCurrentParent(FrameworkElement player)
         {
             switch (player.Parent)
             {
                 case Panel panel:
                     panel.Children.Remove(player);
                     break;
-                case Decorator decorator:
-                    decorator.Child = null;
-                    break;
-                case ContentControl contentControl when ReferenceEquals(contentControl.Content, player):
+                case ContentControl contentControl
+                    when ReferenceEquals(contentControl.Content, player):
                     contentControl.Content = null;
+                    break;
+                case Decorator decorator when ReferenceEquals(decorator.Child, player):
+                    decorator.Child = null;
                     break;
             }
         }
@@ -139,12 +101,9 @@ namespace IndigoMovieManager
 
     public partial class MainWindow
     {
-        private const int PlayerWebViewRowIndex = 1;
-
+        private const int PlayerSurfaceRowIndex = 0;
         private PlayerFullscreenHostWindow _playerFullscreenWindow;
         private bool _isDetachedPlayerFullscreenActive;
-        private bool _playerFullscreenTemporarilyEnabledUiDebugLog;
-        private bool _playerFullscreenRestoreUiDebugLogEnabled;
 
         private PlayerFullscreenHostWindow GetOrCreatePlayerFullscreenWindow()
         {
@@ -153,10 +112,7 @@ namespace IndigoMovieManager
                 return _playerFullscreenWindow;
             }
 
-            _playerFullscreenWindow = new PlayerFullscreenHostWindow
-            {
-                Owner = this,
-            };
+            _playerFullscreenWindow = new PlayerFullscreenHostWindow { Owner = this };
             _playerFullscreenWindow.EscapeRequested += PlayerFullscreenWindow_EscapeRequested;
             return _playerFullscreenWindow;
         }
@@ -166,227 +122,47 @@ namespace IndigoMovieManager
             _ = CloseMainWindowPlayerFullscreenAsync();
         }
 
-        private async Task OpenMainWindowPlayerFullscreenAsync()
+        private Task OpenMainWindowPlayerFullscreenAsync()
         {
-            if (
-                string.IsNullOrWhiteSpace(_currentWebViewPlayerPath)
-                || uxWebVideoPlayer?.CoreWebView2 == null
-            )
+            if (_isDetachedPlayerFullscreenActive)
             {
-                return;
+                return CloseMainWindowPlayerFullscreenAsync();
             }
 
-            EnsurePlayerFullscreenDebugLoggingEnabled();
+            if (
+                !_isLibVlcPlayerInitialized
+                || _playerMediaPlayer == null
+                || uxVideoPlayer == null
+                || string.IsNullOrWhiteSpace(_currentPlayerMoviePath)
+            )
+            {
+                return Task.CompletedTask;
+            }
+
             DebugRuntimeLog.Write(
                 "ui-tempo",
-                $"player fullscreen open requested: path='{_currentWebViewPlayerPath}'"
+                $"player fullscreen open requested: surface=libvlc path='{_currentPlayerMoviePath}'"
             );
-
-            PlayerWebViewPlaybackSnapshot snapshot =
-                await CapturePlayerWebViewPlaybackSnapshotAsync(uxWebVideoPlayer);
-            ReconcilePlayerWebViewSnapshotVolume(snapshot);
 
             try
             {
-                DebugRuntimeLog.Write("ui-tempo", "player fullscreen snapshot captured");
-
                 PlayerFullscreenHostWindow window = GetOrCreatePlayerFullscreenWindow();
-                window.ShowPlayer(uxWebVideoPlayer);
-                DebugRuntimeLog.Write("ui-tempo", "player fullscreen player moved");
-
+                window.ShowPlayer(uxVideoPlayer);
                 _isDetachedPlayerFullscreenActive = true;
-                await ApplyPlayerWebViewPlaybackSnapshotAsync(uxWebVideoPlayer, snapshot);
-                await SetDetachedWindowDomFullscreenAsync(enable: true);
-                DebugRuntimeLog.Write("ui-tempo", "player fullscreen playback synced");
-                DebugRuntimeLog.Write("ui-tempo", "player fullscreen window shown");
+                UpdateManualPlayerViewport();
+                DebugRuntimeLog.Write("ui-tempo", "player fullscreen window shown: surface=libvlc");
             }
             catch (Exception ex)
             {
+                _isDetachedPlayerFullscreenActive = false;
+                ReturnDetachedPlayerToPlayerTab();
                 DebugRuntimeLog.Write(
                     "ui-tempo",
-                    $"player fullscreen open failed: {ex.GetType().Name} {ex.Message}"
+                    $"player fullscreen open failed: surface=libvlc type={ex.GetType().Name} message='{ex.Message}'"
                 );
-                MessageBox.Show(
-                    $"全画面表示の開始に失敗しました。{Environment.NewLine}{ex.Message}",
-                    "プレイヤー",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning
-                );
-                await RestorePlayerTabPlaybackAfterFullscreenFailureAsync(snapshot);
-            }
-        }
-
-        private async Task RestorePlayerTabPlaybackAfterFullscreenFailureAsync(
-            PlayerWebViewPlaybackSnapshot snapshot
-        )
-        {
-            ReturnDetachedWebViewPlayerToPlayerTab();
-
-            if (_isWebViewPlayerActive && uxWebVideoPlayer?.CoreWebView2 != null)
-            {
-                await ApplyPlayerWebViewPlaybackSnapshotAsync(uxWebVideoPlayer, snapshot);
-                UpdatePlayerPositionUi(TimeSpan.FromSeconds(snapshot.CurrentTime));
-                SetPlayerPlaybackActive(!snapshot.Paused, "fullscreen-restore-failed");
             }
 
-            RestorePlayerFullscreenDebugLoggingIfNeeded();
-        }
-
-        private void EnsurePlayerFullscreenDebugLoggingEnabled()
-        {
-            if (_playerFullscreenTemporarilyEnabledUiDebugLog)
-            {
-                return;
-            }
-
-            _playerFullscreenRestoreUiDebugLogEnabled = Properties.Settings.Default.DebugLogUiEnabled;
-            if (_playerFullscreenRestoreUiDebugLogEnabled)
-            {
-                return;
-            }
-
-            Properties.Settings.Default.DebugLogUiEnabled = true;
-            QueueApplicationSettingsSave("player-fullscreen-debug-enable");
-            _playerFullscreenTemporarilyEnabledUiDebugLog = true;
-        }
-
-        private void RestorePlayerFullscreenDebugLoggingIfNeeded()
-        {
-            if (!_playerFullscreenTemporarilyEnabledUiDebugLog)
-            {
-                return;
-            }
-
-            Properties.Settings.Default.DebugLogUiEnabled = _playerFullscreenRestoreUiDebugLogEnabled;
-            QueueApplicationSettingsSave("player-fullscreen-debug-restore");
-            _playerFullscreenTemporarilyEnabledUiDebugLog = false;
-        }
-
-        private async Task<PlayerWebViewPlaybackSnapshot> CapturePlayerWebViewPlaybackSnapshotAsync(
-            WebView2 webView
-        )
-        {
-            if (webView?.CoreWebView2 == null)
-            {
-                return new PlayerWebViewPlaybackSnapshot();
-            }
-
-            try
-            {
-                string rawJson = await webView.ExecuteScriptAsync(
-                    """
-                    (() => {
-                      const player = document.querySelector('video');
-                      if (!player) {
-                        return null;
-                      }
-
-                      return {
-                        currentTime: player.currentTime || 0,
-                        paused: !!player.paused,
-                        volume: Number.isFinite(player.volume) ? player.volume : null
-                      };
-                    })();
-                    """
-                );
-
-                PlayerWebViewPlaybackSnapshot snapshot =
-                    ParsePlayerWebViewPlaybackSnapshot(rawJson);
-                return snapshot;
-            }
-            catch
-            {
-                return new PlayerWebViewPlaybackSnapshot();
-            }
-        }
-
-        private static PlayerWebViewPlaybackSnapshot ParsePlayerWebViewPlaybackSnapshot(
-            string rawJson
-        )
-        {
-            if (
-                string.IsNullOrWhiteSpace(rawJson)
-                || string.Equals(rawJson, "null", StringComparison.Ordinal)
-            )
-            {
-                return new PlayerWebViewPlaybackSnapshot();
-            }
-
-            try
-            {
-                return JsonSerializer.Deserialize<PlayerWebViewPlaybackSnapshot>(rawJson)
-                    ?? new PlayerWebViewPlaybackSnapshot();
-            }
-            catch
-            {
-                return new PlayerWebViewPlaybackSnapshot();
-            }
-        }
-
-        // WebMessageの到着待ちを全画面遷移が追い越しても、採取した最新音量を先に中央正本へ戻す。
-        private void ReconcilePlayerWebViewSnapshotVolume(
-            PlayerWebViewPlaybackSnapshot snapshot
-        )
-        {
-            if (snapshot?.Volume is not double volume)
-            {
-                return;
-            }
-
-            SetPlayerVolumeFromWebView(volume);
-        }
-
-        private async Task ApplyPlayerWebViewPlaybackSnapshotAsync(
-            WebView2 webView,
-            PlayerWebViewPlaybackSnapshot snapshot
-        )
-        {
-            if (webView?.CoreWebView2 == null || snapshot == null)
-            {
-                return;
-            }
-
-            string seconds = snapshot.CurrentTime.ToString(
-                System.Globalization.CultureInfo.InvariantCulture
-            );
-            string volume = GetCurrentPlayerVolumeSetting().ToString(
-                System.Globalization.CultureInfo.InvariantCulture
-            );
-            string script = $$"""
-                (() => {
-                  const player = document.querySelector('video');
-                  if (!player) {
-                    return;
-                  }
-
-                  const applyPlayback = () => {
-                    try {
-                      player.currentTime = {{seconds}};
-                    } catch {}
-
-                    player.muted = false;
-                    player.volume = {{volume}};
-                    player.dataset.indigoPlayerHostVolumeApplied = '1';
-
-                    const playPromise = player.play();
-                    if (playPromise) {
-                      playPromise.catch(() => {});
-                    }
-
-                    if ({{(snapshot.Paused ? "true" : "false")}}) {
-                      Promise.resolve(playPromise).finally(() => player.pause());
-                    }
-                  };
-
-                  if (player.readyState >= 1) {
-                    applyPlayback();
-                    return;
-                  }
-
-                  player.addEventListener('loadedmetadata', applyPlayback, { once: true });
-                })();
-                """;
-            await webView.ExecuteScriptAsync(script);
+            return Task.CompletedTask;
         }
 
         private bool TryHandleMainWindowPlayerFullscreenShortcut(KeyEventArgs e)
@@ -396,66 +172,49 @@ namespace IndigoMovieManager
                 return false;
             }
 
-            _ = CloseMainWindowPlayerFullscreenAsync();
             e.Handled = true;
+            _ = CloseMainWindowPlayerFullscreenAsync();
             return true;
         }
 
-        private async Task CloseMainWindowPlayerFullscreenAsync()
-        {
-            if (!_isDetachedPlayerFullscreenActive || _playerFullscreenWindow == null)
-            {
-                return;
-            }
-
-            DebugRuntimeLog.Write("ui-tempo", "player fullscreen close requested");
-            PlayerWebViewPlaybackSnapshot snapshot = await CapturePlayerWebViewPlaybackSnapshotAsync(
-                uxWebVideoPlayer
-            );
-            ReconcilePlayerWebViewSnapshotVolume(snapshot);
-            await SetDetachedWindowDomFullscreenAsync(enable: false);
-
-            ReturnDetachedWebViewPlayerToPlayerTab();
-
-            if (_isWebViewPlayerActive && uxWebVideoPlayer?.CoreWebView2 != null)
-            {
-                await ApplyPlayerWebViewPlaybackSnapshotAsync(uxWebVideoPlayer, snapshot);
-                UpdatePlayerPositionUi(TimeSpan.FromSeconds(snapshot.CurrentTime));
-                SetPlayerPlaybackActive(!snapshot.Paused, "fullscreen-return");
-            }
-
-            RestorePlayerFullscreenDebugLoggingIfNeeded();
-            Activate();
-            uxWebVideoPlayer?.Focus();
-        }
-
-        private async Task ForceCloseMainWindowPlayerFullscreenAsync()
+        private Task CloseMainWindowPlayerFullscreenAsync()
         {
             if (!_isDetachedPlayerFullscreenActive)
             {
-                return;
+                return Task.CompletedTask;
             }
 
-            await CloseMainWindowPlayerFullscreenAsync();
+            ReturnDetachedPlayerToPlayerTab();
+            Activate();
+            uxVideoPlayer?.Focus();
+            DebugRuntimeLog.Write("ui-tempo", "player fullscreen window closed: surface=libvlc");
+            return Task.CompletedTask;
         }
 
-        // 戻し忘れを防ぎ、全画面を抜けた瞬間にプレイヤータブの見た目も元へ戻す。
-        private void ReturnDetachedWebViewPlayerToPlayerTab()
+        private Task ForceCloseMainWindowPlayerFullscreenAsync()
         {
-            if (_playerFullscreenWindow == null || uxWebVideoPlayer == null || PlayerArea == null)
+            return CloseMainWindowPlayerFullscreenAsync();
+        }
+
+        private void ReturnDetachedPlayerToPlayerTab()
+        {
+            if (
+                _playerFullscreenWindow == null
+                || uxVideoPlayer == null
+                || PlayerArea == null
+            )
             {
                 _isDetachedPlayerFullscreenActive = false;
                 return;
             }
 
-            if (!ReferenceEquals(uxWebVideoPlayer.Parent, PlayerArea))
+            if (!ReferenceEquals(uxVideoPlayer.Parent, PlayerArea))
             {
                 _playerFullscreenWindow.ReturnPlayer(
-                    uxWebVideoPlayer,
+                    uxVideoPlayer,
                     PlayerArea,
-                    PlayerWebViewRowIndex
+                    PlayerSurfaceRowIndex
                 );
-                DebugRuntimeLog.Write("ui-tempo", "player fullscreen player returned");
             }
             else
             {

@@ -266,8 +266,8 @@ namespace IndigoMovieManager
             }
 
             timer.Stop();
-            uxVideoPlayer.Pause();
-            int pos = (int)uxVideoPlayer.Position.TotalSeconds;
+            PauseLibVlcPlayback();
+            int pos = (int)GetPlayerPosition().TotalSeconds;
             string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
             string bookmarkFolder = ResolveBookmarkFolderPath();
             string movieFullPath = mv.Movie_Path;
@@ -276,7 +276,7 @@ namespace IndigoMovieManager
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;
             uxVideoPlayer.Visibility = Visibility.Collapsed;
-            uxVideoPlayer.Stop();
+            StopLibVlcPlayback();
             SetPlayerPlaybackActive(false, "bookmark-add");
 
             if (string.IsNullOrWhiteSpace(dbFullPath))

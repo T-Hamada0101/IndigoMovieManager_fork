@@ -280,8 +280,8 @@ namespace IndigoMovieManager
             finally
             {
                 ShowUiHangShutdownStatus("終了処理: UI停止準備中");
-                // 閉じ際に動画再生とUIタイマーを先に止め、追加のハンドル消費を抑える。
-                uxVideoPlayer.Stop();
+                // 閉じ際にLibVLCを先に破棄し、ネイティブ再生スレッドとハンドルを残さない。
+                DisposeLibVlcPlayer();
                 StopDispatcherTimerSafely(timer, nameof(timer));
                 StopDispatcherTimerSafely(
                     _searchInputDebounceTimer,

@@ -59,7 +59,7 @@ public sealed class ManualPlayerResizeHookPolicyTests
         string policySource = GetRepoText("Views", "Main", "PlayerVolumePolicy.cs");
         string settingsSource = GetRepoText("Properties", "Settings.settings");
         string settingsDesignerSource = GetRepoText("Properties", "Settings.Designer.cs");
-        string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
+        string libVlcSource = GetLibVlcPlayerSourceText();
 
         Assert.That(policySource, Does.Contain("internal const double DefaultVolume = 0.25d;"));
         Assert.That(playerSource, Does.Contain("PlayerVolumePolicy.Normalize(rawSavedVolume)"));
@@ -72,11 +72,8 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(settingsSource, Does.Contain("<Setting Name=\"PlayerVolume\" Type=\"System.Double\" Scope=\"User\">"));
         Assert.That(settingsSource, Does.Contain("<Value Profile=\"(Default)\">0.25</Value>"));
         Assert.That(settingsDesignerSource, Does.Contain("DefaultSettingValueAttribute(\"0.25\")"));
-        Assert.That(fullscreenWindowSource, Does.Contain("public double? Volume { get; set; }"));
-        Assert.That(
-            fullscreenWindowSource,
-            Does.Contain("string volume = GetCurrentPlayerVolumeSetting().ToString(")
-        );
+        Assert.That(libVlcSource, Does.Contain("ApplyCurrentPlayerVolumeToEngine();"));
+        Assert.That(libVlcSource, Does.Contain("_playerMediaPlayer.Volume ="));
         Assert.That(
             windowSource,
             Does.Contain("RestorePlayerVolumeFromSettings();")
@@ -108,12 +105,74 @@ public sealed class ManualPlayerResizeHookPolicyTests
         });
     }
 
+    [TestCase(0d, 0d, "0:00 / 0:00")]
+    [TestCase(65000d, 12703000d, "1:05 / 3:31:43")]
+    [TestCase(90061000d, 90061000d, "25:01:01 / 25:01:01")]
+    public void BuildPlayerTimeLabel_HTML5プレイヤーと同じ現在総時間表示にする(
+        double positionMilliseconds,
+        double durationMilliseconds,
+        string expected
+    )
+    {
+        string actual = MainWindow.BuildPlayerTimeLabel(
+            TimeSpan.FromMilliseconds(positionMilliseconds),
+            durationMilliseconds
+        );
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void LibVLC操作面は既存オーバーレイと同じVideoViewを全画面でも使う()
+    {
+        string windowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string windowSource = GetRepoText("Views", "Main", "MainWindow.xaml.cs");
+        string playerSource = GetMainWindowPlayerSourceText();
+        string fullscreenSource = GetUpperTabPlayerFullscreenWindowSourceText();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(windowXaml, Does.Contain("x:Name=\"PlayerController\""));
+            Assert.That(windowXaml, Does.Contain("VerticalAlignment=\"Bottom\""));
+            Assert.That(windowXaml, Does.Contain("Background=\"#CC000000\""));
+            Assert.That(windowXaml, Does.Contain("Click=\"PlayPause_Click\""));
+            Assert.That(windowXaml, Does.Contain("IsMoveToPointEnabled=\"True\""));
+            Assert.That(windowXaml, Does.Contain("<vlc:VideoView"));
+            Assert.That(windowXaml, Does.Contain("Click=\"PlayerMuteButton_Click\""));
+            Assert.That(windowXaml, Does.Contain("Click=\"PlayerFullscreen_Click\""));
+            Assert.That(windowXaml, Does.Contain("AutomationProperties.Name=\"全画面\""));
+            Assert.That(windowXaml, Does.Contain("x:Name=\"PlayerMoreButton\""));
+            Assert.That(windowXaml, Does.Contain("Click=\"Capture_Click\""));
+            Assert.That(windowXaml, Does.Contain("Click=\"AddBookmark_Click\""));
+            Assert.That(
+                windowSource,
+                Does.Contain("new DispatcherTimer(DispatcherPriority.Background)")
+            );
+            Assert.That(windowSource, Does.Contain("TimeSpan.FromMilliseconds(250)"));
+            Assert.That(playerSource, Does.Contain("private void PlayPause_Click("));
+            Assert.That(playerSource, Does.Contain("UpdatePlayerTimeLabel(requestedPosition);"));
+            Assert.That(
+                fullscreenSource,
+                Does.Contain("public void ShowPlayer(VideoView player)")
+            );
+            Assert.That(
+                fullscreenSource,
+                Does.Contain("private Task OpenMainWindowPlayerFullscreenAsync()")
+            );
+            Assert.That(
+                fullscreenSource,
+                Does.Contain("window.ShowPlayer(uxVideoPlayer);")
+            );
+            Assert.That(windowXaml, Does.Not.Contain("<MediaElement"));
+            Assert.That(windowXaml, Does.Not.Contain("<wv2:WebView2"));
+        });
+    }
+
     [Test]
     public void PlayerVolume_更新入口を中央関数へ集約する()
     {
         string playerSource = GetMainWindowPlayerSourceText();
-        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
-        string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
+        string libVlcSource = GetLibVlcPlayerSourceText();
 
         Assert.That(
             playerSource,
@@ -125,23 +184,13 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(playerSource, Does.Contain("private void ApplyPlayerVolumeSetting("));
         Assert.That(playerSource, Does.Contain("bool updateSlider,"));
         Assert.That(playerSource, Does.Contain("bool save,"));
-        Assert.That(playerSource, Does.Contain("bool pushToWebView"));
+        Assert.That(playerSource, Does.Contain("bool applyToEngine"));
         Assert.That(playerSource, Does.Contain("private void SetPlayerVolumeFromUser(double volume)"));
-        Assert.That(playerSource, Does.Contain("private void PushCurrentPlayerVolumeToWebView()"));
-        Assert.That(playerSource, Does.Contain("private void SetPlayerVolumeFromWebView(double volume)"));
+        Assert.That(playerSource, Does.Contain("ApplyCurrentPlayerVolumeToEngine();"));
         Assert.That(playerSource, Does.Contain("SetPlayerVolumeFromUser(uxVolumeSlider.Value);"));
-        Assert.That(upperTabPlayerSource, Does.Contain("double restoreVolume = GetCurrentPlayerVolumeSetting();"));
-        Assert.That(upperTabPlayerSource, Does.Contain("string volume = GetCurrentPlayerVolumeSetting().ToString("));
-        Assert.That(upperTabPlayerSource, Does.Contain("const string playerReadyMessage = \"player-ready\";"));
-        Assert.That(upperTabPlayerSource, Does.Contain("PushCurrentPlayerVolumeToWebView();"));
-        Assert.That(
-            fullscreenWindowSource,
-            Does.Contain("string volume = GetCurrentPlayerVolumeSetting().ToString(")
-        );
-        Assert.That(
-            fullscreenWindowSource,
-            Does.Contain("private void ReconcilePlayerWebViewSnapshotVolume(")
-        );
+        Assert.That(libVlcSource, Does.Contain("private void ApplyCurrentPlayerVolumeToEngine()"));
+        Assert.That(libVlcSource, Does.Contain("GetCurrentPlayerVolumeSetting() * 100d"));
+        Assert.That(libVlcSource, Does.Contain("private void SetPlayerEngineMuted(bool muted)"));
     }
 
     [Test]
@@ -238,93 +287,77 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void WebViewPlayer_ホスト音量適用前の既定音量通知を抑止する()
+    public void LibVLCPlayer_管理コードとWindowsネイティブ本体を同じバージョン系列で配布する()
     {
-        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
-        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
-        string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
+        string project = GetRepoText("IndigoMovieManager.csproj");
 
-        Assert.That(mainWindowPlayerSource, Does.Contain("indigoPlayerHostVolumeApplied = '1'"));
-        Assert.That(upperTabPlayerSource, Does.Contain("indigoPlayerHostVolumeApplied = '1'"));
-        Assert.That(fullscreenWindowSource, Does.Contain("indigoPlayerHostVolumeApplied = '1'"));
-        Assert.That(mainWindowPlayerSource, Does.Contain("indigoPlayerHostVolumeApplying = '1'"));
-        Assert.That(upperTabPlayerSource, Does.Contain("indigoPlayerHostVolumeApplying = '1'"));
-        Assert.That(mainWindowPlayerSource, Does.Contain("}, 250);"));
-        Assert.That(upperTabPlayerSource, Does.Contain("}, 250);"));
-        Assert.That(upperTabPlayerSource, Does.Contain("chrome.webview.postMessage('player-ready');"));
-        Assert.That(
-            upperTabPlayerSource,
-            Does.Contain("player.dataset.indigoPlayerHostVolumeApplied !== '1'")
-        );
-        Assert.That(
-            upperTabPlayerSource,
-            Does.Contain("player.dataset.indigoPlayerHostVolumeApplying === '1'")
-        );
-        Assert.That(upperTabPlayerSource, Does.Not.Contain("notifyVolume();"));
+        Assert.That(project, Does.Contain("<PackageReference Include=\"LibVLCSharp.WPF\" Version=\"3.10.1\" />"));
+        Assert.That(project, Does.Contain("<PackageReference Include=\"VideoLAN.LibVLC.Windows\" Version=\"3.0.23.1\" />"));
     }
 
     [Test]
-    public void WebViewPlayer_100パーセント操作も中央正本へ保存する()
+    public void LibVLCPlayer_1実体を遅延初期化し動画切替で再利用する()
     {
-        string playerSource = GetMainWindowPlayerSourceText();
-        string method = GetMethodBlock(
-            playerSource,
-            "private void SetPlayerVolumeFromWebView(double volume)"
-        );
+        string source = GetLibVlcPlayerSourceText();
+        string ensureMethod = GetMethodBlock(source, "private async Task<bool> EnsureLibVlcPlayerReadyAsync()");
+        string openMethod = GetMethodBlock(source, "private async Task<bool> TryOpenLibVlcMovieAsync(string moviePath)");
 
-        Assert.That(method, Does.Contain("double resolvedVolume = ClampPlayerVolumeSetting(volume);"));
-        Assert.That(method, Does.Contain("ApplyPlayerVolumeSetting("));
-        Assert.That(method, Does.Contain("resolvedVolume,"));
-        Assert.That(method, Does.Contain("save: true"));
-        Assert.That(method, Does.Contain("pushToWebView: false"));
-        Assert.That(method, Does.Not.Contain("resolvedVolume >= 1d"));
-        Assert.That(method, Does.Not.Contain("DefaultPlayerVolume"));
+        Assert.That(ensureMethod, Does.Contain("if (_isLibVlcPlayerInitialized && _playerMediaPlayer != null)"));
+        Assert.That(source, Does.Contain("Core.Initialize(nativeDirectory);"));
+        Assert.That(ensureMethod, Does.Contain("await initializationTask;"));
+        Assert.That(ensureMethod, Does.Contain("_playerMediaPlayer = resources.MediaPlayer;"));
+        Assert.That(ensureMethod, Does.Contain("uxVideoPlayer.MediaPlayer = _playerMediaPlayer;"));
+        Assert.That(openMethod, Does.Contain("new(_playerLibVlc, moviePath, FromType.FromPath)"));
+        Assert.That(openMethod, Does.Contain("_playerMediaPlayer.Media = media;"));
+        Assert.That(openMethod, Does.Not.Contain("new MediaPlayer("));
     }
 
     [Test]
-    public void WebViewPlayer_全画面遷移直前の実音量を中央正本へ合流してから再注入する()
+    public void LibVLCPlayer_イベントをUIスレッドへ戻し終了時に確実に破棄する()
     {
-        string fullscreenWindowSource = GetUpperTabPlayerFullscreenWindowSourceText();
-        string captureMethod = GetMethodBlock(
-            fullscreenWindowSource,
-            "private async Task<PlayerWebViewPlaybackSnapshot> CapturePlayerWebViewPlaybackSnapshotAsync("
+        string source = GetLibVlcPlayerSourceText();
+        string lifecycle = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
+
+        Assert.That(source, Does.Contain("mediaPlayer.Playing += PlayerMediaPlayer_Playing;"));
+        Assert.That(source, Does.Contain("Dispatcher.BeginInvoke(DispatcherPriority.Background, action)"));
+        Assert.That(source, Does.Contain("mediaPlayer.Playing -= PlayerMediaPlayer_Playing;"));
+        Assert.That(source, Does.Contain("mediaPlayer.Dispose();"));
+        Assert.That(source, Does.Contain("libVlc?.Dispose();"));
+        Assert.That(lifecycle, Does.Contain("DisposeLibVlcPlayer();"));
+    }
+
+    [Test]
+    public void LibVLCPlayer_遅れて届く状態通知を現在状態で無効化する()
+    {
+        string source = GetLibVlcPlayerSourceText();
+        string playingMethod = GetMethodBlock(
+            source,
+            "private async void HandleLibVlcPlayerPlayingOnUi()"
         );
-        string reconcileMethod = GetMethodBlock(
-            fullscreenWindowSource,
-            "private void ReconcilePlayerWebViewSnapshotVolume("
+        string pausedMethod = GetMethodBlock(
+            source,
+            "private void PlayerMediaPlayer_Paused(object sender, EventArgs e)"
         );
-        string applyMethod = GetMethodBlock(
-            fullscreenWindowSource,
-            "private async Task ApplyPlayerWebViewPlaybackSnapshotAsync("
+        string stoppedMethod = GetMethodBlock(
+            source,
+            "private void PlayerMediaPlayer_Stopped(object sender, EventArgs e)"
         );
-        string openMethod = GetMethodBlock(
-            fullscreenWindowSource,
-            "private async Task OpenMainWindowPlayerFullscreenAsync()"
+        string endedMethod = GetMethodBlock(
+            source,
+            "private void PlayerMediaPlayer_EndReached(object sender, EventArgs e)"
         );
-        string closeMethod = GetMethodBlock(
-            fullscreenWindowSource,
-            "private async Task CloseMainWindowPlayerFullscreenAsync()"
+        string errorMethod = GetMethodBlock(
+            source,
+            "private void PlayerMediaPlayer_EncounteredError(object sender, EventArgs e)"
         );
 
         Assert.Multiple(() =>
         {
-            Assert.That(
-                captureMethod,
-                Does.Contain("volume: Number.isFinite(player.volume) ? player.volume : null")
-            );
-            Assert.That(fullscreenWindowSource, Does.Contain("[JsonPropertyName(\"volume\")]"));
-            Assert.That(reconcileMethod, Does.Contain("snapshot?.Volume is not double volume"));
-            Assert.That(reconcileMethod, Does.Contain("SetPlayerVolumeFromWebView(volume);"));
-            Assert.That(applyMethod, Does.Contain("GetCurrentPlayerVolumeSetting().ToString("));
-            Assert.That(applyMethod, Does.Not.Contain("snapshot.Volume"));
-            Assert.That(
-                openMethod,
-                Does.Contain("ReconcilePlayerWebViewSnapshotVolume(snapshot);")
-            );
-            Assert.That(
-                closeMethod,
-                Does.Contain("ReconcilePlayerWebViewSnapshotVolume(snapshot);")
-            );
+            Assert.That(playingMethod, Does.Contain("_playerMediaPlayer?.State != VLCState.Playing"));
+            Assert.That(pausedMethod, Does.Contain("_playerMediaPlayer?.State != VLCState.Paused"));
+            Assert.That(stoppedMethod, Does.Contain("_playerMediaPlayer?.State != VLCState.Stopped"));
+            Assert.That(endedMethod, Does.Contain("_playerMediaPlayer?.State != VLCState.Ended"));
+            Assert.That(errorMethod, Does.Contain("_playerMediaPlayer?.State != VLCState.Error"));
         });
     }
 
@@ -465,12 +498,13 @@ public sealed class ManualPlayerResizeHookPolicyTests
         // surface操作は見た目の反映だけに閉じ、保存は既存のqueue/background経路へ任せる。
         string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        string libVlcSource = GetLibVlcPlayerSourceText();
 
         string[] surfaceMethods =
         [
             GetMethodBlock(upperTabPlayerSource, "private void ShowPlayerSurface()"),
             GetMethodBlock(upperTabPlayerSource, "private void ShowPlayerEmptyState()"),
-            GetMethodBlock(upperTabPlayerSource, "private void ResetWebViewPlayerSurface()"),
+            GetMethodBlock(libVlcSource, "private void ReleaseLibVlcPlayerResources()"),
             GetMethodBlock(mainWindowPlayerSource, "private void UpdateManualPlayerViewport()"),
             GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementSizeIfChanged("),
             GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementWidthIfChanged("),
@@ -696,28 +730,20 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void PlayerWebViewEnvironmentWarm_起動light_services後に環境だけ先行作成する()
+    public void LibVLCPlayer_起動時warmを持たず初回再生時に遅延初期化する()
     {
         string startupSource = GetMainWindowStartupSourceText();
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
-        string warmMethod = GetMethodBlock(
-            upperTabPlayerSource,
-            "private async Task WarmPlayerWebViewEnvironmentAfterIdleAsync()"
+        string libVlcSource = GetLibVlcPlayerSourceText();
+        string openMethod = GetMethodBlock(
+            libVlcSource,
+            "private async Task<bool> TryOpenLibVlcMovieAsync(string moviePath)"
         );
 
-        Assert.That(startupSource, Does.Contain("QueuePlayerWebViewEnvironmentWarm();"));
-        Assert.That(
-            upperTabPlayerSource,
-            Does.Contain("private bool _playerWebViewEnvironmentWarmQueued;")
-        );
-        Assert.That(
-            upperTabPlayerSource,
-            Does.Contain("private void QueuePlayerWebViewEnvironmentWarm()")
-        );
-        Assert.That(warmMethod, Does.Contain("await WaitForPlayerDispatcherContextIdleOrDelayAsync();"));
-        Assert.That(warmMethod, Does.Contain("await GetOrCreatePlayerWebViewEnvironmentAsync();"));
-        Assert.That(warmMethod, Does.Not.Contain("EnsureCoreWebView2Async"));
-        Assert.That(warmMethod, Does.Not.Contain("BeginUserPriorityWork(\"player\")"));
+        Assert.That(startupSource, Does.Not.Contain("QueuePlayerWebViewEnvironmentWarm();"));
+        Assert.That(upperTabPlayerSource, Does.Not.Contain("WarmPlayerWebViewEnvironmentAfterIdleAsync"));
+        Assert.That(openMethod, Does.Contain("EnsureLibVlcPlayerReadyAsync()"));
+        Assert.That(startupSource, Does.Not.Contain("EnsureLibVlcPlayerReadyAsync()"));
     }
 
     [Test]
@@ -785,119 +811,47 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(upperTabPlayerSource, Does.Contain("expectedRevision != _pendingPlayerUserPriorityRevision"));
         Assert.That(upperTabPlayerSource, Does.Contain("PlayerUserPriorityReleaseTimer_Tick"));
         Assert.That(upperTabPlayerSource, Does.Contain("\"timeout\""));
-        Assert.That(upperTabPlayerSource, Does.Contain("if (!e.IsSuccess)"));
-        Assert.That(mainWindowXaml, Does.Contain("MediaEnded=\"UxVideoPlayer_MediaEnded\""));
-        Assert.That(upperTabPlayerSource, Does.Contain("_hasPendingWebViewPlaybackRequest = false;"));
-        Assert.That(mainWindowXaml, Does.Contain("NavigationStarting=\"UxWebVideoPlayer_NavigationStarting\""));
-        Assert.That(upperTabPlayerSource, Does.Contain("e.NavigationId != _pendingWebViewNavigationId"));
-        Assert.That(mainWindowXaml, Does.Contain("MediaFailed=\"UxVideoPlayer_MediaFailed\""));
-        Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaFailed("));
-        Assert.That(mainWindowPlayerSource, Does.Contain("\"media-opened\""));
-        Assert.That(mainWindowPlayerSource, Does.Contain("\"media-failed\""));
-        Assert.That(mainWindowPlayerSource, Does.Contain("private void UxVideoPlayer_MediaEnded("));
+        Assert.That(upperTabPlayerSource, Does.Contain("await TryOpenLibVlcMovieAsync(moviePath)"));
+        Assert.That(mainWindowXaml, Does.Contain("<vlc:VideoView"));
+        Assert.That(mainWindowXaml, Does.Not.Contain("MediaEnded="));
+        Assert.That(mainWindowXaml, Does.Not.Contain("NavigationStarting="));
         Assert.That(mainWindowPlayerSource, Does.Contain("SetPlayerPlaybackActive(false,"));
-        Assert.That(mainWindowPlayerSource, Does.Contain("_hasPendingPlayerPlaybackRequest = false;"));
         Assert.That(upperTabPlayerSource, Does.Contain("try"));
         Assert.That(upperTabPlayerSource, Does.Contain("finally"));
         Assert.That(upperTabPlayerSource, Does.Contain("EndUserPriorityWork(\"player\");"));
     }
 
     [Test]
-    public void PlayerUserPriority_MediaElementのSource変更はMediaOpenedまたはtimeoutで解除する()
+    public void PlayerUserPriority_LibVLCのPlayingまたはErrorで解除する()
     {
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
-        string playerSource = GetMainWindowPlayerSourceText();
+        string libVlcSource = GetLibVlcPlayerSourceText();
         string openMethod = GetMethodBlock(
             upperTabPlayerSource,
             "private async Task OpenMovieInPlayerTabAsync("
-        );
-        string openedMethod = GetMethodBlock(
-            playerSource,
-            "private void UxVideoPlayer_MediaOpened(object sender, RoutedEventArgs e)"
         );
         string applyMethod = GetMethodBlock(
             upperTabPlayerSource,
             "private async Task ApplyPendingPlayerPlaybackRequestAsync()"
         );
+        string playingMethod = GetMethodBlock(
+            libVlcSource,
+            "private async void HandleLibVlcPlayerPlayingOnUi()"
+        );
+        string errorMethod = GetMethodBlock(
+            libVlcSource,
+            "private void PlayerMediaPlayer_EncounteredError(object sender, EventArgs e)"
+        );
 
         Assert.Multiple(() =>
         {
-            Assert.That(openMethod, Does.Contain("uxVideoPlayer.Source = new System.Uri(moviePath);"));
+            Assert.That(openMethod, Does.Contain("await TryOpenLibVlcMovieAsync(moviePath)"));
             Assert.That(openMethod, Does.Contain("MarkPlayerUserPriorityReleasePending(playerUserPriorityRevision);"));
             Assert.That(openMethod, Does.Contain("releaseUserPriorityOnExit = false;"));
-            Assert.That(openedMethod, Does.Contain("\"media-opened\""));
-            Assert.That(openedMethod, Does.Contain("ApplyPendingPlayerPlaybackRequestAsync();"));
+            Assert.That(playingMethod, Does.Contain("await ApplyPendingPlayerPlaybackRequestAsync();"));
+            Assert.That(errorMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork("));
             Assert.That(applyMethod, Does.Contain("finally"));
             Assert.That(applyMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork();"));
-        });
-    }
-
-    [Test]
-    public void PlayerUserPriority_WebViewのSource変更は同じNavigationまたはtimeoutで解除する()
-    {
-        string source = GetUpperTabPlayerSourceText();
-        string openMethod = GetMethodBlock(source, "private async Task<bool> OpenMovieInWebViewPlayerAsync(");
-        string startingMethod = GetMethodBlock(
-            source,
-            "private void UxWebVideoPlayer_NavigationStarting("
-        );
-        string completedMethod = GetMethodBlock(
-            source,
-            "private async void UxWebVideoPlayer_NavigationCompleted("
-        );
-        string applyMethod = GetMethodBlock(
-            source,
-            "private async Task ApplyPendingWebViewPlaybackRequestAsync()"
-        );
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(openMethod, Does.Contain("uxWebVideoPlayer.Source = new System.Uri(moviePath);"));
-            Assert.That(source, Does.Contain("PlayerUserPriorityReleaseTimer_Tick"));
-            Assert.That(openMethod, Does.Contain("return true;"));
-            Assert.That(startingMethod, Does.Contain("_pendingWebViewNavigationId = e.NavigationId;"));
-            Assert.That(completedMethod, Does.Contain("e.NavigationId != _pendingWebViewNavigationId"));
-            Assert.That(completedMethod, Does.Contain("await ApplyPendingWebViewPlaybackRequestAsync();"));
-            Assert.That(applyMethod, Does.Contain("finally"));
-            Assert.That(applyMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork();"));
-        });
-    }
-
-    [Test]
-    public void PlayerUserPriority_失敗とstaleイベントは現在要求だけを正しく解除する()
-    {
-        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
-        string playerSource = GetMainWindowPlayerSourceText();
-        string mediaFailedMethod = GetMethodBlock(
-            playerSource,
-            "private void UxVideoPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e)"
-        );
-        string navigationCompletedMethod = GetMethodBlock(
-            upperTabPlayerSource,
-            "private async void UxWebVideoPlayer_NavigationCompleted("
-        );
-
-        int staleGuardIndex = navigationCompletedMethod.IndexOf(
-            "e.NavigationId != _pendingWebViewNavigationId",
-            StringComparison.Ordinal
-        );
-        int failureIndex = navigationCompletedMethod.IndexOf("if (!e.IsSuccess)", StringComparison.Ordinal);
-        int releaseIndex = navigationCompletedMethod.IndexOf(
-            "ReleasePendingPlayerUserPriorityWork(",
-            StringComparison.Ordinal
-        );
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(mediaFailedMethod, Does.Contain("_hasPendingPlayerPlaybackRequest = false;"));
-            Assert.That(mediaFailedMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork("));
-            Assert.That(staleGuardIndex, Is.GreaterThanOrEqualTo(0));
-            Assert.That(failureIndex, Is.GreaterThan(staleGuardIndex));
-            Assert.That(releaseIndex, Is.GreaterThan(failureIndex));
-            Assert.That(
-                navigationCompletedMethod.Substring(staleGuardIndex, failureIndex - staleGuardIndex),
-                Does.Not.Contain("ReleasePendingPlayerUserPriorityWork(")
-            );
         });
     }
 
@@ -1038,18 +992,17 @@ public sealed class ManualPlayerResizeHookPolicyTests
             );
             Assert.That(transitionMethod, Does.Contain("return isActive ? \"start\" : \"stop\";"));
             Assert.That(mainWindowPlayerSource, Does.Contain("reason={reason ?? \"\"}"));
-            Assert.That(mainWindowPlayerSource, Does.Contain("? \"webview\" : \"mediaelement\""));
+            Assert.That(mainWindowPlayerSource, Does.Contain("return \"libvlc\";"));
             Assert.That(
                 mainWindowPlayerSource,
-                Does.Contain("return uxWebVideoPlayer?.CoreWebView2 != null;")
+                Does.Contain("return _isLibVlcPlayerInitialized && _playerMediaPlayer != null;")
             );
-            Assert.That(mainWindowPlayerSource, Does.Contain("return uxVideoPlayer != null;"));
             Assert.That(mainWindowPlayerSource, Does.Not.Contain("IsPlaying ="));
             Assert.That(upperTabPlayerSource, Does.Not.Contain("IsPlaying ="));
             Assert.That(fullscreenWindowSource, Does.Not.Contain("IsPlaying ="));
             Assert.That(bookmarkSource, Does.Not.Contain("IsPlaying ="));
-            Assert.That(upperTabPlayerSource, Does.Contain("SetPlayerPlaybackActive(playImmediately,"));
-            Assert.That(fullscreenWindowSource, Does.Contain("SetPlayerPlaybackActive(!snapshot.Paused,"));
+            Assert.That(upperTabPlayerSource, Does.Contain("SetPlayerPlaybackActive(true, \"player-tab-open\")"));
+            Assert.That(upperTabPlayerSource, Does.Contain("SetPlayerPlaybackActive(false, \"player-tab-open-paused\")"));
             Assert.That(bookmarkSource, Does.Contain("SetPlayerPlaybackActive(false, \"bookmark-add\")"));
         });
     }
@@ -1159,12 +1112,12 @@ public sealed class ManualPlayerResizeHookPolicyTests
         string startResult = InvokePlayerPlaybackCoreRouteLogFields(
             window,
             isActive: true,
-            "start-webview"
+            "start-libvlc"
         );
         string stopResult = InvokePlayerPlaybackCoreRouteLogFields(
             window,
             isActive: false,
-            "stop-webview"
+            "stop-libvlc"
         );
         string emptyReasonResult = InvokePlayerPlaybackCoreRouteLogFields(
             window,
@@ -1177,19 +1130,19 @@ public sealed class ManualPlayerResizeHookPolicyTests
             Assert.That(
                 startResult,
                 Is.EqualTo(
-                    "core_route=player-playback operation_reason=player-playback player_surface=mediaelement player_surface_ready=false active=true player_transition=start reason=start-webview"
+                    "core_route=player-playback operation_reason=player-playback player_surface=libvlc player_surface_ready=false active=true player_transition=start reason=start-libvlc"
                 )
             );
             Assert.That(
                 stopResult,
                 Is.EqualTo(
-                    "core_route=player-playback operation_reason=player-playback player_surface=mediaelement player_surface_ready=false active=false player_transition=stop reason=stop-webview"
+                    "core_route=player-playback operation_reason=player-playback player_surface=libvlc player_surface_ready=false active=false player_transition=stop reason=stop-libvlc"
                 )
             );
             Assert.That(
                 emptyReasonResult,
                 Is.EqualTo(
-                    "core_route=player-playback operation_reason=player-playback player_surface=mediaelement player_surface_ready=false active=true player_transition=start reason="
+                    "core_route=player-playback operation_reason=player-playback player_surface=libvlc player_surface_ready=false active=true player_transition=start reason="
                 )
             );
         });
@@ -1235,38 +1188,20 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void ResetWebViewPlayerSurface_WebView停止時もpending_user_priorityを解除する()
+    public void Player専用WebView2とMediaElement経路を残さずLibVLC終了処理を使う()
     {
-        // WebView の NavigationCompleted が後着しても、reset 側で優先区間を確実に畳む。
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
-        string resetMethod = GetMethodBlock(
-            upperTabPlayerSource,
-            "private void ResetWebViewPlayerSurface()"
-        );
-        string openMovieMethod = GetMethodBlock(
-            upperTabPlayerSource,
-            "private async Task OpenMovieInPlayerTabAsync("
-        );
+        string mainWindowPlayerSource = GetMainWindowPlayerSourceText();
+        string fullscreenSource = GetUpperTabPlayerFullscreenWindowSourceText();
+        string libVlcSource = GetLibVlcPlayerSourceText();
+        string lifecycleSource = GetRepoText("Views", "Main", "MainWindow.Lifecycle.cs");
+        string playerSources = upperTabPlayerSource + mainWindowPlayerSource + fullscreenSource;
 
-        int webViewActiveCheckIndex = openMovieMethod.IndexOf(
-            "if (_isWebViewPlayerActive)",
-            StringComparison.Ordinal
-        );
-        int resetCallIndex = openMovieMethod.IndexOf(
-            "ResetWebViewPlayerSurface();",
-            StringComparison.Ordinal
-        );
-
-        Assert.That(webViewActiveCheckIndex, Is.GreaterThanOrEqualTo(0));
-        Assert.That(resetCallIndex, Is.GreaterThan(webViewActiveCheckIndex));
-        Assert.That(resetMethod, Does.Contain("_hasPendingWebViewPlaybackRequest = false;"));
-        Assert.That(resetMethod, Does.Contain("_isWebViewPlayerActive = false;"));
-        Assert.That(resetMethod, Does.Contain("_pendingWebViewNavigationId = 0;"));
-        Assert.That(resetMethod, Does.Contain("ReleasePendingPlayerUserPriorityWork(\"webview-reset\");"));
-        Assert.That(
-            resetMethod.IndexOf("ReleasePendingPlayerUserPriorityWork(\"webview-reset\");", StringComparison.Ordinal),
-            Is.LessThan(resetMethod.IndexOf("if (uxWebVideoPlayer == null)", StringComparison.Ordinal))
-        );
+        Assert.That(playerSources, Does.Not.Contain("uxWebVideoPlayer"));
+        Assert.That(playerSources, Does.Not.Contain("_isWebViewPlayerActive"));
+        Assert.That(playerSources, Does.Not.Contain("MediaElement"));
+        Assert.That(libVlcSource, Does.Contain("private void DisposeLibVlcPlayer()"));
+        Assert.That(lifecycleSource, Does.Contain("DisposeLibVlcPlayer();"));
     }
 
     private static string InvokePlayerPlaybackCoreRouteLogFields(
@@ -1332,6 +1267,11 @@ public sealed class ManualPlayerResizeHookPolicyTests
     private static string GetUpperTabPlayerFullscreenWindowSourceText()
     {
         return GetRepoText("UpperTabs", "Player", "MainWindow.UpperTabs.PlayerFullscreenWindow.cs");
+    }
+
+    private static string GetLibVlcPlayerSourceText()
+    {
+        return GetRepoText("UpperTabs", "Player", "MainWindow.UpperTabs.LibVlcPlayer.cs");
     }
 
     private static string GetMainWindowStartupSourceText()

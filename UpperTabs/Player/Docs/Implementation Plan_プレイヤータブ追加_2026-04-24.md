@@ -1,70 +1,80 @@
 # Implementation Plan: プレイヤータブ追加 (2026-04-24)
 
-最終更新日: 2026-07-17
+最終更新日: 2026-08-19
 
 変更概要:
-- 2026-07-17: Player音量を中央状態へ一元化し、新規初期値を25%へ変更した。XAML初期化中の50%上書きを復元完了ガードで防ぎ、0〜100%の保存値は尊重、不正値だけ25%へ修復する。全画面遷移直前のWebView実音量は取得成功時だけ中央へ合流し、直後に同じ中央状態を再注入する
-- 上側タブへ `プレイヤー` タブを追加した
-- 左に内蔵動画プレーヤー、右に `Grid` サムネイルの縮小右レールを配置した
-- `プレイヤー` タブ選択中でも、サムネイル系の優先制御と保存先は `Grid` 扱いへ正規化した
-- 手動サムネイル導線を `プレイヤー` タブ上の内蔵プレーヤーへ接続した
-- プレイヤー表示は左枠内で最大化し、右サムネ左クリックで即再生する形へ寄せた
-- 2026-05-04: 右レールは `PlayerThumbnailList` 1 系統に単純化し、表示切り替えと下段退避を廃止した
-- 2026-05-04: タブ選択時の自動再生は `ContextIdle` または 250ms 上限待ちの後へ遅延し、タブ表示を先に返すようにした
+- 2026-08-19: Player 専用の WebView2 / MediaElement 二重経路を廃止し、`LibVLCSharp.WPF` の `VideoView` と Windows 版 LibVLC へ一本化した
+- 既存の再生・一時停止、シーク、音量、ミュート、全画面、手動サムネイル、ブックマーク、終了を同じ LibVLC 再生実体へ接続した
+- WebView2 は外部 skin 表示に必要なため、アプリ全体の依存からは削除しない
+- WhiteBrowser DB とサムネイル保存先は変更しない
 
 ## 1. 目的
 
-- 上側タブ内で、対象動画をそのまま確認しながら選別できる導線を追加する
-- 既存の `Grid` サムネイル資産を流用し、別系統のサムネ保存先は増やさない
-- 手動サムネイル作成の再生面を、独立オーバーレイではなく常設タブへ寄せる
+- MP4、MKV、HEVC Main10 などを Player タブ内で安定して再生する
+- コンテナやコーデックごとの再生経路分岐をなくし、操作と状態管理を一系統にする
+- 既存の軽い右レールと手動サムネイル導線を維持する
 
-## 2. 今回の構成
+## 2. 現行構成
 
-- 左ペイン:
-  - `MediaElement`
-  - 再生コントローラ
-  - 未選択時のプレースホルダー
-- 右ペイン:
-  - `FilteredMovieRecs` を表示する単一の `PlayerThumbnailList`
-  - `VirtualizingWrapPanel` と固定 item 幅で、右レール内に小サムネを並べる
-  - サムネイル画像は `ThumbPathGrid` と `GridDecodePixelHeight` を利用
+- 再生 UI: `LibVLCSharp.WPF.VideoView`
+- 再生エンジン: `LibVLCSharp` 3.10.1
+- Windows native runtime: `VideoLAN.LibVLC.Windows` 3.0.23.1
+- 再生実体は Player タブで一度だけ遅延生成し、動画切替でも同じ `MediaPlayer` を再利用する
+- 起動時 warm は行わず、最初に動画を開く時だけ LibVLC を初期化する
+- 全画面は同じ `VideoView` を専用 Window へ載せ替え、動画の再読込や第2プレイヤー生成を行わない
+- 右レールは `PlayerThumbnailList` 一系統で、Grid 用サムネイル資産を利用する
 
-## 3. 固定ルール
+## 3. 操作と状態
 
-- `プレイヤー` タブ自体は独立した上側タブ ID を持つ
-- ただし、サムネイル生成対象タブ・優先タブ・保存先の解決は `Grid` へ寄せる
-- これにより、`Grid` 用の既存サムネイルキューや救済系ロジックを崩さない
+- 動画選択後、LibVLC の `Playing` 通知で保留中の開始位置、再生/一時停止、ミュート、フォーカス要求を適用する
+- `Playing`、`Paused`、`Stopped`、`EndReached`、`EncounteredError`、`LengthChanged` は Dispatcher へ戻して UI に反映する
+- 再生終了後の再生操作は `Play()` で再開し、一時停止中は `SetPause(false)` で再開する
+- 進捗表示は 250ms 間隔かつ `DispatcherPriority.Background` とし、入力を優先する
+- 音量は中央状態を正本としてユーザー設定へ保存し、LibVLC の 0〜100 音量へ変換する
+- Player タブを離れる時は一時停止し、アプリ終了時はイベント解除後に `MediaPlayer` と `LibVLC` を破棄する
+- エラー時は保留要求と user-priority 区間を閉じ、`debug-runtime.log` へ `libvlc playback failed` を残す
 
-## 4. 挙動
+## 4. 維持する既存契約
 
-- `プレイヤー` タブを開くと、右側一覧の選択動画を左のプレーヤーで再生する
-- タブ選択時の自動再生は Dispatcher の `ContextIdle` または短い上限待ちの後へ送り、まずタブ表示と選択同期を完了させる
-- 左ペインのプレーヤーは、ウィンドウ全体基準ではなく左枠の実サイズ基準で最大化する
-- 右側サムネイルは、同じ項目を再クリックした時でも左クリックで即再生する
-- `Source` 切り替え直後ではなく `MediaOpened` 完了後に再生要求を確定し、動画ロードの揺らぎで再生が取りこぼれないようにした
-- `MediaElement` が苦手な `webm` は `WebView2` の HTML5 video へ自動フォールバックし、形式差で再生不能になりにくくした
-- プレイヤーの音量はユーザー設定へ保存し、次回起動時に前回値を復元するようにした
-- プレイヤータブの通常再生面は `WebView2` 固定とし、枠内いっぱいへ広げたうえで拡大ボタンから全画面化できるようにした
-- ただし `WebView2` が扱いにくい拡張子は最初から `MediaElement` 側へ戻し、ブラウザ扱いでダウンロードに流れないようにした
-- `WebView2` 上へ重ねたボタンは airspace の都合でクリックを拾えないため、拡大ボタンは動画面の外側ツールバーへ逃がした
-- `WebView2` のネイティブ動画コントロールで変えた音量も設定へ戻し、次に開く動画を含めて同じ音量が続くようにした
-- 拡大ボタンは `PlayerFullscreenHostWindow` という専用の全画面ウィンドウを 1 個だけ使い回す方式へ切り替えた
-- 全画面化は `requestFullscreen()` ではなく、専用ウィンドウ自体を `WindowStyle=None` + `WindowState=Maximized` にして安定動作を優先した
-- 全画面では第 2 の `WebView2` を作らず、プレイヤータブで実際に再生している `uxWebVideoPlayer` そのものを専用ウィンドウへ載せ替える方式へ変更した
-- これにより、ローカル動画の再読み込みや別 `WebView2` 初期化で黒画面になる経路を避け、再生中の状態を保ったまま全画面へ移しやすくした
-- `WebView2` ネイティブコントロール右下の fullscreen 要求も `ContainsFullScreenElementChanged` で拾い、DOM 側 fullscreen を閉じてから専用全画面ウィンドウへ引き渡すようにした
-- 専用全画面ウィンドウへ移した後は、同じ `video` 要素へ再度 DOM fullscreen を掛け直し、ネイティブコントロールの fullscreen アイコンも「戻る」側へ切り替わるようにした
-- プレイヤータブ左上に置いていた独自の拡大ボタンは廃止し、fullscreen 入口は右下のネイティブコントロールへ一本化した
-- 念のため `WebView2.DownloadStarting` も監視し、プレイヤー用途での想定外ダウンロードは即キャンセルする
-- 右側サムネ一覧は、切り替えなしの単一小サムネ右レールへ単純化した
-- 選択中動画は単一 `PlayerThumbnailList` で持ち、左のプレーヤー再生対象がずれないようにした
-- プレイヤータブの右レールは固定幅にし、幅不足時も旧 2 系統の下段退避へ戻さない
-- 手動サムネイル作成は、選択動画を `プレイヤー` タブで指定位置まで開いた状態にする
-- `プレイヤー` タブを離れた時は、裏で再生を続けず一時停止する
-- プレーヤーを閉じた時は、左ペインを空状態へ戻す
+- Player タブのサムネイル生成対象、優先タブ、保存先解決は Grid 扱いへ正規化する
+- 手動サムネイルは現在の LibVLC 再生位置を使い、既存サムネイル生成キューへ渡す
+- ブックマーク追加も現在の LibVLC 再生位置を使う
+- Player タブ選択時の自動再生は `ContextIdle` または 250ms 上限待ちの後へ送る
+- 連続選択では古い user-priority 要求を解除し、現在選択だけを開く
+- WhiteBrowser の `*.wb` は変更しない
 
-## 5. 今後の確認点
+## 5. WebView2 の扱い
 
-- 右列一覧を狭い幅で使う時の見やすさ
-- 連続選択時の `MediaElement` 切り替えテンポ
-- 必要なら「右配置固定」ではなく「狭幅時は下配置」への切り替えを検討する
+- Player 専用の `uxWebVideoPlayer`、HTML5 video bridge、ナビゲーション fallback、全画面 snapshot は削除する
+- Player XAML に `WebView2` と WPF `MediaElement` を置かない
+- `Microsoft.Web.WebView2` パッケージは WhiteBrowser 互換 skin ホストが利用するため維持する
+
+## 6. 検証
+
+- 2026-08-19 実施結果: Release/x64 は警告 0・エラー 0、Player 重点テストは 53 件成功
+- 出力先に `libvlc.dll`、`libvlccore.dll`、plugins を含む native ファイル 425 件を確認
+- 通常 MP4、HEVC Main10 MP4、MKV の映像・時間更新を実機確認し、全画面表示、Esc 復帰、一時停止、再開も確認
+- 初回 native 初期化は実機ログで 381ms。背景初期化中も UI の応答ありを確認
+- Release/x64 ビルドが通ること
+- Player 関連 source-policy テストが通ること
+- native 配布物として `libvlc.dll`、`libvlccore.dll`、plugins が出力されること
+- HEVC Main10 MP4、MKV、通常 MP4 で映像・音声・時間更新を確認すること
+- 再生、一時停止、シーク、音量、ミュート、全画面復帰、手動サムネイル、ブックマークを確認すること
+- Player コードに旧 WebView2 / MediaElement 経路が残っていないこと
+- skin 用 WebView2 が退行していないこと
+
+## 7. 配布時の注意
+
+- LibVLCSharp と LibVLC は `LGPL-2.1-or-later`。GitHub Release 作成時は native runtime と plugins を欠落させず、第三者ライセンス表示と対応ソース情報を同梱する
+- native runtime を単一 exe へ埋め込んで再リンク不能にしない。現行 NuGet 配布どおり別 DLL と plugins として配置する
+
+## 8. 関連ファイル
+
+- `IndigoMovieManager.csproj`
+- `Views/Main/MainWindow.xaml`
+- `Views/Main/MainWindow.Player.cs`
+- `UpperTabs/Player/MainWindow.UpperTabs.LibVlcPlayer.cs`
+- `UpperTabs/Player/MainWindow.UpperTabs.PlayerTab.cs`
+- `UpperTabs/Player/MainWindow.UpperTabs.PlayerFullscreenWindow.cs`
+- `BottomTabs/Bookmark/MainWindow.BottomTab.Bookmark.cs`
+- `Tests/IndigoMovieManager.Tests/ManualPlayerResizeHookPolicyTests.cs`

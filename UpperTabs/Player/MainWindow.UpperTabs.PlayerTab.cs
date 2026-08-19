@@ -6,7 +6,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
 
 namespace IndigoMovieManager
 {
@@ -15,15 +14,6 @@ namespace IndigoMovieManager
         private const int PlayerTabIndex = 7;
         private const int PlayerTabActivationAutoOpenMaxDelayMs = 250;
         private const int PlayerUserPriorityMaxDurationMs = 250;
-        private static readonly HashSet<string> WebViewPreferredPlayerExtensions = new(
-            System.StringComparer.OrdinalIgnoreCase
-        )
-        {
-            ".mp4",
-            ".webm",
-            ".m4v",
-            ".ogv",
-        };
         private bool _suppressPlayerThumbnailSelectionChanged;
         private bool _suppressPlayerTabActivationAutoOpen;
         private int _playerTabActivationAutoOpenRevision;
@@ -32,25 +22,12 @@ namespace IndigoMovieManager
         private bool _pendingPlayerPlayImmediately;
         private bool _pendingPlayerMute;
         private bool _pendingPlayerFocusTimeSlider;
-        private bool _hasPendingWebViewPlaybackRequest;
-        private int _pendingWebViewStartMilliseconds;
-        private bool _pendingWebViewPlayImmediately;
-        private bool _pendingWebViewMute;
-        private bool _isWebViewPlayerActive;
-        private bool _isWebViewPlayerBridgeRegistered;
         private bool _isPlayerUserPriorityReleasePending;
-        private bool _preservePlayerUserPriorityDuringWebViewReset;
         private int _playerUserPriorityRevision;
         private int _pendingPlayerUserPriorityRevision;
         private DispatcherTimer _playerUserPriorityReleaseTimer;
-        private bool _isHandlingWebViewNativeFullscreenRequest;
-        private bool _isSyncingDetachedWindowDomFullscreen;
-        private Task<CoreWebView2Environment> _playerWebViewEnvironmentTask;
         private DispatcherOperation _playerBackgroundYieldOperation;
-        private bool _playerWebViewEnvironmentWarmQueued;
-        private ulong _pendingWebViewNavigationId;
         private string _currentPlayerMoviePath = "";
-        private string _currentWebViewPlayerPath = "";
 
         private ListView GetUpperTabPlayerList()
         {
@@ -421,34 +398,6 @@ namespace IndigoMovieManager
                     }
                 }
 
-                // プレイヤータブの通常再生は WebView2 を正面採用し、
-                // 手動サムネ位置合わせだけ従来の MediaElement を残す。
-                if (ShouldUseWebViewPlayerForPlayerTab(moviePath, focusTimeSlider))
-                {
-                    releaseUserPriorityOnExit = !await OpenMovieInWebViewPlayerAsync(
-                        movie,
-                        moviePath,
-                        startMilliseconds,
-                        playImmediately,
-                        mute,
-                        playerUserPriorityRevision
-                    );
-                    return;
-                }
-
-                if (_isWebViewPlayerActive)
-                {
-                    _preservePlayerUserPriorityDuringWebViewReset = true;
-                    try
-                    {
-                        ResetWebViewPlayerSurface();
-                    }
-                    finally
-                    {
-                        _preservePlayerUserPriorityDuringWebViewReset = false;
-                    }
-                }
-
                 ShowPlayerSurface();
                 StopDispatcherTimerSafely(timer, nameof(timer));
                 RememberPendingPlayerPlaybackRequest(
@@ -464,12 +413,21 @@ namespace IndigoMovieManager
                         moviePath,
                         System.StringComparison.OrdinalIgnoreCase
                     )
-                    || uxVideoPlayer.Source == null;
+                    || _playerMediaPlayer == null;
                 if (sourceChanged)
                 {
-                    uxVideoPlayer.Stop();
-                    uxVideoPlayer.Source = new System.Uri(moviePath);
                     _currentPlayerMoviePath = moviePath;
+                    if (!await TryOpenLibVlcMovieAsync(moviePath))
+                    {
+                        _hasPendingPlayerPlaybackRequest = false;
+                        SetPlayerPlaybackActive(false, "libvlc-open-failed");
+                        ReleasePendingPlayerUserPriorityWork(
+                            "libvlc-open-failed",
+                            playerUserPriorityRevision
+                        );
+                        return;
+                    }
+
                     releaseUserPriorityOnExit = false;
                     return;
                 }
@@ -517,72 +475,6 @@ namespace IndigoMovieManager
                     moviePath,
                     System.StringComparison.OrdinalIgnoreCase
                 );
-        }
-
-        // MediaElement が苦手な形式だけ、Chromium の HTML5 video へ切り替えて再生互換を確保する。
-        private async Task<bool> OpenMovieInWebViewPlayerAsync(
-            MovieRecords movie,
-            string moviePath,
-            int startMilliseconds,
-            bool playImmediately,
-            bool mute,
-            int playerUserPriorityRevision
-        )
-        {
-            if (
-                movie == null
-                || string.IsNullOrWhiteSpace(moviePath)
-                || uxWebVideoPlayer == null
-            )
-            {
-                return false;
-            }
-
-            if (!await EnsureWebVideoPlayerReadyAsync())
-            {
-                return false;
-            }
-
-            if (!IsPlayerTabMoviePathStillCurrent(movie, moviePath) || uxWebVideoPlayer == null)
-            {
-                return false;
-            }
-
-            _isWebViewPlayerActive = true;
-            _hasPendingPlayerPlaybackRequest = false;
-            _currentPlayerMoviePath = "";
-            uxVideoPlayer.Stop();
-            uxVideoPlayer.Source = null;
-            StopDispatcherTimerSafely(timer, nameof(timer));
-            ShowPlayerSurface();
-            UpdateManualPlayerViewport();
-            RememberPendingWebViewPlaybackRequest(
-                startMilliseconds,
-                playImmediately,
-                mute
-            );
-
-            bool sourceChanged =
-                !string.Equals(
-                    _currentWebViewPlayerPath,
-                    moviePath,
-                    System.StringComparison.OrdinalIgnoreCase
-                )
-                || uxWebVideoPlayer.Source == null
-                || !string.Equals(
-                    uxWebVideoPlayer.Source.LocalPath,
-                    moviePath,
-                    System.StringComparison.OrdinalIgnoreCase
-                );
-            if (sourceChanged)
-            {
-                uxWebVideoPlayer.Source = new System.Uri(moviePath);
-                _currentWebViewPlayerPath = moviePath;
-                return true;
-            }
-
-            await ApplyPendingWebViewPlaybackRequestAsync();
-            return false;
         }
 
         private void MarkPlayerUserPriorityReleasePending(int revision)
@@ -693,7 +585,7 @@ namespace IndigoMovieManager
             }
         }
 
-        // Source 差し替えと MediaOpened の間でも、再生要求を落とさず持ち運ぶ。
+        // メディア差し替えからLibVLCのPlaying通知まで、再生要求を落とさず持ち運ぶ。
         private void RememberPendingPlayerPlaybackRequest(
             int startMilliseconds,
             bool playImmediately,
@@ -729,17 +621,18 @@ namespace IndigoMovieManager
                 bool focusTimeSlider = _pendingPlayerFocusTimeSlider;
                 _hasPendingPlayerPlaybackRequest = false;
 
-                double restoreVolume = GetCurrentPlayerVolumeSetting();
-                uxVideoPlayer.Volume = mute ? 0d : restoreVolume;
+                ApplyCurrentPlayerVolumeToEngine();
+                SetPlayerEngineMuted(mute);
+                UpdatePlayerVolumeUi();
 
                 if (startMilliseconds > 0)
                 {
-                    uxVideoPlayer.Position = System.TimeSpan.FromMilliseconds(startMilliseconds);
+                    SetPlayerPosition(System.TimeSpan.FromMilliseconds(startMilliseconds));
                 }
 
-                uxVideoPlayer.Play();
+                StartLibVlcPlayback();
                 UpdateManualPlayerViewport();
-                UpdatePlayerPositionUi(uxVideoPlayer.Position);
+                UpdatePlayerPositionUi(GetPlayerPosition());
 
                 if (playImmediately)
                 {
@@ -749,14 +642,9 @@ namespace IndigoMovieManager
                 else
                 {
                     await WaitForPlayerDispatcherBackgroundAsync();
-                    uxVideoPlayer.Pause();
+                    PauseLibVlcPlayback();
                     SetPlayerPlaybackActive(false, "player-tab-open-paused");
                     StopDispatcherTimerSafely(timer, nameof(timer));
-
-                    if (!mute)
-                    {
-                        uxVideoPlayer.Volume = restoreVolume;
-                    }
                 }
 
                 if (focusTimeSlider)
@@ -776,25 +664,15 @@ namespace IndigoMovieManager
         private void ShowPlayerSurface()
         {
             SetPlayerVisibilityIfChanged(PlayerArea, Visibility.Visible);
-            SetPlayerVisibilityIfChanged(
-                PlayerController,
-                _isWebViewPlayerActive ? Visibility.Collapsed : Visibility.Visible
-            );
-            SetPlayerVisibilityIfChanged(
-                uxVideoPlayer,
-                _isWebViewPlayerActive ? Visibility.Collapsed : Visibility.Visible
-            );
-            if (uxWebVideoPlayer != null)
-            {
-                SetPlayerVisibilityIfChanged(
-                    uxWebVideoPlayer,
-                    _isWebViewPlayerActive ? Visibility.Visible : Visibility.Collapsed
-                );
-            }
+            SetPlayerVisibilityIfChanged(PlayerController, Visibility.Visible);
+            SetPlayerVisibilityIfChanged(uxVideoPlayer, Visibility.Visible);
             if (PlayerEmptyState != null)
             {
                 SetPlayerVisibilityIfChanged(PlayerEmptyState, Visibility.Collapsed);
             }
+
+            UpdatePlayerPlayPauseUi(IsPlayerPlaybackActive());
+            UpdatePlayerVolumeUi();
         }
 
         private void ShowPlayerEmptyState()
@@ -816,36 +694,6 @@ namespace IndigoMovieManager
             element.Visibility = visibility;
         }
 
-        // WebView2 は別 HWND として前面に出るため、左ドロワー操作中だけ描画面を退避する。
-        private void SetWebViewPlayerHiddenForLeftDrawer(bool hidden)
-        {
-            if (uxWebVideoPlayer == null || !_isWebViewPlayerActive)
-            {
-                return;
-            }
-
-            if (hidden)
-            {
-                if (uxWebVideoPlayer.Visibility == Visibility.Visible)
-                {
-                    uxWebVideoPlayer.Visibility = Visibility.Hidden;
-                    DebugRuntimeLog.Write("ui-tempo", "player webview hidden for left drawer");
-                }
-
-                return;
-            }
-
-            if (
-                TabPlayer?.IsSelected == true
-                && !_isDetachedPlayerFullscreenActive
-                && uxWebVideoPlayer.Visibility != Visibility.Visible
-            )
-            {
-                uxWebVideoPlayer.Visibility = Visibility.Visible;
-                DebugRuntimeLog.Write("ui-tempo", "player webview restored after left drawer");
-            }
-        }
-
         // タブを離れたら音だけ残さないよう一旦止め、戻った時は同じ動画を再開しやすくする。
         private void PausePlayerTabPlaybackForBackground()
         {
@@ -861,18 +709,12 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (_isWebViewPlayerActive)
-            {
-                _ = PauseWebViewPlayerAsync();
-                return;
-            }
-
-            if (uxVideoPlayer == null)
+            if (_playerMediaPlayer == null)
             {
                 return;
             }
 
-            uxVideoPlayer.Pause();
+            PauseLibVlcPlayback();
             SetPlayerPlaybackActive(false, "background-pause");
             StopDispatcherTimerSafely(timer, nameof(timer));
         }
@@ -881,13 +723,59 @@ namespace IndigoMovieManager
         {
             if (uxTimeSlider != null)
             {
-                uxTimeSlider.Value = position.TotalMilliseconds;
+                double maximum = System.Math.Max(0d, uxTimeSlider.Maximum);
+                double nextValue = System.Math.Clamp(position.TotalMilliseconds, 0d, maximum);
+                _isTimeSliderSyncingFromPlayer = true;
+                try
+                {
+                    uxTimeSlider.Value = nextValue;
+                }
+                finally
+                {
+                    _isTimeSliderSyncingFromPlayer = false;
+                }
             }
 
+            UpdatePlayerTimeLabel(position);
+        }
+
+        private void UpdatePlayerTimeLabel(System.TimeSpan position)
+        {
             if (uxTime != null)
             {
-                uxTime.Text = position.ToString(@"hh\:mm\:ss");
+                double durationMilliseconds = uxTimeSlider?.Maximum ?? 0d;
+                uxTime.Text = BuildPlayerTimeLabel(position, durationMilliseconds);
             }
+        }
+
+        internal static string BuildPlayerTimeLabel(
+            System.TimeSpan position,
+            double durationMilliseconds
+        )
+        {
+            System.TimeSpan safePosition = position < System.TimeSpan.Zero
+                ? System.TimeSpan.Zero
+                : position;
+            double safeDurationMilliseconds =
+                double.IsNaN(durationMilliseconds)
+                || double.IsInfinity(durationMilliseconds)
+                || durationMilliseconds < 0d
+                    ? 0d
+                    : durationMilliseconds;
+            System.TimeSpan duration = System.TimeSpan.FromMilliseconds(safeDurationMilliseconds);
+            return $"{FormatPlayerClock(safePosition)} / {FormatPlayerClock(duration)}";
+        }
+
+        private static string FormatPlayerClock(System.TimeSpan value)
+        {
+            int totalHours = System.Math.Max(0, (int)System.Math.Floor(value.TotalHours));
+            if (totalHours > 0)
+            {
+                return $"{totalHours}:{value.Minutes:00}:{value.Seconds:00}";
+            }
+
+            int totalMinutes = System.Math.Max(0, (int)System.Math.Floor(value.TotalMinutes));
+            return $"{totalMinutes}:{value.Seconds:00}";
         }
 
         private bool TryGetPlayerTabViewportSize(out double availableWidth, out double availableHeight)
@@ -977,571 +865,5 @@ namespace IndigoMovieManager
             return tabIndex == PlayerTabIndex ? UpperTabGridFixedIndex : tabIndex;
         }
 
-        private void RememberPendingWebViewPlaybackRequest(
-            int startMilliseconds,
-            bool playImmediately,
-            bool mute
-        )
-        {
-            _hasPendingWebViewPlaybackRequest = true;
-            _pendingWebViewStartMilliseconds = startMilliseconds;
-            _pendingWebViewPlayImmediately = playImmediately;
-            _pendingWebViewMute = mute;
-        }
-
-        private async Task ApplyPendingWebViewPlaybackRequestAsync()
-        {
-            bool shouldReleaseUserPriority =
-                _hasPendingWebViewPlaybackRequest || _isPlayerUserPriorityReleasePending;
-            if (
-                !_hasPendingWebViewPlaybackRequest
-                || !_isWebViewPlayerActive
-                || uxWebVideoPlayer?.CoreWebView2 == null
-            )
-            {
-                if (shouldReleaseUserPriority)
-                {
-                    ReleasePendingPlayerUserPriorityWork();
-                }
-                return;
-            }
-
-            try
-            {
-                int startMilliseconds = _pendingWebViewStartMilliseconds;
-                bool playImmediately = _pendingWebViewPlayImmediately;
-                bool mute = _pendingWebViewMute;
-                _hasPendingWebViewPlaybackRequest = false;
-
-                string seconds = (startMilliseconds / 1000d).ToString(
-                    System.Globalization.CultureInfo.InvariantCulture
-                );
-                string volume = GetCurrentPlayerVolumeSetting().ToString(
-                    System.Globalization.CultureInfo.InvariantCulture
-                );
-                string script = $$"""
-                    (() => {
-                      const player = document.querySelector('video');
-                      if (!player) {
-                        return;
-                      }
-
-                      const applyPlayback = () => {
-                        try {
-                          player.currentTime = {{seconds}};
-                        } catch {}
-
-                        player.dataset.indigoPlayerHostVolumeApplying = '1';
-                        player.muted = {{(mute ? "true" : "false")}};
-                        player.volume = {{volume}};
-                        player.dataset.indigoPlayerHostVolumeApplied = '1';
-                        setTimeout(() => {
-                          delete player.dataset.indigoPlayerHostVolumeApplying;
-                        }, 250);
-
-                        const playPromise = player.play();
-                        if (playPromise) {
-                          playPromise.catch(() => {});
-                        }
-
-                        if (!{{(playImmediately ? "true" : "false")}}) {
-                          Promise.resolve(playPromise).finally(() => player.pause());
-                        }
-                      };
-
-                      if (player.readyState >= 1) {
-                        applyPlayback();
-                        return;
-                      }
-
-                      player.addEventListener('loadedmetadata', applyPlayback, { once: true });
-                    })();
-                    """;
-                await uxWebVideoPlayer.ExecuteScriptAsync(script);
-                SetPlayerPlaybackActive(playImmediately, "webview-playback-request");
-                UpdatePlayerPositionUi(System.TimeSpan.FromMilliseconds(startMilliseconds));
-            }
-            finally
-            {
-                if (shouldReleaseUserPriority)
-                {
-                    ReleasePendingPlayerUserPriorityWork();
-                }
-            }
-        }
-
-        private void UxWebVideoPlayer_NavigationStarting(
-            object sender,
-            CoreWebView2NavigationStartingEventArgs e
-        )
-        {
-            if (_isWebViewPlayerActive)
-            {
-                _pendingWebViewNavigationId = e.NavigationId;
-            }
-        }
-
-        private async void UxWebVideoPlayer_NavigationCompleted(
-            object sender,
-            CoreWebView2NavigationCompletedEventArgs e
-        )
-        {
-            if (!_isWebViewPlayerActive)
-            {
-                return;
-            }
-
-            if (e.NavigationId != _pendingWebViewNavigationId)
-            {
-                return;
-            }
-
-            if (!e.IsSuccess)
-            {
-                _hasPendingWebViewPlaybackRequest = false;
-                SetPlayerPlaybackActive(false, "webview-navigation-failed");
-                ReleasePendingPlayerUserPriorityWork(
-                    "webview-navigation-failed",
-                    _pendingPlayerUserPriorityRevision
-                );
-                return;
-            }
-
-            await ApplyPendingWebViewPlaybackRequestAsync();
-        }
-
-        private void UxWebVideoPlayer_WebMessageReceived(
-            object sender,
-            CoreWebView2WebMessageReceivedEventArgs e
-        )
-        {
-            const string playerReadyMessage = "player-ready";
-            const string playerVolumeMessagePrefix = "player-volume:";
-            string message = e.TryGetWebMessageAsString();
-            if (string.IsNullOrWhiteSpace(message))
-            {
-                return;
-            }
-
-            if (string.Equals(message, playerReadyMessage, System.StringComparison.Ordinal))
-            {
-                PushCurrentPlayerVolumeToWebView();
-                return;
-            }
-
-            if (!message.StartsWith(playerVolumeMessagePrefix, System.StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            string volumeText = message[playerVolumeMessagePrefix.Length..];
-            if (
-                !double.TryParse(
-                    volumeText,
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out double volume
-                )
-            )
-            {
-                return;
-            }
-
-            SyncPlayerVolumeFromWebView(volume);
-        }
-
-        // ネイティブの拡大ボタンは直接差し替えず、fullscreen 要求を横取りして専用Windowへ流す。
-        private async void UxWebVideoPlayer_ContainsFullScreenElementChanged(
-            object sender,
-            object e
-        )
-        {
-            if (uxWebVideoPlayer?.CoreWebView2 == null)
-            {
-                return;
-            }
-
-            bool containsFullscreenElement = uxWebVideoPlayer.CoreWebView2.ContainsFullScreenElement;
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"player native fullscreen changed: contains={containsFullscreenElement} detached={_isDetachedPlayerFullscreenActive} handling={_isHandlingWebViewNativeFullscreenRequest} syncing={_isSyncingDetachedWindowDomFullscreen}"
-            );
-
-            if (_isDetachedPlayerFullscreenActive && !containsFullscreenElement)
-            {
-                if (_isSyncingDetachedWindowDomFullscreen)
-                {
-                    return;
-                }
-
-                await CloseMainWindowPlayerFullscreenAsync();
-                return;
-            }
-
-            if (
-                !containsFullscreenElement
-                || _isDetachedPlayerFullscreenActive
-                || _isHandlingWebViewNativeFullscreenRequest
-                || _isSyncingDetachedWindowDomFullscreen
-                || !_isWebViewPlayerActive
-                || string.IsNullOrWhiteSpace(_currentWebViewPlayerPath)
-            )
-            {
-                return;
-            }
-
-            _isHandlingWebViewNativeFullscreenRequest = true;
-            try
-            {
-                await uxWebVideoPlayer.ExecuteScriptAsync(
-                    """
-                    (() => {
-                      if (!document.fullscreenElement) {
-                        return;
-                      }
-
-                      const result = document.exitFullscreen();
-                      if (result && typeof result.catch === 'function') {
-                        result.catch(() => {});
-                      }
-                    })();
-                    """
-                );
-                await WaitForPlayerDispatcherBackgroundAsync();
-                await OpenMainWindowPlayerFullscreenAsync();
-            }
-            catch (Exception ex)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"player native fullscreen handoff failed: {ex.GetType().Name} {ex.Message}"
-                );
-            }
-            finally
-            {
-                _isHandlingWebViewNativeFullscreenRequest = false;
-            }
-        }
-
-        // 専用Windowへ移した後も video 要素を fullscreen 状態へ揃え、ネイティブアイコンを戻る表示へ切り替える。
-        private async Task SetDetachedWindowDomFullscreenAsync(bool enable)
-        {
-            if (uxWebVideoPlayer?.CoreWebView2 == null)
-            {
-                return;
-            }
-
-            _isSyncingDetachedWindowDomFullscreen = true;
-            try
-            {
-                string script = enable
-                    ? """
-                    (() => {
-                      const player = document.querySelector('video');
-                      if (!player || document.fullscreenElement === player) {
-                        return;
-                      }
-
-                      const result = player.requestFullscreen?.();
-                      if (result && typeof result.catch === 'function') {
-                        result.catch(() => {});
-                      }
-                    })();
-                    """
-                    : """
-                    (() => {
-                      if (!document.fullscreenElement) {
-                        return;
-                      }
-
-                      const result = document.exitFullscreen?.();
-                      if (result && typeof result.catch === 'function') {
-                        result.catch(() => {});
-                      }
-                    })();
-                    """;
-
-                await uxWebVideoPlayer.ExecuteScriptAsync(script);
-                await Task.Delay(120);
-            }
-            catch (Exception ex)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"player native fullscreen sync failed: enable={enable} {ex.GetType().Name} {ex.Message}"
-                );
-            }
-            finally
-            {
-                _isSyncingDetachedWindowDomFullscreen = false;
-            }
-        }
-
-        private static bool ShouldUseWebViewPlayerForPlayerTab(
-            string moviePath,
-            bool focusTimeSlider
-        )
-        {
-            if (focusTimeSlider)
-            {
-                return false;
-            }
-
-            string extension = Path.GetExtension(moviePath) ?? "";
-            return WebViewPreferredPlayerExtensions.Contains(extension);
-        }
-
-        // dotnet 起動時でも Program Files 側へ書こうとしないよう、プレーヤー専用の保存先を固定する。
-        private async Task<CoreWebView2Environment> GetOrCreatePlayerWebViewEnvironmentAsync()
-        {
-            if (_playerWebViewEnvironmentTask == null)
-            {
-                _playerWebViewEnvironmentTask = CreatePlayerWebViewEnvironmentAsync();
-            }
-
-            try
-            {
-                return await _playerWebViewEnvironmentTask;
-            }
-            catch
-            {
-                _playerWebViewEnvironmentTask = null;
-                throw;
-            }
-        }
-
-        // Player 初回操作の待ちを減らすため、WebView2 環境だけを先に温める。WebView 本体と再生状態は触らない。
-        private void QueuePlayerWebViewEnvironmentWarm()
-        {
-            if (_playerWebViewEnvironmentWarmQueued)
-            {
-                return;
-            }
-
-            _playerWebViewEnvironmentWarmQueued = true;
-            _ = WarmPlayerWebViewEnvironmentAfterIdleAsync();
-        }
-
-        private async Task WarmPlayerWebViewEnvironmentAfterIdleAsync()
-        {
-            try
-            {
-                await WaitForPlayerDispatcherContextIdleOrDelayAsync();
-                await GetOrCreatePlayerWebViewEnvironmentAsync();
-                DebugRuntimeLog.Write("ui-tempo", "player webview environment warm completed");
-            }
-            catch (WebView2RuntimeNotFoundException ex)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"player webview environment warm skipped: {ex.GetType().Name} {ex.Message}"
-                );
-            }
-            catch (Exception ex)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"player webview environment warm failed: {ex.GetType().Name} {ex.Message}"
-                );
-            }
-        }
-
-        private static async Task<CoreWebView2Environment> CreatePlayerWebViewEnvironmentAsync()
-        {
-            string userDataFolder = Path.Combine(
-                AppLocalDataPaths.RootPath,
-                "WebView2",
-                "Player"
-            );
-            Directory.CreateDirectory(userDataFolder);
-            return await CoreWebView2Environment.CreateAsync(
-                browserExecutableFolder: null,
-                userDataFolder: userDataFolder
-            );
-        }
-
-        private async Task<bool> EnsureWebVideoPlayerReadyAsync()
-        {
-            if (uxWebVideoPlayer == null)
-            {
-                return false;
-            }
-
-            try
-            {
-                if (uxWebVideoPlayer.CoreWebView2 != null)
-                {
-                    await EnsureWebVideoPlayerBridgeAsync();
-                    return true;
-                }
-
-                CoreWebView2Environment environment = await GetOrCreatePlayerWebViewEnvironmentAsync();
-                await uxWebVideoPlayer.EnsureCoreWebView2Async(environment);
-                await EnsureWebVideoPlayerBridgeAsync();
-                return true;
-            }
-            catch (WebView2RuntimeNotFoundException)
-            {
-                MessageBox.Show(
-                    "WebM 再生には WebView2 Runtime が必要です。",
-                    "プレイヤー",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning
-                );
-                return false;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                DebugRuntimeLog.Write(
-                    "ui-tempo",
-                    $"player webview init denied: {ex.Message}"
-                );
-                MessageBox.Show(
-                    $"プレーヤー用 WebView2 の初期化に失敗しました。{Environment.NewLine}{ex.Message}",
-                    "プレイヤー",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning
-                );
-                return false;
-            }
-        }
-
-        // 動画ページへ共通の見た目と通知橋を注入し、音量変更を次の動画にも流す。
-        private async Task EnsureWebVideoPlayerBridgeAsync()
-        {
-            if (_isWebViewPlayerBridgeRegistered || uxWebVideoPlayer?.CoreWebView2 == null)
-            {
-                return;
-            }
-
-            uxWebVideoPlayer.CoreWebView2.WebMessageReceived += UxWebVideoPlayer_WebMessageReceived;
-            uxWebVideoPlayer.CoreWebView2.DownloadStarting += UxWebVideoPlayer_DownloadStarting;
-            uxWebVideoPlayer.CoreWebView2.ContainsFullScreenElementChanged +=
-                UxWebVideoPlayer_ContainsFullScreenElementChanged;
-            await uxWebVideoPlayer.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
-                """
-                (() => {
-                  const bindPlayer = () => {
-                    const player = document.querySelector('video');
-                    if (!player || player.dataset.indigoPlayerBound === '1') {
-                      return;
-                    }
-
-                    player.dataset.indigoPlayerBound = '1';
-                    document.documentElement.style.background = '#000';
-                    document.documentElement.style.height = '100%';
-                    document.body.style.margin = '0';
-                    document.body.style.background = '#000';
-                    document.body.style.height = '100%';
-                    document.body.style.overflow = 'hidden';
-                    player.style.width = '100vw';
-                    player.style.height = '100vh';
-                    player.style.objectFit = 'contain';
-                    player.style.background = '#000';
-                    player.controls = true;
-
-                    try {
-                      chrome.webview.postMessage('player-ready');
-                    } catch {}
-
-                    const notifyVolume = () => {
-                      if (player.dataset.indigoPlayerHostVolumeApplying === '1') {
-                        return;
-                      }
-
-                      if (player.dataset.indigoPlayerHostVolumeApplied !== '1') {
-                        return;
-                      }
-
-                      try {
-                        chrome.webview.postMessage(`player-volume:${player.volume}`);
-                      } catch {}
-                    };
-
-                    player.addEventListener('volumechange', notifyVolume);
-                  };
-
-                  if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', bindPlayer, { once: true });
-                  } else {
-                    bindPlayer();
-                  }
-
-                  new MutationObserver(bindPlayer).observe(document.documentElement, {
-                    childList: true,
-                    subtree: true
-                  });
-                })();
-                """
-            );
-            _isWebViewPlayerBridgeRegistered = true;
-        }
-
-        // 非対応拡張子でダウンロードへ落ちても、その場で止めてプレイヤータブから外へ出さない。
-        private void UxWebVideoPlayer_DownloadStarting(
-            object sender,
-            CoreWebView2DownloadStartingEventArgs e
-        )
-        {
-            e.Cancel = true;
-
-            string downloadUri = e.DownloadOperation?.Uri ?? "";
-            DebugRuntimeLog.Write(
-                "ui-tempo",
-                $"player webview download canceled: uri='{downloadUri}'"
-            );
-        }
-
-        private async Task PauseWebViewPlayerAsync()
-        {
-            if (!_isWebViewPlayerActive || uxWebVideoPlayer?.CoreWebView2 == null)
-            {
-                return;
-            }
-
-            try
-            {
-                await uxWebVideoPlayer.ExecuteScriptAsync("document.querySelector('video')?.pause();");
-            }
-            catch
-            {
-                // 破棄競合中は黙って抜け、タブ切替を止めない。
-            }
-
-            SetPlayerPlaybackActive(false, "webview-pause");
-            StopDispatcherTimerSafely(timer, nameof(timer));
-        }
-
-        private void ResetWebViewPlayerSurface()
-        {
-            _hasPendingWebViewPlaybackRequest = false;
-            _isWebViewPlayerActive = false;
-            _currentWebViewPlayerPath = "";
-            _pendingWebViewNavigationId = 0;
-            // 単独停止では旧Navigation待ちを畳み、新しいMediaElement要求のrevisionは維持する。
-            if (!_preservePlayerUserPriorityDuringWebViewReset)
-            {
-                ReleasePendingPlayerUserPriorityWork("webview-reset");
-            }
-
-            if (uxWebVideoPlayer == null)
-            {
-                return;
-            }
-
-            try
-            {
-                if (uxWebVideoPlayer.CoreWebView2 != null)
-                {
-                    uxWebVideoPlayer.CoreWebView2.NavigateToString("<html><body style='background:#000'></body></html>");
-                }
-            }
-            catch
-            {
-                // 破棄や初期化途中の競合では安全側で握りつぶす。
-            }
-
-            uxWebVideoPlayer.Visibility = Visibility.Collapsed;
-        }
     }
 }

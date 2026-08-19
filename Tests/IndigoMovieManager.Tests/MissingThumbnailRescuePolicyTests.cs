@@ -1464,28 +1464,6 @@ public sealed class MissingThumbnailRescuePolicyTests
     }
 
     [Test]
-    public void ResolveMediaDurationMaximumMilliseconds_TimeSpanありならその値を返す()
-    {
-        double result = MainWindow.ResolveMediaDurationMaximumMilliseconds(
-            new Duration(TimeSpan.FromSeconds(12)),
-            345d
-        );
-
-        Assert.That(result, Is.EqualTo(12_000d));
-    }
-
-    [Test]
-    public void ResolveMediaDurationMaximumMilliseconds_Automaticなら既存最大値を維持する()
-    {
-        double result = MainWindow.ResolveMediaDurationMaximumMilliseconds(
-            Duration.Automatic,
-            345d
-        );
-
-        Assert.That(result, Is.EqualTo(345d));
-    }
-
-    [Test]
     public void BuildPreferredRescueMoviePathKeysSnapshot_空白と重複を除いて順序を維持する()
     {
         IReadOnlyList<string> result = MainWindow.BuildPreferredRescueMoviePathKeysSnapshot(

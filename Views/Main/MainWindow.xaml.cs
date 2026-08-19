@@ -307,15 +307,19 @@ namespace IndigoMovieManager
             InitializeWebViewSkinIntegration();
 
             #region Player Initialize
-            timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
+            // 進捗表示はHTML5プレイヤーに近い滑らかさへ上げるが、入力を邪魔しないBackground優先度で回す。
+            timer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(250),
+            };
             timer.Tick += new EventHandler(Timer_Tick);
             _searchInputDebounceTimer = new DispatcherTimer { Interval = _timeInputInterval };
             _searchInputDebounceTimer.Tick += SearchInputDebounceTimer_Tick;
 
-            // 保存済み音量は中央入口へ通し、内蔵プレイヤー・WebView2・表示の正本を揃える。
+            // 保存済み音量は中央入口へ通し、LibVLCと表示の正本を揃える。
             RestorePlayerVolumeFromSettings();
 
-            uxTime.Text = "00:00:00";
+            uxTime.Text = "0:00 / 0:00";
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;
             uxVideoPlayer.Visibility = Visibility.Collapsed;

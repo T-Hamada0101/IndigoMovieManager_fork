@@ -276,7 +276,6 @@ namespace IndigoMovieManager
                         QueueThumbnailSuccessIndexPrewarm();
                         QueueStartupThumbnailProgressSnapshotRefresh();
                         QueueEverythingLiteWatchRootPrewarm();
-                        QueuePlayerWebViewEnvironmentWarm();
                         DebugRuntimeLog.Write(
                             "ui-tempo",
                             $"startup light services started: revision={revision} trigger={ResolveStartupWarmPathTrigger()} elapsed_ms={_startupUiStopwatch.ElapsedMilliseconds}"

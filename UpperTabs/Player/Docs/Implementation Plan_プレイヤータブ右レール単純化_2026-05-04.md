@@ -1,8 +1,9 @@
 # Implementation Plan: プレイヤータブ右レール単純化 (2026-05-04)
 
-最終更新日: 2026-07-13
+最終更新日: 2026-08-19
 
 変更概要:
+- 2026-08-19: 左側再生エンジンを LibVLCSharp へ一本化した。右レールの単一一覧、visible-first、Grid代理契約は変更しない
 - プレイヤータブ右レールを「再生対象を選ぶための軽い一覧」へ再定義する
 - 右レール内の表示切り替え、説明文、重い詳細表示を段階的に削り、プレイヤー面積と選択テンポを優先する
 - 既存の `Grid` サムネイル資産、選択同期、再生開始導線は維持し、WhiteBrowser DB とサムネイル保存先は変更しない
@@ -38,7 +39,7 @@
 - プレイヤータブのサムネイル解決は引き続き `Grid` 扱いに正規化し、`ResolvePlayerTabGridProxyTabIndex(...)` の考え方は維持する。
 - 右レールの画像供給は preferred 対象キーの状態を分ける。未初期化や viewport 未計測なら従来互換で off-screen 更新を許可し、空と確定した後は off-screen 更新を通さず可視・近傍の描画を優先する。
 - preferred key 更新後の画像再評価は、右レール一覧の再構築ではなく、可視範囲 snapshot の軽い revision 更新、または Binding 用 trigger だけで起こす。生成済み画像を表示へ戻すために `FilterAndSort(..., true)`、full reload、追加 `Refresh()` を既定化しない。
-- 左プレイヤー、WebView2 / MediaElement fallback、音量保存、fullscreen、手動サムネイル作成導線には触れない。
+- 左プレイヤーの LibVLC 実装、音量保存、fullscreen、手動サムネイル作成導線には触れない。
 - DB write、サムネイル生成、Watcher、Queue、skin API へ影響を広げない。
 - 実装時コメントは、日本語で処理の流れが分かるものだけ残す。単純化で不要になった説明コメントは削る。
 
@@ -95,7 +96,7 @@
 
 - Visual Studio 2026 または MSBuild で `x64` ビルドが通ること。
 - プレイヤータブを開いた時、先頭または選択中動画が左プレイヤーへ同期されること。
-- 右レールで別動画をクリックした時、WebView2 対象拡張子と MediaElement fallback 対象拡張子の両方で再生開始できること。
+- 右レールで別動画をクリックした時、MP4 と MKV の両方を同じ LibVLC 経路で再生開始できること。
 - 右レールの連続クリックで UI が固まらず、`debug-runtime.log` の `tab change end` が極端に悪化しないこと。
 - 右レールのスクロールでサムネイルが遅延表示されても、画像 decode が表示中項目へ限定されること。
 - preferred 対象キーが空と確定した状態では off-screen 画像更新が走らず、未初期化状態や viewport 未計測状態では従来互換の表示更新が維持されること。
@@ -108,7 +109,7 @@
 ## 6. ロールバック方針
 
 - 退行が出た場合は、まず `PlayerThumbnailHost` と `MainWindow.UpperTabs.PlayerTab.cs` の右レール単純化差分だけを戻す。
-- 左プレイヤー、WebView2、fullscreen、音量保存の差分とは混ぜず、戻す単位を右レールに限定する。
+- 左プレイヤー、LibVLC、fullscreen、音量保存の差分とは混ぜず、戻す単位を右レールに限定する。
 - 単一一覧で性能や操作性が悪化した場合は、旧 1 列詳細表示を戻すのではなく、単一一覧の item サイズ、列数、decode profile、右レール幅を先に調整する。
 - どうしても表示モード切り替えが必要と判断した場合は、2 つの `ListView` を持ち直す前に、単一 `ItemsControl` 内の item template / panel 切り替えで済むかを検討する。
 - WhiteBrowser DB、サムネイル保存先、`Grid` 代理タブの正規化はロールバック対象に含めない。

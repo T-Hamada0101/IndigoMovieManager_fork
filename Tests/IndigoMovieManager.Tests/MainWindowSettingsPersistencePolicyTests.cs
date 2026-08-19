@@ -131,8 +131,8 @@ public sealed class MainWindowSettingsPersistencePolicyTests
         Assert.That(lifecycleSource, Does.Contain("QueueApplicationSettingsSave(\"main-window-closing\")"));
         Assert.That(lifecycleSource, Does.Contain("WaitForPlayerVolumeSettingSaveForShutdown();"));
         Assert.That(lifecycleSource, Does.Contain("WaitForApplicationSettingsSaveForShutdown(\"main-window-closing\")"));
-        Assert.That(fullscreenSource, Does.Contain("QueueApplicationSettingsSave(\"player-fullscreen-debug-enable\")"));
-        Assert.That(fullscreenSource, Does.Contain("QueueApplicationSettingsSave(\"player-fullscreen-debug-restore\")"));
+        Assert.That(fullscreenSource, Does.Not.Contain("QueueApplicationSettingsSave("));
+        Assert.That(fullscreenSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
         Assert.That(detailThumbnailSource, Does.Contain("QueueApplicationSettingsSave(\"extension-detail-thumbnail-mode\")"));
         Assert.That(detailThumbnailSource, Does.Not.Contain("Properties.Settings.Default.Save();"));
         Assert.That(logTabSource, Does.Contain("QueueApplicationSettingsSave(\"log-tab-debug-switch\")"));
