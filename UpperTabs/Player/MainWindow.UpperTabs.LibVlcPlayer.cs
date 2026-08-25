@@ -398,6 +398,34 @@ namespace IndigoMovieManager
             }
         }
 
+        // 再生中ファイルの削除前に、MediaPlayerが保持するnativeファイル参照を明示的に外す。
+        private bool TryReleaseCurrentLibVlcMediaForDelete(out string failureReason)
+        {
+            failureReason = "";
+            if (_playerMediaPlayer == null)
+            {
+                return true;
+            }
+
+            try
+            {
+                _playerMediaPlayer.Media = null;
+                DebugRuntimeLog.Write("player", "libvlc media released for movie delete");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                failureReason = string.IsNullOrWhiteSpace(ex.Message)
+                    ? ex.GetType().Name
+                    : ex.Message;
+                DebugRuntimeLog.Write(
+                    "player",
+                    $"libvlc media release for movie delete failed: type={ex.GetType().Name} message='{ex.Message}'"
+                );
+                return false;
+            }
+        }
+
         private void DisposeLibVlcPlayer()
         {
             if (_isLibVlcPlayerDisposed)

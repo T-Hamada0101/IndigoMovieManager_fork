@@ -706,15 +706,27 @@
                     </ListView>
                   </TabItem>
 
-                  <TabItem x:Name="TabPlayer" Header="プレイヤー" Tag="player-grid-strip">
-                    <Grid x:Name="PlayerTabLayoutRoot" Margin="8,8,8,12" SizeChanged="PlayerTabLayoutRoot_SizeChanged">
+                  <TabItem x:Name="TabPlayer"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch"
+                    Header="プレイヤー"
+                    Tag="player-grid-strip"
+                  >
+                    <!-- タブ内容を全面へ広げ、右レールを右端へ固定したまま空状態でもPlayer幅を確保する。 -->
+                    <Grid
+                      x:Name="PlayerTabLayoutRoot"
+                      Margin="8,8,8,12"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      SizeChanged="PlayerTabLayoutRoot_SizeChanged"
+                    >
                       <Grid.RowDefinitions>
                         <RowDefinition x:Name="PlayerTabTopRow" Height="*" />
                         <RowDefinition x:Name="PlayerTabGapRow" Height="0" />
                         <RowDefinition x:Name="PlayerTabBottomRow" Height="0" />
                       </Grid.RowDefinitions>
                       <Grid.ColumnDefinitions>
-                        <ColumnDefinition x:Name="PlayerTabMainColumn" Width="*" />
+                        <ColumnDefinition x:Name="PlayerTabMainColumn" MinWidth="480" Width="*" />
                         <ColumnDefinition x:Name="PlayerTabGapColumn" Width="12" />
                         <ColumnDefinition x:Name="PlayerTabSideColumn" Width="264" />
                       </Grid.ColumnDefinitions>

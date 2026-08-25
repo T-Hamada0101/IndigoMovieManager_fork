@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using NUnit.Framework;
 
@@ -9,14 +10,7 @@ public sealed class FileOrganizerTabViewSourcePolicyTests
     [Test]
     public void 読み取り専用の移動先表示はOneWayでバインドする()
     {
-        string repositoryRoot = FindRepositoryRoot();
-        string xamlPath = Path.Combine(
-            repositoryRoot,
-            "BottomTabs",
-            "FileOrganizer",
-            "FileOrganizerTabView.xaml"
-        );
-        string source = File.ReadAllText(xamlPath, Encoding.UTF8);
+        string source = ReadFileOrganizerTabViewXaml();
 
         Assert.That(source, Does.Contain("{Binding DisplayFolderPath, Mode=OneWay}"));
         Assert.That(source, Does.Not.Contain("Text=\"{Binding DisplayFolderPath}\""));
@@ -29,6 +23,69 @@ public sealed class FileOrganizerTabViewSourcePolicyTests
             Assert.That(source, Does.Contain("ToolTip=\"現在のメインタブに表示中のすべての動画を、この登録先へ移動します。\""));
             Assert.That(source, Does.Contain("ショートカットでファイルを移動できます。"));
             Assert.That(source, Does.Contain("左の詳細表示中の動画"));
+        });
+    }
+
+    [Test]
+    public void 代表動画はGrid用サムネイルを表示する()
+    {
+        string source = ReadFileOrganizerTabViewXaml();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                source,
+                Does.Contain(
+                    "Source=\"{Binding ThumbPathGrid, Converter={StaticResource noLockImageConverter}}\""
+                )
+            );
+            Assert.That(
+                source,
+                Does.Not.Contain(
+                    "Source=\"{Binding ThumbPathSmall, Converter={StaticResource noLockImageConverter}}\""
+                )
+            );
+        });
+    }
+
+    [Test]
+    public void 詳細右下のゴミ箱は表示中1件を既存ファイル削除へ流す()
+    {
+        string xaml = ReadFileOrganizerTabViewXaml();
+        string mainWindowSource = File.ReadAllText(
+            Path.Combine(
+                FindRepositoryRoot(),
+                "BottomTabs",
+                "FileOrganizer",
+                "MainWindow.BottomTab.FileOrganizer.cs"
+            ),
+            Encoding.UTF8
+        );
+        string deleteSource = File.ReadAllText(
+            Path.Combine(
+                FindRepositoryRoot(),
+                "Views",
+                "Main",
+                "MainWindow.MenuActions.cs"
+            ),
+            Encoding.UTF8
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(xaml, Does.Contain("x:Name=\"DeleteFileButton\""));
+            Assert.That(xaml, Does.Contain("HorizontalAlignment=\"Right\""));
+            Assert.That(xaml, Does.Contain("VerticalAlignment=\"Bottom\""));
+            Assert.That(xaml, Does.Contain("Kind=\"Delete\""));
+            Assert.That(xaml, Does.Contain("Click=\"DeleteFileButton_Click\""));
+            Assert.That(
+                mainWindowSource,
+                Does.Contain(
+                    "ExecuteDeleteAction(DeleteActionMode.DeleteFileWithChoice, [movie]);"
+                )
+            );
+            Assert.That(deleteSource, Does.Contain("IReadOnlyList<MovieRecords> requestedRecords = null"));
+            Assert.That(deleteSource, Does.Contain("requestedRecords.Where(record => record != null).ToList()"));
         });
     }
 
@@ -75,9 +132,10 @@ public sealed class FileOrganizerTabViewSourcePolicyTests
         );
     }
 
-    private static string FindRepositoryRoot()
+    private static string FindRepositoryRoot([CallerFilePath] string sourceFilePath = "")
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        // 分離artifactsからの実行でも、コンパイル元ソースの位置を正本として戻る。
+        DirectoryInfo? current = new(Path.GetDirectoryName(sourceFilePath) ?? "");
         while (current != null)
         {
             if (File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj")))
@@ -89,5 +147,18 @@ public sealed class FileOrganizerTabViewSourcePolicyTests
         }
 
         throw new DirectoryNotFoundException("リポジトリルートを検出できませんでした。");
+    }
+
+    private static string ReadFileOrganizerTabViewXaml()
+    {
+        return File.ReadAllText(
+            Path.Combine(
+                FindRepositoryRoot(),
+                "BottomTabs",
+                "FileOrganizer",
+                "FileOrganizerTabView.xaml"
+            ),
+            Encoding.UTF8
+        );
     }
 }

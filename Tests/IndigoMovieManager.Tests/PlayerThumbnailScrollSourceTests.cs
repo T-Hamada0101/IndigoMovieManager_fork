@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 
 namespace IndigoMovieManager.Tests;
@@ -89,28 +90,31 @@ public sealed class PlayerThumbnailScrollSourceTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        string[] searchRoots =
-        [
-            Directory.GetCurrentDirectory(),
-            TestContext.CurrentContext.TestDirectory,
-        ];
-
-        foreach (string searchRoot in searchRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+        string candidate = Path.Combine([GetRepositoryRoot(), .. relativePathParts]);
+        if (File.Exists(candidate))
         {
-            DirectoryInfo? current = new(searchRoot);
-            while (current != null)
-            {
-                string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-                if (File.Exists(candidate))
-                {
-                    return File.ReadAllText(candidate);
-                }
-
-                current = current.Parent;
-            }
+            return File.ReadAllText(candidate);
         }
 
         Assert.Fail($"{Path.Combine(relativePathParts)} の位置をrepo rootから解決できませんでした。");
+        return string.Empty;
+    }
+
+    private static string GetRepositoryRoot([CallerFilePath] string sourceFilePath = "")
+    {
+        // 分離artifactsでも、コンパイル元ソースから正本リポジトリへ戻る。
+        DirectoryInfo? current = new(Path.GetDirectoryName(sourceFilePath) ?? "");
+        while (current != null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        Assert.Fail("リポジトリルートを検出できませんでした。");
         return string.Empty;
     }
 }

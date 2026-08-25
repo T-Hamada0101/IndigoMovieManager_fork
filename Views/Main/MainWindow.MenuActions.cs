@@ -57,6 +57,21 @@ namespace IndigoMovieManager
             public List<MovieRecords> DeletedRecords { get; init; } = new();
         }
 
+        private sealed class PendingPlayerMovieDeleteRequest
+        {
+            public MovieDeleteSnapshot Snapshot { get; init; }
+            public string DbFullPath { get; init; } = "";
+            public string ThumbFolder { get; init; } = "";
+            public string ThumbOutPath { get; init; } = "";
+            public bool ShouldDeleteThumbnail { get; init; }
+            public bool SendThumbnailToRecycleBin { get; init; }
+            public bool SendPhysicalToRecycleBin { get; init; }
+        }
+
+        // 再生中動画は確認済み条件とsnapshotを保持し、別動画選択まで物理削除を待つ。
+        private readonly List<PendingPlayerMovieDeleteRequest> _pendingPlayerMovieDeleteRequests =
+            new();
+
         private sealed class MovieMoveSnapshot
         {
             public MovieRecords UiRecord { get; init; }
@@ -1041,14 +1056,20 @@ namespace IndigoMovieManager
         }
 
         // 確認ダイアログを出してから、登録解除 / サムネイル削除 / 動画削除をまとめて処理する。
-        private void ExecuteDeleteAction(DeleteActionMode actionMode)
+        private void ExecuteDeleteAction(
+            DeleteActionMode actionMode,
+            IReadOnlyList<MovieRecords> requestedRecords = null
+        )
         {
-            if (Tabs.SelectedItem == null)
+            if (requestedRecords == null && Tabs.SelectedItem == null)
             {
                 return;
             }
 
-            List<MovieRecords> mv = GetSelectedItemsByTabIndex();
+            // 専用UIから対象が渡された時は、その表示中レコードだけを削除確認へ進める。
+            List<MovieRecords> mv = requestedRecords == null
+                ? GetSelectedItemsByTabIndex()
+                : requestedRecords.Where(record => record != null).ToList();
             if (mv == null || mv.Count == 0)
             {
                 return;
@@ -1160,6 +1181,22 @@ namespace IndigoMovieManager
                 ? dialogWindow.radioButton1.IsChecked == true
                 : isDeleteWithRecycleMode;
 
+            if (
+                TryDeferCurrentPlayerMovieDeletesUntilNextSelection(
+                    mv,
+                    dbFullPath,
+                    thumbFolder,
+                    thumbOutPath,
+                    shouldDeleteThumbnail,
+                    sendThumbnailToRecycleBin,
+                    shouldDeletePhysicalFile,
+                    sendPhysicalToRecycleBin
+                )
+            )
+            {
+                return;
+            }
+
             QueueConfirmedMovieDelete(
                 mv,
                 dbFullPath,
@@ -1169,6 +1206,156 @@ namespace IndigoMovieManager
                 sendThumbnailToRecycleBin,
                 shouldDeletePhysicalFile,
                 sendPhysicalToRecycleBin
+            );
+        }
+
+        // 再生中の物理削除だけを保留し、それ以外の確認済み対象は従来どおりすぐ背景削除へ渡す。
+        private bool TryDeferCurrentPlayerMovieDeletesUntilNextSelection(
+            IReadOnlyList<MovieRecords> records,
+            string dbFullPath,
+            string thumbFolder,
+            string thumbOutPath,
+            bool shouldDeleteThumbnail,
+            bool sendThumbnailToRecycleBin,
+            bool shouldDeletePhysicalFile,
+            bool sendPhysicalToRecycleBin
+        )
+        {
+            if (!shouldDeletePhysicalFile || string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return false;
+            }
+
+            (MovieRecords[] pendingRecords, MovieRecords[] immediateRecords) =
+                PartitionCurrentPlayerMovieDeleteRecords(records, _currentPlayerMoviePath);
+            if (pendingRecords.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (MovieRecords record in pendingRecords)
+            {
+                MovieDeleteSnapshot snapshot = CreateMovieDeleteSnapshot(record);
+                int existingIndex = _pendingPlayerMovieDeleteRequests.FindIndex(request =>
+                    IsSamePendingPlayerMovieDelete(request, dbFullPath, snapshot)
+                );
+                PendingPlayerMovieDeleteRequest request = new()
+                {
+                    Snapshot = snapshot,
+                    DbFullPath = dbFullPath,
+                    ThumbFolder = thumbFolder,
+                    ThumbOutPath = thumbOutPath,
+                    ShouldDeleteThumbnail = shouldDeleteThumbnail,
+                    SendThumbnailToRecycleBin = sendThumbnailToRecycleBin,
+                    SendPhysicalToRecycleBin = sendPhysicalToRecycleBin,
+                };
+                if (existingIndex >= 0)
+                {
+                    // 同じ動画を再確認した時は、最後に確定した削除条件へ置き換える。
+                    _pendingPlayerMovieDeleteRequests[existingIndex] = request;
+                }
+                else
+                {
+                    _pendingPlayerMovieDeleteRequests.Add(request);
+                }
+            }
+
+            if (immediateRecords.Length > 0)
+            {
+                QueueConfirmedMovieDelete(
+                    immediateRecords,
+                    dbFullPath,
+                    thumbFolder,
+                    thumbOutPath,
+                    shouldDeleteThumbnail,
+                    sendThumbnailToRecycleBin,
+                    shouldDeletePhysicalFile,
+                    sendPhysicalToRecycleBin
+                );
+            }
+
+            ShowPendingPlayerMovieDeleteToast(pendingRecords.Length);
+            DebugRuntimeLog.Write(
+                "delete-action",
+                $"playing movie delete deferred: added={pendingRecords.Length} pending={_pendingPlayerMovieDeleteRequests.Count} immediate={immediateRecords.Length} path='{_currentPlayerMoviePath}'"
+            );
+            return true;
+        }
+
+        private static bool IsSamePendingPlayerMovieDelete(
+            PendingPlayerMovieDeleteRequest request,
+            string dbFullPath,
+            MovieDeleteSnapshot snapshot
+        )
+        {
+            if (
+                request?.Snapshot == null
+                || snapshot == null
+                || !AreSameMainDbPath(request.DbFullPath, dbFullPath)
+            )
+            {
+                return false;
+            }
+
+            if (snapshot.MovieId > 0 && request.Snapshot.MovieId > 0)
+            {
+                return snapshot.MovieId == request.Snapshot.MovieId;
+            }
+
+            return string.Equals(
+                snapshot.MoviePath,
+                request.Snapshot.MoviePath,
+                StringComparison.OrdinalIgnoreCase
+            );
+        }
+
+        private void ShowPendingPlayerMovieDeleteToast(int addedCount)
+        {
+            try
+            {
+                _watchFolderDropNotificationManager.Show(
+                    "削除予約",
+                    $"再生中の{addedCount}件を削除リストへ追加しました。別の動画を選ぶと削除します。",
+                    NotificationType.Information,
+                    MainWindowDropToastAreaName,
+                    TimeSpan.FromSeconds(5)
+                );
+            }
+            catch
+            {
+                // トースト失敗で、確認済み削除リストの内容は変えない。
+            }
+        }
+
+        // Playerが旧メディアを解放した後だけ、確認済み削除リストを通常の背景削除へ渡す。
+        private void QueuePendingPlayerMovieDeletesAfterPlayerRelease()
+        {
+            PendingPlayerMovieDeleteRequest[] requests =
+                _pendingPlayerMovieDeleteRequests.ToArray();
+            _pendingPlayerMovieDeleteRequests.Clear();
+
+            foreach (PendingPlayerMovieDeleteRequest request in requests)
+            {
+                if (request?.Snapshot == null)
+                {
+                    continue;
+                }
+
+                QueueConfirmedMovieDeleteSnapshots(
+                    [request.Snapshot],
+                    request.DbFullPath,
+                    request.ThumbFolder,
+                    request.ThumbOutPath,
+                    request.ShouldDeleteThumbnail,
+                    request.SendThumbnailToRecycleBin,
+                    shouldDeletePhysicalFile: true,
+                    sendPhysicalToRecycleBin: request.SendPhysicalToRecycleBin
+                );
+            }
+
+            DebugRuntimeLog.Write(
+                "delete-action",
+                $"pending player movie deletes queued after release: count={requests.Length}"
             );
         }
 
@@ -1189,6 +1376,38 @@ namespace IndigoMovieManager
                 .Select(CreateMovieDeleteSnapshot)
                 .ToArray() ?? [];
             if (deleteSnapshots.Length == 0 || string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return;
+            }
+
+            QueueConfirmedMovieDeleteSnapshots(
+                deleteSnapshots,
+                dbFullPath,
+                thumbFolder,
+                thumbOutPath,
+                shouldDeleteThumbnail,
+                sendThumbnailToRecycleBin,
+                shouldDeletePhysicalFile,
+                sendPhysicalToRecycleBin
+            );
+        }
+
+        private void QueueConfirmedMovieDeleteSnapshots(
+            IReadOnlyList<MovieDeleteSnapshot> deleteSnapshots,
+            string dbFullPath,
+            string thumbFolder,
+            string thumbOutPath,
+            bool shouldDeleteThumbnail,
+            bool sendThumbnailToRecycleBin,
+            bool shouldDeletePhysicalFile,
+            bool sendPhysicalToRecycleBin
+        )
+        {
+            if (
+                deleteSnapshots == null
+                || deleteSnapshots.Count == 0
+                || string.IsNullOrWhiteSpace(dbFullPath)
+            )
             {
                 return;
             }
@@ -1254,6 +1473,23 @@ namespace IndigoMovieManager
                     continue;
                 }
 
+                // 動画本体を消せない時にDB登録だけ失わないよう、物理削除を最初に確定する。
+                if (
+                    shouldDeletePhysicalFile
+                    && !DeletePhysicalMovieFileInBackground(
+                        snapshot,
+                        sendPhysicalToRecycleBin,
+                        result.DeleteFailureMessages
+                    )
+                )
+                {
+                    DebugRuntimeLog.Write(
+                        "delete-action",
+                        $"movie db delete skipped: reason=physical-delete-failed path='{snapshot.MoviePath}'"
+                    );
+                    continue;
+                }
+
                 if (shouldDeleteThumbnail)
                 {
                     try
@@ -1286,14 +1522,6 @@ namespace IndigoMovieManager
                     result.DeletedRecords.Add(snapshot.UiRecord);
                 }
 
-                if (shouldDeletePhysicalFile)
-                {
-                    DeletePhysicalMovieFileInBackground(
-                        snapshot,
-                        sendPhysicalToRecycleBin,
-                        result.DeleteFailureMessages
-                    );
-                }
             }
 
             return result;
@@ -1319,22 +1547,19 @@ namespace IndigoMovieManager
             }
         }
 
-        private static void DeletePhysicalMovieFileInBackground(
+        private static bool DeletePhysicalMovieFileInBackground(
             MovieDeleteSnapshot snapshot,
             bool sendToRecycleBin,
             List<string> deleteFailureMessages
         )
         {
-            if (
-                !TryDeletePhysicalFile(
-                    snapshot.MoviePath,
-                    sendToRecycleBin,
-                    out string failureReason
-                )
-            )
+            if (TryDeletePhysicalFile(snapshot.MoviePath, sendToRecycleBin, out string failureReason))
             {
-                AddDeleteFailure(deleteFailureMessages, "動画", snapshot.MoviePath, failureReason);
+                return true;
             }
+
+            AddDeleteFailure(deleteFailureMessages, "動画", snapshot.MoviePath, failureReason);
+            return false;
         }
 
         // DBから消えた行だけを手元の表示モデルから抜き、動画削除後の全件DB再読込を避ける。

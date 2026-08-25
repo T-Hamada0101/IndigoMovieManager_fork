@@ -8,6 +8,69 @@ namespace IndigoMovieManager.Tests;
 public sealed class ManualPlayerResizeHookPolicyTests
 {
     [Test]
+    public void 再生中動画は削除リストへ保留し別動画選択後にPlayer解放して削除する()
+    {
+        string playerTabSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "MainWindow.UpperTabs.PlayerTab.cs"
+        );
+        string libVlcSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "MainWindow.UpperTabs.LibVlcPlayer.cs"
+        );
+        string deleteSource = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
+        string deferMethod = GetMethodBlock(
+            deleteSource,
+            "private bool TryDeferCurrentPlayerMovieDeletesUntilNextSelection("
+        );
+        string pendingQueueMethod = GetMethodBlock(
+            deleteSource,
+            "private void QueuePendingPlayerMovieDeletesAfterPlayerRelease("
+        );
+        string switchMethod = GetMethodBlock(
+            playerTabSource,
+            "private bool TryReleasePendingPlayerMovieDeletesForMovieSwitch("
+        );
+        string openMethod = GetMethodBlock(playerTabSource, "private async Task OpenMovieInPlayerTabAsync(");
+        string releaseMethod = GetMethodBlock(
+            libVlcSource,
+            "private bool TryReleaseCurrentLibVlcMediaForDelete("
+        );
+        string deleteMethod = GetMethodBlock(
+            deleteSource,
+            "private void ExecuteDeleteAction("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(deferMethod, Does.Contain("PartitionCurrentPlayerMovieDeleteRecords("));
+            Assert.That(deferMethod, Does.Contain("_pendingPlayerMovieDeleteRequests.Add(request);"));
+            Assert.That(deferMethod, Does.Contain("ShowPendingPlayerMovieDeleteToast("));
+            Assert.That(switchMethod, Does.Contain("CloseManualPlayerOverlay();"));
+            Assert.That(switchMethod, Does.Contain("TryReleaseCurrentLibVlcMediaForDelete("));
+            Assert.That(
+                switchMethod,
+                Does.Contain("QueuePendingPlayerMovieDeletesAfterPlayerRelease();")
+            );
+            Assert.That(pendingQueueMethod, Does.Contain("QueueConfirmedMovieDeleteSnapshots("));
+            Assert.That(releaseMethod, Does.Contain("_playerMediaPlayer.Media = null;"));
+            Assert.That(
+                deleteMethod,
+                Does.Contain("TryDeferCurrentPlayerMovieDeletesUntilNextSelection(")
+            );
+            Assert.That(
+                openMethod.IndexOf(
+                    "TryReleasePendingPlayerMovieDeletesForMovieSwitch(",
+                    StringComparison.Ordinal
+                ),
+                Is.LessThan(openMethod.IndexOf("BeginUserPriorityWork(\"player\")", StringComparison.Ordinal))
+            );
+        });
+    }
+
+    [Test]
     public void EnsureManualPlayerResizeTrackingHooked_未登録時だけフックする()
     {
         // 変更後の実装方針は、二重登録を防ぎつつ1回だけ SizeChanged を拾うこと。
@@ -420,6 +483,65 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(upperTabPlayerSource, Does.Not.Contain("SetPlayerThumbnailCompactViewMode"));
         Assert.That(upperTabPlayerSource, Does.Not.Contain("PlayerTabBottomLayoutWidthThreshold"));
         Assert.That(viewportSource, Does.Not.Contain("AttachUpperTabScrollViewer(PlayerThumbnailCompactList);"));
+    }
+
+    [Test]
+    public void PlayerTabLayout_サムネを右端固定し空状態でもPlayer幅を確保する()
+    {
+        string mainWindowXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string upperTabPlayerSource = GetUpperTabPlayerSourceText();
+        int playerTabStart = mainWindowXaml.IndexOf(
+            "x:Name=\"TabPlayer\"",
+            StringComparison.Ordinal
+        );
+        int playerTabTagEnd = mainWindowXaml.IndexOf('>', playerTabStart);
+        int playerRootStart = mainWindowXaml.IndexOf(
+            "x:Name=\"PlayerTabLayoutRoot\"",
+            StringComparison.Ordinal
+        );
+        int playerRootTagEnd = mainWindowXaml.IndexOf('>', playerRootStart);
+
+        Assert.That(playerTabStart, Is.GreaterThanOrEqualTo(0));
+        Assert.That(playerTabTagEnd, Is.GreaterThan(playerTabStart));
+        Assert.That(playerRootStart, Is.GreaterThanOrEqualTo(0));
+        Assert.That(playerRootTagEnd, Is.GreaterThan(playerRootStart));
+
+        string playerTabStartTag = mainWindowXaml.Substring(
+            playerTabStart,
+            playerTabTagEnd - playerTabStart
+        );
+        string playerRootStartTag = mainWindowXaml.Substring(
+            playerRootStart,
+            playerRootTagEnd - playerRootStart
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                playerTabStartTag,
+                Does.Contain("HorizontalContentAlignment=\"Stretch\"")
+            );
+            Assert.That(playerTabStartTag, Does.Contain("VerticalContentAlignment=\"Stretch\""));
+            Assert.That(playerRootStartTag, Does.Contain("HorizontalAlignment=\"Stretch\""));
+            Assert.That(playerRootStartTag, Does.Contain("VerticalAlignment=\"Stretch\""));
+            Assert.That(
+                mainWindowXaml,
+                Does.Contain("x:Name=\"PlayerTabMainColumn\" MinWidth=\"480\" Width=\"*\"")
+            );
+            Assert.That(
+                mainWindowXaml,
+                Does.Contain("x:Name=\"PlayerTabSideColumn\" Width=\"264\"")
+            );
+            Assert.That(upperTabPlayerSource, Does.Contain("Grid.SetColumn(PlayerThumbnailHost, 2);"));
+            Assert.That(
+                upperTabPlayerSource,
+                Does.Contain("PlayerTabMainColumn.Width = new GridLength(1d, GridUnitType.Star);")
+            );
+            Assert.That(
+                upperTabPlayerSource,
+                Does.Contain("PlayerTabSideColumn.Width = new GridLength(264d);")
+            );
+        });
     }
 
     [Test]
@@ -1281,19 +1403,31 @@ public sealed class ManualPlayerResizeHookPolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        string candidate = Path.Combine([GetRepositoryRoot(), .. relativePathParts]);
+        if (File.Exists(candidate))
+        {
+            return File.ReadAllText(candidate);
+        }
+
+        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        return string.Empty;
+    }
+
+    private static string GetRepositoryRoot([CallerFilePath] string sourceFilePath = "")
+    {
+        // 分離artifactsでも、コンパイル元ソースから正本リポジトリへ戻る。
+        DirectoryInfo? current = new(Path.GetDirectoryName(sourceFilePath) ?? "");
         while (current != null)
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            if (File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj")))
             {
-                return File.ReadAllText(candidate);
+                return current.FullName;
             }
 
             current = current.Parent;
         }
 
-        Assert.Fail($"{Path.Combine(relativePathParts)} の位置を repo root から解決できませんでした。");
+        Assert.Fail("リポジトリルートを検出できませんでした。");
         return string.Empty;
     }
 

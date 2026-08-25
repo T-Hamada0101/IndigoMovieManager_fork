@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:c="clr-namespace:IndigoMovieManager.Converter"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:materialDesign="clr-namespace:MaterialDesignThemes.Wpf"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Style="{StaticResource BottomTabRootUserControlStyle}"
     mc:Ignorable="d">
@@ -61,6 +62,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <Border
@@ -69,8 +71,9 @@
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
                         Background="{DynamicResource ThumbImageBackground}">
+                        <!-- メインのGridタブと同じサムネイルを使い、選択した動画の画像を確実に表示する。 -->
                         <Image
-                            Source="{Binding ThumbPathSmall, Converter={StaticResource noLockImageConverter}}"
+                            Source="{Binding ThumbPathGrid, Converter={StaticResource noLockImageConverter}}"
                             Stretch="Uniform" />
                     </Border>
 
@@ -133,6 +136,23 @@
                             Content="開く"
                             ToolTip="エクスプローラーで表示中の動画を選択して開きます。" />
                     </Grid>
+
+                    <!-- 左の詳細に表示中の1件だけを、既存の安全なファイル削除経路へ渡す。 -->
+                    <Button
+                        x:Name="DeleteFileButton"
+                        Grid.Row="3"
+                        Grid.ColumnSpan="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        AutomationProperties.Name="表示中の動画ファイルを削除"
+                        Click="DeleteFileButton_Click"
+                        Style="{StaticResource AppIconButtonStyle}"
+                        ToolTip="表示中の動画ファイルを削除します。">
+                        <materialDesign:PackIcon
+                            Width="20"
+                            Height="20"
+                            Kind="Delete" />
+                    </Button>
                 </Grid>
             </Grid>
         </Border>

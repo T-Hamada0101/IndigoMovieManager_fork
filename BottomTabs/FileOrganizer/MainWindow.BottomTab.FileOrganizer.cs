@@ -154,6 +154,10 @@ namespace IndigoMovieManager
                     QueueOpenParentFolderExplorer(movie.Movie_Path, movie.Dir);
                     FileOrganizerTabViewHost.SetStatus("親フォルダを開きます。");
                     break;
+                case FileOrganizerDetailAction.DeleteFile:
+                    // 左の代表1件を明示し、他タブの複数選択を巻き込まず既存削除へ流す。
+                    ExecuteDeleteAction(DeleteActionMode.DeleteFileWithChoice, [movie]);
+                    break;
             }
         }
 

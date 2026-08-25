@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 
 namespace IndigoMovieManager.Tests;
@@ -388,9 +389,13 @@ public sealed class MainWindowMenuActionsPolicyTests
         string source = GetRepoText("Views", "Main", "MainWindow.MenuActions.cs");
         string deleteMethod = GetMethodBlock(source, "private void ExecuteDeleteAction(");
         string queueMethod = GetMethodBlock(source, "private void QueueConfirmedMovieDelete(");
+        string snapshotQueueMethod = GetMethodBlock(
+            source,
+            "private void QueueConfirmedMovieDeleteSnapshots("
+        );
         string backgroundMethod = GetMethodBlock(source, "private MovieDeleteBackgroundResult DeleteMoviesInBackground(");
         string dbDeleteMethod = GetMethodBlock(source, "private int TryDeleteMovieTableInBackground(");
-        string fileDeleteMethod = GetMethodBlock(source, "private static void DeletePhysicalMovieFileInBackground(");
+        string fileDeleteMethod = GetMethodBlock(source, "private static bool DeletePhysicalMovieFileInBackground(");
         string refreshMethod = GetMethodBlock(
             source,
             "private void RefreshVisibleMovieUiAfterMovieDelete("
@@ -400,17 +405,36 @@ public sealed class MainWindowMenuActionsPolicyTests
         Assert.That(deleteMethod, Does.Not.Contain("DeleteMovieTable("));
         Assert.That(deleteMethod, Does.Not.Contain("TryDeletePhysicalFile("));
         Assert.That(deleteMethod, Does.Not.Contain("FilterAndSort(MainVM.DbInfo.Sort, true);"));
-        Assert.That(queueMethod, Does.Contain("Task.Run("));
-        Assert.That(queueMethod, Does.Contain("DeleteMoviesInBackground("));
-        Assert.That(queueMethod, Does.Contain("Dispatcher.InvokeAsync("));
-        Assert.That(queueMethod, Does.Contain("ShowDeleteFailureSummary("));
-        Assert.That(queueMethod, Does.Contain("AreSameMainDbPath("));
-        Assert.That(queueMethod, Does.Contain("RefreshVisibleMovieUiAfterMovieDelete(result.DeletedRecords);"));
+        Assert.That(queueMethod, Does.Contain("QueueConfirmedMovieDeleteSnapshots("));
+        Assert.That(snapshotQueueMethod, Does.Contain("Task.Run("));
+        Assert.That(snapshotQueueMethod, Does.Contain("DeleteMoviesInBackground("));
+        Assert.That(snapshotQueueMethod, Does.Contain("Dispatcher.InvokeAsync("));
+        Assert.That(snapshotQueueMethod, Does.Contain("ShowDeleteFailureSummary("));
+        Assert.That(snapshotQueueMethod, Does.Contain("AreSameMainDbPath("));
+        Assert.That(
+            snapshotQueueMethod,
+            Does.Contain("RefreshVisibleMovieUiAfterMovieDelete(result.DeletedRecords);")
+        );
         Assert.That(backgroundMethod, Does.Contain("TryDeleteMovieTableInBackground("));
         Assert.That(backgroundMethod, Does.Contain("TryAdjustRegisteredMovieCount("));
         Assert.That(backgroundMethod, Does.Contain("DeletePhysicalMovieFileInBackground("));
+        Assert.That(
+            backgroundMethod.IndexOf("DeletePhysicalMovieFileInBackground(", StringComparison.Ordinal),
+            Is.LessThan(
+                backgroundMethod.IndexOf("DeleteThumbnailsForMovieCore(", StringComparison.Ordinal)
+            )
+        );
+        Assert.That(
+            backgroundMethod.IndexOf("DeletePhysicalMovieFileInBackground(", StringComparison.Ordinal),
+            Is.LessThan(
+                backgroundMethod.IndexOf("TryDeleteMovieTableInBackground(", StringComparison.Ordinal)
+            )
+        );
+        Assert.That(backgroundMethod, Does.Contain("continue;"));
+        Assert.That(backgroundMethod, Does.Contain("reason=physical-delete-failed"));
         Assert.That(dbDeleteMethod, Does.Contain("DeleteMovieTable("));
         Assert.That(fileDeleteMethod, Does.Contain("TryDeletePhysicalFile("));
+        Assert.That(fileDeleteMethod, Does.Contain("return false;"));
         Assert.That(refreshMethod, Does.Contain("RemoveDeletedMovieRecordsById(MainVM.MovieRecs, deletedMovieIds);"));
         Assert.That(refreshMethod, Does.Contain("MainVM.ReplaceFilteredMovieRecs("));
         Assert.That(refreshMethod, Does.Contain("MainVM.DbInfo.SearchCount = nextFilteredMovies.Length;"));
@@ -475,19 +499,31 @@ public sealed class MainWindowMenuActionsPolicyTests
 
     private static string GetRepoText(params string[] relativePathParts)
     {
-        DirectoryInfo? current = new(TestContext.CurrentContext.TestDirectory);
+        string candidate = Path.Combine([GetRepositoryRoot(), .. relativePathParts]);
+        if (File.Exists(candidate))
+        {
+            return File.ReadAllText(candidate);
+        }
+
+        Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
+        return "";
+    }
+
+    private static string GetRepositoryRoot([CallerFilePath] string sourceFilePath = "")
+    {
+        // 分離artifactsでも、コンパイル元ソースから正本リポジトリへ戻る。
+        DirectoryInfo? current = new(Path.GetDirectoryName(sourceFilePath) ?? "");
         while (current != null)
         {
-            string candidate = Path.Combine([current.FullName, .. relativePathParts]);
-            if (File.Exists(candidate))
+            if (File.Exists(Path.Combine(current.FullName, "IndigoMovieManager.csproj")))
             {
-                return File.ReadAllText(candidate);
+                return current.FullName;
             }
 
             current = current.Parent;
         }
 
-        Assert.Fail($"Repository file not found: {Path.Combine(relativePathParts)}");
+        Assert.Fail("リポジトリルートを検出できませんでした。");
         return "";
     }
 

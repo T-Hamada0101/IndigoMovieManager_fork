@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using IndigoMovieManager.BottomTabs.FileOrganizer;
 using NUnit.Framework;
 
@@ -37,7 +38,7 @@ public sealed class FileOrganizerTabViewTests
                     Movie_Name = "代表動画",
                     Movie_Path = @"C:\Movies\sample.mp4",
                     Dir = @"C:\Movies",
-                    ThumbPathSmall = "",
+                    ThumbPathGrid = "",
                 },
                 targetCount: 25
             );
@@ -49,6 +50,30 @@ public sealed class FileOrganizerTabViewTests
                 view.Arrange(new Rect(0, 0, 1200, 260));
                 view.UpdateLayout();
             });
+        }
+        finally
+        {
+            Application.Current.Resources = originalResources;
+        }
+    }
+
+    [Test]
+    public void ゴミ箱ボタンは表示中動画の削除アクションを通知する()
+    {
+        EnsureApplicationResources();
+        ResourceDictionary originalResources = Application.Current.Resources;
+        Application.Current.Resources = CreateIndigoProfileResources();
+
+        try
+        {
+            FileOrganizerTabView view = new();
+            FileOrganizerDetailAction? receivedAction = null;
+            view.DetailActionRequested += (_, e) => receivedAction = e.Action;
+
+            Button deleteButton = (Button)view.FindName("DeleteFileButton");
+            deleteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.That(receivedAction, Is.EqualTo(FileOrganizerDetailAction.DeleteFile));
         }
         finally
         {

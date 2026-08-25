@@ -77,6 +77,11 @@ namespace IndigoMovieManager.BottomTabs.FileOrganizer
             RaiseDetailAction(FileOrganizerDetailAction.OpenFolder);
         }
 
+        private void DeleteFileButton_Click(object sender, RoutedEventArgs e)
+        {
+            RaiseDetailAction(FileOrganizerDetailAction.DeleteFile);
+        }
+
         private void RaiseSlotEvent(
             object sender,
             EventHandler<FileOrganizerSlotEventArgs> eventHandler
@@ -111,6 +116,7 @@ namespace IndigoMovieManager.BottomTabs.FileOrganizer
         CopyMoviePath,
         CopyFolderPath,
         OpenFolder,
+        DeleteFile,
     }
 
     public sealed class FileOrganizerDetailActionEventArgs : EventArgs

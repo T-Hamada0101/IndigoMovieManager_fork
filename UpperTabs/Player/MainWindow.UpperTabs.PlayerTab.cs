@@ -355,6 +355,22 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (
+                !TryReleasePendingPlayerMovieDeletesForMovieSwitch(
+                    moviePath,
+                    out string pendingDeleteReleaseFailureReason
+                )
+            )
+            {
+                MessageBox.Show(
+                    $"再生中動画をPlayerから解放できないため、削除と動画切替を中止しました。{Environment.NewLine}{pendingDeleteReleaseFailureReason}",
+                    "削除予約",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning
+                );
+                return;
+            }
+
             ReleasePendingPlayerUserPriorityWork("superseded");
             BeginUserPriorityWork("player");
             int playerUserPriorityRevision = ++_playerUserPriorityRevision;
@@ -475,6 +491,75 @@ namespace IndigoMovieManager
                     moviePath,
                     System.StringComparison.OrdinalIgnoreCase
                 );
+        }
+
+        // 別動画の選択が確定した時だけ旧Playerを解放し、確認済み削除リストを実行へ移す。
+        private bool TryReleasePendingPlayerMovieDeletesForMovieSwitch(
+            string nextMoviePath,
+            out string failureReason
+        )
+        {
+            failureReason = "";
+            string playerMoviePath = _currentPlayerMoviePath;
+            if (
+                _pendingPlayerMovieDeleteRequests.Count == 0
+                || string.Equals(
+                    playerMoviePath,
+                    nextMoviePath,
+                    System.StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                return true;
+            }
+
+            CloseManualPlayerOverlay();
+            if (!TryReleaseCurrentLibVlcMediaForDelete(out failureReason))
+            {
+                return false;
+            }
+
+            DebugRuntimeLog.Write(
+                "delete-action",
+                $"playing movie released after next selection: old_path='{playerMoviePath}' next_path='{nextMoviePath}' pending={_pendingPlayerMovieDeleteRequests.Count}"
+            );
+            QueuePendingPlayerMovieDeletesAfterPlayerRelease();
+            return true;
+        }
+
+        internal static (
+            MovieRecords[] PendingRecords,
+            MovieRecords[] ImmediateRecords
+        ) PartitionCurrentPlayerMovieDeleteRecords(
+            IReadOnlyList<MovieRecords> records,
+            string playerMoviePath
+        )
+        {
+            MovieRecords[] normalizedRecords = records?.Where(record => record != null).ToArray() ?? [];
+            if (normalizedRecords.Length == 0 || string.IsNullOrWhiteSpace(playerMoviePath))
+            {
+                return ([], normalizedRecords);
+            }
+
+            MovieRecords[] pendingRecords = normalizedRecords
+                .Where(record =>
+                    string.Equals(
+                        record.Movie_Path,
+                        playerMoviePath,
+                        System.StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                .ToArray();
+            MovieRecords[] immediateRecords = normalizedRecords
+                .Where(record =>
+                    !string.Equals(
+                        record.Movie_Path,
+                        playerMoviePath,
+                        System.StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                .ToArray();
+            return (pendingRecords, immediateRecords);
         }
 
         private void MarkPlayerUserPriorityReleasePending(int revision)
