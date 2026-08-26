@@ -14,6 +14,46 @@ namespace IndigoMovieManager
         private Task<(LibVLC LibVlc, MediaPlayer MediaPlayer)> _playerLibVlcInitializationTask;
         private bool _isLibVlcPlayerInitialized;
         private bool _isLibVlcPlayerDisposed;
+        private bool _isPlayerLibVlcPrewarmQueued;
+
+        private enum PlayerMediaOpenResult
+        {
+            Started,
+            Failed,
+            Stale,
+        }
+
+        // first-pageと入力受付を先に返し、ApplicationIdleでnative初期化だけを済ませる。
+        private void QueueLibVlcPlayerPrewarmAfterInputReady()
+        {
+            if (
+                _isPlayerLibVlcPrewarmQueued
+                || _isLibVlcPlayerInitialized
+                || _isLibVlcPlayerDisposed
+                || Dispatcher == null
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished
+            )
+            {
+                return;
+            }
+
+            _isPlayerLibVlcPrewarmQueued = true;
+            _ = Dispatcher.BeginInvoke(
+                DispatcherPriority.ApplicationIdle,
+                new Action(() => _ = RunLibVlcPlayerPrewarmAsync())
+            );
+        }
+
+        private async Task RunLibVlcPlayerPrewarmAsync()
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool ready = await EnsureLibVlcPlayerReadyAsync();
+            DebugRuntimeLog.Write(
+                "player",
+                $"libvlc player prewarm completed: ready={ready} elapsed_ms={stopwatch.ElapsedMilliseconds}"
+            );
+        }
 
         // LibVLCはPlayerタブで一度だけ生成し、動画切替ごとのネイティブ初期化を避ける。
         private async Task<bool> EnsureLibVlcPlayerReadyAsync()
@@ -128,35 +168,52 @@ namespace IndigoMovieManager
             mediaPlayer.LengthChanged -= PlayerMediaPlayer_LengthChanged;
         }
 
-        private async Task<bool> TryOpenLibVlcMovieAsync(string moviePath)
+        private async Task<PlayerMediaOpenResult> TryOpenLibVlcMovieAsync(
+            string moviePath,
+            int requestRevision,
+            long requestStartedTimestamp
+        )
         {
             if (
                 string.IsNullOrWhiteSpace(moviePath)
                 || !await EnsureLibVlcPlayerReadyAsync()
             )
             {
-                return false;
+                return PlayerMediaOpenResult.Failed;
             }
 
+            // 初期化待ちの間に後着選択が来た時は、古いAVIをMediaへ渡さない。
+            if (!IsPlayerOpenRequestCurrent(requestRevision))
+            {
+                DebugRuntimeLog.Write(
+                    "player",
+                    $"libvlc media open skipped stale: revision={requestRevision} current_revision={_playerOpenRequestRevision} stage=after-initialize"
+                );
+                return PlayerMediaOpenResult.Stale;
+            }
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
             try
             {
                 using Media media = new(_playerLibVlc, moviePath, FromType.FromPath);
+                _currentPlayerMediaRequestRevision = requestRevision;
+                _currentPlayerMediaRequestStartedTimestamp = requestStartedTimestamp;
                 _playerMediaPlayer.Media = media;
                 ApplyCurrentPlayerVolumeToEngine();
                 bool started = _playerMediaPlayer.Play();
                 DebugRuntimeLog.Write(
                     "player",
-                    $"libvlc media open requested: started={started} path='{moviePath}'"
+                    $"libvlc media open requested: revision={requestRevision} started={started} elapsed_ms={stopwatch.ElapsedMilliseconds} path='{moviePath}'"
                 );
-                return started;
+                return started ? PlayerMediaOpenResult.Started : PlayerMediaOpenResult.Failed;
             }
             catch (Exception ex)
             {
                 DebugRuntimeLog.Write(
                     "player",
-                    $"libvlc media open failed: type={ex.GetType().Name} message='{ex.Message}' path='{moviePath}'"
+                    $"libvlc media open failed: revision={requestRevision} type={ex.GetType().Name} message='{ex.Message}' elapsed_ms={stopwatch.ElapsedMilliseconds} path='{moviePath}'"
                 );
-                return false;
+                return PlayerMediaOpenResult.Failed;
             }
         }
 
@@ -178,7 +235,18 @@ namespace IndigoMovieManager
                 }
 
                 ShowPlayerSurface();
+                HidePlayerLoadingState(_currentPlayerMediaRequestRevision, "playing");
                 UpdatePlayerDurationFromEngine();
+                long requestElapsedMs = _currentPlayerMediaRequestStartedTimestamp > 0L
+                    ? (long)
+                        Stopwatch
+                            .GetElapsedTime(_currentPlayerMediaRequestStartedTimestamp)
+                            .TotalMilliseconds
+                    : -1L;
+                DebugRuntimeLog.Write(
+                    "player",
+                    $"libvlc playing ready: revision={_currentPlayerMediaRequestRevision} request_elapsed_ms={requestElapsedMs}"
+                );
                 SetPlayerPlaybackActive(true, "libvlc-playing");
                 await ApplyPendingPlayerPlaybackRequestAsync();
             }
@@ -249,6 +317,7 @@ namespace IndigoMovieManager
                 }
 
                 _hasPendingPlayerPlaybackRequest = false;
+                HidePlayerLoadingState(_currentPlayerMediaRequestRevision, "playback-error");
                 SetPlayerPlaybackActive(false, "libvlc-error");
                 StopDispatcherTimerSafely(timer, nameof(timer));
                 ReleasePendingPlayerUserPriorityWork(

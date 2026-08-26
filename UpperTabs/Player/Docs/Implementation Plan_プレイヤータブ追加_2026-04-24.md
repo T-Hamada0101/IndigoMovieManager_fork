@@ -1,8 +1,11 @@
 # Implementation Plan: プレイヤータブ追加 (2026-04-24)
 
-最終更新日: 2026-08-25
+最終更新日: 2026-08-26
 
 変更概要:
+- 2026-08-26: 別動画選択の受理直後、ファイル存在確認やLibVLC openより先に静的な「読み込み中…」を表示する。open revisionへ紐付け、連続選択で古い要求が最新表示を消さず、現在動画へ戻した時も旧表示を残さない。`indicator_ms`を追加し、Player関連108テストとRelease x64ビルドで確認した
+- 2026-08-26: Release実機ログで初回LibVLC初期化10561ms、初期化後のAVI切替59〜106msを確認した。first-page / input ready後のApplicationIdleでnative初期化を先行し、初期化待ち中の選択はrevisionで最後の1件だけをMediaへ渡す。requestからplaying readyまで同じrevisionと経過時間で追跡する
+- 2026-08-26: 別動画へ切り替える時だけ予約開始位置0秒をLibVLCへ明示適用する。同じ動画のタブ再表示では現在位置を維持し、手動サムネイルの明示開始位置も維持する。上記改善を含むPlayer関連107テストとRelease x64ビルドで確認した
 - 2026-08-25: 初期表示からPlayerタブを全面Stretchし、Gridサムネ一覧を右端264pxへ固定した。空状態でも左Player列は最小480pxを確保し、中央へ縮んだ配置にしない。Player関連57テスト、Release x64ビルド、再起動後の実画面で確認した
 - 2026-08-25: 再生中動画の物理削除を確定した時は、確認済み削除リストへ追加して再生を継続する。別動画を選んだ時に旧Playerを停止・空表示化し、LibVLCのMedia参照を解放してから削除する。解放に失敗した場合は削除と動画切替を中止し、予約を残す。Player・削除関連78テストと隔離Release x64ビルドで確認した
 - 2026-08-25: 動画本体を先に削除し、成功したレコードだけサムネイルとDB登録を削除する。ファイルロック等で本体削除に失敗した時はDB行を残す。Player・削除・ファイル整理の対象90テストとRelease x64ビルドで確認した
@@ -22,8 +25,8 @@
 - 再生 UI: `LibVLCSharp.WPF.VideoView`
 - 再生エンジン: `LibVLCSharp` 3.10.1
 - Windows native runtime: `VideoLAN.LibVLC.Windows` 3.0.23.1
-- 再生実体は Player タブで一度だけ遅延生成し、動画切替でも同じ `MediaPlayer` を再利用する
-- 起動時 warm は行わず、最初に動画を開く時だけ LibVLC を初期化する
+- 再生実体は Player タブで一度だけ生成し、動画切替でも同じ `MediaPlayer` を再利用する
+- first-page / input ready後のApplicationIdleでLibVLC native初期化だけを先行し、動画は選択時に最新要求だけを開く
 - 全画面は同じ `VideoView` を専用 Window へ載せ替え、動画の再読込や第2プレイヤー生成を行わない
 - 右レールは `PlayerThumbnailList` 一系統で、Grid 用サムネイル資産を利用する
 

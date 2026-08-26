@@ -952,8 +952,14 @@ namespace IndigoMovieManager
             UpdateManualPlayerViewport();
         }
 
-        private void CloseManualPlayerOverlay()
+        private void CloseManualPlayerOverlay(bool invalidateOpenRequest = true)
         {
+            if (invalidateOpenRequest)
+            {
+                // 停止後に初期化待ちの古い動画が再び開かないよう、明示終了でopen要求を無効化する。
+                ++_playerOpenRequestRevision;
+            }
+
             _ = ForceCloseMainWindowPlayerFullscreenAsync();
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;

@@ -19,6 +19,7 @@ namespace IndigoMovieManager
         private int _playerTabActivationAutoOpenRevision;
         private bool _hasPendingPlayerPlaybackRequest;
         private int _pendingPlayerStartMilliseconds;
+        private bool _pendingPlayerResetPosition;
         private bool _pendingPlayerPlayImmediately;
         private bool _pendingPlayerMute;
         private bool _pendingPlayerFocusTimeSlider;
@@ -28,6 +29,10 @@ namespace IndigoMovieManager
         private DispatcherTimer _playerUserPriorityReleaseTimer;
         private DispatcherOperation _playerBackgroundYieldOperation;
         private string _currentPlayerMoviePath = "";
+        private int _playerOpenRequestRevision;
+        private int _playerLoadingRequestRevision;
+        private int _currentPlayerMediaRequestRevision;
+        private long _currentPlayerMediaRequestStartedTimestamp;
 
         private ListView GetUpperTabPlayerList()
         {
@@ -332,17 +337,58 @@ namespace IndigoMovieManager
                 return;
             }
 
+            int requestRevision = ++_playerOpenRequestRevision;
+            long requestStartedTimestamp = Stopwatch.GetTimestamp();
+            bool sourceChangeRequested =
+                !string.Equals(
+                    _currentPlayerMoviePath,
+                    moviePath,
+                    System.StringComparison.OrdinalIgnoreCase
+                )
+                || _playerMediaPlayer == null;
+            if (sourceChangeRequested)
+            {
+                ShowPlayerLoadingState(requestRevision, requestStartedTimestamp);
+            }
+            else
+            {
+                // 読込中の別動画から現在動画へ戻した時は、古い要求の表示をその場で退ける。
+                ClearPlayerLoadingState();
+            }
+            Stopwatch pathCheckStopwatch = Stopwatch.StartNew();
+            DebugRuntimeLog.Write(
+                "player",
+                $"player open requested: revision={requestRevision} path='{moviePath}'"
+            );
+
             // ネットワークパス確認は UI から逃がし、存在しない時は優先区間を張らずに戻る。
             if (!await PlayerTabMoviePathExistsInBackgroundAsync(moviePath))
             {
+                DebugRuntimeLog.Write(
+                    "player",
+                    $"player open skipped missing: revision={requestRevision} path_check_ms={pathCheckStopwatch.ElapsedMilliseconds} path='{moviePath}'"
+                );
+                HidePlayerLoadingState(requestRevision, "missing");
                 return;
             }
+
+            if (!IsPlayerOpenRequestCurrent(requestRevision))
+            {
+                LogStalePlayerOpenRequest(requestRevision, "after-path-check");
+                return;
+            }
+
+            DebugRuntimeLog.Write(
+                "player",
+                $"player path check completed: revision={requestRevision} elapsed_ms={pathCheckStopwatch.ElapsedMilliseconds}"
+            );
 
             if (
                 Dispatcher?.HasShutdownStarted == true
                 || Dispatcher?.HasShutdownFinished == true
             )
             {
+                HidePlayerLoadingState(requestRevision, "shutdown");
                 ReleasePendingPlayerUserPriorityWork("shutdown");
                 return;
             }
@@ -352,6 +398,7 @@ namespace IndigoMovieManager
                 || !IsPlayerTabMoviePathStillCurrent(movie, moviePath)
             )
             {
+                HidePlayerLoadingState(requestRevision, "selection-changed");
                 return;
             }
 
@@ -368,6 +415,7 @@ namespace IndigoMovieManager
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning
                 );
+                HidePlayerLoadingState(requestRevision, "delete-release-failed");
                 return;
             }
 
@@ -395,9 +443,11 @@ namespace IndigoMovieManager
                         await WaitForPlayerDispatcherBackgroundAsync();
                         if (
                             uxVideoPlayer == null
+                            || !IsPlayerOpenRequestCurrent(requestRevision)
                             || !IsPlayerTabMoviePathStillCurrent(movie, moviePath)
                         )
                         {
+                            HidePlayerLoadingState(requestRevision, "tab-selection-changed");
                             return;
                         }
                     }
@@ -416,25 +466,31 @@ namespace IndigoMovieManager
 
                 ShowPlayerSurface();
                 StopDispatcherTimerSafely(timer, nameof(timer));
+                bool sourceChanged = sourceChangeRequested;
                 RememberPendingPlayerPlaybackRequest(
                     startMilliseconds,
+                    resetPosition: sourceChanged,
                     playImmediately,
                     mute,
                     focusTimeSlider
                 );
 
-                bool sourceChanged =
-                    !string.Equals(
-                        _currentPlayerMoviePath,
-                        moviePath,
-                        System.StringComparison.OrdinalIgnoreCase
-                    )
-                    || _playerMediaPlayer == null;
                 if (sourceChanged)
                 {
                     _currentPlayerMoviePath = moviePath;
-                    if (!await TryOpenLibVlcMovieAsync(moviePath))
+                    PlayerMediaOpenResult openResult = await TryOpenLibVlcMovieAsync(
+                        moviePath,
+                        requestRevision,
+                        requestStartedTimestamp
+                    );
+                    if (openResult == PlayerMediaOpenResult.Stale)
                     {
+                        return;
+                    }
+
+                    if (openResult != PlayerMediaOpenResult.Started)
+                    {
+                        HidePlayerLoadingState(requestRevision, "open-failed");
                         _hasPendingPlayerPlaybackRequest = false;
                         SetPlayerPlaybackActive(false, "libvlc-open-failed");
                         ReleasePendingPlayerUserPriorityWork(
@@ -448,6 +504,7 @@ namespace IndigoMovieManager
                     return;
                 }
 
+                HidePlayerLoadingState(requestRevision, "same-source");
                 await ApplyPendingPlayerPlaybackRequestAsync();
             }
             finally
@@ -460,6 +517,19 @@ namespace IndigoMovieManager
                     );
                 }
             }
+        }
+
+        private bool IsPlayerOpenRequestCurrent(int requestRevision)
+        {
+            return requestRevision == _playerOpenRequestRevision;
+        }
+
+        private void LogStalePlayerOpenRequest(int requestRevision, string stage)
+        {
+            DebugRuntimeLog.Write(
+                "player",
+                $"player open skipped stale: revision={requestRevision} current_revision={_playerOpenRequestRevision} stage={stage}"
+            );
         }
 
         private static Task<bool> PlayerTabMoviePathExistsInBackgroundAsync(string moviePath)
@@ -513,7 +583,7 @@ namespace IndigoMovieManager
                 return true;
             }
 
-            CloseManualPlayerOverlay();
+            CloseManualPlayerOverlay(invalidateOpenRequest: false);
             if (!TryReleaseCurrentLibVlcMediaForDelete(out failureReason))
             {
                 return false;
@@ -673,13 +743,18 @@ namespace IndigoMovieManager
         // メディア差し替えからLibVLCのPlaying通知まで、再生要求を落とさず持ち運ぶ。
         private void RememberPendingPlayerPlaybackRequest(
             int startMilliseconds,
+            bool resetPosition,
             bool playImmediately,
             bool mute,
             bool focusTimeSlider
         )
         {
+            // 新しい動画のPlaying通知前に同じ行を再選択しても、未適用の0秒リセットを失わない。
+            bool preservePendingReset =
+                _hasPendingPlayerPlaybackRequest && _pendingPlayerResetPosition;
             _hasPendingPlayerPlaybackRequest = true;
             _pendingPlayerStartMilliseconds = startMilliseconds;
+            _pendingPlayerResetPosition = preservePendingReset || resetPosition;
             _pendingPlayerPlayImmediately = playImmediately;
             _pendingPlayerMute = mute;
             _pendingPlayerFocusTimeSlider = focusTimeSlider;
@@ -701,6 +776,7 @@ namespace IndigoMovieManager
             try
             {
                 int startMilliseconds = _pendingPlayerStartMilliseconds;
+                bool resetPosition = _pendingPlayerResetPosition;
                 bool playImmediately = _pendingPlayerPlayImmediately;
                 bool mute = _pendingPlayerMute;
                 bool focusTimeSlider = _pendingPlayerFocusTimeSlider;
@@ -710,7 +786,8 @@ namespace IndigoMovieManager
                 SetPlayerEngineMuted(mute);
                 UpdatePlayerVolumeUi();
 
-                if (startMilliseconds > 0)
+                // 別動画は0秒も明示適用し、同じ動画の再表示だけ現在位置を維持する。
+                if (resetPosition || startMilliseconds > 0)
                 {
                     SetPlayerPosition(System.TimeSpan.FromMilliseconds(startMilliseconds));
                 }
@@ -760,8 +837,42 @@ namespace IndigoMovieManager
             UpdatePlayerVolumeUi();
         }
 
+        private void ShowPlayerLoadingState(int requestRevision, long requestStartedTimestamp)
+        {
+            _playerLoadingRequestRevision = requestRevision;
+            SetPlayerVisibilityIfChanged(PlayerLoadingState, Visibility.Visible);
+            long indicatorElapsedMs = (long)
+                Stopwatch.GetElapsedTime(requestStartedTimestamp).TotalMilliseconds;
+            DebugRuntimeLog.Write(
+                "player",
+                $"player loading shown: revision={requestRevision} indicator_ms={indicatorElapsedMs}"
+            );
+        }
+
+        private void HidePlayerLoadingState(int requestRevision, string reason)
+        {
+            if (requestRevision <= 0 || requestRevision != _playerLoadingRequestRevision)
+            {
+                return;
+            }
+
+            SetPlayerVisibilityIfChanged(PlayerLoadingState, Visibility.Collapsed);
+            _playerLoadingRequestRevision = 0;
+            DebugRuntimeLog.Write(
+                "player",
+                $"player loading hidden: revision={requestRevision} reason={reason}"
+            );
+        }
+
+        private void ClearPlayerLoadingState()
+        {
+            SetPlayerVisibilityIfChanged(PlayerLoadingState, Visibility.Collapsed);
+            _playerLoadingRequestRevision = 0;
+        }
+
         private void ShowPlayerEmptyState()
         {
+            ClearPlayerLoadingState();
             if (PlayerEmptyState != null)
             {
                 SetPlayerVisibilityIfChanged(PlayerEmptyState, Visibility.Visible);
@@ -788,6 +899,11 @@ namespace IndigoMovieManager
             {
                 return;
             }
+
+            // Playerを離れた後に初期化待ちの古い選択が再生を始めないよう、open要求も無効化する。
+            ++_playerOpenRequestRevision;
+            _hasPendingPlayerPlaybackRequest = false;
+            ClearPlayerLoadingState();
 
             if (PlayerArea?.Visibility != Visibility.Visible)
             {

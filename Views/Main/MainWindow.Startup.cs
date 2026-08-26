@@ -767,6 +767,7 @@ namespace IndigoMovieManager
                     feedState,
                     $"count={page.Items.Length} has_more={page.HasMore}"
                 );
+                QueueLibVlcPlayerPrewarmAfterInputReady();
             }
 
             QueueStartupAsciiSearchPrewarm(revision, request.DbPath);
@@ -880,6 +881,7 @@ namespace IndigoMovieManager
                     "fallback",
                     $"count={MainVM.FilteredMovieRecs.Count}"
                 );
+                QueueLibVlcPlayerPrewarmAfterInputReady();
             }
 
             LogStartupWarmPathMilestone(

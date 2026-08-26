@@ -6,12 +6,15 @@
 
 親レビュー: 2026-07-12
 
-追補: 2026-07-13 / 2026-07-17
+追補: 2026-07-13 / 2026-07-17 / 2026-08-26
 
 位置づけ: UIのスムーズ化とユーザーストレス最小化を長期判断へ落とす実装正本
 
 変更概要:
 
+- 2026-08-26、Playerの別動画選択を50ms以内に視覚応答させる入口として、ファイル存在確認前に静的な「読み込み中…」を表示する。open revisionに紐付けて古い要求による表示巻き戻りを防ぎ、`indicator_ms`、Player関連108テスト、Release x64ビルドでRegression Guardを追加した。実機の目視とP95測定は次回Release runで閉じる。
+- 2026-08-26、Player初回LibVLC初期化10561msを入力前の同期処理へ戻さず、first-page / input ready後のApplicationIdleへ先行予約した。初期化待ち中の動画選択はrevision付きlatest-onlyとし、古いAVIのMedia openをskipする。requestからpath check、media open、playing readyまで同じrevisionと経過時間で観測できる。
+- 2026-08-26、Playerのsource変更を予約再生へ明示し、別動画へ切り替える時だけ開始位置0秒をLibVLCへ適用する。同じ動画の再表示と手動サムネイルの明示位置を壊さず、上記改善を含むPlayer関連107テストとRelease x64ビルドでRegression Guardを確認した。
 - 2026-07-17、Player音量の正本を`PlayerVolumePolicy`とMainWindowの中央状態へ集約した。XAML初期化中の`ValueChanged`による保存値50%上書きを復元完了ガードで防ぎ、新規初期値は25%、0〜100%の正規保存値は尊重、不正値だけ25%へ修復する。全画面遷移時はWebView実音量をnullableの一時値として採取し、取得成功時だけ中央正本へ合流してから再注入するため、非同期WebMessageを遷移が追い越しても直前操作を失わない。音量・設定保存関連Release x64 58テストと本体buildでRegression Guardを確認した。
 - 2026-07-13の変更前Releaseログでは、Player復帰後にInput heartbeatの`delay_ms=1000〜1258`が反復し、物理ホイールburstは`max_layout_gap_ms=1134〜1616`だった。converterはcache hitまたはscroll中抑止、container生成周期は最大1〜3msであり、右レール側は支配要因ではなかった。Player再生面全体の`Grid.Effect`に残っていた`DropShadowEffect`を除去し、動画の毎フレーム更新へWPFエフェクトを戻さないsource testを追加した。変更後ReleaseはコピーDB + no-persistで実在MKVをMediaElement再生し、OSホイール10回を右レールへ送った結果、thumbnail worker 8本稼働中でも`first_render_ms=5 max_layout_gap_ms=70 max_composition_gap_ms=30 max_generator_cycle_ms=2`、burst中UI hang 0件となった。Player関連Release x64 15テストと本体buildも成功し、Behavior / Evidence / Regression Guardが揃ったため、このPlayer再生中スクロール詰まりを完了とする。
 - 実装量を表す総合進捗率を廃止し、ユーザー体感、実装接続、実機証跡の3条件で完了を判定する構成へ変更した。

@@ -1,8 +1,11 @@
 # Implementation Plan UIを含む高速化のための抜本改善プラン 2026-04-17
 
-最終更新日: 2026-08-19
+最終更新日: 2026-08-26
 
 変更概要:
+- Playerの別動画選択直後に、背景のファイル存在確認やLibVLC openより先に静的な「読み込み中…」を表示する。表示はopen revision付きlatest-onlyとし、古い要求の完了では最新表示を消さない。`indicator_ms`で要求から表示切替までを観測でき、Player関連108テストとRelease x64ビルドが成功した。
+- Release実機ログでPlayer初回LibVLC初期化が10561ms、初期化後のAVI切替が59〜106msだったため、first-pageとinput readyの後にApplicationIdleでnative初期化だけを先行する。初期化待ち中の動画選択はrevisionでlatest-only化し、最後の1件だけをMediaへ渡す。`path check` / `media open` / `playing ready`を同じrevisionと経過時間で追えるようにした。
+- Playerタブの別動画切替要求に再生位置リセット契約を追加した。予約開始位置0秒を「シークなし」と扱わず、source変更時だけLibVLCへ0秒を明示適用する。同じ動画の再表示では現在位置を維持し、手動サムネイルの明示開始位置は維持する。上記改善を含むPlayer関連107テストとRelease x64ビルドが成功した。
 - Playerタブの再生エンジンをLibVLCSharpへ一本化した。Player専用WebView2 / MediaElement分岐を削除し、MP4、MKV、HEVC Main10を同じ`MediaPlayer`で扱う。再生・一時停止、シーク、音量、ミュート、全画面、手動サムネイル、ブックマークを同じ実体へ接続する。初回再生時だけ遅延初期化し、進捗timerは250msかつDispatcherPriority.Backgroundを維持する。全画面は同じ`VideoView`を専用Windowへ載せ替え、再読込と別surface生成を行わない。WebView2は外部skin用として維持する。
 - 共通サムネイルストア選択時の設定導線を「現在DBのサムネイルを一括移動」へ明確化した。処理本体は既存のbackground migrationを再利用し、旧ルートのJPEGを保持したまま共通ストアへコピーする。全件成功後だけ設定保存と旧ファイル削除ボタンの有効化へ進むため、UI文言を変更しても既存のwriter停止、atomic copy、内容照合、再起動境界は変えない。設定画面、確認・完了表示、HTML利用ガイド、source policy testを同じ呼称へ更新した。
 - 共通サムネイルストア初回レビューの4指摘を反映した。一発移行はコピー元を共有書込み不可で開き、生成中JPEGを成功扱いしない。旧ファイル削除は内容照合後に同一フォルダーの隔離名へatomic moveし、source書込み禁止・target置換禁止のハンドルを保持した再照合中に隔離済み実体だけを削除するため、WhiteBrowser等が元パスへ後着生成したJPEGを削除しない。通常のDB別ルートでは上書き前の独立コピーを行わず、共有モードまたは共通ストア表示領域だけを分離対象として既定経路のI/Oを維持する。source policy testのrepo探索は分離`ArtifactsPath`からもコンパイル元ソース位置へ戻れる契約へ更新した。

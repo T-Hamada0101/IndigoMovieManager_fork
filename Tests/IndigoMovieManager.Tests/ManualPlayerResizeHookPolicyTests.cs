@@ -8,6 +8,138 @@ namespace IndigoMovieManager.Tests;
 public sealed class ManualPlayerResizeHookPolicyTests
 {
     [Test]
+    public void 別動画選択直後に軽量な読込表示を出し古い要求では消さない()
+    {
+        string playerTabSource = GetUpperTabPlayerSourceText();
+        string playerXaml = GetRepoText("Views", "Main", "MainWindow.xaml");
+        int loadingStateStart = playerXaml.IndexOf(
+            "x:Name=\"PlayerLoadingState\"",
+            StringComparison.Ordinal
+        );
+        int loadingStateEnd = playerXaml.IndexOf(
+            "</Border>",
+            loadingStateStart,
+            StringComparison.Ordinal
+        );
+        string loadingStateXaml = playerXaml.Substring(
+            loadingStateStart,
+            loadingStateEnd - loadingStateStart
+        );
+        string openMethod = GetMethodBlock(playerTabSource, "private async Task OpenMovieInPlayerTabAsync(");
+        string showMethod = GetMethodBlock(
+            playerTabSource,
+            "private void ShowPlayerLoadingState(int requestRevision, long requestStartedTimestamp)"
+        );
+        string hideMethod = GetMethodBlock(
+            playerTabSource,
+            "private void HidePlayerLoadingState(int requestRevision, string reason)"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(playerXaml, Does.Contain("x:Name=\"PlayerLoadingState\""));
+            Assert.That(playerXaml, Does.Contain("Text=\"読み込み中…\""));
+            Assert.That(loadingStateXaml, Does.Not.Contain("IsIndeterminate=\"True\""));
+            Assert.That(openMethod, Does.Contain("ShowPlayerLoadingState(requestRevision, requestStartedTimestamp);"));
+            Assert.That(
+                openMethod.IndexOf("ShowPlayerLoadingState(", StringComparison.Ordinal),
+                Is.LessThan(
+                    openMethod.IndexOf(
+                        "await PlayerTabMoviePathExistsInBackgroundAsync(moviePath)",
+                        StringComparison.Ordinal
+                    )
+                )
+            );
+            Assert.That(showMethod, Does.Contain("indicator_ms="));
+            Assert.That(openMethod, Does.Contain("ClearPlayerLoadingState();"));
+            Assert.That(
+                hideMethod,
+                Does.Contain("requestRevision != _playerLoadingRequestRevision")
+            );
+            Assert.That(hideMethod, Does.Contain("PlayerLoadingState, Visibility.Collapsed"));
+        });
+    }
+
+    [Test]
+    public void LibVlcは入力可能後に先行初期化し動画選択は最新要求だけを開く()
+    {
+        string startupSource = GetRepoText("Views", "Main", "MainWindow.Startup.cs");
+        string playerTabSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "MainWindow.UpperTabs.PlayerTab.cs"
+        );
+        string libVlcSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "MainWindow.UpperTabs.LibVlcPlayer.cs"
+        );
+        string prewarmMethod = GetMethodBlock(
+            libVlcSource,
+            "private void QueueLibVlcPlayerPrewarmAfterInputReady()"
+        );
+        string openMethod = GetMethodBlock(playerTabSource, "private async Task OpenMovieInPlayerTabAsync(");
+        string mediaOpenMethod = GetMethodBlock(
+            libVlcSource,
+            "private async Task<PlayerMediaOpenResult> TryOpenLibVlcMovieAsync("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(startupSource, Does.Contain("QueueLibVlcPlayerPrewarmAfterInputReady();"));
+            Assert.That(prewarmMethod, Does.Contain("DispatcherPriority.ApplicationIdle"));
+            Assert.That(prewarmMethod, Does.Contain("RunLibVlcPlayerPrewarmAsync()"));
+            Assert.That(libVlcSource, Does.Contain("await EnsureLibVlcPlayerReadyAsync();"));
+            Assert.That(playerTabSource, Does.Contain("private int _playerOpenRequestRevision;"));
+            Assert.That(openMethod, Does.Contain("int requestRevision = ++_playerOpenRequestRevision;"));
+            Assert.That(openMethod, Does.Contain("LogStalePlayerOpenRequest(requestRevision, \"after-path-check\");"));
+            Assert.That(mediaOpenMethod, Does.Contain("!IsPlayerOpenRequestCurrent(requestRevision)"));
+            Assert.That(mediaOpenMethod, Does.Contain("PlayerMediaOpenResult.Stale"));
+            Assert.That(libVlcSource, Does.Contain("libvlc playing ready:"));
+            Assert.That(libVlcSource, Does.Contain("request_elapsed_ms="));
+        });
+    }
+
+    [Test]
+    public void 別動画へ切り替えた時だけ再生位置0秒を明示適用する()
+    {
+        string playerTabSource = GetRepoText(
+            "UpperTabs",
+            "Player",
+            "MainWindow.UpperTabs.PlayerTab.cs"
+        );
+        string openMethod = GetMethodBlock(playerTabSource, "private async Task OpenMovieInPlayerTabAsync(");
+        string rememberMethod = GetMethodBlock(
+            playerTabSource,
+            "private void RememberPendingPlayerPlaybackRequest("
+        );
+        string applyMethod = GetMethodBlock(
+            playerTabSource,
+            "private async Task ApplyPendingPlayerPlaybackRequestAsync()"
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(playerTabSource, Does.Contain("private bool _pendingPlayerResetPosition;"));
+            Assert.That(openMethod, Does.Contain("resetPosition: sourceChanged"));
+            Assert.That(
+                rememberMethod,
+                Does.Contain("_hasPendingPlayerPlaybackRequest && _pendingPlayerResetPosition;")
+            );
+            Assert.That(
+                rememberMethod,
+                Does.Contain("_pendingPlayerResetPosition = preservePendingReset || resetPosition;")
+            );
+            Assert.That(applyMethod, Does.Contain("bool resetPosition = _pendingPlayerResetPosition;"));
+            Assert.That(applyMethod, Does.Contain("if (resetPosition || startMilliseconds > 0)"));
+            Assert.That(
+                applyMethod,
+                Does.Contain("SetPlayerPosition(System.TimeSpan.FromMilliseconds(startMilliseconds));")
+            );
+        });
+    }
+
+    [Test]
     public void 再生中動画は削除リストへ保留し別動画選択後にPlayer解放して削除する()
     {
         string playerTabSource = GetRepoText(
@@ -48,7 +180,10 @@ public sealed class ManualPlayerResizeHookPolicyTests
             Assert.That(deferMethod, Does.Contain("PartitionCurrentPlayerMovieDeleteRecords("));
             Assert.That(deferMethod, Does.Contain("_pendingPlayerMovieDeleteRequests.Add(request);"));
             Assert.That(deferMethod, Does.Contain("ShowPendingPlayerMovieDeleteToast("));
-            Assert.That(switchMethod, Does.Contain("CloseManualPlayerOverlay();"));
+            Assert.That(
+                switchMethod,
+                Does.Contain("CloseManualPlayerOverlay(invalidateOpenRequest: false);")
+            );
             Assert.That(switchMethod, Does.Contain("TryReleaseCurrentLibVlcMediaForDelete("));
             Assert.That(
                 switchMethod,
@@ -363,7 +498,10 @@ public sealed class ManualPlayerResizeHookPolicyTests
     {
         string source = GetLibVlcPlayerSourceText();
         string ensureMethod = GetMethodBlock(source, "private async Task<bool> EnsureLibVlcPlayerReadyAsync()");
-        string openMethod = GetMethodBlock(source, "private async Task<bool> TryOpenLibVlcMovieAsync(string moviePath)");
+        string openMethod = GetMethodBlock(
+            source,
+            "private async Task<PlayerMediaOpenResult> TryOpenLibVlcMovieAsync("
+        );
 
         Assert.That(ensureMethod, Does.Contain("if (_isLibVlcPlayerInitialized && _playerMediaPlayer != null)"));
         Assert.That(source, Does.Contain("Core.Initialize(nativeDirectory);"));
@@ -631,7 +769,10 @@ public sealed class ManualPlayerResizeHookPolicyTests
             GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementSizeIfChanged("),
             GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementWidthIfChanged("),
             GetMethodBlock(mainWindowPlayerSource, "private static void SetPlayerElementHeightIfChanged("),
-            GetMethodBlock(mainWindowPlayerSource, "private void CloseManualPlayerOverlay()"),
+            GetMethodBlock(
+                mainWindowPlayerSource,
+                "private void CloseManualPlayerOverlay(bool invalidateOpenRequest = true)"
+            ),
         ];
 
         foreach (string surfaceMethod in surfaceMethods)
@@ -852,20 +993,21 @@ public sealed class ManualPlayerResizeHookPolicyTests
     }
 
     [Test]
-    public void LibVLCPlayer_起動時warmを持たず初回再生時に遅延初期化する()
+    public void LibVLCPlayer_入力可能後のApplicationIdleで先行初期化する()
     {
         string startupSource = GetMainWindowStartupSourceText();
         string upperTabPlayerSource = GetUpperTabPlayerSourceText();
         string libVlcSource = GetLibVlcPlayerSourceText();
         string openMethod = GetMethodBlock(
             libVlcSource,
-            "private async Task<bool> TryOpenLibVlcMovieAsync(string moviePath)"
+            "private async Task<PlayerMediaOpenResult> TryOpenLibVlcMovieAsync("
         );
 
         Assert.That(startupSource, Does.Not.Contain("QueuePlayerWebViewEnvironmentWarm();"));
         Assert.That(upperTabPlayerSource, Does.Not.Contain("WarmPlayerWebViewEnvironmentAfterIdleAsync"));
         Assert.That(openMethod, Does.Contain("EnsureLibVlcPlayerReadyAsync()"));
-        Assert.That(startupSource, Does.Not.Contain("EnsureLibVlcPlayerReadyAsync()"));
+        Assert.That(startupSource, Does.Contain("QueueLibVlcPlayerPrewarmAfterInputReady();"));
+        Assert.That(libVlcSource, Does.Contain("DispatcherPriority.ApplicationIdle"));
     }
 
     [Test]
@@ -915,6 +1057,8 @@ public sealed class ManualPlayerResizeHookPolicyTests
         );
 
         Assert.That(pauseMethod, Does.Contain("++_playerTabActivationAutoOpenRevision;"));
+        Assert.That(pauseMethod, Does.Contain("++_playerOpenRequestRevision;"));
+        Assert.That(pauseMethod, Does.Contain("_hasPendingPlayerPlaybackRequest = false;"));
     }
 
     [Test]
@@ -933,7 +1077,10 @@ public sealed class ManualPlayerResizeHookPolicyTests
         Assert.That(upperTabPlayerSource, Does.Contain("expectedRevision != _pendingPlayerUserPriorityRevision"));
         Assert.That(upperTabPlayerSource, Does.Contain("PlayerUserPriorityReleaseTimer_Tick"));
         Assert.That(upperTabPlayerSource, Does.Contain("\"timeout\""));
-        Assert.That(upperTabPlayerSource, Does.Contain("await TryOpenLibVlcMovieAsync(moviePath)"));
+        Assert.That(
+            upperTabPlayerSource,
+            Does.Contain("PlayerMediaOpenResult openResult = await TryOpenLibVlcMovieAsync(")
+        );
         Assert.That(mainWindowXaml, Does.Contain("<vlc:VideoView"));
         Assert.That(mainWindowXaml, Does.Not.Contain("MediaEnded="));
         Assert.That(mainWindowXaml, Does.Not.Contain("NavigationStarting="));
@@ -967,7 +1114,10 @@ public sealed class ManualPlayerResizeHookPolicyTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(openMethod, Does.Contain("await TryOpenLibVlcMovieAsync(moviePath)"));
+            Assert.That(
+                openMethod,
+                Does.Contain("PlayerMediaOpenResult openResult = await TryOpenLibVlcMovieAsync(")
+            );
             Assert.That(openMethod, Does.Contain("MarkPlayerUserPriorityReleasePending(playerUserPriorityRevision);"));
             Assert.That(openMethod, Does.Contain("releaseUserPriorityOnExit = false;"));
             Assert.That(playingMethod, Does.Contain("await ApplyPendingPlayerPlaybackRequestAsync();"));
