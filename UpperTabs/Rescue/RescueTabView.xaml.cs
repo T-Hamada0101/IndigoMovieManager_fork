@@ -13,6 +13,8 @@ namespace IndigoMovieManager.UpperTabs.Rescue
 
         public event RoutedEventHandler RefreshRequested;
         public event RoutedEventHandler BulkNormalRetryRequested;
+        public event RoutedEventHandler SelectedNormalRetryRequested;
+        public event RoutedEventHandler SelectedRescueRequested;
         public event RoutedEventHandler SelectedAutogenRequested;
         public event RoutedEventHandler SelectedFfmpegRequested;
         public event RoutedEventHandler SelectedFfmediaToolkitRequested;
@@ -34,16 +36,6 @@ namespace IndigoMovieManager.UpperTabs.Rescue
 
         public DataGrid RescueHistoryDataGridControl => RescueHistoryDataGrid;
 
-        // 直接エンジン叩きボタンは、release で未開放の間だけまとめて隠せるようにする。
-        public void SetSingleEngineButtonsVisible(bool isVisible)
-        {
-            Visibility visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
-            AutogenButton.Visibility = visibility;
-            FfmpegButton.Visibility = visibility;
-            FfmediaToolkitButton.Visibility = visibility;
-            OpenCvButton.Visibility = visibility;
-        }
-
         private void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
             RefreshRequested?.Invoke(sender, e);
@@ -52,6 +44,16 @@ namespace IndigoMovieManager.UpperTabs.Rescue
         private void BulkNormalRetryButton_Click(object sender, RoutedEventArgs e)
         {
             BulkNormalRetryRequested?.Invoke(sender, e);
+        }
+
+        private void SelectedNormalRetryButton_Click(object sender, RoutedEventArgs e)
+        {
+            SelectedNormalRetryRequested?.Invoke(sender, e);
+        }
+
+        private void SelectedRescueButton_Click(object sender, RoutedEventArgs e)
+        {
+            SelectedRescueRequested?.Invoke(sender, e);
         }
 
         private void SelectedAutogenButton_Click(object sender, RoutedEventArgs e)

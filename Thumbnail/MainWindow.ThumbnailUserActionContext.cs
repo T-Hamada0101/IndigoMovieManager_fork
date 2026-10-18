@@ -555,7 +555,9 @@ namespace IndigoMovieManager
         // rescue request 系は入口ごとの差を DTO に閉じ込め、件数集計だけを共通化する。
         private ThumbnailRescueUserActionDispatchResult DispatchThumbnailRescueUserAction(
             IEnumerable<MovieRecords> records,
-            ThumbnailRescueUserActionRequest request
+            ThumbnailRescueUserActionRequest request,
+            bool showManualUi = true,
+            string expectedMainDbFullPath = null
         )
         {
             List<MovieRecords> normalizedRecords = NormalizeThumbnailUserActionMovieRecords(records);
@@ -576,7 +578,7 @@ namespace IndigoMovieManager
                     request.UseDedicatedManualWorkerSlot,
                     normalizedRecords.Count
                 );
-            if (useDedicatedManualWorkerSlot && normalizedRecords.Count == 1)
+            if (showManualUi && useDedicatedManualWorkerSlot && normalizedRecords.Count == 1)
             {
                 RememberManualThumbnailRescueMoviePath(normalizedRecords[0].Movie_Path);
             }
@@ -585,11 +587,24 @@ namespace IndigoMovieManager
             int duplicateRequestCount = 0;
             int existingSuccessCount = 0;
             bool shouldShowDedicatedManualPanel =
-                useDedicatedManualWorkerSlot && normalizedRecords.Count == 1;
+                showManualUi && useDedicatedManualWorkerSlot && normalizedRecords.Count == 1;
             string firstAcceptedMoviePath = "";
 
             foreach (MovieRecords record in normalizedRecords)
             {
+                // 背景投入中にDBが切り替わったら、残りの行を新しいDBへ混ぜない。
+                if (
+                    expectedMainDbFullPath != null
+                    && !string.Equals(
+                        MainVM?.DbInfo?.DBFullPath,
+                        expectedMainDbFullPath,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                {
+                    throw new InvalidOperationException("処理中にDBが切り替わりました。");
+                }
+
                 QueueObj queueObj = new()
                 {
                     MovieId = record.Movie_Id,

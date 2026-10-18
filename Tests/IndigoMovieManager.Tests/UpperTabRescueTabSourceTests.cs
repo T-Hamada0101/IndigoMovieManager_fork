@@ -18,6 +18,45 @@ public sealed class UpperTabRescueTabSourceTests
         );
     }
 
+    [Test]
+    public void Rescue操作ボタンはReleaseでも表示し選択行の通常処理と救済へ接続する()
+    {
+        string view = GetRepoText("UpperTabs", "Rescue", "RescueTabView.xaml");
+        string viewCode = GetRepoText("UpperTabs", "Rescue", "RescueTabView.xaml.cs");
+        string mainView = GetRepoText("Views", "Main", "MainWindow.xaml");
+        string logic = GetRepoText("UpperTabs", "Rescue", "MainWindow.UpperTabs.RescueTab.cs");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(view, Does.Contain("Content=\"通常サムネ作成\""));
+            Assert.That(view, Does.Contain("Content=\"救済\""));
+            Assert.That(mainView, Does.Contain("SelectedNormalRetryRequested=\"UpperTabRescueSelectedNormalRetryButton_Click\""));
+            Assert.That(mainView, Does.Contain("SelectedRescueRequested=\"UpperTabRescueSelectedRescueButton_Click\""));
+            Assert.That(logic, Does.Contain("DispatchThumbnailRescueUserAction("));
+            Assert.That(logic, Does.Not.Contain("IsUpperTabSingleEngineButtonEnabled"));
+            Assert.That(viewCode, Does.Not.Contain("SetSingleEngineButtonsVisible"));
+        });
+    }
+
+    [Test]
+    public void 選択行救済は重い投入を背景へ逃がし失敗をUIへ返す()
+    {
+        string source = GetRepoText("UpperTabs", "Rescue", "MainWindow.UpperTabs.RescueTab.cs")
+            .Replace("\r\n", "\n");
+        string method = ExtractMethod(
+            source,
+            "private async void UpperTabRescueSelectedRescueButton_Click("
+        );
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(method, Does.Contain("await Task.Run(() =>"));
+            Assert.That(method, Does.Contain("showManualUi: false"));
+            Assert.That(method, Does.Contain("catch (Exception ex)"));
+            Assert.That(method, Does.Contain("ShowThumbnailUserActionPopup("));
+        });
+    }
+
     [TestCase("private async void UpperTabRescueBulkNormalRetryButton_Click(", "queuedCount")]
     [TestCase("private async void UpperTabRescueSelectedNormalRetryButton_Click(", "queuedCount")]
     [TestCase("private async Task RunUpperTabRescueBulkBlackRetryAsync(bool useLiteMode)", "queuedCount")]

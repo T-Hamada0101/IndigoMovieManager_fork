@@ -30,17 +30,13 @@ namespace IndigoMovieManager
         private readonly Dictionary<int, HashSet<string>> _upperTabRescueManualMoviePathsByTabIndex =
             [];
         private UpperTabRescueTabPresenter _upperTabRescueTabPresenter;
-#if DEBUG
-        private static readonly bool IsUpperTabSingleEngineButtonEnabled = true;
-#else
-        private static readonly bool IsUpperTabSingleEngineButtonEnabled = false;
-#endif
         private int _upperTabRescueRefreshRunning;
         private int _upperTabRescueBulkNormalRetryRunning;
         private int _upperTabRescueBulkBlackRetryRunning;
         private int _upperTabRescueBlackConfirmRunning;
         private int _upperTabRescueIndexRepairRunning;
         private int _upperTabRescueSingleEngineRunning;
+        private int _upperTabRescueSelectedRescueRunning;
 
         // 救済タブの対象候補と一覧コレクションを UI へ結び、最初の既定値だけ決める。
         private void InitializeUpperTabRescueTab()
@@ -54,9 +50,6 @@ namespace IndigoMovieManager
                 () => _ = ResolvePreferredThumbnailTabIndex()
             );
             _upperTabRescueTabPresenter.Initialize();
-            UpperTabRescueViewHost?.SetSingleEngineButtonsVisible(
-                IsUpperTabSingleEngineButtonEnabled
-            );
         }
 
         // 救済タブ切替時の「先頭選択 → 詳細更新 → ログ」をこの dir 側へ寄せる。
@@ -786,7 +779,7 @@ namespace IndigoMovieManager
             }
         }
 
-        // 下段ボタンは、選択行だけを対象タブの通常キューへ単発再投入する。
+        // 下段ボタンは、選択行だけを対象タブの通常キューへ再投入する。
         private async void UpperTabRescueSelectedNormalRetryButton_Click(
             object sender,
             RoutedEventArgs e
@@ -859,6 +852,124 @@ namespace IndigoMovieManager
                     RequestThumbnailErrorSnapshotRefresh();
                     RequestThumbnailProgressSnapshotRefresh();
                 }
+            }
+        }
+
+        // 救済タブの選択行を、右クリックと同じ明示救済経路へ渡す。
+        private async void UpperTabRescueSelectedRescueButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (Interlocked.Exchange(ref _upperTabRescueSelectedRescueRunning, 1) == 1)
+            {
+                ShowThumbnailUserActionPopup(
+                    "救済",
+                    "選択行の救済を既に受け付け中です。",
+                    MessageBoxImage.Warning
+                );
+                return;
+            }
+
+            try
+            {
+                UpperTabRescueTargetOption target = GetSelectedUpperTabRescueTargetOption();
+                List<MovieRecords> records = NormalizeThumbnailUserActionMovieRecords(
+                    GetSelectedUpperTabRescueMovieRecords()
+                );
+                if (target == null || records.Count == 0)
+                {
+                    ShowThumbnailUserActionPopup(
+                        "救済",
+                        "対象動画が選択されていません。",
+                        MessageBoxImage.Warning
+                    );
+                    return;
+                }
+
+                string dbFullPath = MainVM?.DbInfo?.DBFullPath ?? "";
+                ResolvePreferredThumbnailTabIndex();
+                if (records.Count == 1)
+                {
+                    RememberManualThumbnailRescueMoviePath(records[0].Movie_Path);
+                    ShowTransientThumbnailProgressRescueWorkerPanel(
+                        records[0].Movie_Path,
+                        "差し込み救済",
+                        "手動救済を受け付け中です。"
+                    );
+                }
+
+                // 動画の存在確認、FailureDb 更新、worker のコピーと起動は UI 外で行う。
+                ThumbnailRescueUserActionRequest request = new(
+                    TargetTabIndex: target.TabIndex,
+                    Priority: ThumbnailQueuePriority.Normal,
+                    Reason: "upper-tab-selected-rescue",
+                    UseDedicatedManualWorkerSlot: true,
+                    SkipWhenSuccessExists: false,
+                    RescueMode: "",
+                    DeleteErrorMarkerFirst: true
+                );
+                ThumbnailRescueUserActionDispatchResult result = await Task.Run(() =>
+                {
+                    if (!string.Equals(
+                        MainVM?.DbInfo?.DBFullPath,
+                        dbFullPath,
+                        StringComparison.OrdinalIgnoreCase
+                    ))
+                    {
+                        throw new InvalidOperationException("処理中にDBが切り替わりました。");
+                    }
+
+                    return DispatchThumbnailRescueUserAction(
+                        records,
+                        request,
+                        showManualUi: false,
+                        expectedMainDbFullPath: dbFullPath
+                    );
+                });
+
+                if (result.AcceptedCount == 0)
+                {
+                    ClearTransientThumbnailProgressRescueWorkerPanel();
+                }
+
+                DebugRuntimeLog.Write(
+                    "upper-tab-rescue",
+                    $"rescue tab selected rescue end: target_tab={target.TabIndex} selected={result.SelectedCount} queued={result.AcceptedCount}"
+                );
+                ShowThumbnailUserActionPopup(
+                    "救済",
+                    BuildThumbnailRescueUserActionPopupMessage(
+                        "救済",
+                        result.SelectedCount,
+                        result.AcceptedCount,
+                        result.DuplicateRequestCount,
+                        result.ExistingSuccessCount
+                    ),
+                    ResolveThumbnailRescueUserActionPopupImage(
+                        result.AcceptedCount,
+                        result.DuplicateRequestCount,
+                        result.ExistingSuccessCount
+                    )
+                );
+                RefreshThumbnailManualUserActionUiIfAccepted(
+                    result.AcceptedCount,
+                    "upper-tab-selected-rescue"
+                );
+            }
+            catch (Exception ex)
+            {
+                ClearTransientThumbnailProgressRescueWorkerPanel();
+                DebugRuntimeLog.Write(
+                    "upper-tab-rescue",
+                    $"rescue tab selected rescue failed: {ex.GetType().Name}: {ex.Message}"
+                );
+                ShowThumbnailUserActionPopup(
+                    "救済",
+                    $"救済処理を完了できませんでした。受付済みの件数は進捗とログで確認してください。{Environment.NewLine}{ex.Message}",
+                    MessageBoxImage.Error
+                );
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _upperTabRescueSelectedRescueRunning, 0);
             }
         }
 

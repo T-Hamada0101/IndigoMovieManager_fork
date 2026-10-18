@@ -1544,6 +1544,8 @@
                 <TabItem x:Name="TabThumbnailError" Header="サムネ救済">
                     <rescueTab:RescueTabView
                       BulkNormalRetryRequested="UpperTabRescueBulkNormalRetryButton_Click"
+                      SelectedNormalRetryRequested="UpperTabRescueSelectedNormalRetryButton_Click"
+                      SelectedRescueRequested="UpperTabRescueSelectedRescueButton_Click"
                       x:Name="UpperTabRescueViewHost"
                       PlayRequested="UpperTabRescuePlayRequested"
                       RefreshRequested="UpperTabRescueRefreshButton_Click"

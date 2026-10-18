@@ -18,7 +18,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="4" />
-            <RowDefinition Height="142" />
+            <RowDefinition Height="180" />
         </Grid.RowDefinitions>
 
         <Grid
@@ -183,81 +183,74 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="0,0,0,3">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
+                    <StackPanel Grid.Row="0" Margin="0,0,0,3">
                         <TextBlock
                             x:Name="HistoryTargetTextBlock"
-                            Margin="0,0,8,0"
+                            Margin="0,0,0,2"
                             VerticalAlignment="Center"
                             FontSize="10"
                             Foreground="{DynamicResource MaterialDesignBodySecondary}"
                             Text="動画を選ぶと履歴を表示します。"
                             TextTrimming="CharacterEllipsis" />
 
-                        <Button
-                            x:Name="AutogenButton"
-                            Grid.Column="1"
-                            Margin="0"
-                            Click="SelectedAutogenButton_Click"
-                            Content="autogen"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                        <Button
-                            x:Name="FfmpegButton"
-                            Grid.Column="2"
-                            Margin="0"
-                            Click="SelectedFfmpegButton_Click"
-                            Content="ffmpeg"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                        <Button
-                            x:Name="FfmediaToolkitButton"
-                            Grid.Column="3"
-                            Margin="0"
-                            Click="SelectedFfmediaToolkitButton_Click"
-                            Content="ffmediatoolkit"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                        <Button
-                            x:Name="OpenCvButton"
-                            Grid.Column="4"
-                            Margin="0"
-                            Click="SelectedOpenCvButton_Click"
-                            Content="opencv"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                        <Button
-                            Grid.Column="5"
-                            Margin="0"
-                            Click="SelectedIndexRepairButton_Click"
-                            Content="インデックス再構築"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                        <Button
-                            Grid.Column="6"
-                            Margin="0"
-                            Click="SelectedBlackConfirmButton_Click"
-                            Content="黒確定"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                        <Button
-                            Grid.Column="7"
-                            Margin="0"
-                            Click="SelectedBlackLiteRetryButton_Click"
-                            Content="簡易黒背景対策"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                        <Button
-                            Grid.Column="8"
-                            Margin="0"
-                            Click="SelectedBlackDeepRetryButton_Click"
-                            Content="徹底黒背景対策(長時間)"
-                            Style="{StaticResource HighDensityBottomTabButtonStyle}" />
-                    </Grid>
+                        <!-- 選択行の処理を同じ場所に並べ、狭い幅では折り返して全ボタンを見せる。 -->
+                        <WrapPanel>
+                            <Button
+                                Margin="0"
+                                Click="SelectedNormalRetryButton_Click"
+                                Content="通常サムネ作成"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                Margin="0"
+                                Click="SelectedRescueButton_Click"
+                                Content="救済"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                x:Name="AutogenButton"
+                                Margin="0"
+                                Click="SelectedAutogenButton_Click"
+                                Content="autogen"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                x:Name="FfmpegButton"
+                                Margin="0"
+                                Click="SelectedFfmpegButton_Click"
+                                Content="ffmpeg"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                x:Name="FfmediaToolkitButton"
+                                Margin="0"
+                                Click="SelectedFfmediaToolkitButton_Click"
+                                Content="ffmediatoolkit"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                x:Name="OpenCvButton"
+                                Margin="0"
+                                Click="SelectedOpenCvButton_Click"
+                                Content="opencv"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                Margin="0"
+                                Click="SelectedIndexRepairButton_Click"
+                                Content="インデックス再構築"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                Margin="0"
+                                Click="SelectedBlackConfirmButton_Click"
+                                Content="黒確定"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                Margin="0"
+                                Click="SelectedBlackLiteRetryButton_Click"
+                                Content="簡易黒背景対策"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                            <Button
+                                Margin="0"
+                                Click="SelectedBlackDeepRetryButton_Click"
+                                Content="徹底黒背景対策(長時間)"
+                                Style="{StaticResource HighDensityBottomTabButtonStyle}" />
+                        </WrapPanel>
+                    </StackPanel>
 
                     <DataGrid
                         x:Name="RescueHistoryDataGrid"
